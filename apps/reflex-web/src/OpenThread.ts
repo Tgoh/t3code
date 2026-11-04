@@ -1,0 +1,653 @@
+import { applyThreadPullRequestLinkUpdate } from "@t3tools/client-runtime/thread-pull-requests";
+import type { OrchestrationV2AppThread } from "@t3tools/contracts";
+import { restoreLocalVisibleTurnItems } from "@t3tools/shared/orchestrationV2BoundedSnapshot";
+import {
+  restoreSubagentBodies,
+  restoreTurnItemBodies,
+} from "@t3tools/shared/orchestrationV2DedupedBodies";
+import { isOrchestrationV2TurnItemVisible } from "@t3tools/shared/orchestrationV2Timeline";
+import {
+  type IActionGenerator,
+  type IEntity,
+  type ISelectorGenerator,
+  isEnded,
+  merge,
+  openResource,
+  publishScoped,
+  receiver,
+} from "reflex";
+import { createFeatureContext } from "reflex-solid";
+
+import { delayEffect } from "./Infrastructure/delay";
+import { threadHistoryPage } from "./Infrastructure/threadHistory";
+import type {
+  IWireHistoryPage,
+  IWireProjection,
+  IWireThreadEvent,
+  IWireThreadItem,
+  IWireThreadSnapshot,
+  IWireTurnItem,
+} from "./Infrastructure/wire";
+import { byId, put } from "./rows";
+
+declare module "reflex" {
+  interface IResourceRegistry {
+    "Thread/Stream": { Type: "threadStream" };
+  }
+  interface IEventRegistry {
+    "Thread/Deleted": { ThreadId: string };
+  }
+}
+
+const REOPEN_MS = 1_000;
+
+export type IWireRun = IWireProjection["runs"][number];
+
+export interface ITimelineRow {
+  visibility: IWireProjection["visibleTurnItems"][number]["visibility"];
+  sourceThreadId: string;
+}
+
+export interface ITimelineEntry extends ITimelineRow {
+  position: number;
+  sourceItemId: string;
+  item: IWireTurnItem;
+}
+
+export interface IOpenThread extends IEntity {
+  EnvironmentId: string;
+  ThreadId: string;
+  LastSequence: number;
+  Synchronized: boolean;
+  Ended?: string;
+  Thread: IWireProjection["thread"] | null;
+  Runs: Record<string, IWireProjection["runs"][number]>;
+  Attempts: Record<string, IWireProjection["attempts"][number]>;
+  Nodes: Record<string, IWireProjection["nodes"][number]>;
+  Subagents: Record<string, IWireProjection["subagents"][number]>;
+  ProviderSessions: Record<string, IWireProjection["providerSessions"][number]>;
+  ProviderThreads: Record<string, IWireProjection["providerThreads"][number]>;
+  ProviderTurns: Record<string, IWireProjection["providerTurns"][number]>;
+  RuntimeRequests: Record<string, IWireProjection["runtimeRequests"][number]>;
+  Messages: Record<string, IWireProjection["messages"][number]>;
+  Plans: Record<string, IWireProjection["plans"][number]>;
+  CheckpointScopes: Record<string, IWireProjection["checkpointScopes"][number]>;
+  Checkpoints: Record<string, IWireProjection["checkpoints"][number]>;
+  ContextHandoffs: Record<string, IWireProjection["contextHandoffs"][number]>;
+  ContextTransfers: Record<string, IWireProjection["contextTransfers"][number]>;
+  TurnItems: Record<string, IWireTurnItem>;
+  InheritedItems: Record<string, IWireTurnItem>;
+  Timeline: string[];
+  Rows: Record<string, ITimelineRow>;
+  History: {
+    Cursor: string | null;
+    HasMore: boolean;
+    LatestLocalTurnOrdinal: number | null;
+    Loading: boolean;
+    Error?: string;
+  };
+}
+
+export const NO_HISTORY: IOpenThread["History"] = {
+  Cursor: null,
+  HasMore: false,
+  LatestLocalTurnOrdinal: null,
+  Loading: false,
+};
+
+export function getDefaultOpenThread(
+  id: string,
+  environmentId: string,
+  threadId: string,
+): IOpenThread {
+  return {
+    $Id: id,
+    EnvironmentId: environmentId,
+    ThreadId: threadId,
+    LastSequence: 0,
+    Synchronized: false,
+    Thread: null,
+    Runs: {},
+    Attempts: {},
+    Nodes: {},
+    Subagents: {},
+    ProviderSessions: {},
+    ProviderThreads: {},
+    ProviderTurns: {},
+    RuntimeRequests: {},
+    Messages: {},
+    Plans: {},
+    CheckpointScopes: {},
+    Checkpoints: {},
+    ContextHandoffs: {},
+    ContextTransfers: {},
+    TurnItems: {},
+    InheritedItems: {},
+    Timeline: [],
+    Rows: {},
+    History: { ...NO_HISTORY },
+  };
+}
+
+export function* openThreadStream(draft: IOpenThread): IActionGenerator {
+  yield* openResource(
+    draft,
+    "Thread/Stream",
+    ThreadReceiver,
+    { Type: "threadStream", EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
+    { ResumeFrom: "LastSequence" },
+  );
+}
+
+type IBodySources = Pick<IOpenThread, "Messages" | "Checkpoints" | "Subagents">;
+
+// The shared helper only copies ids and bodies, so the wire form passes through it. The files are
+// copied because a node can't sit at two slots of the tree.
+function restoreBodies(item: IWireTurnItem, sources: IBodySources): IWireTurnItem {
+  const restored = restoreTurnItemBodies(item as never, {
+    messageText: (id) => sources.Messages[id]?.text,
+    checkpointFiles: (id) => {
+      const files = sources.Checkpoints[id]?.files;
+      return files === undefined ? undefined : (JSON.parse(JSON.stringify(files)) as never);
+    },
+    subagent: (id) => sources.Subagents[id],
+  });
+  return restored as unknown as IWireTurnItem;
+}
+
+const isLocalRow = (draft: IOpenThread, row: ITimelineRow): boolean =>
+  row.visibility === "local" || row.sourceThreadId === draft.ThreadId;
+
+const hasPartialWindow = (draft: IOpenThread): boolean =>
+  draft.History.HasMore || draft.History.Cursor !== null;
+
+// Reads only this item's run, so a view can call it per row. The other items are read only for a
+// row the first check hides, because a reactive reader of them re-runs on every added row.
+function isVisible(draft: IOpenThread, item: IWireTurnItem): boolean {
+  const run = item.runId === null ? undefined : draft.Runs[item.runId];
+  const input = {
+    item,
+    runs: run === undefined ? [] : [run],
+    attempts: item.type === "run_interrupt_result" ? Object.values(draft.Attempts) : [],
+  };
+  if (isOrchestrationV2TurnItemVisible({ ...input, items: [] })) return true;
+  return isOrchestrationV2TurnItemVisible({ ...input, items: Object.values(draft.TurnItems) });
+}
+
+export function isRowVisible(draft: IOpenThread, id: string): boolean {
+  const row = draft.Rows[id];
+  if (row === undefined) return false;
+  const item = timelineItem(draft, id);
+  return item !== undefined && (row.visibility !== "local" || isVisible(draft, item));
+}
+
+function removeRow(draft: IOpenThread, id: string): void {
+  if (draft.Rows[id] === undefined) return;
+  draft.Timeline.splice(draft.Timeline.lastIndexOf(id), 1);
+  delete draft.Rows[id];
+  delete draft.InheritedItems[id];
+}
+
+const UNFINISHED_RUN = new Set(["preparing", "queued", "starting", "running", "waiting"]);
+
+function oldestLocalOrdinal(draft: IOpenThread): number | null {
+  for (const id of draft.Timeline) {
+    if (draft.Rows[id]!.visibility === "local") return draft.TurnItems[id]!.ordinal;
+  }
+  return null;
+}
+
+function isBelowWindow(draft: IOpenThread, item: IWireTurnItem): boolean {
+  const watermark = draft.History.LatestLocalTurnOrdinal;
+  if (watermark !== null && item.ordinal <= watermark) return true;
+  const oldest = oldestLocalOrdinal(draft);
+  return oldest !== null && item.ordinal < oldest;
+}
+
+function isUnloadedHistory(draft: IOpenThread, item: IWireTurnItem): boolean {
+  if (draft.Rows[item.id] !== undefined) return false;
+  if (item.runId === null) return isBelowWindow(draft, item);
+  const run = draft.Runs[item.runId];
+  if (run !== undefined && UNFINISHED_RUN.has(run.status)) return false;
+  const loadedEarlier = draft.Timeline.some((id) => {
+    if (draft.Rows[id]!.visibility !== "local") return false;
+    const held = draft.TurnItems[id]!;
+    return held.runId === item.runId && held.ordinal <= item.ordinal;
+  });
+  return !loadedEarlier && isBelowWindow(draft, item);
+}
+
+function placeRow(draft: IOpenThread, item: IWireTurnItem, heldOrdinal: number | undefined): void {
+  const row = draft.Rows[item.id];
+  if (
+    row?.visibility === "local" &&
+    row.sourceThreadId === item.threadId &&
+    heldOrdinal === item.ordinal
+  )
+    return;
+  if (row === undefined && hasPartialWindow(draft) && isUnloadedHistory(draft, item)) return;
+  removeRow(draft, item.id);
+  // Local rows are in order, and new items land last, so this search stops at once.
+  let insertion = draft.Timeline.length;
+  for (let index = insertion - 1; index >= 0; index -= 1) {
+    const id = draft.Timeline[index]!;
+    if (draft.Rows[id]!.visibility !== "local") continue;
+    const held = draft.TurnItems[id]!;
+    const later =
+      held.ordinal > item.ordinal ||
+      (held.ordinal === item.ordinal && id.localeCompare(item.id) > 0);
+    if (!later) break;
+    insertion = index;
+  }
+  draft.Timeline.splice(insertion, 0, item.id);
+  draft.Rows[item.id] = { visibility: "local", sourceThreadId: item.threadId };
+}
+
+function applyTurnItem(draft: IOpenThread, wire: IWireTurnItem): void {
+  const held = draft.TurnItems[wire.id];
+  const payload = restoreBodies(wire, draft);
+  if (held === undefined && hasPartialWindow(draft) && isUnloadedHistory(draft, payload)) return;
+  const heldOrdinal = held?.ordinal;
+  put(draft.TurnItems, payload);
+  placeRow(draft, payload, heldOrdinal);
+  const watermark = draft.History.LatestLocalTurnOrdinal;
+  if (hasPartialWindow(draft) && (watermark === null || payload.ordinal > watermark)) {
+    draft.History.LatestLocalTurnOrdinal = payload.ordinal;
+  }
+}
+
+function setThread(draft: IOpenThread, thread: NonNullable<IOpenThread["Thread"]>): void {
+  if (draft.Thread === null) draft.Thread = thread;
+  else merge(draft.Thread, thread, { keyless: "position" });
+}
+
+function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
+  switch (event.type) {
+    case "thread.pull-request-link-updated": {
+      const thread = JSON.parse(JSON.stringify(draft.Thread)) as OrchestrationV2AppThread;
+      setThread(
+        draft,
+        applyThreadPullRequestLinkUpdate(thread, event.payload as never) as unknown as NonNullable<
+          IOpenThread["Thread"]
+        >,
+      );
+      return;
+    }
+    case "thread.created":
+    case "thread.archived":
+    case "thread.unarchived":
+    case "thread.deleted":
+    case "thread.settled":
+    case "thread.unsettled":
+    case "thread.snoozed":
+    case "thread.unsnoozed":
+    case "thread.auto-settle-set":
+    case "thread.pinned":
+    case "thread.unpinned":
+    case "thread.pin-reordered":
+    case "thread.active-reordered":
+    case "thread.metadata-updated":
+    case "thread.pull-request-synced":
+    case "thread.runtime-mode-updated":
+    case "thread.interaction-mode-updated":
+    case "thread.model-selection-updated":
+    case "thread.provider-switched":
+    case "thread.guest-share-updated":
+    case "thread.visited":
+    case "thread.tags-updated":
+    case "thread.marked-unread":
+      setThread(draft, event.payload);
+      return;
+    case "turn-item.updated":
+      applyTurnItem(draft, event.payload);
+      return;
+    case "run.created":
+    case "run.updated":
+      put(draft.Runs, event.payload);
+      return;
+    case "run.background-work-cancelled": {
+      const run = draft.Runs[event.payload.runId];
+      if (run !== undefined)
+        run.restartCancelledBackgroundWork = event.payload.restartCancelledBackgroundWork;
+      return;
+    }
+    case "run-attempt.created":
+    case "run-attempt.updated":
+      put(draft.Attempts, event.payload);
+      return;
+    case "node.updated":
+      put(draft.Nodes, event.payload);
+      return;
+    case "subagent.updated":
+      put(draft.Subagents, restoreSubagentBodies(event.payload, draft.Subagents[event.payload.id]));
+      return;
+    case "provider-session.attached":
+    case "provider-session.updated":
+      put(draft.ProviderSessions, event.payload);
+      return;
+    case "provider-session.detached":
+      delete draft.ProviderSessions[event.payload.providerSessionId];
+      return;
+    case "provider-thread.updated":
+      put(draft.ProviderThreads, event.payload);
+      return;
+    case "provider-turn.updated": {
+      const tokenUsage =
+        event.payload.tokenUsage ?? draft.ProviderTurns[event.payload.id]?.tokenUsage;
+      put(
+        draft.ProviderTurns,
+        tokenUsage === undefined ? event.payload : { ...event.payload, tokenUsage },
+      );
+      return;
+    }
+    case "runtime-request.updated":
+      put(draft.RuntimeRequests, event.payload);
+      return;
+    case "message.updated":
+      put(draft.Messages, event.payload);
+      return;
+    case "plan.updated":
+      put(draft.Plans, event.payload);
+      return;
+    case "checkpoint-scope.created":
+      put(draft.CheckpointScopes, event.payload);
+      return;
+    case "checkpoint.captured":
+      put(draft.Checkpoints, event.payload);
+      return;
+    case "context-handoff.updated":
+      put(draft.ContextHandoffs, event.payload);
+      return;
+    case "context-transfer.created":
+    case "context-transfer.updated":
+      put(draft.ContextTransfers, event.payload);
+      return;
+  }
+}
+
+const refresh = <T extends object>(target: T, next: T): void => {
+  merge(target, next, { keyless: "position" });
+};
+
+// Merged, not assigned: reflex refuses a fresh node carrying a live $Id, and rows the snapshot
+// still carries must keep their nodes so views over them don't remount.
+function applySnapshot(draft: IOpenThread, item: IWireThreadSnapshot): void {
+  // restoreLocalVisibleTurnItems reads only row fields the wire form shares.
+  const projection = (
+    item.turnItemsOmitLocalVisible === true
+      ? restoreLocalVisibleTurnItems(item.projection as never)
+      : item.projection
+  ) as IWireProjection;
+  const sources = {
+    Messages: byId(projection.messages),
+    Checkpoints: byId(projection.checkpoints),
+    Subagents: byId(projection.subagents),
+  };
+  const turnItems = byId(projection.turnItems.map((held) => restoreBodies(held, sources)));
+  const inherited: Record<string, IWireTurnItem> = {};
+  const rows: Record<string, ITimelineRow> = {};
+  const timeline: string[] = [];
+  for (const row of projection.visibleTurnItems) {
+    const shape = { visibility: row.visibility, sourceThreadId: row.sourceThreadId };
+    if (rows[row.sourceItemId] === undefined) timeline.push(row.sourceItemId);
+    rows[row.sourceItemId] = shape;
+    if (!isLocalRow(draft, shape)) inherited[row.sourceItemId] = row.item;
+    else turnItems[row.sourceItemId] ??= restoreBodies(row.item, sources);
+  }
+  draft.LastSequence = item.snapshotSequence;
+  setThread(draft, projection.thread);
+  refresh(draft.Runs, byId(projection.runs));
+  refresh(draft.Attempts, byId(projection.attempts));
+  refresh(draft.Nodes, byId(projection.nodes));
+  refresh(draft.Subagents, sources.Subagents);
+  refresh(draft.ProviderSessions, byId(projection.providerSessions));
+  refresh(draft.ProviderThreads, byId(projection.providerThreads));
+  refresh(draft.ProviderTurns, byId(projection.providerTurns));
+  refresh(draft.RuntimeRequests, byId(projection.runtimeRequests));
+  refresh(draft.Messages, sources.Messages);
+  refresh(draft.Plans, byId(projection.plans));
+  refresh(draft.CheckpointScopes, byId(projection.checkpointScopes));
+  refresh(draft.Checkpoints, sources.Checkpoints);
+  refresh(draft.ContextHandoffs, byId(projection.contextHandoffs));
+  refresh(draft.ContextTransfers, byId(projection.contextTransfers));
+  refresh(draft.TurnItems, turnItems);
+  refresh(draft.InheritedItems, inherited);
+  refresh(draft.Rows, rows);
+  refresh(draft.Timeline, timeline);
+  draft.History = {
+    Cursor: item.historyCursor ?? null,
+    HasMore: item.hasMoreHistory ?? false,
+    LatestLocalTurnOrdinal: item.latestLocalTurnOrdinal ?? null,
+    Loading: false,
+  };
+}
+
+function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator {
+  if (item.kind === "synchronized") {
+    draft.Synchronized = true;
+    return;
+  }
+  if (item.kind === "snapshot") {
+    applySnapshot(draft, item);
+    return;
+  }
+  if (item.sequence <= draft.LastSequence) return;
+  draft.LastSequence = item.sequence;
+  if (item.kind === "unknown-event") return;
+  if (item.event.threadId !== draft.ThreadId) return;
+  // Removing this entity has to happen outside its own delivery.
+  if (item.event.type === "thread.deleted") {
+    yield* publishScoped(draft, "Thread/Deleted", { ThreadId: draft.ThreadId });
+    return;
+  }
+  if (draft.Thread !== null) applyEvent(draft, item.event);
+}
+
+export const ThreadReceiver = receiver<IOpenThread>("ThreadReceiver")({
+  *"Thread/Stream"(draft, message) {
+    if (isEnded(message)) {
+      draft.Ended = message.$Ended.Reason;
+      // A batch the receiver failed would fail again on every reopen.
+      if (message.$Ended.Reason === "receiver-failed") return;
+      yield* delayEffect({ Ms: REOPEN_MS });
+      delete draft.Ended;
+      yield* openThreadStream(draft);
+      return;
+    }
+    if ("Item" in message) yield* applyItem(draft, message.Item);
+    else draft.Synchronized = false;
+  },
+});
+
+function mergeOlderRows(draft: IOpenThread, items: IWireHistoryPage["items"]): void {
+  const head: string[] = [];
+  const inPage = new Set<string>();
+  for (const { sourceItemId: id, visibility, sourceThreadId, item } of items) {
+    if (inPage.has(id)) continue;
+    const shape = { visibility, sourceThreadId };
+    const local = isLocalRow(draft, shape);
+    const hasRow = draft.Rows[id] !== undefined;
+    if (!hasRow && local) {
+      const held = draft.TurnItems[id];
+      if (held !== undefined && (held.type !== "run_interrupt_request" || !isVisible(draft, held)))
+        continue;
+    }
+    inPage.add(id);
+    head.push(id);
+    if (hasRow) continue;
+    draft.Rows[id] = shape;
+    if (!local) draft.InheritedItems[id] = item;
+    else draft.TurnItems[id] ??= item;
+  }
+  if (head.length === 0) return;
+  draft.Timeline = [...head, ...draft.Timeline.filter((id) => !inPage.has(id))];
+}
+
+export function* loadEarlier(draft: IOpenThread): IActionGenerator {
+  if (draft.History.Loading || draft.History.Cursor === null || !draft.History.HasMore) return;
+  draft.History.Loading = true;
+  delete draft.History.Error;
+  let cursor = draft.History.Cursor;
+  try {
+    for (;;) {
+      const page: IWireHistoryPage = yield* threadHistoryPage(draft.ThreadId, cursor);
+      // A reconnect snapshot during the wait replaced the window this cursor pointed into.
+      if (draft.History.Cursor !== cursor) return;
+      mergeOlderRows(draft, page.items);
+      draft.History.Cursor = page.nextCursor;
+      draft.History.HasMore = page.hasMoreHistory;
+      const reachedUser = page.items.some(
+        ({ item }) => item.type === "user_message" && item.createdBy === "user",
+      );
+      if (!page.hasMoreHistory || reachedUser || page.nextCursor === null) break;
+      if (page.nextCursor === cursor) throw new Error("History did not advance.");
+      cursor = page.nextCursor;
+    }
+    draft.History.Loading = false;
+  } catch (error) {
+    if (draft.History.Cursor === cursor) {
+      draft.History.Error = error instanceof Error ? error.message : String(error);
+      draft.History.Loading = false;
+    }
+  }
+}
+
+function checkpointOfRun(draft: IOpenThread, runId: string | null) {
+  if (runId === null) return undefined;
+  return Object.values(draft.Checkpoints).find((checkpoint) => checkpoint.runId === runId);
+}
+
+// getTurnDiff refuses any other checkpoint: see CheckpointDiffQuery.ts in apps/server.
+function servableTurn(
+  draft: IOpenThread,
+  checkpoint: IWireProjection["checkpoints"][number] | undefined,
+): number | null {
+  if (checkpoint === undefined || checkpoint.status !== "ready" || checkpoint.runId === null)
+    return null;
+  return draft.Runs[checkpoint.runId]?.status === "completed" ? checkpoint.appRunOrdinal : null;
+}
+
+// The turn a row's diff belongs to, which is the checkpoint's appRunOrdinal: what getTurnDiff counts.
+export function diffTurnOf(draft: IOpenThread, item: IWireTurnItem): number | null {
+  const checkpoint =
+    item.type === "checkpoint"
+      ? draft.Checkpoints[item.checkpointId]
+      : item.type === "file_change"
+        ? checkpointOfRun(draft, item.runId)
+        : undefined;
+  return servableTurn(draft, checkpoint);
+}
+
+export function latestDiffTurn(draft: IOpenThread): number | null {
+  let latest: number | null = null;
+  for (const checkpoint of Object.values(draft.Checkpoints)) {
+    const turn = servableTurn(draft, checkpoint);
+    if (turn !== null && (latest === null || turn > latest)) latest = turn;
+  }
+  return latest;
+}
+
+// Claude's file_change items carry no counts, and the wire drops their diffStr, so the run's
+// checkpoint is the source. Its paths are relative where fileName is absolute.
+export function fileChangeCounts(
+  draft: IOpenThread,
+  item: Extract<IWireTurnItem, { type: "file_change" }>,
+): { additions: number; deletions: number } | null {
+  if (item.additions !== undefined || item.deletions !== undefined) {
+    return { additions: item.additions ?? 0, deletions: item.deletions ?? 0 };
+  }
+  const name = item.fileName.replaceAll("\\", "/");
+  const file = checkpointOfRun(draft, item.runId)?.files.find(
+    (held) => name === held.path || name.endsWith(`/${held.path}`),
+  );
+  return file === undefined ? null : { additions: file.additions, deletions: file.deletions };
+}
+
+export function timelineItem(draft: IOpenThread, id: string): IWireTurnItem | undefined {
+  const row = draft.Rows[id];
+  if (row === undefined) return undefined;
+  return isLocalRow(draft, row) ? draft.TurnItems[id] : draft.InheritedItems[id];
+}
+
+// Every row, so it's for tests and tools: a reactive reader re-runs across the whole list per added
+// row. A view walks Timeline and joins each row with timelineItem.
+export function timelineEntries(draft: IOpenThread): ITimelineEntry[] {
+  return draft.Timeline.filter((id) => isRowVisible(draft, id)).map((id, position) => {
+    const row = draft.Rows[id]!;
+    return {
+      position,
+      sourceItemId: id,
+      visibility: row.visibility,
+      sourceThreadId: row.sourceThreadId,
+      item: timelineItem(draft, id)!,
+    };
+  });
+}
+
+const ACTIVE_RUN = new Set(["preparing", "starting", "running", "waiting"]);
+
+// A cancelled queued run keeps its later ordinal, so the active run has to be looked for first.
+export function* latestRun(draft: IOpenThread): ISelectorGenerator<IWireRun | null> {
+  let latest: IWireRun | null = null;
+  let active: IWireRun | null = null;
+  for (const run of Object.values(draft.Runs)) {
+    if (run.status === "queued") continue;
+    if (latest === null || run.ordinal > latest.ordinal) latest = run;
+    if (ACTIVE_RUN.has(run.status) && (active === null || run.ordinal > active.ordinal))
+      active = run;
+  }
+  return active ?? latest;
+}
+
+export interface IQueuedRun {
+  RunId: string;
+  Text: string;
+}
+
+export function* queuedRuns(draft: IOpenThread): ISelectorGenerator<IQueuedRun[]> {
+  return Object.values(draft.Runs)
+    .filter((run) => run.status === "queued")
+    .sort((left, right) => left.ordinal - right.ordinal)
+    .map((run) => ({
+      RunId: run.id,
+      Text:
+        (run.userMessageId === null ? undefined : draft.Messages[run.userMessageId]?.text) ?? "",
+    }));
+}
+
+export interface IPendingRequest {
+  Id: string;
+  Kind: string;
+  Item: IWireTurnItem | null;
+}
+
+export function pendingRequest(draft: IOpenThread, id: string): IPendingRequest | null {
+  const request = draft.RuntimeRequests[id];
+  if (request === undefined) return null;
+  const item = Object.values(draft.TurnItems).find(
+    (held) => "requestId" in held && held.requestId === id,
+  );
+  return { Id: id, Kind: request.kind, Item: item ?? null };
+}
+
+const pendingIds = (draft: IOpenThread): string[] =>
+  Object.values(draft.RuntimeRequests)
+    .filter((request) => request.status === "pending")
+    .map((request) => request.id);
+
+const isApproval = (draft: IOpenThread, id: string): boolean =>
+  pendingRequest(draft, id)?.Item?.type === "approval_request";
+
+// Ids, because <For> keys by reference and a fresh row object would remount a half-answered form.
+export function* pendingApprovalIds(draft: IOpenThread): ISelectorGenerator<string[]> {
+  return pendingIds(draft).filter((id) => isApproval(draft, id));
+}
+
+export function* pendingQuestionIds(draft: IOpenThread): ISelectorGenerator<string[]> {
+  return pendingIds(draft).filter((id) => !isApproval(draft, id));
+}
+
+export default createFeatureContext<IOpenThread>(import.meta.url)(
+  { loadEarlier },
+  { latestRun, pendingApprovalIds, pendingQuestionIds, queuedRuns },
+);

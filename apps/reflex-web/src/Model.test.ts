@@ -1,0 +1,1358 @@
+import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
+import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import { createTestRuntime, EntityReplacedError, type IActionGenerator } from "reflex";
+import { createEffect, createRoot } from "solid-js";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  closeThread,
+  EnvironmentReceiver,
+  type IEnvironment,
+  loadProviders,
+  newThread,
+  openThread,
+  selectThread,
+} from "./Environment";
+import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
+import type {
+  IWireHistoryPage,
+  IWireShellItem,
+  IWireThreadItem,
+  IWireTurnItem,
+} from "./Infrastructure/wire";
+import { parseDiff } from "./diffView";
+import type {
+  IRespondRequest,
+  IStartTurn,
+  IStopThread,
+  IThreadDiff,
+} from "./Infrastructure/commandEffects";
+import {
+  diffTurnOf,
+  fileChangeCounts,
+  type IOpenThread,
+  isRowVisible,
+  latestDiffTurn,
+  latestRun,
+  loadEarlier,
+  pendingApprovalIds,
+  pendingRequest,
+  ThreadReceiver,
+  timelineEntries,
+} from "./OpenThread";
+import { getDefaultRoot, type IRoot, load } from "./Root";
+import { ShellReceiver, sidebarStatus, sidebarThreads, workingStartedAt } from "./Shell";
+import {
+  answerRequest,
+  closeDiff,
+  closeTerminal,
+  effectiveModel,
+  endTerminal,
+  type IThreadSession,
+  openDiff,
+  openTerminal,
+  questionAnswers,
+  send,
+  setDraft,
+  setQuestionAnswer,
+  stopRun,
+  TerminalReceiver,
+} from "./ThreadSession";
+import {
+  assistantItem,
+  commandItem,
+  emptyProjection,
+  event,
+  localRow,
+  longThread,
+  message,
+  run,
+  snapshotOf,
+  THREAD_ID,
+} from "./testing/threadFixture";
+
+const ENV = "env-1";
+const ENV_ID = `environment:${ENV}`;
+const OPEN_ID = `open-thread:${ENV}:${THREAD_ID}`;
+const sessionIdOf = (threadId: string) => `session:${ENV}:${threadId}`;
+const SESSION_ID = sessionIdOf(THREAD_ID);
+
+async function connect(
+  historyPage?: (cursor: string) => Promise<IWireHistoryPage>,
+  initialAddress: string | null = null,
+  commands: Record<string, (effect: never) => unknown> = {},
+) {
+  const address = { thread: initialAddress };
+  const terminals = new Map<string, ITerminalLaunch>();
+  let guid = 0;
+  const runtime = createTestRuntime<IRoot>(getDefaultRoot("Root"), {
+    environmentInfo: () => ({ Authenticated: true, EnvironmentId: ENV, Label: "Test" }),
+    serverProviders: () => [
+      {
+        InstanceId: "devReplay",
+        Name: "Replay",
+        Models: [{ Slug: "showcase", Name: "Showcase", IsDefault: true }],
+      },
+    ],
+    generateGuid: () => `guid-${(guid += 1)}`,
+    delay: () => undefined,
+    ...commands,
+    threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
+    addressThread: () => address.thread,
+    setAddressThread: (effect: { ThreadId: string | null }) => {
+      address.thread = effect.ThreadId;
+    },
+    rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
+    rememberTerminal: (effect: { ThreadId: string; Launch: ITerminalLaunch | null }) => {
+      if (effect.Launch === null) terminals.delete(effect.ThreadId);
+      else terminals.set(effect.ThreadId, effect.Launch);
+    },
+  });
+  runtime.registerReceiver(EnvironmentReceiver.Id, EnvironmentReceiver.handle);
+  runtime.registerReceiver(ShellReceiver.Id, ShellReceiver.handle);
+  runtime.registerReceiver(ThreadReceiver.Id, ThreadReceiver.handle);
+  runtime.registerReceiver(TerminalReceiver.Id, TerminalReceiver.handle);
+  await runtime.dispatch(load, "Root");
+  const environment = () => runtime.state.Environments[0] as IEnvironment;
+  await vi.waitFor(() => {
+    expect(environment().Replica.Providers).toHaveLength(1);
+    if (initialAddress !== null) expect(address.thread).toBe(initialAddress);
+    else expect(runtime.resources().some((row) => row.Key === "Shell/Stream")).toBe(true);
+  });
+  return {
+    runtime,
+    address,
+    terminals,
+    environment,
+    session: (threadId = THREAD_ID) =>
+      environment().Local.ThreadSessions[threadId] as IThreadSession,
+    thread: () => environment().Replica.OpenThreads[THREAD_ID] as IOpenThread,
+    open: () => runtime.dispatch(openThread, ENV_ID, THREAD_ID),
+    sendThread: (Item: IWireThreadItem) =>
+      runtime.dispatch(
+        ThreadReceiver.handle,
+        OPEN_ID,
+        { Type: "Thread/Stream", Item },
+        { publisher: { Id: OPEN_ID } },
+      ),
+    sendShell: (Item: IWireShellItem) =>
+      runtime.dispatch(
+        ShellReceiver.handle,
+        `shell:${ENV}`,
+        { Type: "Shell/Stream", Item },
+        { publisher: { Id: `shell:${ENV}` } },
+      ),
+    disposed: (id: string) =>
+      new Promise<void>((resolve) => {
+        runtime.on("record", (record) => {
+          if (record.Kind === "entity:dispose" && record.Id === id) resolve();
+        });
+      }),
+  };
+}
+
+function projectionOf(thread: IOpenThread) {
+  return {
+    thread: thread.Thread,
+    runs: sorted(Object.values(thread.Runs)),
+    messages: sorted(Object.values(thread.Messages)),
+    turnItems: sorted(Object.values(thread.TurnItems)),
+    providerTurns: sorted(Object.values(thread.ProviderTurns)),
+    rows: timelineEntries(thread),
+  };
+}
+
+const sorted = <T extends { id: string }>(rows: T[]) =>
+  [...rows].sort((a, b) => a.id.localeCompare(b.id));
+
+const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+
+describe("thread events", () => {
+  it("matches the immutable reducer over a run's worth of events", async () => {
+    const server = await connect();
+    await server.open();
+    const first = assistantItem("a-1", "run-1", 1, "one", "m-1");
+    const start = {
+      ...emptyProjection(),
+      runs: [run("run-1", 1)],
+      messages: [message("m-1", "run-1", "one")],
+      turnItems: [first],
+      visibleTurnItems: [localRow(first, 0)],
+    };
+    await server.sendThread(snapshotOf(copy(start), 1));
+
+    const providerTurn = { id: "pt-1", status: "running", tokenUsage: { usedTokens: 5 } };
+    const events = [
+      event("run.created", run("run-2", 2, "running"), "2026-06-20T01:00:00.000Z"),
+      event("message.updated", message("m-2", "run-2", "he", true)),
+      event("turn-item.updated", assistantItem("a-2", "run-2", 4, "he", "m-2", true)),
+      event("message.updated", message("m-2", "run-2", "hello", true)),
+      event("turn-item.updated", {
+        ...assistantItem("a-2", "run-2", 4, "", "m-2", true),
+        textOmitted: true,
+      }),
+      event("turn-item.updated", commandItem("c-1", "run-2", 3)),
+      event("turn-item.updated", commandItem("c-2", "run-2", 4)),
+      event("turn-item.updated", commandItem("c-1", "run-2", 9)),
+      event("provider-turn.updated", providerTurn),
+      event("provider-turn.updated", { id: "pt-1", status: "completed" }),
+      event("thread.visited", { ...start.thread, title: "Visited" }, "2026-06-20T09:00:00.000Z"),
+      event("run.updated", run("run-2", 2, "rolled_back")),
+      event("turn-item.updated", commandItem("c-3", "run-2", 10)),
+      event("turn-item.updated", commandItem("c-4", "run-1", 2)),
+      event("run.created", run("run-3", 3, "cancelled")),
+      event("turn-item.updated", {
+        ...commandItem("queued", "run-3", 11),
+        type: "user_message",
+        inputIntent: "queued_turn",
+        text: "never sent",
+        attachments: [],
+      }),
+      event("run.created", run("run-4", 4, "running")),
+      event("turn-item.updated", {
+        ...commandItem("interrupted", "run-4", 12),
+        type: "run_interrupt_result",
+        nodeId: "node-4",
+        message: "stopped",
+      }),
+      event("run-attempt.created", {
+        id: "attempt-4",
+        runId: "run-4",
+        rootNodeId: "node-4",
+        status: "running",
+      }),
+      event("run-attempt.updated", {
+        id: "attempt-4",
+        runId: "run-4",
+        rootNodeId: "node-4",
+        status: "superseded",
+      }),
+      event("run.created", run("run-5", 5, "running")),
+      event("turn-item.updated", {
+        ...commandItem("request", "run-5", 13),
+        type: "run_interrupt_request",
+        message: "stop",
+      }),
+      event("turn-item.updated", {
+        ...commandItem("paired", "run-5", 14),
+        type: "run_interrupt_result",
+        nodeId: "node-5",
+        message: "stopped",
+      }),
+      event("run-attempt.created", {
+        id: "attempt-5",
+        runId: "run-5",
+        rootNodeId: "node-5",
+        status: "superseded",
+      }),
+    ];
+
+    let expected = copy(start) as unknown as OrchestrationV2ThreadProjection;
+    let sequence = 1;
+    for (const next of events) {
+      expected = applyOrchestrationV2ProjectionEvent(expected, copy(next) as never)!;
+      sequence += 1;
+      await server.sendThread({ kind: "event", sequence, event: copy(next) } as IWireThreadItem);
+      const wire = expected as unknown as typeof start;
+      expect(copy(projectionOf(server.thread()))).toEqual(
+        copy({
+          thread: wire.thread,
+          runs: sorted(wire.runs),
+          messages: sorted(wire.messages),
+          turnItems: sorted(wire.turnItems),
+          providerTurns: sorted((expected.providerTurns as unknown as { id: string }[]) ?? []),
+          rows: wire.visibleTurnItems.map(
+            ({ position, visibility, sourceThreadId, sourceItemId, item }) => ({
+              position,
+              sourceItemId,
+              visibility,
+              sourceThreadId,
+              item,
+            }),
+          ),
+        }),
+      );
+    }
+  });
+
+  it("applies the visibility rule per row, so a hidden row comes back when the rule allows", async () => {
+    const server = await connect();
+    await server.open();
+    const result = {
+      ...commandItem("result", "run-1", 1),
+      type: "run_interrupt_result",
+      nodeId: "node-1",
+      message: "stopped",
+    };
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1), run("run-2", 2)],
+          attempts: [{ id: "attempt", runId: "run-1", rootNodeId: "node-1", status: "superseded" }],
+        } as never,
+        1,
+      ),
+    );
+    const send = (sequence: number, type: IWireThreadItem["kind"] | string, payload: unknown) =>
+      server.sendThread({
+        kind: "event",
+        sequence,
+        event: event(type as never, payload),
+      } as IWireThreadItem);
+    await send(2, "turn-item.updated", result);
+    await send(3, "turn-item.updated", commandItem("command", "run-2", 2));
+    expect(server.thread().Timeline).toEqual(["result", "command"]);
+    expect(isRowVisible(server.thread(), "result")).toBe(false);
+    expect(isRowVisible(server.thread(), "command")).toBe(true);
+
+    await send(4, "turn-item.updated", {
+      ...commandItem("request", "run-1", 3),
+      type: "run_interrupt_request",
+      message: "stop",
+    });
+    expect(isRowVisible(server.thread(), "result")).toBe(true);
+
+    await send(5, "run.updated", run("run-2", 2, "rolled_back"));
+    expect(isRowVisible(server.thread(), "command")).toBe(false);
+    await send(6, "run.updated", run("run-2", 2, "completed"));
+    expect(isRowVisible(server.thread(), "command")).toBe(true);
+  });
+
+  it("drops a live update to history outside a bounded window", async () => {
+    const server = await connect();
+    await server.open();
+    const held = commandItem("c-5", "run-1", 5);
+    const item = {
+      ...snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1)],
+          turnItems: [held],
+          visibleTurnItems: [localRow(held, 0)],
+        },
+        1,
+      ),
+      historyCursor: "older",
+      hasMoreHistory: true,
+      latestLocalTurnOrdinal: 5,
+    };
+    await server.sendThread(item);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("turn-item.updated", commandItem("c-2", "run-1", 2)),
+    } as IWireThreadItem);
+    expect(server.thread().TurnItems["c-2"]).toBeUndefined();
+    expect(server.thread().Timeline).toEqual(["c-5"]);
+  });
+
+  it("carries turn items as a union: a new type's fields replace the old type's", async () => {
+    const server = await connect();
+    await server.open();
+    const before = assistantItem("x", "run-1", 1, "text");
+    await server.sendThread(snapshotOf({ ...emptyProjection(), turnItems: [before] }, 1));
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("turn-item.updated", commandItem("x", "run-1", 1)),
+    } as IWireThreadItem);
+    const after = server.thread().TurnItems["x"]!;
+    expect(after.type).toBe("command_execution");
+    expect("text" in after).toBe(false);
+  });
+
+  it("a delta re-runs only the reads of what it changed", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(snapshotOf(longThread(9), 1));
+    const thread = server.thread();
+    const runs = { changed: 0, other: 0, selector: 0 };
+    const dispose = createRoot((disposeRoot) => {
+      createEffect(() => {
+        runs.selector += 1;
+        timelineEntries(thread);
+      });
+      createEffect(() => {
+        runs.changed += 1;
+        void (thread.TurnItems["item-6"] as { text?: string }).text;
+      });
+      createEffect(() => {
+        runs.other += 1;
+        void (thread.TurnItems["item-0"] as { text?: string }).text;
+      });
+      return disposeRoot;
+    });
+    expect(runs).toEqual({ changed: 1, other: 1, selector: 1 });
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event(
+        "turn-item.updated",
+        assistantItem("item-6", "run-2", 6, "changed", "message-2"),
+      ),
+    } as IWireThreadItem);
+    await Promise.resolve();
+    expect(runs).toEqual({ changed: 2, other: 1, selector: 1 });
+    dispose();
+  });
+});
+
+describe("snapshots and identity", () => {
+  it("reflex refuses a fresh node over a live $Id, so a reconnect snapshot merges in place", async () => {
+    const server = await connect();
+    await server.open();
+    function* replace(draft: IEnvironment): IActionGenerator {
+      draft.Replica.OpenThreads[THREAD_ID] = { ...copy(draft.Replica.OpenThreads[THREAD_ID]!) };
+    }
+    await expect(server.runtime.dispatch(replace, ENV_ID)).rejects.toThrow(EntityReplacedError);
+
+    const start = longThread(6);
+    await server.sendThread(snapshotOf(copy(start), 1));
+    const node = server.thread();
+    const item = node.TurnItems["item-0"];
+    const reconnect = longThread(3);
+    await server.sendThread(snapshotOf(reconnect, 9));
+    expect(server.thread()).toBe(node);
+    expect(server.thread().TurnItems["item-0"]).toBe(item);
+    expect(server.thread().TurnItems["item-5"]).toBeUndefined();
+    expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2"]);
+    expect(server.thread().LastSequence).toBe(9);
+  });
+
+  it("holds an item shared by turnItems and a row once, and an inherited row's item apart", async () => {
+    const server = await connect();
+    await server.open();
+    const local = commandItem("local", "run-1", 1);
+    const parentItem = {
+      ...commandItem("parent", "run-0", 0),
+      threadId: "parent-thread",
+    } as IWireTurnItem;
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          turnItems: [local],
+          visibleTurnItems: [
+            { ...localRow(parentItem, 0), visibility: "inherited" },
+            localRow(local, 1),
+          ],
+        },
+        1,
+      ),
+    );
+    expect(Object.keys(server.thread().TurnItems)).toEqual(["local"]);
+    expect(Object.keys(server.thread().InheritedItems)).toEqual(["parent"]);
+    const entries = timelineEntries(server.thread());
+    expect(entries.map((entry) => entry.sourceItemId)).toEqual(["parent", "local"]);
+  });
+});
+
+describe("lifetimes", () => {
+  it("a row missing from the shell leaves the thread and its session alone", async () => {
+    const server = await connect();
+    await server.open();
+    await server.runtime.dispatch(setDraft, SESSION_ID, "half a thought");
+    const shellThread = { id: THREAD_ID, title: "T" };
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: { snapshotSequence: 1, projects: [], threads: [shellThread], archivedThreads: [] },
+    } as unknown as IWireShellItem);
+    expect(server.environment().Replica.Shell.Threads[THREAD_ID]).toBeDefined();
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: { snapshotSequence: 2, projects: [], threads: [], archivedThreads: [] },
+    } as unknown as IWireShellItem);
+    expect(server.environment().Replica.Shell.Threads[THREAD_ID]).toBeUndefined();
+    expect(server.thread()).toBeDefined();
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]!.Draft).toBe("half a thought");
+  });
+
+  it("closing keeps the session and retires the stream; reopening resumes nothing stale", async () => {
+    const server = await connect();
+    await server.open();
+    expect(server.runtime.resources().some((row) => row.Key === "Thread/Stream")).toBe(true);
+    await server.runtime.dispatch(setDraft, SESSION_ID, "kept");
+    await server.runtime.dispatch(closeThread, ENV_ID, THREAD_ID);
+    expect(server.thread()).toBeUndefined();
+    expect(server.runtime.resources().some((row) => row.Key === "Thread/Stream")).toBe(false);
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]!.Draft).toBe("kept");
+  });
+
+  it("thread.deleted removes the replica row and the session", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    const gone = server.disposed(`session:${ENV}:${THREAD_ID}`);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("thread.deleted", {}),
+    } as IWireThreadItem);
+    await gone;
+    expect(server.thread()).toBeUndefined();
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
+  });
+
+  it("reopens a stream that ended, unless the receiver failed it", async () => {
+    const server = await connect();
+    await server.open();
+    const endThread = (Reason: string) =>
+      server.runtime.dispatch(
+        ThreadReceiver.handle,
+        OPEN_ID,
+        { Type: "Thread/Stream", $Ended: { Reason } } as never,
+        { publisher: { Id: OPEN_ID } },
+      );
+    await endThread("failed");
+    expect(server.thread().Ended).toBeUndefined();
+    await endThread("receiver-failed");
+    expect(server.thread().Ended).toBe("receiver-failed");
+
+    const endShell = (Reason: string) =>
+      server.runtime.dispatch(
+        ShellReceiver.handle,
+        `shell:${ENV}`,
+        { Type: "Shell/Stream", $Ended: { Reason } } as never,
+        { publisher: { Id: `shell:${ENV}` } },
+      );
+    await endShell("failed");
+    expect(server.environment().Replica.Shell.Error).toBeUndefined();
+    await endShell("receiver-failed");
+    expect(server.environment().Replica.Shell.Error).toBe("receiver-failed");
+  });
+});
+
+describe("runs", () => {
+  it("treats the active run as latest, past a later cancelled queued run", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("r5", 5, "running"), run("r6", 6, "cancelled"), run("r7", 7, "queued")],
+        },
+        1,
+      ),
+    );
+    const latest = () => server.runtime.processSelector(latestRun, () => server.thread())?.id;
+    expect(latest()).toBe("r5");
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("run.updated", run("r5", 5, "completed")),
+    } as IWireThreadItem);
+    expect(latest()).toBe("r6");
+  });
+});
+
+describe("history pages", () => {
+  const window = () => {
+    const held = commandItem("c-9", "run-1", 9);
+    return {
+      ...snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1)],
+          turnItems: [held],
+          visibleTurnItems: [localRow(held, 0)],
+        },
+        1,
+      ),
+      historyCursor: "older",
+      hasMoreHistory: true,
+      latestLocalTurnOrdinal: 9,
+    };
+  };
+  const pageOf = (id: string, nextCursor: string | null): IWireHistoryPage =>
+    ({
+      snapshotSequence: 1,
+      items: [localRow(commandItem(id, "run-1", 1), 0)],
+      nextCursor,
+      hasMoreHistory: nextCursor !== null,
+    }) as unknown as IWireHistoryPage;
+
+  const gated = () => {
+    let release!: (page: IWireHistoryPage) => void;
+    const promise = new Promise<IWireHistoryPage>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  };
+
+  it("prepends a page, and a live update made during the wait wins over it", async () => {
+    const gate = gated();
+    const server = await connect(() => gate.promise);
+    await server.open();
+    await server.sendThread(window());
+    const loading = server.runtime.dispatch(loadEarlier, OPEN_ID);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("turn-item.updated", commandItem("c-9", "run-1", 9, "newer")),
+    } as IWireThreadItem);
+    gate.release({
+      ...pageOf("c-1", null),
+      items: [
+        localRow(commandItem("c-1", "run-1", 1), 0),
+        localRow(commandItem("c-9", "run-1", 9, "older"), 1),
+      ],
+    } as unknown as IWireHistoryPage);
+    await loading;
+    expect(server.thread().Timeline).toEqual(["c-1", "c-9"]);
+    expect((server.thread().TurnItems["c-9"] as { input: string }).input).toBe("newer");
+    expect(server.thread().History).toMatchObject({ HasMore: false, Loading: false, Cursor: null });
+  });
+
+  it("discards a page when a reconnect snapshot replaced the window during the wait", async () => {
+    const gate = gated();
+    const server = await connect(() => gate.promise);
+    await server.open();
+    await server.sendThread(window());
+    const loading = server.runtime.dispatch(loadEarlier, OPEN_ID);
+    await server.sendThread({ ...window(), snapshotSequence: 5, historyCursor: "fresher" });
+    gate.release(pageOf("c-1", null));
+    await loading;
+    expect(server.thread().Timeline).toEqual(["c-9"]);
+    expect(server.thread().History.Cursor).toBe("fresher");
+  });
+
+  it("stops without writing when the thread closes during the wait", async () => {
+    const gate = gated();
+    const server = await connect(() => gate.promise);
+    await server.open();
+    await server.sendThread(window());
+    const loading = server.runtime.dispatch(loadEarlier, OPEN_ID);
+    await server.runtime.dispatch(closeThread, ENV_ID, THREAD_ID);
+    gate.release(pageOf("c-1", null));
+    await loading;
+    expect(server.thread()).toBeUndefined();
+  });
+});
+
+describe("the sidebar", () => {
+  const row = (id: string, projectId: string, updatedAt: string, extra: object = {}) => ({
+    id,
+    projectId,
+    updatedAt,
+    title: id,
+    status: "idle",
+    pendingRuntimeRequest: null,
+    lineage: { rootThreadId: id, parentThreadId: null, relationshipToParent: null },
+    ...extra,
+  });
+
+  it("lists top-level threads and leaves subagents out, live", async () => {
+    const server = await connect();
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "p-1", title: "One", workspaceRoot: "/1" }],
+        threads: [
+          row("old", "p-1", "2026-01-01T00:00:00.000Z"),
+          row("child", "p-1", "2026-01-09T00:00:00.000Z", {
+            lineage: { rootThreadId: "x", parentThreadId: "x", relationshipToParent: "subagent" },
+          }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const shell = server.environment().Replica.Shell;
+    const read = () =>
+      server.runtime
+        .processSelector(sidebarThreads, () => shell)
+        .map((thread) => thread.id)
+        .sort();
+    expect(read()).toEqual(["old"]);
+    await server.sendShell({
+      kind: "thread.updated",
+      sequence: 2,
+      location: "active",
+      thread: row("new", "p-1", "2026-01-05T00:00:00.000Z"),
+    } as unknown as IWireShellItem);
+    expect(read()).toEqual(["new", "old"]);
+  });
+
+  it("derives a row's status and how long it has been working", () => {
+    const at = "2026-01-01T00:00:00.000Z";
+    const status = (extra: object) => sidebarStatus(row("t", "p", at, extra) as never);
+    expect(status({ status: "running" })).toBe("working");
+    expect(status({ status: "running", pendingRuntimeRequest: { id: "r", kind: "command" } })).toBe(
+      "approval",
+    );
+    expect(
+      status({ status: "running", pendingRuntimeRequest: { id: "r", kind: "user_input" } }),
+    ).toBe("input");
+    expect(status({ status: "failed" })).toBe("failed");
+    expect(
+      status({ status: "completed", latestRunCompletedAt: at, lastVisitedAt: "2025-01-01" }),
+    ).toBe("done");
+    expect(status({ status: "completed", latestRunCompletedAt: at, lastVisitedAt: at })).toBeNull();
+
+    const started = (extra: object) => workingStartedAt(row("t", "p", at, extra) as never);
+    expect(started({ activityRunStartedAt: "activity" })).toBe("activity");
+    expect(started({ activeRunId: "a", latestRunId: "a", latestRunStartedAt: "run" })).toBe("run");
+    expect(started({ activeRunId: "a", latestRunId: "b", latestRunStartedAt: "run" })).toBeNull();
+  });
+});
+
+describe("selection", () => {
+  const streams = (server: Awaited<ReturnType<typeof connect>>) =>
+    server.runtime
+      .resources()
+      .filter((resource) => resource.Key === "Thread/Stream")
+      .map((resource) => (resource.Params as unknown as { ThreadId: string }).ThreadId);
+
+  it("opening a thread closes the previous one's stream and keeps its session", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, ENV_ID, "a");
+    await server.runtime.dispatch(setDraft, sessionIdOf("a"), "kept");
+    expect(streams(server)).toEqual(["a"]);
+    await server.runtime.dispatch(selectThread, ENV_ID, "b");
+    expect(streams(server)).toEqual(["b"]);
+    expect(Object.keys(server.environment().Replica.OpenThreads)).toEqual(["b"]);
+    expect(server.environment().Local.SelectedThreadId).toBe("b");
+    expect(server.environment().Local.ThreadSessions["a"]!.Draft).toBe("kept");
+    expect(server.address.thread).toBe("b");
+  });
+
+  it("a reload returns to the thread in the address", async () => {
+    const server = await connect(undefined, "from-address");
+    expect(streams(server)).toEqual(["from-address"]);
+    expect(server.environment().Local.SelectedThreadId).toBe("from-address");
+  });
+
+  it("deleting the selected thread clears the selection and the address", async () => {
+    const server = await connect(undefined, THREAD_ID);
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    const gone = server.disposed(`session:${ENV}:${THREAD_ID}`);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("thread.deleted", {}),
+    } as IWireThreadItem);
+    await gone;
+    await vi.waitFor(() => expect(server.address.thread).toBeNull());
+    expect(server.environment().Local.SelectedThreadId).toBeNull();
+  });
+});
+
+describe("writing to the server", () => {
+  const requestItem = (requestId: string) =>
+    ({
+      ...commandItem("approval", "run-1", 1),
+      type: "approval_request",
+      requestId,
+      requestKind: "command",
+      prompt: "rm -rf build",
+    }) as unknown as IWireTurnItem;
+  const pendingOf = (server: Awaited<ReturnType<typeof connect>>) =>
+    server.runtime.processSelector(pendingApprovalIds, () => server.thread());
+
+  it("send mints one command, clears the draft, and leaves the replica to the stream", async () => {
+    const sent: IStartTurn[] = [];
+    const server = await connect(undefined, null, {
+      startTurn: (effect: IStartTurn) => {
+        sent.push(effect);
+      },
+    });
+    await server.open();
+    await server.runtime.dispatch(setDraft, SESSION_ID, " hello ");
+    await server.runtime.dispatch(send, SESSION_ID);
+    expect(sent.map((input) => [input.Text, input.ThreadId, input.NewThread])).toEqual([
+      ["hello", THREAD_ID, null],
+    ]);
+    expect(sent[0]!.CommandId).not.toBe(sent[0]!.MessageId);
+    const session = server.environment().Local.ThreadSessions[THREAD_ID]!;
+    expect(session.Draft).toBe("");
+    expect(session.Sending).toBe(false);
+    expect(server.thread().TurnItems).toEqual({});
+  });
+
+  it("a failed send keeps the draft and shows why", async () => {
+    let attempts = 0;
+    const server = await connect(undefined, null, {
+      startTurn: () => {
+        attempts += 1;
+        throw new Error("server said no");
+      },
+    });
+    await server.open();
+    await server.runtime.dispatch(setDraft, SESSION_ID, "keep me");
+    await server.runtime.dispatch(send, SESSION_ID);
+    const session = server.environment().Local.ThreadSessions[THREAD_ID]!;
+    expect(attempts).toBe(1);
+    expect(session.Draft).toBe("keep me");
+    expect(session.SendError).toBe("server said no");
+    expect(session.Sending).toBe(false);
+  });
+
+  it("a second send during the wait is ignored", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const sent: IStartTurn[] = [];
+    const server = await connect(undefined, null, {
+      startTurn: (effect: IStartTurn) => {
+        sent.push(effect);
+        return held;
+      },
+    });
+    await server.open();
+    await server.runtime.dispatch(setDraft, SESSION_ID, "once");
+    const first = server.runtime.dispatch(send, SESSION_ID);
+    await server.runtime.dispatch(send, SESSION_ID);
+    release();
+    await first;
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a new-thread draft moves to the created thread without a stream before it exists", async () => {
+    const sent: IStartTurn[] = [];
+    const server = await connect(undefined, null, {
+      startTurn: (effect: IStartTurn) => {
+        sent.push(effect);
+      },
+    });
+    await server.runtime.dispatch(newThread, ENV_ID, "project-1");
+    const threadId = server.environment().Local.SelectedThreadId!;
+    expect(server.environment().Replica.OpenThreads[threadId]).toBeUndefined();
+    expect(server.address.thread).toBeNull();
+    await server.runtime.dispatch(setDraft, sessionIdOf(threadId), "start something");
+    await server.runtime.dispatch(send, sessionIdOf(threadId));
+    expect(sent[0]!.NewThread).toEqual({ ProjectId: "project-1", Title: "start something" });
+    expect(sent[0]!.ModelSelection).toEqual({ instanceId: "devReplay", model: "showcase" });
+    expect(sent[0]!.ThreadId).toBe(threadId);
+    const session = server.session(threadId);
+    expect(session.NewThreadProjectId).toBeNull();
+    expect(session.Draft).toBe("");
+    await vi.waitFor(() => expect(server.address.thread).toBe(threadId));
+    expect(server.environment().Replica.OpenThreads[threadId]).toBeDefined();
+  });
+
+  it("reads the model through the replica, from the thread or the project's default", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    const model = (threadId: string) =>
+      server.runtime.processSelector(effectiveModel, () => server.session(threadId));
+    expect(model(THREAD_ID)).toEqual({ instanceId: "codex", model: "gpt-5.4" });
+    await server.runtime.dispatch(newThread, ENV_ID, "project-1");
+    const draftId = server.environment().Local.SelectedThreadId!;
+    expect(model(draftId)).toEqual({ instanceId: "devReplay", model: "showcase" });
+  });
+
+  it("a failed new thread stays a draft with no stream", async () => {
+    const server = await connect(undefined, null, {
+      startTurn: () => {
+        throw new Error("no");
+      },
+    });
+    await server.runtime.dispatch(newThread, ENV_ID, "project-1");
+    const threadId = server.environment().Local.SelectedThreadId!;
+    await server.runtime.dispatch(setDraft, sessionIdOf(threadId), "again");
+    await server.runtime.dispatch(send, sessionIdOf(threadId));
+    const session = server.environment().Local.ThreadSessions[threadId]!;
+    expect(session.NewThreadProjectId).toBe("project-1");
+    expect(session.Draft).toBe("again");
+    expect(server.environment().Replica.OpenThreads[threadId]).toBeUndefined();
+  });
+
+  it("stop sends one command", async () => {
+    const stops: IStopThread[] = [];
+    const server = await connect(undefined, null, {
+      stopThread: (effect: IStopThread) => {
+        stops.push(effect);
+      },
+    });
+    await server.open();
+    await server.runtime.dispatch(stopRun, SESSION_ID);
+    expect(stops.map((stop) => stop.ThreadId)).toEqual([THREAD_ID]);
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]!.Stopping).toBe(false);
+  });
+
+  it("answering stays pending until the stream says so, and another device's answer clears it", async () => {
+    const answers: IRespondRequest[] = [];
+    const server = await connect(undefined, null, {
+      respondRequest: (effect: IRespondRequest) => {
+        answers.push(effect);
+      },
+    });
+    await server.open();
+    const request = { id: "r-1", kind: "command", status: "pending" };
+    const item = requestItem("r-1");
+    await server.sendThread(
+      snapshotOf(
+        { ...emptyProjection(), runtimeRequests: [request], turnItems: [item] } as never,
+        1,
+      ),
+    );
+    expect(pendingOf(server)).toEqual(["r-1"]);
+    expect(pendingRequest(server.thread(), "r-1")?.Item?.type).toBe("approval_request");
+
+    await server.runtime.dispatch(answerRequest, SESSION_ID, "r-1", "accept", null);
+    expect(answers.map((answer) => [answer.RequestId, answer.Decision])).toEqual([
+      ["r-1", "accept"],
+    ]);
+    expect(pendingOf(server)).toHaveLength(1);
+
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("runtime-request.updated", { ...request, status: "resolved" }),
+    } as IWireThreadItem);
+    expect(pendingOf(server)).toEqual([]);
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]!.Answering).toBeNull();
+  });
+
+  it("holds a question's answer until it's complete, and clears it once sent", async () => {
+    const answers: IRespondRequest[] = [];
+    const server = await connect(undefined, null, {
+      respondRequest: (effect: IRespondRequest) => {
+        answers.push(effect);
+      },
+    });
+    await server.open();
+    const questions = [
+      { id: "one", options: [] },
+      { id: "many", options: [{ label: "a" }, { label: "b" }], multiSelect: true },
+    ];
+    const built = () => questionAnswers(server.session(), questions);
+    expect(built()).toBeNull();
+    await server.runtime.dispatch(setQuestionAnswer, SESSION_ID, "one", "typed");
+    expect(built()).toBeNull();
+    await server.runtime.dispatch(setQuestionAnswer, SESSION_ID, "many", "a, b");
+    expect(built()).toEqual({ one: "typed", many: ["a", "b"] });
+    await server.runtime.dispatch(answerRequest, SESSION_ID, "r-1", null, built());
+    expect(answers[0]!.Answers).toEqual({ one: "typed", many: ["a", "b"] });
+    expect(server.session().QuestionAnswers).toEqual({});
+  });
+
+  it("keeps a pending request's id stable when an unrelated row arrives", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runtimeRequests: [{ id: "r-1", kind: "command", status: "pending" }],
+          turnItems: [requestItem("r-1")],
+        } as never,
+        1,
+      ),
+    );
+    expect(pendingOf(server)).toEqual(["r-1"]);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("turn-item.updated", commandItem("other", "run-1", 2)),
+    } as IWireThreadItem);
+    expect(pendingOf(server)).toEqual(["r-1"]);
+  });
+});
+
+describe("diffs", () => {
+  const checkpoint = (ordinal: number, runId: string, files: object[] = []) => ({
+    id: `checkpoint-${ordinal}`,
+    threadId: THREAD_ID,
+    runId,
+    appRunOrdinal: ordinal,
+    status: "ready",
+    files,
+  });
+  const withCheckpoints = () =>
+    snapshotOf(
+      {
+        ...emptyProjection(),
+        runs: [run("run-1", 1), run("run-2", 2)],
+        checkpoints: [
+          checkpoint(1, "run-1", [
+            { path: "src/hello.txt", kind: "modified", additions: 1, deletions: 0 },
+          ]),
+          checkpoint(2, "run-2"),
+        ],
+      } as never,
+      1,
+    );
+  const fileChange = {
+    ...commandItem("change", "run-1", 1),
+    type: "file_change",
+    fileName: "C:\\work\\src\\hello.txt",
+  } as unknown as Extract<IWireTurnItem, { type: "file_change" }>;
+
+  it("fetches one turn or the whole thread, and closes and reopens", async () => {
+    const asked: IThreadDiff[] = [];
+    const server = await connect(undefined, null, {
+      threadDiff: (effect: IThreadDiff) => {
+        asked.push(effect);
+        return `patch for ${effect.Scope} ${effect.ToTurnCount}`;
+      },
+    });
+    await server.open();
+    await server.sendThread(withCheckpoints());
+    const panel = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
+    await server.runtime.dispatch(openDiff, SESSION_ID, "turn", 1);
+    expect(panel()).toMatchObject({ Open: true, Text: "patch for turn 1", Loading: false });
+    await server.runtime.dispatch(closeDiff, SESSION_ID);
+    expect(panel()).toMatchObject({ Open: false, Text: null });
+    await server.runtime.dispatch(openDiff, SESSION_ID, "thread", null);
+    expect(panel()).toMatchObject({ Open: true, Scope: "thread", Text: "patch for thread 2" });
+    expect(asked.map((ask) => [ask.Scope, ask.ToTurnCount])).toEqual([
+      ["turn", 1],
+      ["thread", 2],
+    ]);
+  });
+
+  it("drops a diff that arrives after the panel moved on or closed", async () => {
+    const replies = new Map<number, (text: string) => void>();
+    const server = await connect(undefined, null, {
+      threadDiff: (effect: IThreadDiff) =>
+        new Promise<string>((resolve) => replies.set(effect.ToTurnCount, resolve)),
+    });
+    await server.open();
+    const panel = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
+    const first = server.runtime.dispatch(openDiff, SESSION_ID, "turn", 1);
+    const second = server.runtime.dispatch(openDiff, SESSION_ID, "turn", 2);
+    replies.get(1)!("stale");
+    await first;
+    expect(panel()).toMatchObject({ Text: null, Loading: true });
+    replies.get(2)!("current");
+    await second;
+    expect(panel()).toMatchObject({ Text: "current", Loading: false });
+    const third = server.runtime.dispatch(openDiff, SESSION_ID, "turn", 1);
+    await server.runtime.dispatch(closeDiff, SESSION_ID);
+    replies.get(1)!("late");
+    await third;
+    expect(panel()).toMatchObject({ Open: false, Text: null });
+  });
+
+  it("shows a failed fetch and an empty turn", async () => {
+    const server = await connect(undefined, null, {
+      threadDiff: () => {
+        throw new Error("checkpoint is missing");
+      },
+    });
+    await server.open();
+    await server.runtime.dispatch(openDiff, SESSION_ID, "turn", 1);
+    const panel = server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
+    expect(panel).toMatchObject({ Error: "checkpoint is missing", Loading: false, Text: null });
+  });
+
+  it("takes a file change's counts from its run's checkpoint when the item has none", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(withCheckpoints());
+    expect(fileChangeCounts(server.thread(), fileChange)).toEqual({ additions: 1, deletions: 0 });
+    expect(diffTurnOf(server.thread(), fileChange)).toBe(1);
+    expect(
+      fileChangeCounts(server.thread(), { ...fileChange, fileName: "C:\\work\\other.txt" }),
+    ).toBeNull();
+    expect(fileChangeCounts(server.thread(), { ...fileChange, additions: 4 })).toEqual({
+      additions: 4,
+      deletions: 0,
+    });
+  });
+
+  it("offers only a ready checkpoint of a completed run, as the server serves", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(withCheckpoints());
+    expect(latestDiffTurn(server.thread())).toBe(2);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("run.updated", run("run-2", 2, "interrupted")),
+    } as IWireThreadItem);
+    expect(latestDiffTurn(server.thread())).toBe(1);
+    const stopped = { ...fileChange, runId: "run-2" } as typeof fileChange;
+    expect(diffTurnOf(server.thread(), stopped)).toBeNull();
+    await server.sendThread({
+      kind: "event",
+      sequence: 3,
+      event: event("checkpoint.captured", { ...checkpoint(1, "run-1"), status: "failed" }),
+    } as IWireThreadItem);
+    expect(latestDiffTurn(server.thread())).toBeNull();
+  });
+
+  it("takes a path from the file headers when the name itself contains b/", () => {
+    const [file] = parseDiff(
+      [
+        "diff --git a/foo b/x.ts b/foo b/x.ts",
+        "--- a/foo b/x.ts",
+        "+++ b/foo b/x.ts",
+        "@@ -1 +1 @@",
+        "-old",
+        "+new",
+      ].join("\n"),
+    );
+    expect(file!.Path).toBe("foo b/x.ts");
+  });
+
+  it("parses a unified diff into files with counts, not counting its headers", () => {
+    const files = parseDiff(
+      [
+        "diff --git a/one.txt b/one.txt",
+        "--- a/one.txt",
+        "+++ b/one.txt",
+        "@@ -1,2 +1,2 @@",
+        "-old",
+        "+new",
+        "+more",
+        "diff --git a/dir/two.txt b/dir/two.txt",
+        "new file mode 100644",
+        "--- /dev/null",
+        "+++ b/dir/two.txt",
+        "@@ -0,0 +1 @@",
+        "+hello",
+        "",
+      ].join("\n"),
+    );
+    expect(files.map((file) => [file.Path, file.Additions, file.Deletions])).toEqual([
+      ["one.txt", 2, 1],
+      ["dir/two.txt", 1, 0],
+    ]);
+    expect(parseDiff("")).toEqual([]);
+  });
+});
+
+describe("the terminal", () => {
+  const withProject = async (
+    server: Awaited<ReturnType<typeof connect>>,
+    worktree: string | null,
+  ) => {
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "p-1", title: "One", workspaceRoot: "/root" }],
+        threads: [],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const projection = emptyProjection();
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...projection,
+          thread: { ...projection.thread, projectId: "p-1", worktreePath: worktree },
+        } as never,
+        1,
+      ),
+    );
+  };
+  const panel = (server: Awaited<ReturnType<typeof connect>>, threadId = THREAD_ID) =>
+    server.environment().Local.ThreadSessions[threadId]!.Terminal;
+  const attached = (server: Awaited<ReturnType<typeof connect>>) =>
+    server.runtime
+      .resources()
+      .filter((row) => row.Key === "Terminal/Session")
+      .map((row) => row.Params as unknown as { ThreadId: string; TerminalId: string; Cwd: string });
+
+  it("runs in the worktree when the thread has one, otherwise the project root", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    expect(attached(server)[0]).toMatchObject({ Cwd: "/root", TerminalId: "term-1" });
+    await server.runtime.dispatch(closeTerminal, SESSION_ID);
+    await withProject(server, "/root/wt");
+    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    expect(attached(server)[0]).toMatchObject({ Cwd: "/root/wt", WorktreePath: "/root/wt" });
+  });
+
+  it("hiding detaches and keeps the terminal id, and asks the server to end nothing", async () => {
+    const closes: unknown[] = [];
+    const server = await connect(undefined, null, {
+      closeTerminal: (effect: unknown) => {
+        closes.push(effect);
+      },
+    });
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    expect(panel(server).Open).toBe(true);
+    await server.runtime.dispatch(closeTerminal, SESSION_ID);
+    expect(panel(server)).toMatchObject({ Open: false, TerminalId: "term-1" });
+    expect(attached(server)).toEqual([]);
+    expect(closes).toEqual([]);
+    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
+  });
+
+  it("ending the shell tells the server and hides the panel; a failure keeps it open", async () => {
+    const closes: Array<{ TerminalId: string }> = [];
+    let refuse = true;
+    const server = await connect(undefined, null, {
+      closeTerminal: (effect: { TerminalId: string }) => {
+        if (refuse) throw new Error("server said no");
+        closes.push(effect);
+      },
+    });
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    await server.runtime.dispatch(endTerminal, SESSION_ID);
+    expect(panel(server)).toMatchObject({ Open: true, Ending: false, Error: "server said no" });
+    expect(attached(server)).toHaveLength(1);
+    refuse = false;
+    await server.runtime.dispatch(endTerminal, SESSION_ID);
+    expect(closes.map((close) => close.TerminalId)).toEqual(["term-1"]);
+    expect(panel(server).Open).toBe(false);
+    expect(attached(server)).toEqual([]);
+    expect(server.terminals.size).toBe(0);
+  });
+
+  it("detaches while another thread is selected, and a return or a reload reattaches", async () => {
+    const launch = { Cwd: "/root", WorktreePath: null, ProjectRoot: "/root" };
+    const server = await connect();
+    server.terminals.set("a", launch);
+    await server.runtime.dispatch(selectThread, ENV_ID, "a");
+    await vi.waitFor(() => expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]));
+    expect(panel(server, "a")).toMatchObject({ Open: true, FocusOnMount: false });
+    await server.runtime.dispatch(selectThread, ENV_ID, "b");
+    expect(attached(server)).toEqual([]);
+    await server.runtime.dispatch(selectThread, ENV_ID, "a");
+    await vi.waitFor(() => expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]));
+  });
+
+  it("deleting the thread disposes the attachment and forgets the launch", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    expect(server.terminals.has(THREAD_ID)).toBe(true);
+    const gone = server.disposed(`session:${ENV}:${THREAD_ID}`);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("thread.deleted", {}),
+    } as IWireThreadItem);
+    await gone;
+    expect(attached(server)).toEqual([]);
+    await vi.waitFor(() => expect(server.terminals.has(THREAD_ID)).toBe(false));
+  });
+
+  it("shows what the shell reports, and a stream that ends", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    const session = `session:${ENV}:${THREAD_ID}`;
+    const deliver = (message: object) =>
+      server.runtime.dispatch(
+        TerminalReceiver.handle,
+        session,
+        { Type: "Terminal/Session", ...message } as never,
+        { publisher: { Id: session } },
+      );
+    await deliver({ Status: "running", Error: null });
+    expect(panel(server).Status).toBe("running");
+    await deliver({ Status: "exited", Error: null });
+    expect(panel(server).Status).toBe("exited");
+    await deliver({ $Ended: { Reason: "failed" } });
+    expect(panel(server)).toMatchObject({ Status: "error", Error: "failed" });
+  });
+});
+
+describe("reconnect", () => {
+  it("keeps the data on screen, skips what it has, and applies what it missed", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(snapshotOf(longThread(3), 5));
+    await server.sendThread({ kind: "synchronized" });
+    const node = server.thread();
+    const resubscribed = { Type: "Thread/Stream", Resubscribing: true } as const;
+    await server.runtime.dispatch(ThreadReceiver.handle, OPEN_ID, resubscribed, {
+      publisher: { Id: OPEN_ID },
+    });
+    expect(server.thread().Synchronized).toBe(false);
+    expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2"]);
+
+    await server.sendThread({
+      kind: "event",
+      sequence: 5,
+      event: event("turn-item.updated", commandItem("stale", "run-0", 9)),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 6,
+      event: event("turn-item.updated", commandItem("missed", "run-0", 9)),
+    } as IWireThreadItem);
+    await server.sendThread({ kind: "synchronized" });
+    expect(server.thread()).toBe(node);
+    expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2", "missed"]);
+    expect(server.thread().LastSequence).toBe(6);
+    expect(server.thread().Synchronized).toBe(true);
+    const row = server.runtime.resources().find((resource) => resource.Key === "Thread/Stream");
+    expect(row?.ResumeFrom).toBe("LastSequence");
+  });
+});
+
+describe("the replica's writers", () => {
+  it("are the stream receivers, opening and closing, history pages and providers", async () => {
+    const server = await connect(
+      async () =>
+        ({
+          snapshotSequence: 1,
+          items: [localRow(commandItem("c-0", "run-1", 0), 0)],
+          nextCursor: null,
+          hasMoreHistory: false,
+        }) as unknown as IWireHistoryPage,
+      null,
+      {
+        startTurn: () => undefined,
+        stopThread: () => undefined,
+        threadDiff: () => "",
+        respondRequest: () => undefined,
+      },
+    );
+    const actions = new Map<string, { Name: string | null; Path: string[] }>();
+    const writers = new Set<string | null>();
+    const replica = `replica:${ENV}`;
+    server.runtime.on("record", (record) => {
+      if (record.Kind === "action:start") actions.set(record.ActionId, record);
+      if (record.Kind !== "step") return;
+      const action = actions.get(record.ActionId);
+      const onReplica =
+        action?.Path.includes(replica) ||
+        record.Changes.some((change) => change.Path.includes("Replica"));
+      if (onReplica) writers.add(action?.Name ?? null);
+    });
+    await server.open();
+    await server.sendThread({
+      ...snapshotOf(longThread(3), 1),
+      historyCursor: "older",
+      hasMoreHistory: true,
+    });
+    await server.sendShell({ kind: "synchronized" });
+    await server.runtime.dispatch(loadProviders, ENV_ID);
+    await server.runtime.dispatch(setDraft, SESSION_ID, "local only");
+    await server.runtime.dispatch(send, SESSION_ID);
+    await server.runtime.dispatch(stopRun, SESSION_ID);
+    await server.runtime.dispatch(openDiff, SESSION_ID, "thread", null);
+    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    await server.runtime.dispatch(closeTerminal, SESSION_ID);
+    await server.runtime.dispatch(answerRequest, SESSION_ID, "r-1", "accept", null);
+    await server.runtime.dispatch(loadEarlier, OPEN_ID);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("thread.deleted", {}),
+    } as IWireThreadItem);
+    await vi.waitFor(() => expect(server.thread()).toBeUndefined());
+    await server.open();
+    await server.runtime.dispatch(closeThread, ENV_ID, THREAD_ID);
+    expect([...writers].sort()).toEqual([
+      "EnvironmentReceiver",
+      "ShellReceiver",
+      "ThreadReceiver",
+      "closeThread",
+      "loadEarlier",
+      "loadProviders",
+      "openThread",
+    ]);
+  });
+});

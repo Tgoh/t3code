@@ -1,0 +1,207 @@
+import { sortActiveThreadsByOrderKey } from "@t3tools/client-runtime/state/thread-sort";
+import { isListedThreadLineage } from "@t3tools/contracts";
+import {
+  type IActionGenerator,
+  type IEntity,
+  type ISelectorGenerator,
+  isEnded,
+  merge,
+  openResource,
+  receiver,
+} from "reflex";
+import { createFeatureContext } from "reflex-solid";
+
+import { delayEffect } from "./Infrastructure/delay";
+import type {
+  IWireProject,
+  IWireShellItem,
+  IWireShellSnapshot,
+  IWireThreadShell,
+} from "./Infrastructure/wire";
+import { byId, put } from "./rows";
+
+declare module "reflex" {
+  interface IResourceRegistry {
+    "Shell/Stream": { Type: "shellStream" };
+  }
+}
+
+const REOPEN_MS = 1_000;
+
+export interface IShell extends IEntity {
+  EnvironmentId: string;
+  Synchronized: boolean;
+  LastSequence: number;
+  Projects: Record<string, IWireProject>;
+  Threads: Record<string, IWireThreadShell>;
+  Error?: string;
+}
+
+export function getDefaultShell(id: string, environmentId: string): IShell {
+  return {
+    $Id: id,
+    EnvironmentId: environmentId,
+    Synchronized: false,
+    LastSequence: 0,
+    Projects: {},
+    Threads: {},
+  };
+}
+
+export function* openShellStream(draft: IShell): IActionGenerator {
+  yield* openResource(
+    draft,
+    "Shell/Stream",
+    ShellReceiver,
+    { Type: "shellStream", EnvironmentId: draft.EnvironmentId },
+    { ResumeFrom: "LastSequence" },
+  );
+}
+
+function retainRepositoryIdentity(
+  held: IWireProject | undefined,
+  next: IWireProject,
+): IWireProject {
+  return next.repositoryIdentity == null &&
+    held?.repositoryIdentity != null &&
+    held.workspaceRoot === next.workspaceRoot
+    ? { ...next, repositoryIdentity: held.repositoryIdentity }
+    : next;
+}
+
+// An enrichment carries only repository identities: its other fields can be older than what is held.
+function applyEnrichment(draft: IShell, projects: IWireProject[], roots: string[]): void {
+  for (const candidate of projects) {
+    const held = draft.Projects[candidate.id];
+    if (held === undefined || held.workspaceRoot !== candidate.workspaceRoot) continue;
+    if (roots.includes(held.workspaceRoot) || held.repositoryIdentity == null) {
+      if (candidate.repositoryIdentity === undefined) delete held.repositoryIdentity;
+      else held.repositoryIdentity = candidate.repositoryIdentity;
+    }
+  }
+}
+
+// A row the snapshot leaves out only leaves the list: the shell trims idle subagents and older
+// settled threads, so nothing about the thread itself follows from its absence here.
+function applySnapshot(draft: IShell, snapshot: IWireShellSnapshot): void {
+  draft.LastSequence = snapshot.snapshotSequence;
+  merge(
+    draft.Projects,
+    byId(snapshot.projects.map((p) => retainRepositoryIdentity(draft.Projects[p.id], p))),
+    { keyless: "position" },
+  );
+  merge(
+    draft.Threads,
+    byId(
+      snapshot.threads.map((thread) => {
+        const links = draft.Threads[thread.id]?.pullRequests;
+        return thread.pullRequests === undefined && links !== undefined
+          ? { ...thread, pullRequests: links }
+          : thread;
+      }),
+    ),
+    { keyless: "position" },
+  );
+}
+
+function applyItem(draft: IShell, item: IWireShellItem): void {
+  if (item.kind === "synchronized") {
+    draft.Synchronized = true;
+    return;
+  }
+  if (item.kind === "snapshot") {
+    if (item.resolvedRepositoryIdentityRoots !== undefined)
+      applyEnrichment(draft, item.snapshot.projects, item.resolvedRepositoryIdentityRoots);
+    else applySnapshot(draft, item.snapshot);
+    return;
+  }
+  if (item.sequence <= draft.LastSequence) return;
+  draft.LastSequence = item.sequence;
+  switch (item.kind) {
+    case "project.updated":
+      put(draft.Projects, retainRepositoryIdentity(draft.Projects[item.project.id], item.project));
+      break;
+    case "project.removed":
+      delete draft.Projects[item.projectId];
+      break;
+    case "thread.updated":
+      if (item.location === "active") put(draft.Threads, item.thread);
+      else delete draft.Threads[item.thread.id];
+      break;
+    case "thread.removed":
+      delete draft.Threads[item.threadId];
+      break;
+  }
+}
+
+export const ShellReceiver = receiver<IShell>("ShellReceiver")({
+  *"Shell/Stream"(draft, message) {
+    if (isEnded(message)) {
+      draft.Error = message.$Ended.Reason;
+      // A batch the receiver failed would fail again on every reopen.
+      if (message.$Ended.Reason === "receiver-failed") return;
+      yield* delayEffect({ Ms: REOPEN_MS });
+      delete draft.Error;
+      yield* openShellStream(draft);
+      return;
+    }
+    if ("Item" in message) applyItem(draft, message.Item);
+    else draft.Synchronized = false;
+  },
+});
+
+export type IThreadStatus = "running" | "waiting" | "failed" | "completed" | "stopped" | "idle";
+
+export function runStatus(status: IWireThreadShell["status"]): IThreadStatus {
+  switch (status) {
+    case "preparing":
+    case "queued":
+    case "starting":
+    case "running":
+      return "running";
+    case "waiting":
+      return "waiting";
+    case "failed":
+      return "failed";
+    case "completed":
+      return "completed";
+    case "interrupted":
+    case "cancelled":
+      return "stopped";
+    case "rolled_back":
+    case "idle":
+      return "idle";
+  }
+}
+
+export function* sidebarThreads(draft: IShell): ISelectorGenerator<IWireThreadShell[]> {
+  return sortActiveThreadsByOrderKey(
+    Object.values(draft.Threads).filter((thread) => isListedThreadLineage(thread.lineage as never)),
+  );
+}
+
+export type ISidebarStatus = "working" | "approval" | "input" | "failed" | "done" | null;
+
+// Follows resolveSidebarThreadStatus and hasUnseenCompletion in apps/web/src/components/Sidebar.logic.ts.
+export function sidebarStatus(thread: IWireThreadShell): ISidebarStatus {
+  const request = thread.pendingRuntimeRequest;
+  if (request !== null && request.kind === "user_input") return "input";
+  if (request !== null && request.kind !== "auth_refresh") return "approval";
+  const status = runStatus(thread.activityRunStatus ?? thread.status);
+  if (status === "running" || status === "waiting") return "working";
+  if (status === "failed") return "failed";
+  const completed = thread.latestRunCompletedAt;
+  const visited = thread.lastVisitedAt;
+  return completed != null && visited != null && Date.parse(completed) > Date.parse(visited)
+    ? "done"
+    : null;
+}
+
+// Follows resolveThreadWorkingStartedAt in packages/client-runtime/src/state/models.ts.
+export function workingStartedAt(thread: IWireThreadShell): string | null {
+  if (thread.activityRunStartedAt !== undefined) return thread.activityRunStartedAt;
+  if (thread.latestRunCompletedAt != null || thread.latestRunId !== thread.activeRunId) return null;
+  return thread.latestRunStartedAt ?? thread.latestRunRequestedAt ?? null;
+}
+
+export default createFeatureContext<IShell>(import.meta.url)({}, { sidebarThreads });
