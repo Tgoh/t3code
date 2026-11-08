@@ -219,6 +219,43 @@ export function isSnoozed(thread: IWireThreadShell, now: number): boolean {
 const newestFirst = (left: string | null | undefined, right: string | null | undefined): number =>
   Date.parse(right ?? "") - Date.parse(left ?? "");
 
+export interface IProjectFolder {
+  ProjectId: string;
+  Project: IWireProject | undefined;
+  Threads: IWireThreadShell[];
+}
+
+// Stock's boring sidebar with grouping set to "separate", except that every open project gets a
+// folder, as Claude Code lists its folders; an archived one shows only while it has threads.
+export function projectFolders(
+  active: IWireThreadShell[],
+  projects: Record<string, IWireProject>,
+): IProjectFolder[] {
+  const folders = new Map<string, IProjectFolder>();
+  const folderOf = (projectId: string) => {
+    let folder = folders.get(projectId);
+    if (folder === undefined) {
+      folder = { ProjectId: projectId, Project: projects[projectId], Threads: [] };
+      folders.set(projectId, folder);
+    }
+    return folder;
+  };
+  for (const project of Object.values(projects)) {
+    if (project.archivedAt == null) folderOf(project.id);
+  }
+  for (const thread of active) folderOf(thread.projectId).Threads.push(thread);
+  const rank = (folder: IProjectFolder) =>
+    folder.Project?.archivedAt != null ? 2 : folder.Project?.pinnedAt != null ? 0 : 1;
+  const title = (folder: IProjectFolder) => folder.Project?.title ?? "";
+  return [...folders.values()].sort(
+    (left, right) =>
+      rank(left) - rank(right) ||
+      (rank(left) === 0
+        ? Date.parse(left.Project!.pinnedAt!) - Date.parse(right.Project!.pinnedAt!)
+        : title(left).localeCompare(title(right))),
+  );
+}
+
 // `threads` keeps its order within Active, so the inbox stays on the server's order key.
 export function sidebarSections(threads: IWireThreadShell[], now: number): ISidebarSections {
   const sections: ISidebarSections = { Pinned: [], Active: [], Snoozed: [], Settled: [] };

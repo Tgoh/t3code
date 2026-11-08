@@ -27,6 +27,8 @@ import {
   CircleDashed,
   Clock,
   Ellipsis,
+  FolderPlus,
+  Folders,
   GitBranch,
   Mail,
   MessageCircleQuestion,
@@ -38,11 +40,17 @@ import {
   Trash2,
   Undo2,
 } from "./icons";
-import type { IThreadCommand, IWireModelSelection } from "./Infrastructure/commandEffects";
-import type { IWireThreadShell } from "./Infrastructure/wire";
+import type {
+  IProjectCommand,
+  IThreadCommand,
+  IWireModelSelection,
+} from "./Infrastructure/commandEffects";
+import type { IWireProject, IWireThreadShell } from "./Infrastructure/wire";
 import Shell, {
+  type IProjectFolder,
   type ISidebarStatus,
   isSnoozed,
+  projectFolders,
   sidebarSections,
   sidebarStatus,
   workingStartedAt,
@@ -371,29 +379,14 @@ function MenuItem(props: {
   );
 }
 
-function ThreadMenu(props: {
-  thread: IWireThreadShell;
+function Popup(props: {
   x: number;
   y: number;
-  now: number;
-  onCommand: (command: IThreadCommand) => void;
-  onRename: () => void;
+  label: string;
   onClose: () => void;
+  children: JSX.Element;
 }) {
   const [menuElement, setMenuElement] = createSignal<HTMLDivElement>();
-  const [confirmingDelete, setConfirmingDelete] = createSignal(false);
-  const snoozed = () => isSnoozed(props.thread, props.now);
-  const settled = () => props.thread.settledOverride === "settled";
-  const pinned = () => props.thread.pinnedAt != null;
-  const presets = createMemo(() =>
-    snoozed() || props.thread.pendingRuntimeRequest !== null
-      ? []
-      : resolveSnoozePresets(new Date(props.now)),
-  );
-  const choose = (command: IThreadCommand) => {
-    props.onCommand(command);
-    props.onClose();
-  };
   onMount(() => {
     const menu = menuElement();
     if (menu === undefined) return;
@@ -414,7 +407,77 @@ function ThreadMenu(props: {
     });
   });
   return (
-    <div class="thread-menu" role="menu" aria-label="Thread actions" ref={setMenuElement}>
+    <div class="thread-menu" role="menu" aria-label={props.label} ref={setMenuElement}>
+      {props.children}
+    </div>
+  );
+}
+
+function ProjectMenu(props: {
+  project: IWireProject;
+  x: number;
+  y: number;
+  onCommand: (command: IProjectCommand) => void;
+  onNewThread: () => void;
+  onRename: () => void;
+  onClose: () => void;
+}) {
+  const choose = (act: () => void) => {
+    act();
+    props.onClose();
+  };
+  return (
+    <Popup x={props.x} y={props.y} label="Project actions" onClose={props.onClose}>
+      <MenuItem
+        icon={<SquarePen />}
+        label="New thread"
+        onSelect={() => choose(props.onNewThread)}
+      />
+      <Show
+        when={props.project.pinnedAt != null}
+        fallback={
+          <MenuItem
+            icon={<Pin />}
+            label="Pin project"
+            onSelect={() => choose(() => props.onCommand({ Kind: "pin" }))}
+          />
+        }
+      >
+        <MenuItem
+          icon={<PinOff />}
+          label="Unpin project"
+          onSelect={() => choose(() => props.onCommand({ Kind: "unpin" }))}
+        />
+      </Show>
+      <MenuItem icon={<PenLine />} label="Rename" onSelect={() => choose(props.onRename)} />
+    </Popup>
+  );
+}
+
+function ThreadMenu(props: {
+  thread: IWireThreadShell;
+  x: number;
+  y: number;
+  now: number;
+  onCommand: (command: IThreadCommand) => void;
+  onRename: () => void;
+  onClose: () => void;
+}) {
+  const [confirmingDelete, setConfirmingDelete] = createSignal(false);
+  const snoozed = () => isSnoozed(props.thread, props.now);
+  const settled = () => props.thread.settledOverride === "settled";
+  const pinned = () => props.thread.pinnedAt != null;
+  const presets = createMemo(() =>
+    snoozed() || props.thread.pendingRuntimeRequest !== null
+      ? []
+      : resolveSnoozePresets(new Date(props.now)),
+  );
+  const choose = (command: IThreadCommand) => {
+    props.onCommand(command);
+    props.onClose();
+  };
+  return (
+    <Popup x={props.x} y={props.y} label="Thread actions" onClose={props.onClose}>
       <For each={presets()}>
         {(preset) => (
           <MenuItem
@@ -486,8 +549,154 @@ function ThreadMenu(props: {
           onSelect={() => choose({ Kind: "delete" })}
         />
       </Show>
-    </div>
+    </Popup>
   );
+}
+
+function FolderHeader(props: {
+  folder: IProjectFolder;
+  open: boolean;
+  renaming: boolean;
+  onToggle: () => void;
+  onNewThread: () => void;
+  onMenu: (x: number, y: number) => void;
+  onRenamed: (title: string | null) => void;
+}) {
+  const title = () => props.folder.Project?.title ?? "Unknown project";
+  const needsYou = () =>
+    props.folder.Threads.some((thread) => {
+      const status = sidebarStatus(thread);
+      return status !== null && status !== "working";
+    });
+  return (
+    <li>
+      <div
+        class="section-header folder-header"
+        role="button"
+        tabindex="0"
+        aria-expanded={props.open}
+        onClick={props.onToggle}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          props.onToggle();
+        }}
+        onContextMenu={(event) => {
+          if (props.folder.Project === undefined) return;
+          event.preventDefault();
+          props.onMenu(event.clientX, event.clientY);
+        }}
+      >
+        <ChevronRight class="section-chevron" classList={{ open: props.open }} />
+        <ProjectBadge name={title()} size={12} />
+        <Show when={props.renaming} fallback={<span class="folder-title">{title()}</span>}>
+          <RenameInput title={title()} onDone={props.onRenamed} />
+        </Show>
+        <Show when={props.folder.Project?.pinnedAt != null}>
+          <Pin class="folder-pin" />
+        </Show>
+        <Show when={!props.open && needsYou()}>
+          <span class="folder-dot" aria-label="Needs you" />
+        </Show>
+        <span class="section-count">{props.folder.Threads.length}</span>
+        <Show when={props.folder.Project !== undefined}>
+          <span class="card-actions folder-actions">
+            <button
+              type="button"
+              class="card-action"
+              aria-label={`New thread in ${title()}`}
+              data-tip="New thread"
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onNewThread();
+              }}
+            >
+              <SquarePen />
+            </button>
+            <button
+              type="button"
+              class="card-action"
+              aria-label="Project actions"
+              data-tip="Project actions"
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onMenu(event.clientX, event.clientY);
+              }}
+            >
+              <Ellipsis />
+            </button>
+          </span>
+        </Show>
+      </div>
+    </li>
+  );
+}
+
+function folderTitle(path: string): string {
+  return (
+    path
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]/)
+      .pop() || path
+  );
+}
+
+function AddProjectForm(props: {
+  onAdd: (title: string, workspaceRoot: string) => void;
+  onClose: () => void;
+}) {
+  const [path, setPath] = createSignal("");
+  const submit = () => {
+    const root = path().trim();
+    if (root === "") return;
+    props.onAdd(folderTitle(root), root);
+    props.onClose();
+  };
+  return (
+    <form
+      class="add-project"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <input
+        class="card-rename"
+        aria-label="Project folder"
+        placeholder="Folder on the server, e.g. E:\Code\app"
+        value={path()}
+        ref={(input) => queueMicrotask(() => input.focus())}
+        onInput={(event) => setPath(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") props.onClose();
+        }}
+      />
+      <button type="submit" class="card-action" disabled={path().trim() === ""}>
+        Add
+      </button>
+    </form>
+  );
+}
+
+const GROUP_KEY = "reflex-web:group-by-project";
+const CLOSED_FOLDERS_KEY = "reflex-web:closed-folders";
+
+function readStored<T>(key: string, fallback: T): T {
+  try {
+    const held = localStorage.getItem(key);
+    return held === null ? fallback : (JSON.parse(held) as T);
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStored(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Private windows and blocked storage just forget the choice.
+  }
 }
 
 function SectionHeader(props: {
@@ -521,6 +730,7 @@ export const Sidebar = Shell.provider<{
   onSelect: (id: string) => void;
   onNewThread: (projectId: string) => void;
   onCommand: (threadId: string, command: IThreadCommand) => void;
+  onProjectCommand: (projectId: string | null, command: IProjectCommand) => void;
 }>((props) => {
   const shell = Shell.use();
   const stream = useResource(() => shell.state, "Shell/Stream");
@@ -552,6 +762,28 @@ export const Sidebar = Shell.provider<{
   const menuThread = () => {
     const held = menu();
     return held === null ? undefined : shell.state.Threads[held.Id];
+  };
+  const [grouped, setGrouped] = createSignal(readStored(GROUP_KEY, false));
+  const [closedFolders, setClosedFolders] = createSignal(
+    new Set(readStored<string[]>(CLOSED_FOLDERS_KEY, [])),
+  );
+  const toggleFolder = (projectId: string) => {
+    const next = new Set(closedFolders());
+    if (!next.delete(projectId)) next.add(projectId);
+    setClosedFolders(next);
+    writeStored(CLOSED_FOLDERS_KEY, [...next]);
+  };
+  const folders = createMemo(() =>
+    grouped() ? projectFolders(sections().Active, shell.state.Projects) : [],
+  );
+  const [addingProject, setAddingProject] = createSignal(false);
+  const [renamingProject, setRenamingProject] = createSignal<string | null>(null);
+  const [projectMenu, setProjectMenu] = createSignal<{ Id: string; X: number; Y: number } | null>(
+    null,
+  );
+  const menuProject = () => {
+    const held = projectMenu();
+    return held === null ? undefined : shell.state.Projects[held.Id];
   };
   // A collapsed shelf still shows the open thread, so its row doesn't vanish on settling it.
   const shelf = (threads: IWireThreadShell[], open: boolean, limit = Infinity) =>
@@ -631,7 +863,41 @@ export const Sidebar = Shell.provider<{
             </select>
           </label>
         </Show>
+        <button
+          class="icon-button"
+          aria-label="Add project"
+          data-tip="Add project"
+          aria-pressed={addingProject()}
+          onClick={() => setAddingProject((held) => !held)}
+        >
+          <FolderPlus />
+        </button>
+        <button
+          class="icon-button"
+          classList={{ pressed: grouped() }}
+          aria-label="Group by project"
+          data-tip={grouped() ? "Stop grouping by project" : "Group by project"}
+          aria-pressed={grouped()}
+          onClick={() => {
+            setGrouped(!grouped());
+            writeStored(GROUP_KEY, grouped());
+          }}
+        >
+          <Folders />
+        </button>
       </div>
+      <Show when={addingProject()}>
+        <AddProjectForm
+          onAdd={(title, workspaceRoot) =>
+            props.onProjectCommand(null, {
+              Kind: "create",
+              Title: title,
+              WorkspaceRoot: workspaceRoot,
+            })
+          }
+          onClose={() => setAddingProject(false)}
+        />
+      </Show>
       <Show when={shell.state.Error}>
         <p class="sidebar-error">The shell stream ended: {shell.state.Error}</p>
       </Show>
@@ -639,17 +905,59 @@ export const Sidebar = Shell.provider<{
         <p class="sidebar-error">That didn't work: {props.commandError}</p>
       </Show>
       <Show
-        when={shell.sidebarThreads().length > 0}
+        when={shell.sidebarThreads().length > 0 || folders().length > 0}
         fallback={
           <p class="empty">{shell.state.Synchronized ? "No threads yet." : "Loading threads…"}</p>
         }
       >
         <ul class="thread-list">
           <For each={sections().Pinned}>{(thread) => card(thread, "pinned")}</For>
-          <Show when={sections().Pinned.length > 0 && sections().Active.length > 0}>
+          <Show
+            when={
+              sections().Pinned.length > 0 &&
+              (grouped() ? folders().length > 0 : sections().Active.length > 0)
+            }
+          >
             <li class="section-divider" />
           </Show>
-          <For each={sections().Active}>{(thread) => card(thread, "active")}</For>
+          <Show
+            when={grouped()}
+            fallback={<For each={sections().Active}>{(thread) => card(thread, "active")}</For>}
+          >
+            <For each={folders()}>
+              {(folder) => (
+                <>
+                  <FolderHeader
+                    folder={folder}
+                    open={!closedFolders().has(folder.ProjectId)}
+                    renaming={renamingProject() === folder.ProjectId}
+                    onToggle={() => toggleFolder(folder.ProjectId)}
+                    onNewThread={() => props.onNewThread(folder.ProjectId)}
+                    onMenu={(x, y) => setProjectMenu({ Id: folder.ProjectId, X: x, Y: y })}
+                    onRenamed={(title) => {
+                      setRenamingProject(null);
+                      const trimmed = title?.trim();
+                      if (trimmed && trimmed !== folder.Project?.title) {
+                        props.onProjectCommand(folder.ProjectId, {
+                          Kind: "rename",
+                          Title: trimmed,
+                        });
+                      }
+                    }}
+                  />
+                  <For
+                    each={
+                      closedFolders().has(folder.ProjectId)
+                        ? folder.Threads.filter((thread) => thread.id === props.selected)
+                        : folder.Threads
+                    }
+                  >
+                    {(thread) => card(thread, "active")}
+                  </For>
+                </>
+              )}
+            </For>
+          </Show>
           <Show when={sections().Pinned.length === 0 && sections().Active.length === 0}>
             <li class="empty inbox-clear">All clear.</li>
           </Show>
@@ -698,6 +1006,19 @@ export const Sidebar = Shell.provider<{
             onCommand={(command) => props.onCommand(thread.id, command)}
             onRename={() => setRenaming(thread.id)}
             onClose={() => setMenu(null)}
+          />
+        )}
+      </Show>
+      <Show when={menuProject()} keyed>
+        {(project) => (
+          <ProjectMenu
+            project={project}
+            x={projectMenu()?.X ?? 0}
+            y={projectMenu()?.Y ?? 0}
+            onCommand={(command) => props.onProjectCommand(project.id, command)}
+            onNewThread={() => props.onNewThread(project.id)}
+            onRename={() => setRenamingProject(project.id)}
+            onClose={() => setProjectMenu(null)}
           />
         )}
       </Show>

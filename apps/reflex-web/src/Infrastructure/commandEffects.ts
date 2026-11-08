@@ -105,6 +105,22 @@ interface IThreadCommandEffect extends IEffect {
 
 export const threadCommandEffect = defineEffect<IThreadCommandEffect, void>("threadCommand");
 
+export type IProjectCommand =
+  | { Kind: "create"; Title: string; WorkspaceRoot: string }
+  | { Kind: "pin" }
+  | { Kind: "unpin" }
+  | { Kind: "rename"; Title: string };
+
+interface IProjectCommandEffect extends IEffect {
+  Type: "projectCommand";
+  EnvironmentId: string;
+  ProjectId: string;
+  CommandId: string;
+  Command: IProjectCommand;
+}
+
+export const projectCommandEffect = defineEffect<IProjectCommandEffect, void>("projectCommand");
+
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 
 interface IAttachmentUrlEffect extends IEffect {

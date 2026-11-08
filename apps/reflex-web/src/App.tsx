@@ -41,12 +41,13 @@ const EnvironmentView = Environment.provider(() => {
         state={environment.state.Replica.Shell}
         selected={environment.state.Local.SelectedThreadId}
         currentProjectId={environment.currentProjectId()}
-        commandError={environment.state.Local.ThreadCommandError}
+        commandError={environment.state.Local.CommandError}
         modelOf={(selection) => modelDisplay(environment.state.Replica.Providers, selection)}
         providerName={providerName}
         onSelect={(id) => environment.selectThread(id)}
         onNewThread={(projectId) => environment.newThread(projectId)}
         onCommand={(id, command) => environment.threadCommand(id, command)}
+        onProjectCommand={(id, command) => environment.projectCommand(id, command)}
       />
       <main>
         <Switch fallback={<p class="empty">Select a thread.</p>}>

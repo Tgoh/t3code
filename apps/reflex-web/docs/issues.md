@@ -116,10 +116,11 @@ The server's history is the raw PTY bytes, written at whatever width the shell h
 
 ## Unmatched against the stock UI
 
-- Sidebar: no Search box, thread filter, add-project, sidebar toggle, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
+- Sidebar: no Search box, thread filter, sidebar toggle, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
 - Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
 - Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, drag reorder, auto-settle toggle or search.
 - Sidebar: every settled thread is streamed, where stock omits older ones and pages them in.
+- Projects: Add project takes a typed folder path, with no folder browser, clone or new-folder option. Folders group one per project, as stock's "separate" mode, with no repository grouping, and every open project has a folder, where stock shows an idle one only while pinned. No project archive, delete, settings or reorder.
 - Sidebar: Waiting and Limited aren't distinct states, drafts have no card, and the thread list shows no scrollbar.
 - Sidebar hover card: no environment, terminal process or pull request lines, and a long branch is cut at the end rather than the middle.
 - Sidebar and composer: only Claude and OpenAI provider icons are copied; Replay, Cursor, Grok, OpenCode, Antigravity and Kiro show none, and instance badges aren't drawn.

@@ -693,6 +693,53 @@ main {
   color: var(--sidebar-foreground);
 }
 
+.folder-header {
+  color: var(--sidebar-foreground);
+  font-size: 13px;
+  gap: 6px;
+}
+
+.folder-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-pin {
+  color: var(--sidebar-muted-foreground);
+  flex: none;
+  height: 12px;
+  width: 12px;
+}
+
+.folder-dot {
+  background: var(--info-foreground, var(--foreground));
+  border-radius: 50%;
+  flex: none;
+  height: 6px;
+  width: 6px;
+}
+
+.folder-header:hover .folder-actions,
+.folder-header:focus-within .folder-actions {
+  display: inline-flex;
+}
+
+.folder-header:hover .section-count,
+.folder-header:focus-within .section-count {
+  display: none;
+}
+
+.folder-actions {
+  margin-left: auto;
+}
+
+.add-project {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
 .section-chevron {
   height: 14px;
   width: 14px;

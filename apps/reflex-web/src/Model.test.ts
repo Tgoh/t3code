@@ -11,6 +11,7 @@ import {
   loadProviders,
   newThread,
   openThread,
+  projectCommand,
   selectThread,
   threadCommand,
 } from "./Environment";
@@ -44,6 +45,7 @@ import {
 } from "./OpenThread";
 import { getDefaultRoot, type IRoot, load } from "./Root";
 import {
+  projectFolders,
   ShellReceiver,
   sidebarSections,
   sidebarStatus,
@@ -915,6 +917,36 @@ describe("the sidebar", () => {
     expect(ids(sections.Settled)).toEqual(["settled-new", "settled-old"]);
   });
 
+  it("folds active rows into a folder per open project, pinned first and archived last", () => {
+    const at = "2026-01-01T00:00:00.000Z";
+    const project = (id: string, title: string, extra: object = {}) => ({
+      id,
+      title,
+      workspaceRoot: `/${id}`,
+      ...extra,
+    });
+    const projects = {
+      zed: project("zed", "Zed", { pinnedAt: "2026-01-02T00:00:00.000Z" }),
+      apple: project("apple", "Apple", { pinnedAt: at }),
+      mango: project("mango", "Mango"),
+      banana: project("banana", "Banana"),
+      idle: project("idle", "Idle"),
+      old: project("old", "Old", { archivedAt: at }),
+    };
+    const active = [row("m1", "mango", at), row("o1", "old", at), row("b1", "banana", at)];
+    active.push(row("m2", "mango", at), row("gone", "missing", at));
+    const folders = projectFolders(active as never, projects as never);
+    expect(folders.map((folder) => [folder.ProjectId, folder.Threads.map((t) => t.id)])).toEqual([
+      ["apple", []],
+      ["zed", []],
+      ["missing", ["gone"]],
+      ["banana", ["b1"]],
+      ["idle", []],
+      ["mango", ["m1", "m2"]],
+      ["old", ["o1"]],
+    ]);
+  });
+
   it("derives a row's status and how long it has been working", () => {
     const at = "2026-01-01T00:00:00.000Z";
     const status = (extra: object) => sidebarStatus(row("t", "p", at, extra) as never);
@@ -1184,12 +1216,33 @@ describe("writing to the server", () => {
     expect(commands).toMatchObject([{ ThreadId: "t-1", Command: { Kind: "settle" } }]);
     refuse = true;
     await server.runtime.dispatch(threadCommand, ENV_ID, "t-1", { Kind: "pin" });
-    expect(server.environment().Local.ThreadCommandError).toBe("server said no");
+    expect(server.environment().Local.CommandError).toBe("server said no");
     await server.runtime.dispatch(threadCommand, ENV_ID, "t-1", {
       Kind: "visit",
       VisitedAt: "2026-01-01T00:00:00.000Z",
     });
-    expect(server.environment().Local.ThreadCommandError).toBeUndefined();
+    expect(server.environment().Local.CommandError).toBeUndefined();
+  });
+
+  it("adding a project opens a new thread in it, and a refused one opens nothing", async () => {
+    const created: { ProjectId: string; Command: object }[] = [];
+    let refuse = false;
+    const server = await connect(undefined, null, {
+      projectCommand: (effect: { ProjectId: string; Command: object }) => {
+        if (refuse) throw new Error("no such folder");
+        created.push(effect);
+      },
+    });
+    const add = { Kind: "create", Title: "Code", WorkspaceRoot: "E:\\Tam\\Code" } as const;
+    await server.runtime.dispatch(projectCommand, ENV_ID, null, add);
+    const projectId = created[0]!.ProjectId;
+    expect(created).toMatchObject([{ Command: add }]);
+    const selected = server.environment().Local.SelectedThreadId!;
+    expect(server.environment().Local.ThreadSessions[selected]?.NewThreadProjectId).toBe(projectId);
+    refuse = true;
+    await server.runtime.dispatch(projectCommand, ENV_ID, null, add);
+    expect(server.environment().Local.CommandError).toBe("no such folder");
+    expect(server.environment().Local.SelectedThreadId).toBe(selected);
   });
 
   it("deleting forgets the thread even when it isn't open, and clears the selection", async () => {

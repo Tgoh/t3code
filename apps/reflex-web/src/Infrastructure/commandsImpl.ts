@@ -3,6 +3,7 @@ import {
   type EnvironmentSupervisor,
 } from "@t3tools/client-runtime/connection";
 import {
+  createProject,
   deleteThread,
   interruptThreadTurn,
   markThreadUnread,
@@ -15,6 +16,7 @@ import {
   unpinThread,
   unsettleThread,
   unsnoozeThread,
+  updateProject,
   updateThreadMetadata,
   visitThread,
 } from "@t3tools/client-runtime/operations";
@@ -42,6 +44,7 @@ import {
   attachmentUrlEffect,
   closeTerminalEffect,
   type IProviderOption,
+  projectCommandEffect,
   queueCommandEffect,
   respondRequestEffect,
   serverProvidersEffect,
@@ -182,6 +185,33 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
       return void (await run(markThreadUnread(common)));
     case "delete":
       return void (await run(deleteThread(common)));
+  }
+});
+
+export const projectCommandImpl = implementation(projectCommandEffect, async (input) => {
+  const common = {
+    commandId: CommandId.make(input.CommandId),
+    projectId: ProjectId.make(input.ProjectId),
+  };
+  const command = input.Command;
+  const run = <A, E>(
+    effect: Effect.Effect<
+      A,
+      E,
+      EnvironmentSupervisor.EnvironmentSupervisor | SecureRandom.SecureRandom
+    >,
+  ) => inEnvironment(input.EnvironmentId, effect);
+  switch (command.Kind) {
+    case "create":
+      return void (await run(
+        createProject({ ...common, title: command.Title, workspaceRoot: command.WorkspaceRoot }),
+      ));
+    case "pin":
+      return void (await run(updateProject({ ...common, pinned: true })));
+    case "unpin":
+      return void (await run(updateProject({ ...common, pinned: false })));
+    case "rename":
+      return void (await run(updateProject({ ...common, title: command.Title })));
   }
 });
 

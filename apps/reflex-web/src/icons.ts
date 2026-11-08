@@ -16,6 +16,8 @@ export { default as Ellipsis } from "lucide-solid/icons/ellipsis";
 export { default as File } from "lucide-solid/icons/file";
 export { default as FileDiff } from "lucide-solid/icons/file-diff";
 export { default as FileSearch } from "lucide-solid/icons/file-search";
+export { default as FolderPlus } from "lucide-solid/icons/folder-plus";
+export { default as Folders } from "lucide-solid/icons/folders";
 export { default as GitBranch } from "lucide-solid/icons/git-branch";
 export { default as Globe } from "lucide-solid/icons/globe";
 export { default as Link } from "lucide-solid/icons/link";

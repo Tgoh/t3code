@@ -14,7 +14,9 @@ import { createFeatureContext } from "reflex-solid";
 
 import { addressThread, setAddressThread } from "./Infrastructure/address";
 import {
+  type IProjectCommand,
   type IThreadCommand,
+  projectCommandEffect,
   serverProvidersEffect,
   threadCommandEffect,
 } from "./Infrastructure/commandEffects";
@@ -35,7 +37,7 @@ export interface IEnvironment extends IEntity {
   Local: IEntity & {
     SelectedThreadId: string | null;
     ThreadSessions: Record<string, IThreadSession>;
-    ThreadCommandError?: string;
+    CommandError?: string;
   };
 }
 
@@ -146,7 +148,7 @@ export function* threadCommand(
   threadId: string,
   command: IThreadCommand,
 ): IActionGenerator {
-  delete draft.Local.ThreadCommandError;
+  delete draft.Local.CommandError;
   try {
     const commandId = yield* generateGuid();
     yield* threadCommandEffect({
@@ -158,12 +160,33 @@ export function* threadCommand(
   } catch (error) {
     // A visit is bookkeeping the user didn't ask for, and the next one covers it.
     if (command.Kind !== "visit") {
-      draft.Local.ThreadCommandError = error instanceof Error ? error.message : String(error);
+      draft.Local.CommandError = error instanceof Error ? error.message : String(error);
     }
     return;
   }
   // The shell doesn't say why a row left, and only an open thread's stream reports a deletion.
   if (command.Kind === "delete") yield* forgetThread(draft, threadId);
+}
+
+export function* projectCommand(
+  draft: IEnvironment,
+  projectId: string | null,
+  command: IProjectCommand,
+): IActionGenerator {
+  delete draft.Local.CommandError;
+  const target = projectId ?? (yield* generateGuid());
+  try {
+    yield* projectCommandEffect({
+      EnvironmentId: draft.EnvironmentId,
+      ProjectId: target,
+      CommandId: yield* generateGuid(),
+      Command: command,
+    });
+  } catch (error) {
+    draft.Local.CommandError = error instanceof Error ? error.message : String(error);
+    return;
+  }
+  if (command.Kind === "create") yield* newThread(draft, target);
 }
 
 export function* selectedOpenThread(draft: IEnvironment): ISelectorGenerator<IOpenThread | null> {
@@ -201,6 +224,6 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
 });
 
 export default createFeatureContext<IEnvironment>(import.meta.url)(
-  { selectThread, newThread, threadCommand },
+  { selectThread, newThread, threadCommand, projectCommand },
   { selectedOpenThread, selectedDraftSession, currentProjectId },
 );

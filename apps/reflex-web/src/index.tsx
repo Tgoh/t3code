@@ -17,6 +17,7 @@ import {
   serverProvidersImpl,
   startTurnImpl,
   stopThreadImpl,
+  projectCommandImpl,
   threadCommandImpl,
   threadDiffImpl,
 } from "./Infrastructure/commandsImpl";
@@ -47,6 +48,7 @@ runtime.registerImplementation(stopThreadImpl);
 runtime.registerImplementation(respondRequestImpl);
 runtime.registerImplementation(serverProvidersImpl);
 runtime.registerImplementation(queueCommandImpl);
+runtime.registerImplementation(projectCommandImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
 runtime.registerImplementation(attachmentUrlImpl);
