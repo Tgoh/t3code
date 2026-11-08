@@ -866,11 +866,11 @@ importers:
         specifier: ^16.0.0
         version: 16.4.2
       reflex:
-        specifier: file:../../../reflex/packages/core
-        version: file:../reflex/packages/core(solid-js@1.9.18)
+        specifier: file:../../../reflex-t3code-pin/packages/core
+        version: file:../reflex-t3code-pin/packages/core(solid-js@1.9.18)
       reflex-solid:
-        specifier: file:../../../reflex/packages/solid
-        version: file:../reflex/packages/solid(reflex@file:../reflex/packages/core(solid-js@1.9.18))(solid-js@1.9.18)
+        specifier: file:../../../reflex-t3code-pin/packages/solid
+        version: file:../reflex-t3code-pin/packages/solid(reflex@file:../reflex-t3code-pin/packages/core(solid-js@1.9.18))(solid-js@1.9.18)
       solid-js:
         specifier: ^1.9.12
         version: 1.9.18
@@ -11283,15 +11283,15 @@ packages:
     resolution: {integrity: sha512-Z9VHtgYs48PiQC77X9O2Er8Hj4T+5BtFjT91/vi5Is1D04N72cA946ZslM1ImJw8ZctFBZWAVjM7S5wJNeHMpg==}
     engines: {node: '>= 20.0.0'}
 
-  reflex-solid@file:../reflex/packages/solid:
-    resolution: {directory: ../reflex/packages/solid, type: directory}
+  reflex-solid@file:../reflex-t3code-pin/packages/solid:
+    resolution: {directory: ../reflex-t3code-pin/packages/solid, type: directory}
     engines: {node: '>=20.3.0'}
     peerDependencies:
       reflex: 1.0.0
       solid-js: ^1.9.7
 
-  reflex@file:../reflex/packages/core:
-    resolution: {directory: ../reflex/packages/core, type: directory}
+  reflex@file:../reflex-t3code-pin/packages/core:
+    resolution: {directory: ../reflex-t3code-pin/packages/core, type: directory}
     engines: {node: '>=20.3.0'}
     peerDependencies:
       solid-js: ^1.9.7
@@ -21747,13 +21747,13 @@ snapshots:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
 
-  reflex-solid@file:../reflex/packages/solid(reflex@file:../reflex/packages/core(solid-js@1.9.18))(solid-js@1.9.18):
+  reflex-solid@file:../reflex-t3code-pin/packages/solid(reflex@file:../reflex-t3code-pin/packages/core(solid-js@1.9.18))(solid-js@1.9.18):
     dependencies:
-      reflex: file:../reflex/packages/core(solid-js@1.9.18)
+      reflex: file:../reflex-t3code-pin/packages/core(solid-js@1.9.18)
       solid-js: 1.9.18
       uuid: 11.1.1
 
-  reflex@file:../reflex/packages/core(solid-js@1.9.18):
+  reflex@file:../reflex-t3code-pin/packages/core(solid-js@1.9.18):
     dependencies:
       solid-js: 1.9.18
       uuid: 11.1.1

@@ -13,7 +13,11 @@ import {
 import { createFeatureContext } from "reflex-solid";
 
 import { addressThread, setAddressThread } from "./Infrastructure/address";
-import { serverProvidersEffect } from "./Infrastructure/commandEffects";
+import {
+  type IThreadCommand,
+  serverProvidersEffect,
+  threadCommandEffect,
+} from "./Infrastructure/commandEffects";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import { getDefaultOpenThread, type IOpenThread, openThreadStream } from "./OpenThread";
 import { getDefaultShell, openShellStream } from "./Shell";
@@ -31,6 +35,7 @@ export interface IEnvironment extends IEntity {
   Local: IEntity & {
     SelectedThreadId: string | null;
     ThreadSessions: Record<string, IThreadSession>;
+    ThreadCommandError?: string;
   };
 }
 
@@ -125,6 +130,42 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
   yield* selectThread(draft, threadId);
 }
 
+function* forgetThread(draft: IEnvironment, threadId: string): IActionGenerator {
+  delete draft.Replica.OpenThreads[threadId];
+  delete draft.Replica.Shell.Threads[threadId];
+  delete draft.Local.ThreadSessions[threadId];
+  yield* rememberTerminalEffect({ ThreadId: threadId, Launch: null });
+  if (draft.Local.SelectedThreadId === threadId) {
+    draft.Local.SelectedThreadId = null;
+    yield* setAddressThread(null);
+  }
+}
+
+export function* threadCommand(
+  draft: IEnvironment,
+  threadId: string,
+  command: IThreadCommand,
+): IActionGenerator {
+  delete draft.Local.ThreadCommandError;
+  try {
+    const commandId = yield* generateGuid();
+    yield* threadCommandEffect({
+      EnvironmentId: draft.EnvironmentId,
+      ThreadId: threadId,
+      CommandId: commandId,
+      Command: command,
+    });
+  } catch (error) {
+    // A visit is bookkeeping the user didn't ask for, and the next one covers it.
+    if (command.Kind !== "visit") {
+      draft.Local.ThreadCommandError = error instanceof Error ? error.message : String(error);
+    }
+    return;
+  }
+  // The shell doesn't say why a row left, and only an open thread's stream reports a deletion.
+  if (command.Kind === "delete") yield* forgetThread(draft, threadId);
+}
+
 export function* selectedOpenThread(draft: IEnvironment): ISelectorGenerator<IOpenThread | null> {
   const id = draft.Local.SelectedThreadId;
   return id === null ? null : (draft.Replica.OpenThreads[id] ?? null);
@@ -150,14 +191,7 @@ export function* currentProjectId(draft: IEnvironment): ISelectorGenerator<strin
 
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
   *"Thread/Deleted"(draft, { ThreadId }) {
-    delete draft.Replica.OpenThreads[ThreadId];
-    delete draft.Replica.Shell.Threads[ThreadId];
-    delete draft.Local.ThreadSessions[ThreadId];
-    yield* rememberTerminalEffect({ ThreadId, Launch: null });
-    if (draft.Local.SelectedThreadId === ThreadId) {
-      draft.Local.SelectedThreadId = null;
-      yield* setAddressThread(null);
-    }
+    yield* forgetThread(draft, ThreadId);
   },
   *"Thread/Started"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) return;
@@ -167,6 +201,6 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
 });
 
 export default createFeatureContext<IEnvironment>(import.meta.url)(
-  { selectThread, newThread },
+  { selectThread, newThread, threadCommand },
   { selectedOpenThread, selectedDraftSession, currentProjectId },
 );

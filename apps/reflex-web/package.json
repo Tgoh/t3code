@@ -21,8 +21,8 @@
     "effect": "catalog:",
     "lucide-solid": "^0.564.0",
     "marked": "^16.0.0",
-    "reflex": "file:../../../reflex/packages/core",
-    "reflex-solid": "file:../../../reflex/packages/solid",
+    "reflex": "file:../../../reflex-t3code-pin/packages/core",
+    "reflex-solid": "file:../../../reflex-t3code-pin/packages/solid",
     "solid-js": "^1.9.12"
   },
   "devDependencies": {

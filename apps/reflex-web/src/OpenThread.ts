@@ -28,7 +28,7 @@ import type {
   IWireThreadSnapshot,
   IWireTurnItem,
 } from "./Infrastructure/wire";
-import { byId, put } from "./rows";
+import { byId, put, WIRE_KEY } from "./rows";
 
 declare module "reflex" {
   interface IResourceRegistry {
@@ -258,7 +258,7 @@ function applyTurnItem(draft: IOpenThread, wire: IWireTurnItem): void {
 
 function setThread(draft: IOpenThread, thread: NonNullable<IOpenThread["Thread"]>): void {
   if (draft.Thread === null) draft.Thread = thread;
-  else merge(draft.Thread, thread, { keyless: "position" });
+  else merge(draft.Thread, thread, WIRE_KEY);
 }
 
 function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
@@ -366,7 +366,7 @@ function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
 }
 
 const refresh = <T extends object>(target: T, next: T): void => {
-  merge(target, next, { keyless: "position" });
+  merge(target, next, WIRE_KEY);
 };
 
 // Merged, not assigned: reflex refuses a fresh node carrying a live $Id, and rows the snapshot

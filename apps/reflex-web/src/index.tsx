@@ -17,6 +17,7 @@ import {
   serverProvidersImpl,
   startTurnImpl,
   stopThreadImpl,
+  threadCommandImpl,
   threadDiffImpl,
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
@@ -46,6 +47,7 @@ runtime.registerImplementation(stopThreadImpl);
 runtime.registerImplementation(respondRequestImpl);
 runtime.registerImplementation(serverProvidersImpl);
 runtime.registerImplementation(queueCommandImpl);
+runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
 runtime.registerImplementation(attachmentUrlImpl);
 runtime.registerImplementation(closeTerminalImpl);

@@ -3,31 +3,29 @@ import { type IActionGenerator, type IEntity } from "reflex";
 import { useLocalState, useResource } from "reflex-solid";
 import {
   type Component,
+  createEffect,
   createMemo,
   createSignal,
   For,
-  Match,
   onCleanup,
   onMount,
   Show,
-  Switch,
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import { ProjectBadge } from "./brand";
 import { CommandOutput } from "./CommandOutput";
 import { Composer } from "./Composer";
+import { CopyButton } from "./CopyButton";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import {
   Bot,
   Brain,
-  Check,
   ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleHelp,
-  Copy,
   File,
   FileDiff,
   FileSearch,
@@ -49,7 +47,7 @@ import {
   type IWireAttachment,
 } from "./Infrastructure/commandEffects";
 import type { IWireTurnItem } from "./Infrastructure/wire";
-import { copyText, onCodeBlockAction, renderMarkdown } from "./markdown";
+import { Markdown } from "./Markdown";
 import OpenThread, {
   diffTurnOf,
   fileChangeCounts,
@@ -58,13 +56,11 @@ import OpenThread, {
   pendingRequest,
   timelineItem,
 } from "./OpenThread";
-import { runStatus } from "./Shell";
+import { hasUnseenCompletion, runStatus } from "./Shell";
 import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession, { questionAnswers } from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
 import { viewOf } from "./turnItemView";
-
-const COPIED_MS = 1_200;
 
 function Body(props: { text: string; format: "markdown" | "text" | "code"; fromUser?: boolean }) {
   return (
@@ -72,39 +68,8 @@ function Body(props: { text: string; format: "markdown" | "text" | "code"; fromU
       when={props.format === "markdown"}
       fallback={<pre class={props.format === "code" ? "work-code" : "work-text"}>{props.text}</pre>}
     >
-      <div
-        class="chat-markdown"
-        innerHTML={renderMarkdown(props.text, props.fromUser === true)}
-        onClick={onCodeBlockAction}
-      />
+      <Markdown text={props.text} fromUser={props.fromUser === true} />
     </Show>
-  );
-}
-
-function CopyButton(props: { text: string }) {
-  const [outcome, setOutcome] = createSignal<"idle" | "copied" | "failed">("idle");
-  const copy = async () => {
-    setOutcome((await copyText(props.text)) ? "copied" : "failed");
-    setTimeout(() => setOutcome("idle"), COPIED_MS);
-  };
-  return (
-    <button
-      class="icon-button small copy-button"
-      classList={{ copied: outcome() === "copied" }}
-      aria-label={outcome() === "failed" ? "Couldn't copy" : "Copy message"}
-      data-tip="Copy message"
-      disabled={outcome() !== "idle"}
-      onClick={() => void copy()}
-    >
-      <Switch fallback={<Copy />}>
-        <Match when={outcome() === "copied"}>
-          <Check />
-        </Match>
-        <Match when={outcome() === "failed"}>
-          <X />
-        </Match>
-      </Switch>
-    </button>
   );
 }
 
@@ -315,7 +280,9 @@ function UserRow(props: IRowProps) {
       </Show>
       <div class="message-actions">
         <Show when={createdAt()}>{(at) => <MessageTime at={at()} />}</Show>
-        <Show when={message()?.text}>{(text) => <CopyButton text={text()} />}</Show>
+        <Show when={message()?.text}>
+          {(text) => <CopyButton text={text()} label="Copy message" />}
+        </Show>
       </div>
     </article>
   );
@@ -341,7 +308,9 @@ function MessageRow(props: IRowProps) {
           <Show when={updatedAt()}>
             {(at) => (
               <>
-                <Show when={view()?.Body}>{(text) => <CopyButton text={text()} />}</Show>
+                <Show when={view()?.Body}>
+                  {(text) => <CopyButton text={text()} label="Copy message" />}
+                </Show>
                 <MessageTime at={at()} />
               </>
             )}
@@ -612,6 +581,15 @@ const ThreadBody = ThreadSession.provider(() => {
     const run = thread.latestRun();
     return run === null ? null : runStatus(run.status);
   };
+  // Once per completion, so a thread marked unread while open stays unread until the next one.
+  let visitedCompletion: string | null | undefined;
+  createEffect(() => {
+    const row = environment.state.Replica.Shell.Threads[thread.state.ThreadId];
+    if (row === undefined || !hasUnseenCompletion(row)) return;
+    if (visitedCompletion === row.latestRunCompletedAt) return;
+    visitedCompletion = row.latestRunCompletedAt;
+    environment.threadCommand(row.id, { Kind: "visit", VisitedAt: row.updatedAt });
+  });
   const terminalOpen = () => session.state.Terminal.Open;
   const diffOpen = () => session.state.Panels.Diff.Open;
   let scroller!: HTMLDivElement;

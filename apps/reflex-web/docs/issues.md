@@ -52,21 +52,22 @@ About 40 ms at 1,000 items and 1 s at 20,000. The bounded window keeps a socket 
 
 The server's history is the raw PTY bytes, written at whatever width the shell had. After resizing between 47, 53 and 80 columns and then reattaching, one prompt line drew its typed text over the prompt, because ConPTY's cursor positions no longer matched the replayed screen. A shell at one width replayed cleanly. Stock replays the same history.
 
-## Blocker: moving past reflex `05aaa28` needs `keyless` replaced
+## Not done: in-flight marks are still in the tree
 
-Reflex removed `merge`'s `keyless` option in `338c1b6`, and every replica write goes through it (`rows.ts`, `Shell.ts`, `OpenThread.ts`). Unkeyed wire arrays then need a function key to keep their nodes across a snapshot, which `Model.test.ts` pins. That upgrade is also the point to move in-flight marks (`Sending`, `Stopping`, `Answering`, `Diff.Loading`, `Terminal.Ending`, `History.Loading`) out of the tree into slots, since reflex's docs say a mark that dies with its work doesn't belong in state.
+`Sending`, `Stopping`, `Answering`, `Diff.Loading`, `Terminal.Ending` and `History.Loading` die with their work, so reflex's docs put them in session slots, which arrived with the pinned commit.
 
 ## Feedback for reflex
 
 - Selectors that return fresh objects remount `<For>` rows and wake any parent selector, because a memo compares with `===`. The docs don't warn about it. An opt-in equality setting or structural sharing would cover both.
 - `<For>` over a store array pays for two proxy walks per list change, about 13 ms of a 15 ms add at 20,000 rows against 1.4 ms with a plain array. An id list through `<For>` is the pattern reflex recommends, so `reflex-solid` could offer a helper that tracks the array and hands `<For>` a plain copy.
-- Removing `keyless` costs node identity for unkeyed wire arrays unless the caller writes a function key.
+- Without `keyless`, wire rows keyed by `id` need a function key, and the one key applies at every depth, so a nested array whose rows carry no `id` is replaced on every merge.
 - `expose` and `status` have no obvious home for a live handle plus a changing display value, which is why terminal status goes through `emit` into state.
 - "Do not create an entity only so that its removal closes a resource" conflicts with `(entity, key)` identity for view-owned resources like `CommandOutput`.
 
 ## Differences from the immutable reducer
 
-- `Timeline` isn't pruned. A hidden row keeps its place and renders nothing, because `TimelineRow` applies the shared visibility rule itself, so a run status change wakes only that run's rows. A hidden row can therefore come back live: a superseded interrupt result reappears if its request arrives afterwards, where the reducer has already dropped the row and only a reload would restore it.
+- `Timeline` isn't pruned. A hidden row keeps its place and renders nothing, because `TimelineRow` applies the shared visibility rule itself, so a run status change wakes only that run's rows. A hidden row can therefore come back live: a superseded interrupt result reappears if its request arrives afterwards, where the reducer has already dropped the row and only a reload would restore it. The same goes for a partial window, where the reducer treats the next update to a row it hid as unloaded history.
+- A message with raw block-level HTML renders whole through the sanitizer, because the HTML can span blocks, so its code blocks have no header or copy button.
 - Records don't keep the wire's array order, so anything that needs order sorts by `ordinal`.
 - `archivedThreads` isn't held: the server always sends it empty, and the archive is a separate query.
 - `position` isn't held: it's the row's index.
@@ -93,7 +94,7 @@ Reflex removed `merge`'s `keyless` option in `338c1b6`, and every replica write 
 - The default model for a new thread is the first provider's default, as in the stock client, which can be a paid one.
 - A new thread asks the server to generate its title, which uses the server's title provider. On this machine that's Codex, which fails to spawn, so titles fall back to the text.
 - Timeline rows aren't grouped into work groups as in the stock UI.
-- Assistant markdown is re-parsed whole on every delta, which also resets a text selection and a code block's copy state inside a streaming message. Rendering takes about 2.4 ms at 2 KB, 7.5 ms at 10 KB, 18 ms at 30 KB and 60 ms at 100 KB, so a long message overruns a frame on every delta.
+- Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
 - A multi-select question takes its options as comma-separated text, with no checkboxes.
 - A thread that doesn't exist retries its subscription with backoff rather than reporting missing.
 - A closed thread drops its data, so reopening takes a new snapshot; there's no retention or local cache.
@@ -116,8 +117,9 @@ Reflex removed `merge`'s `keyless` option in `338c1b6`, and every replica write 
 ## Unmatched against the stock UI
 
 - Sidebar: no Search box, thread filter, add-project, sidebar toggle, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
-- Sidebar: no pinned, inbox, settled or snoozed sections and no Settle or Snooze hover actions; the flat list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here).
-- Sidebar: Done clears only while a thread is selected, because this client doesn't record `lastVisitedAt`, so a thread visited here stays Done until visited in stock.
+- Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
+- Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, drag reorder, auto-settle toggle or search.
+- Sidebar: every settled thread is streamed, where stock omits older ones and pages them in.
 - Sidebar: Waiting and Limited aren't distinct states, drafts have no card, and the thread list shows no scrollbar.
 - Sidebar hover card: no environment, terminal process or pull request lines, and a long branch is cut at the end rather than the middle.
 - Sidebar and composer: only Claude and OpenAI provider icons are copied; Replay, Cursor, Grok, OpenCode, Antigravity and Kiro show none, and instance badges aren't drawn.

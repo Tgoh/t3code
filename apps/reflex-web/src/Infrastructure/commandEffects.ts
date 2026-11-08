@@ -83,6 +83,28 @@ interface IThreadDiffEffect extends IEffect, IThreadDiff {
   Type: "threadDiff";
 }
 
+export type IThreadCommand =
+  | { Kind: "settle" }
+  | { Kind: "unsettle" }
+  | { Kind: "snooze"; Until: string }
+  | { Kind: "unsnooze" }
+  | { Kind: "pin" }
+  | { Kind: "unpin" }
+  | { Kind: "rename"; Title: string }
+  | { Kind: "visit"; VisitedAt: string }
+  | { Kind: "markUnread" }
+  | { Kind: "delete" };
+
+interface IThreadCommandEffect extends IEffect {
+  Type: "threadCommand";
+  EnvironmentId: string;
+  ThreadId: string;
+  CommandId: string;
+  Command: IThreadCommand;
+}
+
+export const threadCommandEffect = defineEffect<IThreadCommandEffect, void>("threadCommand");
+
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 
 interface IAttachmentUrlEffect extends IEffect {

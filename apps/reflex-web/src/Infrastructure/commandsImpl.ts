@@ -3,10 +3,20 @@ import {
   type EnvironmentSupervisor,
 } from "@t3tools/client-runtime/connection";
 import {
+  deleteThread,
   interruptThreadTurn,
+  markThreadUnread,
+  pinThread,
   respondToThreadApproval,
   respondToThreadUserInput,
+  settleThread,
+  snoozeThread,
   startThreadTurn,
+  unpinThread,
+  unsettleThread,
+  unsnoozeThread,
+  updateThreadMetadata,
+  visitThread,
 } from "@t3tools/client-runtime/operations";
 import { getInitialServerConfig, request } from "@t3tools/client-runtime/rpc";
 import {
@@ -37,6 +47,7 @@ import {
   serverProvidersEffect,
   startTurnEffect,
   stopThreadEffect,
+  threadCommandEffect,
   threadDiffEffect,
 } from "./commandEffects";
 import { connectionRuntime } from "./connection";
@@ -135,6 +146,43 @@ export const queueCommandImpl = implementation(queueCommandEffect, async (input)
         : { type: "queued-run.cancel", ...common, runId: RunId.make(input.RunId) },
     ),
   );
+});
+
+export const threadCommandImpl = implementation(threadCommandEffect, async (input) => {
+  const common = {
+    commandId: CommandId.make(input.CommandId),
+    threadId: ThreadId.make(input.ThreadId),
+  };
+  const command = input.Command;
+  const run = <A, E>(
+    effect: Effect.Effect<
+      A,
+      E,
+      EnvironmentSupervisor.EnvironmentSupervisor | SecureRandom.SecureRandom
+    >,
+  ) => inEnvironment(input.EnvironmentId, effect);
+  switch (command.Kind) {
+    case "settle":
+      return void (await run(settleThread(common)));
+    case "unsettle":
+      return void (await run(unsettleThread({ ...common, reason: "user" })));
+    case "snooze":
+      return void (await run(snoozeThread({ ...common, snoozedUntil: command.Until })));
+    case "unsnooze":
+      return void (await run(unsnoozeThread({ ...common, reason: "user" })));
+    case "pin":
+      return void (await run(pinThread(common)));
+    case "unpin":
+      return void (await run(unpinThread(common)));
+    case "rename":
+      return void (await run(updateThreadMetadata({ ...common, title: command.Title })));
+    case "visit":
+      return void (await run(visitThread({ ...common, visitedAt: command.VisitedAt })));
+    case "markUnread":
+      return void (await run(markThreadUnread(common)));
+    case "delete":
+      return void (await run(deleteThread(common)));
+  }
 });
 
 export const closeTerminalImpl = implementation(closeTerminalEffect, async (input) => {

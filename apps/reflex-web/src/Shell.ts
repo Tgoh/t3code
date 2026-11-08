@@ -18,7 +18,7 @@ import type {
   IWireShellSnapshot,
   IWireThreadShell,
 } from "./Infrastructure/wire";
-import { byId, put } from "./rows";
+import { byId, put, WIRE_KEY } from "./rows";
 
 declare module "reflex" {
   interface IResourceRegistry {
@@ -88,7 +88,7 @@ function applySnapshot(draft: IShell, snapshot: IWireShellSnapshot): void {
   merge(
     draft.Projects,
     byId(snapshot.projects.map((p) => retainRepositoryIdentity(draft.Projects[p.id], p))),
-    { keyless: "position" },
+    WIRE_KEY,
   );
   merge(
     draft.Threads,
@@ -100,7 +100,7 @@ function applySnapshot(draft: IShell, snapshot: IWireShellSnapshot): void {
           : thread;
       }),
     ),
-    { keyless: "position" },
+    WIRE_KEY,
   );
 }
 
@@ -195,6 +195,54 @@ export function sidebarStatus(thread: IWireThreadShell): ISidebarStatus {
   return completed != null && visited != null && Date.parse(completed) > Date.parse(visited)
     ? "done"
     : null;
+}
+
+export interface ISidebarSections {
+  Pinned: IWireThreadShell[];
+  Active: IWireThreadShell[];
+  Snoozed: IWireThreadShell[];
+  Settled: IWireThreadShell[];
+}
+
+// Follows threadRaisedHandWhileSnoozed in packages/client-runtime/src/state/threadSettled.ts: only a
+// request for the user or a fresh failure ends a snooze early.
+export function isSnoozed(thread: IWireThreadShell, now: number): boolean {
+  if (thread.snoozedUntil == null || Date.parse(thread.snoozedUntil) <= now) return false;
+  if (thread.pendingRuntimeRequest !== null || (thread.pendingGuestMessageCount ?? 0) > 0)
+    return false;
+  if (thread.status !== "failed") return true;
+  const failedAt = thread.latestRunCompletedAt;
+  const snoozedAt = thread.snoozedAt;
+  return failedAt != null && snoozedAt != null && Date.parse(failedAt) <= Date.parse(snoozedAt);
+}
+
+const newestFirst = (left: string | null | undefined, right: string | null | undefined): number =>
+  Date.parse(right ?? "") - Date.parse(left ?? "");
+
+// `threads` keeps its order within Active, so the inbox stays on the server's order key.
+export function sidebarSections(threads: IWireThreadShell[], now: number): ISidebarSections {
+  const sections: ISidebarSections = { Pinned: [], Active: [], Snoozed: [], Settled: [] };
+  for (const thread of threads) {
+    if (isSnoozed(thread, now)) sections.Snoozed.push(thread);
+    else if (thread.settledOverride === "settled") sections.Settled.push(thread);
+    else if (thread.pinnedAt != null) sections.Pinned.push(thread);
+    else sections.Active.push(thread);
+  }
+  sections.Pinned.sort((left, right) =>
+    (left.pinOrderKey ?? left.id).localeCompare(right.pinOrderKey ?? right.id),
+  );
+  sections.Snoozed.sort(
+    (left, right) => Date.parse(left.snoozedUntil ?? "") - Date.parse(right.snoozedUntil ?? ""),
+  );
+  sections.Settled.sort((left, right) => newestFirst(left.settledAt, right.settledAt));
+  return sections;
+}
+
+export function hasUnseenCompletion(thread: IWireThreadShell): boolean {
+  const completed = thread.latestRunCompletedAt;
+  if (completed == null) return false;
+  const visited = thread.lastVisitedAt;
+  return visited == null || Date.parse(completed) > Date.parse(visited);
 }
 
 // Follows resolveThreadWorkingStartedAt in packages/client-runtime/src/state/models.ts.

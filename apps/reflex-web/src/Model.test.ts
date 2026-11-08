@@ -12,6 +12,7 @@ import {
   newThread,
   openThread,
   selectThread,
+  threadCommand,
 } from "./Environment";
 import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
 import type {
@@ -21,6 +22,7 @@ import type {
   IWireTurnItem,
 } from "./Infrastructure/wire";
 import { parseDiff } from "./diffView";
+import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import type {
   IRespondRequest,
   IStartTurn,
@@ -41,7 +43,13 @@ import {
   timelineEntries,
 } from "./OpenThread";
 import { getDefaultRoot, type IRoot, load } from "./Root";
-import { ShellReceiver, sidebarStatus, sidebarThreads, workingStartedAt } from "./Shell";
+import {
+  ShellReceiver,
+  sidebarSections,
+  sidebarStatus,
+  sidebarThreads,
+  workingStartedAt,
+} from "./Shell";
 import {
   answerRequest,
   closeDiff,
@@ -398,6 +406,200 @@ describe("thread events", () => {
   });
 });
 
+describe("random event traces", () => {
+  const RUNS = ["r1", "r2", "r3"];
+  const ITEMS = ["i1", "i2", "i3", "i4", "i5", "i6", "i7", "i8"];
+  const TERMINAL_RUN = ["completed", "rolled_back", "cancelled"];
+
+  const randomOf = (seed: number) => {
+    let state = seed >>> 0;
+    return (limit: number) => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return Math.floor((state / 2 ** 32) * limit);
+    };
+  };
+
+  // Statuses only move forward and a request never follows a superseded attempt, because this client
+  // deliberately brings a row back in those cases where the reducer has already dropped it.
+  function randomEvent(
+    pick: (limit: number) => number,
+    ended: Set<string>,
+    superseded: Set<string>,
+    canHide: boolean,
+  ) {
+    const runId = RUNS[pick(RUNS.length)]!;
+    const kind = pick(7);
+    if (kind === 0 && !ended.has(runId)) {
+      const statuses = canHide ? ["running", "waiting", ...TERMINAL_RUN] : ["running", "completed"];
+      const status = statuses[pick(statuses.length)]!;
+      if (TERMINAL_RUN.includes(status)) ended.add(runId);
+      return event("run.updated", run(runId, RUNS.indexOf(runId) + 1, status));
+    }
+    if (kind === 1 && canHide && !superseded.has(runId)) {
+      const status = ["running", "superseded"][pick(2)]!;
+      if (status === "superseded") superseded.add(runId);
+      return event("run-attempt.updated", {
+        id: `a-${runId}`,
+        runId,
+        rootNodeId: `n-${runId}`,
+        status,
+      });
+    }
+    if (kind === 2 && !superseded.has(runId)) {
+      return event("turn-item.updated", {
+        ...commandItem(`request-${runId}`, runId, 40 + pick(5)),
+        type: "run_interrupt_request",
+        message: "stop",
+      });
+    }
+    const id = ITEMS[pick(ITEMS.length)]!;
+    const itemRun = pick(6) === 0 ? null : runId;
+    const base = commandItem(id, itemRun, 10 + pick(25), `v${pick(1000)}`);
+    const variant = pick(5);
+    if (variant === 0) {
+      return event("turn-item.updated", {
+        ...base,
+        type: "run_interrupt_result",
+        message: "stopped",
+        nodeId: `n-${itemRun}`,
+      });
+    }
+    if (variant === 1) {
+      return event("turn-item.updated", {
+        ...base,
+        type: "user_message",
+        text: "hi",
+        messageId: `m-${id}`,
+        inputIntent: "queued_turn",
+        attachments: [],
+      });
+    }
+    return event("turn-item.updated", base);
+  }
+
+  const rowOf = (row: {
+    sourceItemId: string;
+    visibility: string;
+    item: { ordinal: number; type: string };
+  }) => [row.sourceItemId, row.visibility, row.item.ordinal, row.item.type];
+
+  async function runTrace(seed: number, partial: boolean) {
+    const pick = randomOf(seed);
+    const server = await connect();
+    await server.open();
+    const seedItem = commandItem("i0", "r1", 20);
+    const inherited = { ...commandItem("p1", "r0", 1), threadId: "parent" } as IWireTurnItem;
+    const start = {
+      ...emptyProjection(),
+      runs: [run("r1", 1, "running"), run("r2", 2, "running"), run("r3", 3, "running")],
+      turnItems: [seedItem],
+      visibleTurnItems: [
+        { ...localRow(inherited, 0), visibility: "inherited" as const },
+        localRow(seedItem, 1),
+      ],
+    };
+    await server.sendThread({
+      ...snapshotOf(copy(start), 1),
+      ...(partial ? { historyCursor: "c0", hasMoreHistory: true, latestLocalTurnOrdinal: 20 } : {}),
+    });
+    let expected = copy(start) as unknown as OrchestrationV2ThreadProjection;
+    let watermark: number | null = 20;
+    const ended = new Set<string>();
+    const superseded = new Set<string>();
+    for (let step = 0; step < 40; step += 1) {
+      const next = randomEvent(pick, ended, superseded, !partial);
+      const before = expected;
+      expected = applyOrchestrationV2ProjectionEvent(
+        expected,
+        copy(next) as never,
+        partial ? { partialTimeline: true, latestLocalTurnOrdinal: watermark } : undefined,
+      )!;
+      if (partial && next.type === "turn-item.updated" && expected !== before) {
+        watermark = Math.max(watermark ?? 0, (next.payload as { ordinal: number }).ordinal);
+      }
+      await server.sendThread({
+        kind: "event",
+        sequence: step + 2,
+        event: copy(next),
+      } as IWireThreadItem);
+      const context = `seed ${seed}, partial ${partial}, step ${step}, ${next.type}`;
+      expect(copy(timelineEntries(server.thread()).map(rowOf)), context).toEqual(
+        copy((expected.visibleTurnItems as unknown as Parameters<typeof rowOf>[0][]).map(rowOf)),
+      );
+    }
+  }
+
+  it("match the immutable reducer", async () => {
+    for (const partial of [false, true]) {
+      for (let seed = 1; seed <= 15; seed += 1) await runTrace(seed, partial);
+    }
+  });
+
+  it("keep a row in a partial window that the reducer loses after hiding it", async () => {
+    const server = await connect();
+    await server.open();
+    const item = commandItem("x", "r1", 24);
+    const start = {
+      ...emptyProjection(),
+      runs: [run("r1", 1, "running"), run("r2", 2, "completed")],
+      turnItems: [item],
+      visibleTurnItems: [localRow(item, 0)],
+    };
+    await server.sendThread({
+      ...snapshotOf(copy(start), 1),
+      historyCursor: "c0",
+      hasMoreHistory: true,
+      latestLocalTurnOrdinal: 30,
+    });
+    let expected = copy(start) as unknown as OrchestrationV2ThreadProjection;
+    const events = [
+      event("run.updated", run("r1", 1, "rolled_back")),
+      event("turn-item.updated", commandItem("x", "r2", 24)),
+    ];
+    for (const [index, next] of events.entries()) {
+      expected = applyOrchestrationV2ProjectionEvent(expected, copy(next) as never, {
+        partialTimeline: true,
+        latestLocalTurnOrdinal: 30,
+      })!;
+      await server.sendThread({
+        kind: "event",
+        sequence: index + 2,
+        event: copy(next),
+      } as IWireThreadItem);
+    }
+    expect(expected.visibleTurnItems).toEqual([]);
+    expect(timelineEntries(server.thread()).map((row) => row.sourceItemId)).toEqual(["x"]);
+  });
+});
+
+describe("markdown", () => {
+  it("keeps the tokens of unchanged blocks across a delta", () => {
+    const lex = createMarkdownLexer(false);
+    const first = lex("One para.\n\nTwo\n\n- item");
+    const second = lex("One para.\n\nTwo more\n\n- item");
+    expect(second.Blocks.map((token) => token.type)).toEqual(["paragraph", "paragraph", "list"]);
+    expect(second.Blocks[0]).toBe(first.Blocks[0]);
+    expect(second.Blocks[1]).not.toBe(first.Blocks[1]);
+    expect(second.Blocks[2]).toBe(first.Blocks[2]);
+  });
+
+  it("finds raw HTML anywhere in a block, and only an assistant's block-level HTML spans blocks", () => {
+    const lex = createMarkdownLexer(false);
+    expect(containsHtml(lex("Press <kbd>x</kbd> now").Blocks[0]!)).toBe(true);
+    expect(containsHtml(lex("- a <b>list</b>").Blocks[0]!)).toBe(true);
+    expect(containsHtml(lex("| h |\n| - |\n| <i>c</i> |").Blocks[0]!)).toBe(true);
+    expect(containsHtml(lex("`<b>` is code").Blocks[0]!)).toBe(false);
+    expect(lex("Press <kbd>x</kbd> now").WholeHtml).toBeNull();
+    expect(lex("<details>\n\nbody\n\n</details>").WholeHtml).not.toBeNull();
+    expect(createMarkdownLexer(true)("<details>\n\nbody\n\n</details>").WholeHtml).toBeNull();
+  });
+
+  it("escapes a raw-text tag in an assistant's HTML, so it can't swallow what follows", () => {
+    const { Blocks } = createMarkdownLexer(false)("Mention of <style> in prose");
+    expect(assistantHtml(Blocks)).toContain("&lt;style&gt;");
+  });
+});
+
 describe("snapshots and identity", () => {
   it("reflex refuses a fresh node over a live $Id, so a reconnect snapshot merges in place", async () => {
     const server = await connect();
@@ -675,6 +877,44 @@ describe("the sidebar", () => {
     expect(read()).toEqual(["new", "old"]);
   });
 
+  it("sorts rows into pinned, active, snoozed and settled", () => {
+    const at = "2026-01-01T00:00:00.000Z";
+    const future = "2026-01-02T00:00:00.000Z";
+    const now = Date.parse("2026-01-01T12:00:00.000Z");
+    const threads = [
+      row("active", "p", at),
+      row("pinned", "p", at, { pinnedAt: at, pinOrderKey: "b" }),
+      row("pinned-first", "p", at, { pinnedAt: at, pinOrderKey: "a" }),
+      row("settled-old", "p", at, { settledOverride: "settled", settledAt: at }),
+      row("settled-new", "p", at, { settledOverride: "settled", settledAt: future }),
+      row("snoozed", "p", at, { snoozedUntil: future, snoozedAt: at }),
+      row("woke", "p", at, { snoozedUntil: at, snoozedAt: at }),
+      row("asked", "p", at, {
+        snoozedUntil: future,
+        snoozedAt: at,
+        pendingRuntimeRequest: { id: "r", kind: "command" },
+      }),
+      row("failed-since", "p", at, {
+        snoozedUntil: future,
+        snoozedAt: at,
+        status: "failed",
+        latestRunCompletedAt: "2026-01-01T06:00:00.000Z",
+      }),
+      row("failed-before", "p", at, {
+        snoozedUntil: future,
+        snoozedAt: "2026-01-01T06:00:00.000Z",
+        status: "failed",
+        latestRunCompletedAt: at,
+      }),
+    ];
+    const sections = sidebarSections(threads as never, now);
+    const ids = (list: { id: string }[]) => list.map((thread) => thread.id);
+    expect(ids(sections.Pinned)).toEqual(["pinned-first", "pinned"]);
+    expect(ids(sections.Active)).toEqual(["active", "woke", "asked", "failed-since"]);
+    expect(ids(sections.Snoozed)).toEqual(["snoozed", "failed-before"]);
+    expect(ids(sections.Settled)).toEqual(["settled-new", "settled-old"]);
+  });
+
   it("derives a row's status and how long it has been working", () => {
     const at = "2026-01-01T00:00:00.000Z";
     const status = (extra: object) => sidebarStatus(row("t", "p", at, extra) as never);
@@ -929,6 +1169,37 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(answerRequest, SESSION_ID, "r-1", null, built());
     expect(answers[0]!.Answers).toEqual({ one: "typed", many: ["a", "b"] });
     expect(server.session().QuestionAnswers).toEqual({});
+  });
+
+  it("sends a thread command and leaves the row to the stream, showing a failure", async () => {
+    const commands: { ThreadId: string; Command: object }[] = [];
+    let refuse = false;
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: object }) => {
+        if (refuse) throw new Error("server said no");
+        commands.push(effect);
+      },
+    });
+    await server.runtime.dispatch(threadCommand, ENV_ID, "t-1", { Kind: "settle" });
+    expect(commands).toMatchObject([{ ThreadId: "t-1", Command: { Kind: "settle" } }]);
+    refuse = true;
+    await server.runtime.dispatch(threadCommand, ENV_ID, "t-1", { Kind: "pin" });
+    expect(server.environment().Local.ThreadCommandError).toBe("server said no");
+    await server.runtime.dispatch(threadCommand, ENV_ID, "t-1", {
+      Kind: "visit",
+      VisitedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(server.environment().Local.ThreadCommandError).toBeUndefined();
+  });
+
+  it("deleting forgets the thread even when it isn't open, and clears the selection", async () => {
+    const server = await connect(undefined, THREAD_ID, { threadCommand: () => undefined });
+    await server.runtime.dispatch(setDraft, SESSION_ID, "gone");
+    await server.runtime.dispatch(threadCommand, ENV_ID, THREAD_ID, { Kind: "delete" });
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
+    expect(server.environment().Replica.OpenThreads[THREAD_ID]).toBeUndefined();
+    expect(server.environment().Local.SelectedThreadId).toBeNull();
+    expect(server.address.thread).toBeNull();
   });
 
   it("keeps a pending request's id stable when an unrelated row arrives", async () => {

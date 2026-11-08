@@ -25,7 +25,6 @@ export const shellStream: IResourceImplementation<"shellStream"> = (params, r) =
       Effect.andThen(session.initialConfig),
       Effect.map((config) => ({
         omitIdleSubagents: config.shellThreadFamilies === true,
-        omitOlderSettled: config.shellOlderSettled === true && config.shellThreadFamilies === true,
       })),
       Effect.orElseSucceed(() => ({})),
       Effect.map((options) => ({
