@@ -1,6 +1,6 @@
 // @effect-diagnostics globalTimers:off -- A view-only reset of the copied icon, outside any Effect runtime.
-import { type IActionGenerator, type IEntity } from "reflex";
-import { useLocalState, useResource } from "reflex-solid";
+import { type IActionGenerator, type IEntity } from "treflex";
+import { useComponentState, useResource } from "treflex-solid";
 import {
   type Component,
   createEffect,
@@ -132,7 +132,7 @@ function AttachmentImage(props: {
   file: IWireAttachment;
   grouped: boolean;
 }) {
-  const local = useLocalState((id): IAttachmentImage => ({ $Id: id, Url: null, Failed: false }));
+  const local = useComponentState<IAttachmentImage>(() => ({ Url: null, Failed: false }));
   onMount(() => local.dispatch(loadAttachmentUrl, props.environmentId, props.file.id));
   const [expanded, setExpanded] = createSignal(false);
   return (

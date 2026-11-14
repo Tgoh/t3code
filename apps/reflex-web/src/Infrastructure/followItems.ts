@@ -8,7 +8,6 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
 import { connectionRuntime } from "./connection";
-import type { IEmitOutcome } from "./wire";
 
 interface ILiveSurface {
   status(detail?: string): void;
@@ -16,8 +15,7 @@ interface ILiveSurface {
 }
 
 interface IStreamSurface<Item> extends ILiveSurface {
-  emit(message: { Item: Item }): Promise<IEmitOutcome>;
-  end(reason?: string): void;
+  emit(message: { Item: Item }): Promise<void>;
 }
 
 export function failureText(cause: Cause.Cause<unknown>): string {
@@ -53,12 +51,7 @@ export function followItems<Decoded, Item, E, EE>(
   return followLive(r, environmentId, items, (decoded) =>
     encode(decoded).pipe(
       Effect.flatMap((item) =>
-        Effect.promise(() => r.emit({ Item: item })).pipe(
-          Effect.map((outcome) => {
-            if (outcome === "failed") r.end("receiver-failed");
-            else if (outcome !== "dropped") advance(item);
-          }),
-        ),
+        Effect.promise(() => r.emit({ Item: item })).pipe(Effect.map(() => advance(item))),
       ),
     ),
   );

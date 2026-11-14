@@ -9,14 +9,15 @@ import { isOrchestrationV2TurnItemVisible } from "@t3tools/shared/orchestrationV
 import {
   type IActionGenerator,
   type IEntity,
+  type IOpenGenerator,
   type ISelectorGenerator,
   isEnded,
-  merge,
+  open,
   openResource,
-  publishScoped,
+  publishToNearest,
   receiver,
-} from "reflex";
-import { createFeatureContext } from "reflex-solid";
+} from "treflex";
+import { createEntityFeature } from "treflex-solid";
 
 import { delayEffect } from "./Infrastructure/delay";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
@@ -28,13 +29,13 @@ import type {
   IWireThreadSnapshot,
   IWireTurnItem,
 } from "./Infrastructure/wire";
-import { byId, put, WIRE_KEY } from "./rows";
+import { byId, put, reconcile } from "./rows";
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceRegistry {
     "Thread/Stream": { Type: "threadStream" };
   }
-  interface IEventRegistry {
+  interface IMessageRegistry {
     "Thread/Deleted": { ThreadId: string };
   }
 }
@@ -96,12 +97,10 @@ export const NO_HISTORY: IOpenThread["History"] = {
 };
 
 export function getDefaultOpenThread(
-  id: string,
   environmentId: string,
   threadId: string,
-): IOpenThread {
+): Omit<IOpenThread, "$Id"> {
   return {
-    $Id: id,
     EnvironmentId: environmentId,
     ThreadId: threadId,
     LastSequence: 0,
@@ -258,7 +257,7 @@ function applyTurnItem(draft: IOpenThread, wire: IWireTurnItem): void {
 
 function setThread(draft: IOpenThread, thread: NonNullable<IOpenThread["Thread"]>): void {
   if (draft.Thread === null) draft.Thread = thread;
-  else merge(draft.Thread, thread, WIRE_KEY);
+  else reconcile(draft.Thread, thread);
 }
 
 function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
@@ -365,12 +364,6 @@ function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
   }
 }
 
-const refresh = <T extends object>(target: T, next: T): void => {
-  merge(target, next, WIRE_KEY);
-};
-
-// Merged, not assigned: reflex refuses a fresh node carrying a live $Id, and rows the snapshot
-// still carries must keep their nodes so views over them don't remount.
 function applySnapshot(draft: IOpenThread, item: IWireThreadSnapshot): void {
   // restoreLocalVisibleTurnItems reads only row fields the wire form shares.
   const projection = (
@@ -396,24 +389,24 @@ function applySnapshot(draft: IOpenThread, item: IWireThreadSnapshot): void {
   }
   draft.LastSequence = item.snapshotSequence;
   setThread(draft, projection.thread);
-  refresh(draft.Runs, byId(projection.runs));
-  refresh(draft.Attempts, byId(projection.attempts));
-  refresh(draft.Nodes, byId(projection.nodes));
-  refresh(draft.Subagents, sources.Subagents);
-  refresh(draft.ProviderSessions, byId(projection.providerSessions));
-  refresh(draft.ProviderThreads, byId(projection.providerThreads));
-  refresh(draft.ProviderTurns, byId(projection.providerTurns));
-  refresh(draft.RuntimeRequests, byId(projection.runtimeRequests));
-  refresh(draft.Messages, sources.Messages);
-  refresh(draft.Plans, byId(projection.plans));
-  refresh(draft.CheckpointScopes, byId(projection.checkpointScopes));
-  refresh(draft.Checkpoints, sources.Checkpoints);
-  refresh(draft.ContextHandoffs, byId(projection.contextHandoffs));
-  refresh(draft.ContextTransfers, byId(projection.contextTransfers));
-  refresh(draft.TurnItems, turnItems);
-  refresh(draft.InheritedItems, inherited);
-  refresh(draft.Rows, rows);
-  refresh(draft.Timeline, timeline);
+  reconcile(draft.Runs, byId(projection.runs));
+  reconcile(draft.Attempts, byId(projection.attempts));
+  reconcile(draft.Nodes, byId(projection.nodes));
+  reconcile(draft.Subagents, sources.Subagents);
+  reconcile(draft.ProviderSessions, byId(projection.providerSessions));
+  reconcile(draft.ProviderThreads, byId(projection.providerThreads));
+  reconcile(draft.ProviderTurns, byId(projection.providerTurns));
+  reconcile(draft.RuntimeRequests, byId(projection.runtimeRequests));
+  reconcile(draft.Messages, sources.Messages);
+  reconcile(draft.Plans, byId(projection.plans));
+  reconcile(draft.CheckpointScopes, byId(projection.checkpointScopes));
+  reconcile(draft.Checkpoints, sources.Checkpoints);
+  reconcile(draft.ContextHandoffs, byId(projection.contextHandoffs));
+  reconcile(draft.ContextTransfers, byId(projection.contextTransfers));
+  reconcile(draft.TurnItems, turnItems);
+  reconcile(draft.InheritedItems, inherited);
+  reconcile(draft.Rows, rows);
+  reconcile(draft.Timeline, timeline);
   draft.History = {
     Cursor: item.historyCursor ?? null,
     HasMore: item.hasMoreHistory ?? false,
@@ -437,7 +430,7 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
   if (item.event.threadId !== draft.ThreadId) return;
   // Removing this entity has to happen outside its own delivery.
   if (item.event.type === "thread.deleted") {
-    yield* publishScoped(draft, "Thread/Deleted", { ThreadId: draft.ThreadId });
+    yield* publishToNearest(draft, "Thread/Deleted", { ThreadId: draft.ThreadId });
     return;
   }
   if (draft.Thread !== null) applyEvent(draft, item.event);
@@ -449,7 +442,7 @@ export const ThreadReceiver = receiver<IOpenThread>("ThreadReceiver")({
       draft.Ended = message.$Ended.Reason;
       // A batch the receiver failed would fail again on every reopen.
       if (message.$Ended.Reason === "receiver-failed") return;
-      yield* delayEffect({ Ms: REOPEN_MS });
+      yield* open(delayEffect({ Ms: REOPEN_MS }));
       delete draft.Ended;
       yield* openThreadStream(draft);
       return;
@@ -483,14 +476,15 @@ function mergeOlderRows(draft: IOpenThread, items: IWireHistoryPage["items"]): v
   draft.Timeline = [...head, ...draft.Timeline.filter((id) => !inPage.has(id))];
 }
 
-export function* loadEarlier(draft: IOpenThread): IActionGenerator {
+export function* loadEarlier(draft: IOpenThread): IOpenGenerator {
   if (draft.History.Loading || draft.History.Cursor === null || !draft.History.HasMore) return;
   draft.History.Loading = true;
   delete draft.History.Error;
+  const threadId = draft.ThreadId;
   let cursor = draft.History.Cursor;
   try {
     for (;;) {
-      const page: IWireHistoryPage = yield* threadHistoryPage(draft.ThreadId, cursor);
+      const page: IWireHistoryPage = yield* open(threadHistoryPage(threadId, cursor));
       // A reconnect snapshot during the wait replaced the window this cursor pointed into.
       if (draft.History.Cursor !== cursor) return;
       mergeOlderRows(draft, page.items);
@@ -647,7 +641,7 @@ export function* pendingQuestionIds(draft: IOpenThread): ISelectorGenerator<stri
   return pendingIds(draft).filter((id) => !isApproval(draft, id));
 }
 
-export default createFeatureContext<IOpenThread>(import.meta.url)(
+export default createEntityFeature<IOpenThread>(import.meta.url)(
   { loadEarlier },
   { latestRun, pendingApprovalIds, pendingQuestionIds, queuedRuns },
 );

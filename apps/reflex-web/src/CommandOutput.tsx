@@ -3,11 +3,11 @@ import {
   terminalOutputSpans,
   type TerminalSpanStyle,
 } from "@t3tools/shared/terminalOutput";
-import { type IActionGenerator, type IEntity, openResource } from "reflex";
-import { useLocalState, useResource } from "reflex-solid";
+import { type IActionGenerator, type IEntity, openResource } from "treflex";
+import { useComponentState, useResource } from "treflex-solid";
 import { createEffect, createMemo, createSignal, Index, onMount, Show } from "solid-js";
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceRegistry {
     "Command/Output": { Type: "commandOutput" };
   }
@@ -39,9 +39,9 @@ function* openOutput(
   });
 }
 
-// The local owner's removal closes the subscription.
+// The component entity's removal closes the subscription.
 export function CommandOutput(props: { environmentId: string; threadId: string; itemId: string }) {
-  const local = useLocalState((id): IEntity => ({ $Id: id }));
+  const local = useComponentState(() => ({}));
   const output = useResource(local.state, "Command/Output");
   onMount(() => local.dispatch(openOutput, props.environmentId, props.threadId, props.itemId));
   const spans = createMemo(() => terminalOutputSpans(output.value()?.Text ?? "", palette()));

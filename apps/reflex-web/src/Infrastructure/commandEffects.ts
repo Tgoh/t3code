@@ -1,4 +1,4 @@
-import { defineEffect, type IEffect } from "reflex";
+import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
 import type { IWireProjection, IWireTurnItem } from "./wire";
 
@@ -150,3 +150,9 @@ export const respondRequestEffect = defineEffect<IRespondRequestEffect, void>("r
 export const serverProvidersEffect = defineEffect<IServerProvidersEffect, IProviderOption[]>(
   "serverProviders",
 );
+
+export function* withCommandId<R>(
+  run: (commandId: string) => IActionGenerator<R>,
+): IActionGenerator<R> {
+  return yield* run(yield* generateGuid());
+}

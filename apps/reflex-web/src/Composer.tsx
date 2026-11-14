@@ -1,4 +1,4 @@
-import { useResource } from "reflex-solid";
+import { useResource } from "treflex-solid";
 import { type Component, For, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
@@ -28,9 +28,9 @@ export function Composer(props: { active?: boolean }) {
   const isDraft = () => held().NewThreadProjectId != null;
   const selection = () => encode(session.effectiveModel());
   const mode = () => RUNTIME_MODES[session.effectiveRuntimeMode()];
-  const stopping = () => session.stopRequested() || held().Stopping;
+  const stopping = () => session.stopRequested() || session.stopping();
   const canSend = () =>
-    !held().Sending && (held().Draft.trim() !== "" || held().Attachments.length > 0);
+    !session.sending() && (held().Draft.trim() !== "" || held().Attachments.length > 0);
 
   const addFiles = async (picked: File[]) => {
     if (picked.length === 0) return;
@@ -184,7 +184,7 @@ export function Composer(props: { active?: boolean }) {
           <button
             type="submit"
             class="round-button send"
-            aria-label={held().Sending ? "Sending" : "Submit message"}
+            aria-label={session.sending() ? "Sending" : "Submit message"}
             disabled={!canSend()}
           >
             <span class="send-art">

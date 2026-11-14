@@ -2,7 +2,7 @@ import {
   ORCHESTRATION_PROTOCOL_HEADER,
   ORCHESTRATION_PROTOCOL_VERSION_TEXT,
 } from "@t3tools/contracts";
-import { defineEffect, type IEffect, implementation } from "reflex";
+import { defineEffect, type IEffect, implementation } from "treflex";
 
 import type { IWireHistoryPage } from "./wire";
 

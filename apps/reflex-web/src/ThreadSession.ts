@@ -6,20 +6,26 @@ import {
   getData,
   type IActionGenerator,
   type IEntity,
+  type IOpenGenerator,
+  type IResourceHandle,
   type ISelectorGenerator,
+  inFlight,
   isEnded,
+  leading,
+  open,
   openResource,
-  publishScoped,
+  publishToNearest,
   receiver,
   resource,
   select,
-} from "reflex";
-import { createFeatureContext } from "reflex-solid";
+} from "treflex";
+import { createEntityFeature } from "treflex-solid";
 
 import {
   closeTerminalEffect,
   type IApprovalDecision,
   type IProviderOption,
+  type IStartTurn,
   type IWireAttachment,
   type IWireInteractionMode,
   type IWireModelSelection,
@@ -29,6 +35,7 @@ import {
   startTurnEffect,
   stopThreadEffect,
   threadDiffEffect,
+  withCommandId,
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import {
@@ -40,7 +47,7 @@ import type { ITerminalStatus } from "./Infrastructure/terminalSession";
 import { type IOpenThread, latestDiffTurn } from "./OpenThread";
 import type { IShell } from "./Shell";
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceRegistry {
     "Composer/Files": { Type: "composerFiles" };
     "Terminal/Session": { Type: "terminalSession" };
@@ -48,7 +55,7 @@ declare module "reflex" {
   interface IDataSourceRegistry {
     Replica: IReplica;
   }
-  interface IEventRegistry {
+  interface IMessageRegistry {
     "Thread/Started": { ThreadId: string };
   }
 }
@@ -78,7 +85,6 @@ export interface ITerminalPanel {
   TerminalId: string;
   Status: ITerminalStatus | null;
   FocusOnMount: boolean;
-  Ending: boolean;
   Error?: string;
 }
 
@@ -91,9 +97,7 @@ export interface IThreadSession extends IEntity {
   AttachmentError?: string;
   ModelSelection: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode;
-  Sending: boolean;
   SendError?: string;
-  Stopping: boolean;
   StopError?: string;
   QuestionAnswers: Record<string, string>;
   Answering: string | null;
@@ -106,9 +110,8 @@ export function getDefaultThreadSession(
   environmentId: string,
   threadId: string,
   newThreadProjectId: string | null,
-): IThreadSession {
+): Omit<IThreadSession, "$Id"> {
   return {
-    $Id: `session:${environmentId}:${threadId}`,
     EnvironmentId: environmentId,
     ThreadId: threadId,
     NewThreadProjectId: newThreadProjectId,
@@ -116,8 +119,6 @@ export function getDefaultThreadSession(
     Attachments: [],
     ModelSelection: null,
     RuntimeMode: DEFAULT_RUNTIME_MODE,
-    Sending: false,
-    Stopping: false,
     QuestionAnswers: {},
     Answering: null,
     Panels: {
@@ -128,7 +129,6 @@ export function getDefaultThreadSession(
       TerminalId: DEFAULT_TERMINAL_ID,
       Status: null,
       FocusOnMount: false,
-      Ending: false,
     },
   };
 }
@@ -140,7 +140,7 @@ export function* effectiveModel(
   draft: IThreadSession,
 ): ISelectorGenerator<IWireModelSelection | null> {
   if (draft.ModelSelection != null) return draft.ModelSelection;
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   if (replica === undefined) return null;
   const thread = replica.OpenThreads[draft.ThreadId]?.Thread;
   if (thread != null) return thread.modelSelection;
@@ -172,22 +172,22 @@ export function* effectiveModelDisplay(
 ): ISelectorGenerator<ReturnType<typeof modelDisplay> | null> {
   const model = yield* effectiveModel(draft);
   if (model === null) return null;
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   return modelDisplay(replica?.Providers ?? [], model);
 }
 
 export function* effectiveRuntimeMode(draft: IThreadSession): ISelectorGenerator<IWireRuntimeMode> {
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   return replica?.OpenThreads[draft.ThreadId]?.Thread?.runtimeMode ?? draft.RuntimeMode;
 }
 
 function* interactionMode(draft: IThreadSession): ISelectorGenerator<IWireInteractionMode> {
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   return replica?.OpenThreads[draft.ThreadId]?.Thread?.interactionMode ?? "default";
 }
 
 export function* projectName(draft: IThreadSession): ISelectorGenerator<string | null> {
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   const projectId =
     draft.NewThreadProjectId ?? replica?.OpenThreads[draft.ThreadId]?.Thread?.projectId;
   if (projectId == null) return null;
@@ -195,18 +195,18 @@ export function* projectName(draft: IThreadSession): ISelectorGenerator<string |
 }
 
 export function* stopRequested(draft: IThreadSession): ISelectorGenerator<boolean> {
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   return replica?.Shell.Threads[draft.ThreadId]?.latestRunStopRequested === true;
 }
 
 function* latestThreadDiffTurn(draft: IThreadSession): ISelectorGenerator<number | null> {
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   const thread = replica?.OpenThreads[draft.ThreadId];
   return thread === undefined ? null : latestDiffTurn(thread);
 }
 
 function* terminalLaunch(draft: IThreadSession): ISelectorGenerator<ITerminalLaunch | null> {
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   const thread = replica?.OpenThreads[draft.ThreadId]?.Thread;
   if (replica === undefined || thread == null) return null;
   const root = replica.Shell.Projects[thread.projectId]?.workspaceRoot;
@@ -215,7 +215,7 @@ function* terminalLaunch(draft: IThreadSession): ISelectorGenerator<ITerminalLau
 }
 
 function* isThreadOpen(draft: IThreadSession): ISelectorGenerator<boolean> {
-  const replica = yield* getData("Replica", draft);
+  const replica = yield* getData(draft, "Replica");
   return replica?.OpenThreads[draft.ThreadId] !== undefined;
 }
 
@@ -248,8 +248,28 @@ export function* removeAttachment(draft: IThreadSession, id: string): IActionGen
   yield* resource(draft, "Composer/Files").remove(id);
 }
 
-export function* send(draft: IThreadSession): IActionGenerator {
-  if (draft.Sending) return;
+function* uploadAndStart(
+  files: IResourceHandle<"Composer/Files">,
+  fileIds: string[],
+  turn: Omit<IStartTurn, "CommandId" | "MessageId" | "Attachments">,
+): IActionGenerator {
+  const attachments: IWireAttachment[] = [];
+  for (const id of fileIds) {
+    const uploaded = yield* files.upload(id);
+    if (uploaded === undefined) throw new Error("An image couldn't be uploaded.");
+    attachments.push(uploaded);
+  }
+  const commandId = yield* generateGuid();
+  const messageId = yield* generateGuid();
+  yield* startTurnEffect({
+    ...turn,
+    CommandId: commandId,
+    MessageId: messageId,
+    Attachments: attachments,
+  });
+}
+
+export const send = leading(function* sendDraft(draft: IThreadSession): IOpenGenerator {
   const text = draft.Draft.trim();
   const fileIds = draft.Attachments.map((file) => file.Id);
   if (text === "" && fileIds.length === 0) return;
@@ -258,40 +278,25 @@ export function* send(draft: IThreadSession): IActionGenerator {
   const runtimeMode = yield* select(effectiveRuntimeMode);
   const interaction = yield* select(interactionMode);
   const overridden = draft.ModelSelection !== null;
-  draft.Sending = true;
+  const files = resource(draft, "Composer/Files");
+  const turn = {
+    EnvironmentId: draft.EnvironmentId,
+    ThreadId: draft.ThreadId,
+    Text: text,
+    ModelSelection: projectId !== null || overridden ? model : null,
+    RuntimeMode: runtimeMode,
+    InteractionMode: interaction,
+    NewThread:
+      projectId === null
+        ? null
+        : { ProjectId: projectId, Title: text.slice(0, TITLE_LENGTH) || "New thread" },
+  };
   delete draft.SendError;
-  let failure: string | null = null;
   try {
     if (projectId !== null && model === null) throw new Error("No provider is available.");
-    const attachments: IWireAttachment[] = [];
-    for (const id of fileIds) {
-      const uploaded = yield* resource(draft, "Composer/Files").upload(id);
-      if (uploaded === undefined) throw new Error("An image couldn't be uploaded.");
-      attachments.push(uploaded);
-    }
-    const commandId = yield* generateGuid();
-    const messageId = yield* generateGuid();
-    yield* startTurnEffect({
-      EnvironmentId: draft.EnvironmentId,
-      ThreadId: draft.ThreadId,
-      CommandId: commandId,
-      MessageId: messageId,
-      Text: text,
-      Attachments: attachments,
-      ModelSelection: projectId !== null || overridden ? model : null,
-      RuntimeMode: runtimeMode,
-      InteractionMode: interaction,
-      NewThread:
-        projectId === null
-          ? null
-          : { ProjectId: projectId, Title: text.slice(0, TITLE_LENGTH) || "New thread" },
-    });
+    yield* open(uploadAndStart(files, fileIds, turn));
   } catch (error) {
-    failure = errorText(error);
-  }
-  draft.Sending = false;
-  if (failure !== null) {
-    draft.SendError = failure;
+    draft.SendError = errorText(error);
     return;
   }
   if (draft.Draft.trim() === text) draft.Draft = "";
@@ -299,37 +304,44 @@ export function* send(draft: IThreadSession): IActionGenerator {
   if (fileIds.length > 0) yield* resource(draft, "Composer/Files").forget(fileIds);
   if (projectId !== null) {
     draft.NewThreadProjectId = null;
-    yield* publishScoped(draft, "Thread/Started", { ThreadId: draft.ThreadId });
+    yield* publishToNearest(draft, "Thread/Started", { ThreadId: draft.ThreadId });
   }
-}
+});
 
-export function* stopRun(draft: IThreadSession): IActionGenerator {
-  if (draft.Stopping) return;
-  draft.Stopping = true;
+export const stopRun = leading(function* requestStop(draft: IThreadSession): IOpenGenerator {
   delete draft.StopError;
+  const environmentId = draft.EnvironmentId;
+  const threadId = draft.ThreadId;
   try {
-    const commandId = yield* generateGuid();
-    yield* stopThreadEffect({
-      EnvironmentId: draft.EnvironmentId,
-      ThreadId: draft.ThreadId,
-      CommandId: commandId,
-    });
+    yield* open(
+      withCommandId((commandId) =>
+        stopThreadEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+        }),
+      ),
+    );
   } catch (error) {
     draft.StopError = errorText(error);
   }
-  draft.Stopping = false;
-}
+});
 
-export function* queueAction(draft: IThreadSession, runId: string | null): IActionGenerator {
+export function* queueAction(draft: IThreadSession, runId: string | null): IOpenGenerator {
   delete draft.StopError;
+  const environmentId = draft.EnvironmentId;
+  const threadId = draft.ThreadId;
   try {
-    const commandId = yield* generateGuid();
-    yield* queueCommandEffect({
-      EnvironmentId: draft.EnvironmentId,
-      ThreadId: draft.ThreadId,
-      CommandId: commandId,
-      RunId: runId,
-    });
+    yield* open(
+      withCommandId((commandId) =>
+        queueCommandEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+          RunId: runId,
+        }),
+      ),
+    );
   } catch (error) {
     draft.StopError = errorText(error);
   }
@@ -371,20 +383,25 @@ export function* answerRequest(
   requestId: string,
   decision: IApprovalDecision | null,
   answers: Record<string, string | ReadonlyArray<string>> | null,
-): IActionGenerator {
+): IOpenGenerator {
   if (draft.Answering !== null) return;
   draft.Answering = requestId;
   delete draft.AnswerError;
+  const environmentId = draft.EnvironmentId;
+  const threadId = draft.ThreadId;
   try {
-    const commandId = yield* generateGuid();
-    yield* respondRequestEffect({
-      EnvironmentId: draft.EnvironmentId,
-      ThreadId: draft.ThreadId,
-      CommandId: commandId,
-      RequestId: requestId,
-      Decision: decision,
-      Answers: answers,
-    });
+    yield* open(
+      withCommandId((commandId) =>
+        respondRequestEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+          RequestId: requestId,
+          Decision: decision,
+          Answers: answers,
+        }),
+      ),
+    );
     draft.QuestionAnswers = {};
   } catch (error) {
     draft.AnswerError = errorText(error);
@@ -396,9 +413,9 @@ export function* openDiff(
   draft: IThreadSession,
   scope: "turn" | "thread",
   turnCount: number | null,
-): IActionGenerator {
-  const panel = draft.Panels.Diff;
+): IOpenGenerator {
   const toTurnCount = turnCount ?? (yield* select(latestThreadDiffTurn));
+  const panel = draft.Panels.Diff;
   panel.Open = true;
   panel.Scope = scope;
   panel.ToTurnCount = toTurnCount;
@@ -410,22 +427,24 @@ export function* openDiff(
     return;
   }
   panel.Loading = true;
+  const request = {
+    EnvironmentId: draft.EnvironmentId,
+    ThreadId: draft.ThreadId,
+    Scope: scope,
+    ToTurnCount: toTurnCount,
+  };
   let text: string | null = null;
   let failure: string | null = null;
   try {
-    text = yield* threadDiffEffect({
-      EnvironmentId: draft.EnvironmentId,
-      ThreadId: draft.ThreadId,
-      Scope: scope,
-      ToTurnCount: toTurnCount,
-    });
+    text = yield* open(threadDiffEffect(request));
   } catch (error) {
     failure = errorText(error);
   }
-  if (!panel.Open || panel.Scope !== scope || panel.ToTurnCount !== toTurnCount) return;
-  panel.Loading = false;
-  panel.Text = text;
-  if (failure !== null) panel.Error = failure;
+  const current = draft.Panels.Diff;
+  if (!current.Open || current.Scope !== scope || current.ToTurnCount !== toTurnCount) return;
+  current.Loading = false;
+  current.Text = text;
+  if (failure !== null) current.Error = failure;
 }
 
 export function* closeDiff(draft: IThreadSession): IActionGenerator {
@@ -480,27 +499,32 @@ export function* closeTerminal(draft: IThreadSession): IActionGenerator {
   yield* rememberTerminalEffect({ ThreadId: draft.ThreadId, Launch: null });
 }
 
-export function* endTerminal(draft: IThreadSession): IActionGenerator {
-  const panel = draft.Terminal;
-  if (panel.Ending) return;
-  panel.Ending = true;
-  delete panel.Error;
-  let failure: string | null = null;
+export const endTerminal = leading(function* endShell(draft: IThreadSession): IOpenGenerator {
+  delete draft.Terminal.Error;
+  const request = {
+    EnvironmentId: draft.EnvironmentId,
+    ThreadId: draft.ThreadId,
+    TerminalId: draft.Terminal.TerminalId,
+  };
   try {
-    yield* closeTerminalEffect({
-      EnvironmentId: draft.EnvironmentId,
-      ThreadId: draft.ThreadId,
-      TerminalId: panel.TerminalId,
-    });
+    yield* open(closeTerminalEffect(request));
   } catch (error) {
-    failure = errorText(error);
-  }
-  panel.Ending = false;
-  if (failure !== null) {
-    panel.Error = failure;
+    draft.Terminal.Error = errorText(error);
     return;
   }
   yield* closeTerminal(draft);
+});
+
+export function* sending(draft: IThreadSession): ISelectorGenerator<boolean> {
+  return yield* inFlight(send, draft);
+}
+
+export function* stopping(draft: IThreadSession): ISelectorGenerator<boolean> {
+  return yield* inFlight(stopRun, draft);
+}
+
+export function* ending(draft: IThreadSession): ISelectorGenerator<boolean> {
+  return yield* inFlight(endTerminal, draft);
 }
 
 export const TerminalReceiver = receiver<IThreadSession>("TerminalReceiver")({
@@ -516,7 +540,7 @@ export const TerminalReceiver = receiver<IThreadSession>("TerminalReceiver")({
   },
 });
 
-export default createFeatureContext<IThreadSession>(import.meta.url)(
+export default createEntityFeature<IThreadSession>(import.meta.url)(
   {
     setDraft,
     setModelSelection,
@@ -534,5 +558,14 @@ export default createFeatureContext<IThreadSession>(import.meta.url)(
     closeTerminal,
     endTerminal,
   },
-  { effectiveModel, effectiveModelDisplay, effectiveRuntimeMode, projectName, stopRequested },
+  {
+    effectiveModel,
+    effectiveModelDisplay,
+    effectiveRuntimeMode,
+    projectName,
+    stopRequested,
+    sending,
+    stopping,
+    ending,
+  },
 );

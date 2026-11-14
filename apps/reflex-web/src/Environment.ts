@@ -1,16 +1,19 @@
 import {
+  bind,
   closeResource,
-  fork,
+  entity,
   generateGuid,
   type IActionGenerator,
   type IEntity,
+  type IOpenGenerator,
   type ISelectorGenerator,
+  open,
   openResource,
   receiver,
   registerDataSource,
-  subscribe,
-} from "reflex";
-import { createFeatureContext } from "reflex-solid";
+  start,
+} from "treflex";
+import { createEntityFeature } from "treflex-solid";
 
 import { addressThread, setAddressThread } from "./Infrastructure/address";
 import {
@@ -19,10 +22,11 @@ import {
   projectCommandEffect,
   serverProvidersEffect,
   threadCommandEffect,
+  withCommandId,
 } from "./Infrastructure/commandEffects";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import { getDefaultOpenThread, type IOpenThread, openThreadStream } from "./OpenThread";
-import { getDefaultShell, openShellStream } from "./Shell";
+import { getDefaultShell, type IShell, openShellStream } from "./Shell";
 import {
   getDefaultThreadSession,
   type IReplica,
@@ -41,33 +45,37 @@ export interface IEnvironment extends IEntity {
   };
 }
 
-export function getDefaultEnvironment(environmentId: string, label: string): IEnvironment {
-  return {
-    $Id: `environment:${environmentId}`,
+export function* newEnvironment(
+  environmentId: string,
+  label: string,
+): IActionGenerator<IEnvironment> {
+  const shell = yield* entity<IShell>(getDefaultShell(environmentId));
+  const replica = yield* entity<IReplica>({ Providers: [], Shell: shell, OpenThreads: {} });
+  const local = yield* entity<IEnvironment["Local"]>({
+    SelectedThreadId: null,
+    ThreadSessions: {},
+  });
+  return yield* entity<IEnvironment>({
     EnvironmentId: environmentId,
     Label: label,
-    Replica: {
-      $Id: `replica:${environmentId}`,
-      Providers: [],
-      Shell: getDefaultShell(`shell:${environmentId}`, environmentId),
-      OpenThreads: {},
-    },
-    Local: { $Id: `local:${environmentId}`, SelectedThreadId: null, ThreadSessions: {} },
-  };
+    Replica: replica,
+    Local: local,
+  });
 }
 
 export function* init(draft: IEnvironment): IActionGenerator {
   yield* registerDataSource(draft, "Replica", draft.Replica);
-  yield* subscribe(draft, "Thread/Deleted", EnvironmentReceiver);
-  yield* subscribe(draft, "Thread/Started", EnvironmentReceiver);
+  bind(draft, EnvironmentReceiver);
   yield* openShellStream(draft.Replica.Shell);
-  yield* fork(loadProviders, draft);
+  yield* start(loadProviders, draft);
   const selected = yield* addressThread();
   if (selected !== null) yield* selectThread(draft, selected);
 }
 
-export function* loadProviders(draft: IEnvironment): IActionGenerator {
-  draft.Replica.Providers = yield* serverProvidersEffect({ EnvironmentId: draft.EnvironmentId });
+export function* loadProviders(draft: IEnvironment): IOpenGenerator {
+  const environmentId = draft.EnvironmentId;
+  const providers = yield* open(serverProvidersEffect({ EnvironmentId: environmentId }));
+  draft.Replica.Providers = providers;
 }
 
 function* sessionOf(
@@ -77,10 +85,8 @@ function* sessionOf(
 ): IActionGenerator<IThreadSession> {
   const held = draft.Local.ThreadSessions[threadId];
   if (held !== undefined) return held;
-  draft.Local.ThreadSessions[threadId] = getDefaultThreadSession(
-    draft.EnvironmentId,
-    threadId,
-    newThreadProjectId,
+  draft.Local.ThreadSessions[threadId] = yield* entity<IThreadSession>(
+    getDefaultThreadSession(draft.EnvironmentId, threadId, newThreadProjectId),
   );
   const session = draft.Local.ThreadSessions[threadId]!;
   yield* openResource(session, "Composer/Files", {
@@ -93,13 +99,11 @@ function* sessionOf(
 export function* openThread(draft: IEnvironment, threadId: string): IActionGenerator {
   if (draft.Replica.OpenThreads[threadId] !== undefined) return;
   const session = yield* sessionOf(draft, threadId);
-  draft.Replica.OpenThreads[threadId] = getDefaultOpenThread(
-    `open-thread:${draft.EnvironmentId}:${threadId}`,
-    draft.EnvironmentId,
-    threadId,
+  draft.Replica.OpenThreads[threadId] = yield* entity<IOpenThread>(
+    getDefaultOpenThread(draft.EnvironmentId, threadId),
   );
   yield* openThreadStream(draft.Replica.OpenThreads[threadId]!);
-  yield* fork(restoreTerminal, session.$Id);
+  yield* start(restoreTerminal, session.$Id);
 }
 
 export function* closeThread(draft: IEnvironment, threadId: string): IActionGenerator {
@@ -147,16 +151,20 @@ export function* threadCommand(
   draft: IEnvironment,
   threadId: string,
   command: IThreadCommand,
-): IActionGenerator {
+): IOpenGenerator {
   delete draft.Local.CommandError;
+  const environmentId = draft.EnvironmentId;
   try {
-    const commandId = yield* generateGuid();
-    yield* threadCommandEffect({
-      EnvironmentId: draft.EnvironmentId,
-      ThreadId: threadId,
-      CommandId: commandId,
-      Command: command,
-    });
+    yield* open(
+      withCommandId((commandId) =>
+        threadCommandEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+          Command: command,
+        }),
+      ),
+    );
   } catch (error) {
     // A visit is bookkeeping the user didn't ask for, and the next one covers it.
     if (command.Kind !== "visit") {
@@ -172,16 +180,21 @@ export function* projectCommand(
   draft: IEnvironment,
   projectId: string | null,
   command: IProjectCommand,
-): IActionGenerator {
+): IOpenGenerator {
   delete draft.Local.CommandError;
+  const environmentId = draft.EnvironmentId;
   const target = projectId ?? (yield* generateGuid());
   try {
-    yield* projectCommandEffect({
-      EnvironmentId: draft.EnvironmentId,
-      ProjectId: target,
-      CommandId: yield* generateGuid(),
-      Command: command,
-    });
+    yield* open(
+      withCommandId((commandId) =>
+        projectCommandEffect({
+          EnvironmentId: environmentId,
+          ProjectId: target,
+          CommandId: commandId,
+          Command: command,
+        }),
+      ),
+    );
   } catch (error) {
     draft.Local.CommandError = error instanceof Error ? error.message : String(error);
     return;
@@ -223,7 +236,7 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   },
 });
 
-export default createFeatureContext<IEnvironment>(import.meta.url)(
+export default createEntityFeature<IEnvironment>(import.meta.url)(
   { selectThread, newThread, threadCommand, projectCommand },
   { selectedOpenThread, selectedDraftSession, currentProjectId },
 );

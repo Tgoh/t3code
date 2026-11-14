@@ -1,4 +1,4 @@
-import { defineEffect, type IEffect, implementation } from "reflex";
+import { defineEffect, type IEffect, implementation } from "treflex";
 
 export interface ITerminalLaunch {
   Cwd: string;

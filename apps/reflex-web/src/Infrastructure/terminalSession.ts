@@ -12,7 +12,7 @@ import {
 import { projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { TERMINAL_PALETTES } from "@t3tools/shared/terminalOutput";
 import * as Effect from "effect/Effect";
-import type { IResourceImplementation } from "reflex";
+import type { IResourceImplementation } from "treflex";
 
 import { connectionRuntime } from "./connection";
 import { failureText, followLive } from "./followItems";
@@ -23,7 +23,7 @@ export interface ITerminalView {
   mount(element: HTMLElement, focus: boolean): () => void;
 }
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceTypeRegistry {
     terminalSession: {
       Params: {

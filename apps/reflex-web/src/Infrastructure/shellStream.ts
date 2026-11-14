@@ -2,12 +2,12 @@ import { subscribeDynamic } from "@t3tools/client-runtime/rpc";
 import { ORCHESTRATION_V2_WS_METHODS, OrchestrationV2ShellStreamItem } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import type { IResourceImplementation } from "reflex";
+import type { IResourceImplementation } from "treflex";
 
 import { followItems } from "./followItems";
 import type { IWireShellItem } from "./wire";
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceTypeRegistry {
     shellStream: {
       Params: { EnvironmentId: string };

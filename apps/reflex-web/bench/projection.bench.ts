@@ -4,9 +4,9 @@ import {
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { createTestRuntime } from "reflex";
 import { createEffect, createRoot } from "solid-js";
-import { expect, it, vi } from "vite-plus/test";
+import { createTestRuntime, guids, settled } from "treflex";
+import { expect, it } from "vite-plus/test";
 
 import { EnvironmentReceiver, openThread } from "../src/Environment";
 import type {
@@ -28,7 +28,6 @@ import {
 const SIZES = [100, 1_000, 5_000, 20_000];
 const DELTAS = 300;
 const ENV = "env";
-const OPEN_ID = `open-thread:${ENV}:${THREAD_ID}`;
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
@@ -63,27 +62,33 @@ function streamingDeltas(projection: IWireProjection, count: number): IWireThrea
 }
 
 async function connected(projection: IWireProjection) {
-  const runtime = createTestRuntime<IRoot>(getDefaultRoot("Root"), {
-    environmentInfo: () => ({ Authenticated: true, EnvironmentId: ENV, Label: "Bench" }),
-    addressThread: () => null,
-    serverProviders: () => [],
-  });
-  runtime.registerReceiver(EnvironmentReceiver.Id, EnvironmentReceiver.handle);
-  runtime.registerReceiver(ThreadReceiver.Id, ThreadReceiver.handle);
-  await runtime.dispatch(load, "Root");
-  await vi.waitFor(() =>
-    expect(runtime.resources().some((row) => row.Key === "Shell/Stream")).toBe(true),
+  const runtime = createTestRuntime<IRoot>(
+    getDefaultRoot("Root"),
+    {
+      environmentInfo: () => ({ Authenticated: true, EnvironmentId: ENV, Label: "Bench" }),
+      addressThread: () => null,
+      serverProviders: () => [],
+      generateGuid: guids("bench"),
+    },
+    { onError: (error) => console.error("action failed:", error) },
   );
-  await runtime.dispatch(openThread, `environment:${ENV}`, THREAD_ID);
+  runtime.registerReceiver(EnvironmentReceiver);
+  runtime.registerReceiver(ThreadReceiver);
+  await runtime.dispatch(load, "Root");
+  await settled();
+  expect(runtime.resources().some((row) => row.Key === "Shell/Stream")).toBe(true);
+  const environment = runtime.state.Environments[0]!;
+  await runtime.dispatch(openThread, environment.$Id, THREAD_ID);
+  const thread = () => environment.Replica.OpenThreads[THREAD_ID] as IOpenThread;
+  const openId = thread().$Id;
   const send = (Item: IWireThreadItem) =>
     runtime.dispatch(
       ThreadReceiver.handle,
-      OPEN_ID,
+      openId,
       { Type: "Thread/Stream", Item },
-      { publisher: { Id: OPEN_ID } },
+      { publisher: { Id: openId } },
     );
   await send(snapshotOf(copy(projection), 1));
-  const thread = () => runtime.state.Environments[0]!.Replica.OpenThreads[THREAD_ID] as IOpenThread;
   return { runtime, send, thread };
 }
 
@@ -108,11 +113,11 @@ it("per-delta cost", async () => {
     });
     await Promise.resolve();
     const before = { ...reruns };
-    const reflexSamples: number[] = [];
+    const treflexSamples: number[] = [];
     let sequence = 2;
     for (const next of deltas) {
       const item = { kind: "event", sequence: (sequence += 1), event: next } as IWireThreadItem;
-      reflexSamples.push(await timed(() => send(item)));
+      treflexSamples.push(await timed(() => send(item)));
     }
     dispose();
 
@@ -127,7 +132,7 @@ it("per-delta cost", async () => {
     }
     rows.push({
       items: projection.turnItems.length,
-      reflex: summary(reflexSamples),
+      treflex: summary(treflexSamples),
       reducer: summary(reducerSamples),
       selectorReruns: reruns.selector - before.selector,
       otherItemReruns: reruns.otherItem - before.otherItem,

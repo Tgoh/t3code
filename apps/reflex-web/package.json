@@ -21,9 +21,9 @@
     "effect": "catalog:",
     "lucide-solid": "^0.564.0",
     "marked": "^16.0.0",
-    "reflex": "file:../../../reflex-t3code-pin/packages/core",
-    "reflex-solid": "file:../../../reflex-t3code-pin/packages/solid",
-    "solid-js": "^1.9.12"
+    "solid-js": "^1.9.12",
+    "treflex": "file:../../../reflex-t3code-treflex/packages/core",
+    "treflex-solid": "file:../../../reflex-t3code-treflex/packages/solid"
   },
   "devDependencies": {
     "@types/node": "catalog:",

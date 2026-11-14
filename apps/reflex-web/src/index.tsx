@@ -1,5 +1,5 @@
-import { createRuntime } from "reflex";
-import { ReflexProvider } from "reflex-solid";
+import { createRuntime } from "treflex";
+import { TreflexProvider } from "treflex-solid";
 import { render } from "solid-js/web";
 
 import "@fontsource-variable/inter";
@@ -60,19 +60,19 @@ runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);
-runtime.registerResourceType("shellStream", shellStream);
-runtime.registerResourceType("threadStream", threadStream);
-runtime.registerReceiver(EnvironmentReceiver.Id, EnvironmentReceiver.handle);
-runtime.registerReceiver(ShellReceiver.Id, ShellReceiver.handle);
-runtime.registerReceiver(ThreadReceiver.Id, ThreadReceiver.handle);
-runtime.registerReceiver(TerminalReceiver.Id, TerminalReceiver.handle);
+runtime.registerResourceType("shellStream", shellStream, { endOnReceiverFailure: true });
+runtime.registerResourceType("threadStream", threadStream, { endOnReceiverFailure: true });
+runtime.registerReceiver(EnvironmentReceiver);
+runtime.registerReceiver(ShellReceiver);
+runtime.registerReceiver(ThreadReceiver);
+runtime.registerReceiver(TerminalReceiver);
 void runtime.dispatch(load, "Root");
 
 render(
   () => (
-    <ReflexProvider value={runtime}>
+    <TreflexProvider value={runtime}>
       <App state={runtime.state} />
-    </ReflexProvider>
+    </TreflexProvider>
   ),
   document.getElementById("root") as HTMLElement,
 );

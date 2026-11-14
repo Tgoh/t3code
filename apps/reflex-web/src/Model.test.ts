@@ -1,8 +1,8 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
 import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
-import { createTestRuntime, EntityReplacedError, type IActionGenerator } from "reflex";
 import { createEffect, createRoot } from "solid-js";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { createTestRuntime, EntityReplacedError, type IActionGenerator, settled } from "treflex";
+import { describe, expect, it } from "vite-plus/test";
 
 import {
   closeThread,
@@ -57,14 +57,17 @@ import {
   closeDiff,
   closeTerminal,
   effectiveModel,
+  ending,
   endTerminal,
   type IThreadSession,
   openDiff,
   openTerminal,
   questionAnswers,
   send,
+  sending,
   setDraft,
   setQuestionAnswer,
+  stopping,
   stopRun,
   TerminalReceiver,
 } from "./ThreadSession";
@@ -82,10 +85,6 @@ import {
 } from "./testing/threadFixture";
 
 const ENV = "env-1";
-const ENV_ID = `environment:${ENV}`;
-const OPEN_ID = `open-thread:${ENV}:${THREAD_ID}`;
-const sessionIdOf = (threadId: string) => `session:${ENV}:${threadId}`;
-const SESSION_ID = sessionIdOf(THREAD_ID);
 
 async function connect(
   historyPage?: (cursor: string) => Promise<IWireHistoryPage>,
@@ -95,67 +94,79 @@ async function connect(
   const address = { thread: initialAddress };
   const terminals = new Map<string, ITerminalLaunch>();
   let guid = 0;
-  const runtime = createTestRuntime<IRoot>(getDefaultRoot("Root"), {
-    environmentInfo: () => ({ Authenticated: true, EnvironmentId: ENV, Label: "Test" }),
-    serverProviders: () => [
-      {
-        InstanceId: "devReplay",
-        Name: "Replay",
-        Models: [{ Slug: "showcase", Name: "Showcase", IsDefault: true }],
+  const runtime = createTestRuntime<IRoot>(
+    getDefaultRoot("Root"),
+    {
+      environmentInfo: () => ({ Authenticated: true, EnvironmentId: ENV, Label: "Test" }),
+      serverProviders: () => [
+        {
+          InstanceId: "devReplay",
+          Name: "Replay",
+          Models: [{ Slug: "showcase", Name: "Showcase", IsDefault: true }],
+        },
+      ],
+      generateGuid: () => `guid-${(guid += 1)}`,
+      delay: () => undefined,
+      ...commands,
+      threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
+      addressThread: () => address.thread,
+      setAddressThread: (effect: { ThreadId: string | null }) => {
+        address.thread = effect.ThreadId;
       },
-    ],
-    generateGuid: () => `guid-${(guid += 1)}`,
-    delay: () => undefined,
-    ...commands,
-    threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
-    addressThread: () => address.thread,
-    setAddressThread: (effect: { ThreadId: string | null }) => {
-      address.thread = effect.ThreadId;
+      rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
+      rememberTerminal: (effect: { ThreadId: string; Launch: ITerminalLaunch | null }) => {
+        if (effect.Launch === null) terminals.delete(effect.ThreadId);
+        else terminals.set(effect.ThreadId, effect.Launch);
+      },
     },
-    rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
-    rememberTerminal: (effect: { ThreadId: string; Launch: ITerminalLaunch | null }) => {
-      if (effect.Launch === null) terminals.delete(effect.ThreadId);
-      else terminals.set(effect.ThreadId, effect.Launch);
-    },
-  });
-  runtime.registerReceiver(EnvironmentReceiver.Id, EnvironmentReceiver.handle);
-  runtime.registerReceiver(ShellReceiver.Id, ShellReceiver.handle);
-  runtime.registerReceiver(ThreadReceiver.Id, ThreadReceiver.handle);
-  runtime.registerReceiver(TerminalReceiver.Id, TerminalReceiver.handle);
+    { onError: (error) => console.error("action failed:", error) },
+  );
+  runtime.registerReceiver(EnvironmentReceiver);
+  runtime.registerReceiver(ShellReceiver);
+  runtime.registerReceiver(ThreadReceiver);
+  runtime.registerReceiver(TerminalReceiver);
   await runtime.dispatch(load, "Root");
+  await settled();
   const environment = () => runtime.state.Environments[0] as IEnvironment;
-  await vi.waitFor(() => {
-    expect(environment().Replica.Providers).toHaveLength(1);
-    if (initialAddress !== null) expect(address.thread).toBe(initialAddress);
-    else expect(runtime.resources().some((row) => row.Key === "Shell/Stream")).toBe(true);
-  });
+  expect(environment().Replica.Providers).toHaveLength(1);
+  if (initialAddress !== null) expect(address.thread).toBe(initialAddress);
+  else expect(runtime.resources().some((row) => row.Key === "Shell/Stream")).toBe(true);
+  const session = (threadId = THREAD_ID) =>
+    environment().Local.ThreadSessions[threadId] as IThreadSession;
+  const thread = () => environment().Replica.OpenThreads[THREAD_ID] as IOpenThread;
+  const envId = () => environment().$Id;
+  const openId = () => thread().$Id;
+  const shellId = () => environment().Replica.Shell.$Id;
   return {
     runtime,
     address,
     terminals,
     environment,
-    session: (threadId = THREAD_ID) =>
-      environment().Local.ThreadSessions[threadId] as IThreadSession,
-    thread: () => environment().Replica.OpenThreads[THREAD_ID] as IOpenThread,
-    open: () => runtime.dispatch(openThread, ENV_ID, THREAD_ID),
+    session,
+    thread,
+    envId,
+    sessionId: (threadId = THREAD_ID) => session(threadId).$Id,
+    openId,
+    shellId,
+    open: () => runtime.dispatch(openThread, envId(), THREAD_ID),
     sendThread: (Item: IWireThreadItem) =>
       runtime.dispatch(
         ThreadReceiver.handle,
-        OPEN_ID,
+        openId(),
         { Type: "Thread/Stream", Item },
-        { publisher: { Id: OPEN_ID } },
+        { publisher: { Id: openId() } },
       ),
     sendShell: (Item: IWireShellItem) =>
       runtime.dispatch(
         ShellReceiver.handle,
-        `shell:${ENV}`,
+        shellId(),
         { Type: "Shell/Stream", Item },
-        { publisher: { Id: `shell:${ENV}` } },
+        { publisher: { Id: shellId() } },
       ),
     disposed: (id: string) =>
       new Promise<void>((resolve) => {
         runtime.on("record", (record) => {
-          if (record.Kind === "entity:dispose" && record.Id === id) resolve();
+          if (record.Kind === "entity:dispose" && record.EntityId === id) resolve();
         });
       }),
   };
@@ -603,13 +614,15 @@ describe("markdown", () => {
 });
 
 describe("snapshots and identity", () => {
-  it("reflex refuses a fresh node over a live $Id, so a reconnect snapshot merges in place", async () => {
+  it("treflex refuses a fresh node over a live $Id, so a reconnect snapshot merges in place", async () => {
     const server = await connect();
     await server.open();
     function* replace(draft: IEnvironment): IActionGenerator {
       draft.Replica.OpenThreads[THREAD_ID] = { ...copy(draft.Replica.OpenThreads[THREAD_ID]!) };
     }
-    await expect(server.runtime.dispatch(replace, ENV_ID)).rejects.toThrow(EntityReplacedError);
+    await expect(server.runtime.dispatch(replace, server.envId())).rejects.toThrow(
+      EntityReplacedError,
+    );
 
     const start = longThread(6);
     await server.sendThread(snapshotOf(copy(start), 1));
@@ -656,7 +669,7 @@ describe("lifetimes", () => {
   it("a row missing from the shell leaves the thread and its session alone", async () => {
     const server = await connect();
     await server.open();
-    await server.runtime.dispatch(setDraft, SESSION_ID, "half a thought");
+    await server.runtime.dispatch(setDraft, server.sessionId(), "half a thought");
     const shellThread = { id: THREAD_ID, title: "T" };
     await server.sendShell({
       kind: "snapshot",
@@ -676,8 +689,8 @@ describe("lifetimes", () => {
     const server = await connect();
     await server.open();
     expect(server.runtime.resources().some((row) => row.Key === "Thread/Stream")).toBe(true);
-    await server.runtime.dispatch(setDraft, SESSION_ID, "kept");
-    await server.runtime.dispatch(closeThread, ENV_ID, THREAD_ID);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "kept");
+    await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
     expect(server.thread()).toBeUndefined();
     expect(server.runtime.resources().some((row) => row.Key === "Thread/Stream")).toBe(false);
     expect(server.environment().Local.ThreadSessions[THREAD_ID]!.Draft).toBe("kept");
@@ -687,7 +700,7 @@ describe("lifetimes", () => {
     const server = await connect();
     await server.open();
     await server.sendThread(snapshotOf(emptyProjection(), 1));
-    const gone = server.disposed(`session:${ENV}:${THREAD_ID}`);
+    const gone = server.disposed(server.sessionId());
     await server.sendThread({
       kind: "event",
       sequence: 2,
@@ -704,9 +717,9 @@ describe("lifetimes", () => {
     const endThread = (Reason: string) =>
       server.runtime.dispatch(
         ThreadReceiver.handle,
-        OPEN_ID,
+        server.openId(),
         { Type: "Thread/Stream", $Ended: { Reason } } as never,
-        { publisher: { Id: OPEN_ID } },
+        { publisher: { Id: server.openId() } },
       );
     await endThread("failed");
     expect(server.thread().Ended).toBeUndefined();
@@ -716,9 +729,9 @@ describe("lifetimes", () => {
     const endShell = (Reason: string) =>
       server.runtime.dispatch(
         ShellReceiver.handle,
-        `shell:${ENV}`,
+        server.shellId(),
         { Type: "Shell/Stream", $Ended: { Reason } } as never,
-        { publisher: { Id: `shell:${ENV}` } },
+        { publisher: { Id: server.shellId() } },
       );
     await endShell("failed");
     expect(server.environment().Replica.Shell.Error).toBeUndefined();
@@ -790,7 +803,7 @@ describe("history pages", () => {
     const server = await connect(() => gate.promise);
     await server.open();
     await server.sendThread(window());
-    const loading = server.runtime.dispatch(loadEarlier, OPEN_ID);
+    const loading = server.runtime.dispatch(loadEarlier, server.openId());
     await server.sendThread({
       kind: "event",
       sequence: 2,
@@ -814,7 +827,7 @@ describe("history pages", () => {
     const server = await connect(() => gate.promise);
     await server.open();
     await server.sendThread(window());
-    const loading = server.runtime.dispatch(loadEarlier, OPEN_ID);
+    const loading = server.runtime.dispatch(loadEarlier, server.openId());
     await server.sendThread({ ...window(), snapshotSequence: 5, historyCursor: "fresher" });
     gate.release(pageOf("c-1", null));
     await loading;
@@ -827,8 +840,8 @@ describe("history pages", () => {
     const server = await connect(() => gate.promise);
     await server.open();
     await server.sendThread(window());
-    const loading = server.runtime.dispatch(loadEarlier, OPEN_ID);
-    await server.runtime.dispatch(closeThread, ENV_ID, THREAD_ID);
+    const loading = server.runtime.dispatch(loadEarlier, server.openId());
+    await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
     gate.release(pageOf("c-1", null));
     await loading;
     expect(server.thread()).toBeUndefined();
@@ -979,10 +992,10 @@ describe("selection", () => {
 
   it("opening a thread closes the previous one's stream and keeps its session", async () => {
     const server = await connect();
-    await server.runtime.dispatch(selectThread, ENV_ID, "a");
-    await server.runtime.dispatch(setDraft, sessionIdOf("a"), "kept");
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(setDraft, server.sessionId("a"), "kept");
     expect(streams(server)).toEqual(["a"]);
-    await server.runtime.dispatch(selectThread, ENV_ID, "b");
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
     expect(streams(server)).toEqual(["b"]);
     expect(Object.keys(server.environment().Replica.OpenThreads)).toEqual(["b"]);
     expect(server.environment().Local.SelectedThreadId).toBe("b");
@@ -999,14 +1012,15 @@ describe("selection", () => {
   it("deleting the selected thread clears the selection and the address", async () => {
     const server = await connect(undefined, THREAD_ID);
     await server.sendThread(snapshotOf(emptyProjection(), 1));
-    const gone = server.disposed(`session:${ENV}:${THREAD_ID}`);
+    const gone = server.disposed(server.sessionId());
     await server.sendThread({
       kind: "event",
       sequence: 2,
       event: event("thread.deleted", {}),
     } as IWireThreadItem);
     await gone;
-    await vi.waitFor(() => expect(server.address.thread).toBeNull());
+    await settled();
+    expect(server.address.thread).toBeNull();
     expect(server.environment().Local.SelectedThreadId).toBeNull();
   });
 });
@@ -1031,15 +1045,15 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
-    await server.runtime.dispatch(setDraft, SESSION_ID, " hello ");
-    await server.runtime.dispatch(send, SESSION_ID);
+    await server.runtime.dispatch(setDraft, server.sessionId(), " hello ");
+    await server.runtime.dispatch(send, server.sessionId());
     expect(sent.map((input) => [input.Text, input.ThreadId, input.NewThread])).toEqual([
       ["hello", THREAD_ID, null],
     ]);
     expect(sent[0]!.CommandId).not.toBe(sent[0]!.MessageId);
     const session = server.environment().Local.ThreadSessions[THREAD_ID]!;
     expect(session.Draft).toBe("");
-    expect(session.Sending).toBe(false);
+    expect(server.runtime.processSelector(sending, () => server.session())).toBe(false);
     expect(server.thread().TurnItems).toEqual({});
   });
 
@@ -1052,13 +1066,13 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
-    await server.runtime.dispatch(setDraft, SESSION_ID, "keep me");
-    await server.runtime.dispatch(send, SESSION_ID);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "keep me");
+    await server.runtime.dispatch(send, server.sessionId());
     const session = server.environment().Local.ThreadSessions[THREAD_ID]!;
     expect(attempts).toBe(1);
     expect(session.Draft).toBe("keep me");
     expect(session.SendError).toBe("server said no");
-    expect(session.Sending).toBe(false);
+    expect(server.runtime.processSelector(sending, () => server.session())).toBe(false);
   });
 
   it("a second send during the wait is ignored", async () => {
@@ -1074,9 +1088,9 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
-    await server.runtime.dispatch(setDraft, SESSION_ID, "once");
-    const first = server.runtime.dispatch(send, SESSION_ID);
-    await server.runtime.dispatch(send, SESSION_ID);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "once");
+    const first = server.runtime.dispatch(send, server.sessionId());
+    await server.runtime.dispatch(send, server.sessionId());
     release();
     await first;
     expect(sent).toHaveLength(1);
@@ -1089,19 +1103,20 @@ describe("writing to the server", () => {
         sent.push(effect);
       },
     });
-    await server.runtime.dispatch(newThread, ENV_ID, "project-1");
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
     const threadId = server.environment().Local.SelectedThreadId!;
     expect(server.environment().Replica.OpenThreads[threadId]).toBeUndefined();
     expect(server.address.thread).toBeNull();
-    await server.runtime.dispatch(setDraft, sessionIdOf(threadId), "start something");
-    await server.runtime.dispatch(send, sessionIdOf(threadId));
+    await server.runtime.dispatch(setDraft, server.sessionId(threadId), "start something");
+    await server.runtime.dispatch(send, server.sessionId(threadId));
     expect(sent[0]!.NewThread).toEqual({ ProjectId: "project-1", Title: "start something" });
     expect(sent[0]!.ModelSelection).toEqual({ instanceId: "devReplay", model: "showcase" });
     expect(sent[0]!.ThreadId).toBe(threadId);
     const session = server.session(threadId);
     expect(session.NewThreadProjectId).toBeNull();
     expect(session.Draft).toBe("");
-    await vi.waitFor(() => expect(server.address.thread).toBe(threadId));
+    await settled();
+    expect(server.address.thread).toBe(threadId);
     expect(server.environment().Replica.OpenThreads[threadId]).toBeDefined();
   });
 
@@ -1112,7 +1127,7 @@ describe("writing to the server", () => {
     const model = (threadId: string) =>
       server.runtime.processSelector(effectiveModel, () => server.session(threadId));
     expect(model(THREAD_ID)).toEqual({ instanceId: "codex", model: "gpt-5.4" });
-    await server.runtime.dispatch(newThread, ENV_ID, "project-1");
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
     const draftId = server.environment().Local.SelectedThreadId!;
     expect(model(draftId)).toEqual({ instanceId: "devReplay", model: "showcase" });
   });
@@ -1123,10 +1138,10 @@ describe("writing to the server", () => {
         throw new Error("no");
       },
     });
-    await server.runtime.dispatch(newThread, ENV_ID, "project-1");
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
     const threadId = server.environment().Local.SelectedThreadId!;
-    await server.runtime.dispatch(setDraft, sessionIdOf(threadId), "again");
-    await server.runtime.dispatch(send, sessionIdOf(threadId));
+    await server.runtime.dispatch(setDraft, server.sessionId(threadId), "again");
+    await server.runtime.dispatch(send, server.sessionId(threadId));
     const session = server.environment().Local.ThreadSessions[threadId]!;
     expect(session.NewThreadProjectId).toBe("project-1");
     expect(session.Draft).toBe("again");
@@ -1141,9 +1156,9 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
-    await server.runtime.dispatch(stopRun, SESSION_ID);
+    await server.runtime.dispatch(stopRun, server.sessionId());
     expect(stops.map((stop) => stop.ThreadId)).toEqual([THREAD_ID]);
-    expect(server.environment().Local.ThreadSessions[THREAD_ID]!.Stopping).toBe(false);
+    expect(server.runtime.processSelector(stopping, () => server.session())).toBe(false);
   });
 
   it("answering stays pending until the stream says so, and another device's answer clears it", async () => {
@@ -1165,7 +1180,7 @@ describe("writing to the server", () => {
     expect(pendingOf(server)).toEqual(["r-1"]);
     expect(pendingRequest(server.thread(), "r-1")?.Item?.type).toBe("approval_request");
 
-    await server.runtime.dispatch(answerRequest, SESSION_ID, "r-1", "accept", null);
+    await server.runtime.dispatch(answerRequest, server.sessionId(), "r-1", "accept", null);
     expect(answers.map((answer) => [answer.RequestId, answer.Decision])).toEqual([
       ["r-1", "accept"],
     ]);
@@ -1194,11 +1209,11 @@ describe("writing to the server", () => {
     ];
     const built = () => questionAnswers(server.session(), questions);
     expect(built()).toBeNull();
-    await server.runtime.dispatch(setQuestionAnswer, SESSION_ID, "one", "typed");
+    await server.runtime.dispatch(setQuestionAnswer, server.sessionId(), "one", "typed");
     expect(built()).toBeNull();
-    await server.runtime.dispatch(setQuestionAnswer, SESSION_ID, "many", "a, b");
+    await server.runtime.dispatch(setQuestionAnswer, server.sessionId(), "many", "a, b");
     expect(built()).toEqual({ one: "typed", many: ["a", "b"] });
-    await server.runtime.dispatch(answerRequest, SESSION_ID, "r-1", null, built());
+    await server.runtime.dispatch(answerRequest, server.sessionId(), "r-1", null, built());
     expect(answers[0]!.Answers).toEqual({ one: "typed", many: ["a", "b"] });
     expect(server.session().QuestionAnswers).toEqual({});
   });
@@ -1212,12 +1227,12 @@ describe("writing to the server", () => {
         commands.push(effect);
       },
     });
-    await server.runtime.dispatch(threadCommand, ENV_ID, "t-1", { Kind: "settle" });
+    await server.runtime.dispatch(threadCommand, server.envId(), "t-1", { Kind: "settle" });
     expect(commands).toMatchObject([{ ThreadId: "t-1", Command: { Kind: "settle" } }]);
     refuse = true;
-    await server.runtime.dispatch(threadCommand, ENV_ID, "t-1", { Kind: "pin" });
+    await server.runtime.dispatch(threadCommand, server.envId(), "t-1", { Kind: "pin" });
     expect(server.environment().Local.CommandError).toBe("server said no");
-    await server.runtime.dispatch(threadCommand, ENV_ID, "t-1", {
+    await server.runtime.dispatch(threadCommand, server.envId(), "t-1", {
       Kind: "visit",
       VisitedAt: "2026-01-01T00:00:00.000Z",
     });
@@ -1234,21 +1249,21 @@ describe("writing to the server", () => {
       },
     });
     const add = { Kind: "create", Title: "Code", WorkspaceRoot: "E:\\Tam\\Code" } as const;
-    await server.runtime.dispatch(projectCommand, ENV_ID, null, add);
+    await server.runtime.dispatch(projectCommand, server.envId(), null, add);
     const projectId = created[0]!.ProjectId;
     expect(created).toMatchObject([{ Command: add }]);
     const selected = server.environment().Local.SelectedThreadId!;
     expect(server.environment().Local.ThreadSessions[selected]?.NewThreadProjectId).toBe(projectId);
     refuse = true;
-    await server.runtime.dispatch(projectCommand, ENV_ID, null, add);
+    await server.runtime.dispatch(projectCommand, server.envId(), null, add);
     expect(server.environment().Local.CommandError).toBe("no such folder");
     expect(server.environment().Local.SelectedThreadId).toBe(selected);
   });
 
   it("deleting forgets the thread even when it isn't open, and clears the selection", async () => {
     const server = await connect(undefined, THREAD_ID, { threadCommand: () => undefined });
-    await server.runtime.dispatch(setDraft, SESSION_ID, "gone");
-    await server.runtime.dispatch(threadCommand, ENV_ID, THREAD_ID, { Kind: "delete" });
+    await server.runtime.dispatch(setDraft, server.sessionId(), "gone");
+    await server.runtime.dispatch(threadCommand, server.envId(), THREAD_ID, { Kind: "delete" });
     expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
     expect(server.environment().Replica.OpenThreads[THREAD_ID]).toBeUndefined();
     expect(server.environment().Local.SelectedThreadId).toBeNull();
@@ -1318,11 +1333,11 @@ describe("diffs", () => {
     await server.open();
     await server.sendThread(withCheckpoints());
     const panel = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
-    await server.runtime.dispatch(openDiff, SESSION_ID, "turn", 1);
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     expect(panel()).toMatchObject({ Open: true, Text: "patch for turn 1", Loading: false });
-    await server.runtime.dispatch(closeDiff, SESSION_ID);
+    await server.runtime.dispatch(closeDiff, server.sessionId());
     expect(panel()).toMatchObject({ Open: false, Text: null });
-    await server.runtime.dispatch(openDiff, SESSION_ID, "thread", null);
+    await server.runtime.dispatch(openDiff, server.sessionId(), "thread", null);
     expect(panel()).toMatchObject({ Open: true, Scope: "thread", Text: "patch for thread 2" });
     expect(asked.map((ask) => [ask.Scope, ask.ToTurnCount])).toEqual([
       ["turn", 1],
@@ -1338,16 +1353,16 @@ describe("diffs", () => {
     });
     await server.open();
     const panel = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
-    const first = server.runtime.dispatch(openDiff, SESSION_ID, "turn", 1);
-    const second = server.runtime.dispatch(openDiff, SESSION_ID, "turn", 2);
+    const first = server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
+    const second = server.runtime.dispatch(openDiff, server.sessionId(), "turn", 2);
     replies.get(1)!("stale");
     await first;
     expect(panel()).toMatchObject({ Text: null, Loading: true });
     replies.get(2)!("current");
     await second;
     expect(panel()).toMatchObject({ Text: "current", Loading: false });
-    const third = server.runtime.dispatch(openDiff, SESSION_ID, "turn", 1);
-    await server.runtime.dispatch(closeDiff, SESSION_ID);
+    const third = server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
+    await server.runtime.dispatch(closeDiff, server.sessionId());
     replies.get(1)!("late");
     await third;
     expect(panel()).toMatchObject({ Open: false, Text: null });
@@ -1360,7 +1375,7 @@ describe("diffs", () => {
       },
     });
     await server.open();
-    await server.runtime.dispatch(openDiff, SESSION_ID, "turn", 1);
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     const panel = server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
     expect(panel).toMatchObject({ Error: "checkpoint is missing", Loading: false, Text: null });
   });
@@ -1479,11 +1494,11 @@ describe("the terminal", () => {
     const server = await connect();
     await server.open();
     await withProject(server, null);
-    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    await server.runtime.dispatch(openTerminal, server.sessionId());
     expect(attached(server)[0]).toMatchObject({ Cwd: "/root", TerminalId: "term-1" });
-    await server.runtime.dispatch(closeTerminal, SESSION_ID);
+    await server.runtime.dispatch(closeTerminal, server.sessionId());
     await withProject(server, "/root/wt");
-    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    await server.runtime.dispatch(openTerminal, server.sessionId());
     expect(attached(server)[0]).toMatchObject({ Cwd: "/root/wt", WorktreePath: "/root/wt" });
   });
 
@@ -1496,13 +1511,13 @@ describe("the terminal", () => {
     });
     await server.open();
     await withProject(server, null);
-    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    await server.runtime.dispatch(openTerminal, server.sessionId());
     expect(panel(server).Open).toBe(true);
-    await server.runtime.dispatch(closeTerminal, SESSION_ID);
+    await server.runtime.dispatch(closeTerminal, server.sessionId());
     expect(panel(server)).toMatchObject({ Open: false, TerminalId: "term-1" });
     expect(attached(server)).toEqual([]);
     expect(closes).toEqual([]);
-    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    await server.runtime.dispatch(openTerminal, server.sessionId());
     expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
   });
 
@@ -1517,12 +1532,13 @@ describe("the terminal", () => {
     });
     await server.open();
     await withProject(server, null);
-    await server.runtime.dispatch(openTerminal, SESSION_ID);
-    await server.runtime.dispatch(endTerminal, SESSION_ID);
-    expect(panel(server)).toMatchObject({ Open: true, Ending: false, Error: "server said no" });
+    await server.runtime.dispatch(openTerminal, server.sessionId());
+    await server.runtime.dispatch(endTerminal, server.sessionId());
+    expect(panel(server)).toMatchObject({ Open: true, Error: "server said no" });
+    expect(server.runtime.processSelector(ending, () => server.session())).toBe(false);
     expect(attached(server)).toHaveLength(1);
     refuse = false;
-    await server.runtime.dispatch(endTerminal, SESSION_ID);
+    await server.runtime.dispatch(endTerminal, server.sessionId());
     expect(closes.map((close) => close.TerminalId)).toEqual(["term-1"]);
     expect(panel(server).Open).toBe(false);
     expect(attached(server)).toEqual([]);
@@ -1533,22 +1549,24 @@ describe("the terminal", () => {
     const launch = { Cwd: "/root", WorktreePath: null, ProjectRoot: "/root" };
     const server = await connect();
     server.terminals.set("a", launch);
-    await server.runtime.dispatch(selectThread, ENV_ID, "a");
-    await vi.waitFor(() => expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]));
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await settled();
+    expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]);
     expect(panel(server, "a")).toMatchObject({ Open: true, FocusOnMount: false });
-    await server.runtime.dispatch(selectThread, ENV_ID, "b");
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
     expect(attached(server)).toEqual([]);
-    await server.runtime.dispatch(selectThread, ENV_ID, "a");
-    await vi.waitFor(() => expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]));
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await settled();
+    expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]);
   });
 
   it("deleting the thread disposes the attachment and forgets the launch", async () => {
     const server = await connect();
     await server.open();
     await withProject(server, null);
-    await server.runtime.dispatch(openTerminal, SESSION_ID);
+    await server.runtime.dispatch(openTerminal, server.sessionId());
     expect(server.terminals.has(THREAD_ID)).toBe(true);
-    const gone = server.disposed(`session:${ENV}:${THREAD_ID}`);
+    const gone = server.disposed(server.sessionId());
     await server.sendThread({
       kind: "event",
       sequence: 2,
@@ -1556,15 +1574,16 @@ describe("the terminal", () => {
     } as IWireThreadItem);
     await gone;
     expect(attached(server)).toEqual([]);
-    await vi.waitFor(() => expect(server.terminals.has(THREAD_ID)).toBe(false));
+    await settled();
+    expect(server.terminals.has(THREAD_ID)).toBe(false);
   });
 
   it("shows what the shell reports, and a stream that ends", async () => {
     const server = await connect();
     await server.open();
     await withProject(server, null);
-    await server.runtime.dispatch(openTerminal, SESSION_ID);
-    const session = `session:${ENV}:${THREAD_ID}`;
+    await server.runtime.dispatch(openTerminal, server.sessionId());
+    const session = server.sessionId();
     const deliver = (message: object) =>
       server.runtime.dispatch(
         TerminalReceiver.handle,
@@ -1589,8 +1608,8 @@ describe("reconnect", () => {
     await server.sendThread({ kind: "synchronized" });
     const node = server.thread();
     const resubscribed = { Type: "Thread/Stream", Resubscribing: true } as const;
-    await server.runtime.dispatch(ThreadReceiver.handle, OPEN_ID, resubscribed, {
-      publisher: { Id: OPEN_ID },
+    await server.runtime.dispatch(ThreadReceiver.handle, server.openId(), resubscribed, {
+      publisher: { Id: server.openId() },
     });
     expect(server.thread().Synchronized).toBe(false);
     expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2"]);
@@ -1635,7 +1654,7 @@ describe("the replica's writers", () => {
     );
     const actions = new Map<string, { Name: string | null; Path: string[] }>();
     const writers = new Set<string | null>();
-    const replica = `replica:${ENV}`;
+    const replica = server.environment().Replica.$Id;
     server.runtime.on("record", (record) => {
       if (record.Kind === "action:start") actions.set(record.ActionId, record);
       if (record.Kind !== "step") return;
@@ -1652,23 +1671,24 @@ describe("the replica's writers", () => {
       hasMoreHistory: true,
     });
     await server.sendShell({ kind: "synchronized" });
-    await server.runtime.dispatch(loadProviders, ENV_ID);
-    await server.runtime.dispatch(setDraft, SESSION_ID, "local only");
-    await server.runtime.dispatch(send, SESSION_ID);
-    await server.runtime.dispatch(stopRun, SESSION_ID);
-    await server.runtime.dispatch(openDiff, SESSION_ID, "thread", null);
-    await server.runtime.dispatch(openTerminal, SESSION_ID);
-    await server.runtime.dispatch(closeTerminal, SESSION_ID);
-    await server.runtime.dispatch(answerRequest, SESSION_ID, "r-1", "accept", null);
-    await server.runtime.dispatch(loadEarlier, OPEN_ID);
+    await server.runtime.dispatch(loadProviders, server.envId());
+    await server.runtime.dispatch(setDraft, server.sessionId(), "local only");
+    await server.runtime.dispatch(send, server.sessionId());
+    await server.runtime.dispatch(stopRun, server.sessionId());
+    await server.runtime.dispatch(openDiff, server.sessionId(), "thread", null);
+    await server.runtime.dispatch(openTerminal, server.sessionId());
+    await server.runtime.dispatch(closeTerminal, server.sessionId());
+    await server.runtime.dispatch(answerRequest, server.sessionId(), "r-1", "accept", null);
+    await server.runtime.dispatch(loadEarlier, server.openId());
     await server.sendThread({
       kind: "event",
       sequence: 2,
       event: event("thread.deleted", {}),
     } as IWireThreadItem);
-    await vi.waitFor(() => expect(server.thread()).toBeUndefined());
+    await settled();
+    expect(server.thread()).toBeUndefined();
     await server.open();
-    await server.runtime.dispatch(closeThread, ENV_ID, THREAD_ID);
+    await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
     expect([...writers].sort()).toEqual([
       "EnvironmentReceiver",
       "ShellReceiver",

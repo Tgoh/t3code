@@ -1,4 +1,4 @@
-import { useResource } from "reflex-solid";
+import { useResource } from "treflex-solid";
 import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 
 import { Trash2, X } from "./icons";
@@ -37,7 +37,7 @@ export function TerminalPanel() {
           class="icon-button small"
           aria-label="End shell"
           data-tip="End shell"
-          disabled={panel().Ending}
+          disabled={session.ending()}
           onClick={() => session.endTerminal()}
         >
           <Trash2 />

@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- View-only ticks for relative times, outside any Effect runtime.
 import { formatWorkingDurationLabel } from "@t3tools/client-runtime/state/models";
 import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
-import { useResource } from "reflex-solid";
+import { useResource } from "treflex-solid";
 import {
   createEffect,
   createMemo,

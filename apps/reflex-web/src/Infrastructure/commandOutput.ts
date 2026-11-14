@@ -5,7 +5,7 @@ import {
 } from "@t3tools/client-runtime/state/command-output";
 import { ORCHESTRATION_V2_WS_METHODS, ThreadId, TurnItemId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import type { IResourceImplementation } from "reflex";
+import type { IResourceImplementation } from "treflex";
 
 import { failureText, followLive } from "./followItems";
 
@@ -16,7 +16,7 @@ export interface ICommandOutput {
   Error: string | null;
 }
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceTypeRegistry {
     commandOutput: {
       Params: { EnvironmentId: string; ThreadId: string; ItemId: string };

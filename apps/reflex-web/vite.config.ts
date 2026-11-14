@@ -10,8 +10,8 @@ const backend = `http://localhost:${process.env.T3CODE_PORT ?? 13773}/`;
 
 export default defineConfig(({ mode }) => ({
   plugins: [solidPlugin()],
-  // Reflex ships as source; pre-bundling would give the app a second copy of its contexts.
-  optimizeDeps: { exclude: ["reflex", "reflex-solid"] },
+  // Treflex ships as source; pre-bundling would give the app a second copy of its contexts.
+  optimizeDeps: { exclude: ["treflex", "treflex-solid"] },
   build: { target: "esnext" },
   ...(mode === "bench" ? { define: { "import.meta.env.DEV": "false" } } : {}),
   // Solid's default Node export is its server build, which has no reactive runtime.
@@ -19,14 +19,14 @@ export default defineConfig(({ mode }) => ({
   ssr: { resolve: { conditions: ["solid", "browser"] } },
   test: {
     environment: "node",
-    server: { deps: { inline: ["reflex", "reflex-solid"] } },
+    server: { deps: { inline: ["treflex", "treflex-solid"] } },
     ...(mode === "bench"
       ? {
           include: ["bench/**/*.bench.ts"],
           testTimeout: 0,
           disableConsoleIntercept: true,
           // Production's setting. In dev the budgeted walk adds a full-tree pause every so many writes.
-          env: { REFLEX_VERIFY_INDEX: process.env.REFLEX_VERIFY_INDEX ?? "off" },
+          env: { TREFLEX_VERIFY_INDEX: process.env.TREFLEX_VERIFY_INDEX ?? "off" },
         }
       : { include: ["src/**/*.test.ts"] }),
   },

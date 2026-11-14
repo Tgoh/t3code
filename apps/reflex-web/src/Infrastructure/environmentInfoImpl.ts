@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { implementation } from "reflex";
+import { implementation } from "treflex";
 
 import { loadDescriptor } from "./connection";
 import { environmentInfo } from "./environmentInfo";

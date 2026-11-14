@@ -1,4 +1,4 @@
-import { defineEffect, type IEffect } from "reflex";
+import { defineEffect, type IEffect } from "treflex";
 
 export interface IEnvironmentInfo {
   Authenticated: boolean;

@@ -5,11 +5,11 @@ import {
   type IEntity,
   type ISelectorGenerator,
   isEnded,
-  merge,
+  open,
   openResource,
   receiver,
-} from "reflex";
-import { createFeatureContext } from "reflex-solid";
+} from "treflex";
+import { createEntityFeature } from "treflex-solid";
 
 import { delayEffect } from "./Infrastructure/delay";
 import type {
@@ -18,9 +18,9 @@ import type {
   IWireShellSnapshot,
   IWireThreadShell,
 } from "./Infrastructure/wire";
-import { byId, put, WIRE_KEY } from "./rows";
+import { byId, put, reconcile } from "./rows";
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceRegistry {
     "Shell/Stream": { Type: "shellStream" };
   }
@@ -37,9 +37,8 @@ export interface IShell extends IEntity {
   Error?: string;
 }
 
-export function getDefaultShell(id: string, environmentId: string): IShell {
+export function getDefaultShell(environmentId: string): Omit<IShell, "$Id"> {
   return {
-    $Id: id,
     EnvironmentId: environmentId,
     Synchronized: false,
     LastSequence: 0,
@@ -85,12 +84,11 @@ function applyEnrichment(draft: IShell, projects: IWireProject[], roots: string[
 // settled threads, so nothing about the thread itself follows from its absence here.
 function applySnapshot(draft: IShell, snapshot: IWireShellSnapshot): void {
   draft.LastSequence = snapshot.snapshotSequence;
-  merge(
+  reconcile(
     draft.Projects,
     byId(snapshot.projects.map((p) => retainRepositoryIdentity(draft.Projects[p.id], p))),
-    WIRE_KEY,
   );
-  merge(
+  reconcile(
     draft.Threads,
     byId(
       snapshot.threads.map((thread) => {
@@ -100,7 +98,6 @@ function applySnapshot(draft: IShell, snapshot: IWireShellSnapshot): void {
           : thread;
       }),
     ),
-    WIRE_KEY,
   );
 }
 
@@ -140,7 +137,7 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
       draft.Error = message.$Ended.Reason;
       // A batch the receiver failed would fail again on every reopen.
       if (message.$Ended.Reason === "receiver-failed") return;
-      yield* delayEffect({ Ms: REOPEN_MS });
+      yield* open(delayEffect({ Ms: REOPEN_MS }));
       delete draft.Error;
       yield* openShellStream(draft);
       return;
@@ -289,4 +286,4 @@ export function workingStartedAt(thread: IWireThreadShell): string | null {
   return thread.latestRunStartedAt ?? thread.latestRunRequestedAt ?? null;
 }
 
-export default createFeatureContext<IShell>(import.meta.url)({}, { sidebarThreads });
+export default createEntityFeature<IShell>(import.meta.url)({}, { sidebarThreads });

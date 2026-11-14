@@ -865,15 +865,15 @@ importers:
       marked:
         specifier: ^16.0.0
         version: 16.4.2
-      reflex:
-        specifier: file:../../../reflex-t3code-pin/packages/core
-        version: file:../reflex-t3code-pin/packages/core(solid-js@1.9.18)
-      reflex-solid:
-        specifier: file:../../../reflex-t3code-pin/packages/solid
-        version: file:../reflex-t3code-pin/packages/solid(reflex@file:../reflex-t3code-pin/packages/core(solid-js@1.9.18))(solid-js@1.9.18)
       solid-js:
         specifier: ^1.9.12
         version: 1.9.18
+      treflex:
+        specifier: file:../../../reflex-t3code-treflex/packages/core
+        version: file:../reflex-t3code-treflex/packages/core(solid-js@1.9.18)
+      treflex-solid:
+        specifier: file:../../../reflex-t3code-treflex/packages/solid
+        version: file:../reflex-t3code-treflex/packages/solid(solid-js@1.9.18)(treflex@file:../reflex-t3code-treflex/packages/core(solid-js@1.9.18))
     devDependencies:
       '@types/node':
         specifier: 24.12.4
@@ -11283,19 +11283,6 @@ packages:
     resolution: {integrity: sha512-Z9VHtgYs48PiQC77X9O2Er8Hj4T+5BtFjT91/vi5Is1D04N72cA946ZslM1ImJw8ZctFBZWAVjM7S5wJNeHMpg==}
     engines: {node: '>= 20.0.0'}
 
-  reflex-solid@file:../reflex-t3code-pin/packages/solid:
-    resolution: {directory: ../reflex-t3code-pin/packages/solid, type: directory}
-    engines: {node: '>=20.3.0'}
-    peerDependencies:
-      reflex: 1.0.0
-      solid-js: ^1.9.7
-
-  reflex@file:../reflex-t3code-pin/packages/core:
-    resolution: {directory: ../reflex-t3code-pin/packages/core, type: directory}
-    engines: {node: '>=20.3.0'}
-    peerDependencies:
-      solid-js: ^1.9.7
-
   reftools@1.1.9:
     resolution: {integrity: sha512-OVede/NQE13xBQ+ob5CKd5KyeJYU2YInb1bmV4nRoOfquZPkAkxuOXicSe1PvqIuZZ4kD13sPKBbR7UFDmli6w==}
 
@@ -11940,6 +11927,19 @@ packages:
   tr46@6.0.0:
     resolution: {integrity: sha512-bLVMLPtstlZ4iMQHpFHTR7GAGj2jxi8Dg0s2h2MafAE4uSWF98FC/3MomU51iQAMf8/qDUbKWf5GxuvvVcXEhw==}
     engines: {node: '>=20'}
+
+  treflex-solid@file:../reflex-t3code-treflex/packages/solid:
+    resolution: {directory: ../reflex-t3code-treflex/packages/solid, type: directory}
+    engines: {node: '>=20.3.0'}
+    peerDependencies:
+      solid-js: ^1.9.7
+      treflex: 1.0.0
+
+  treflex@file:../reflex-t3code-treflex/packages/core:
+    resolution: {directory: ../reflex-t3code-treflex/packages/core, type: directory}
+    engines: {node: '>=20.3.0'}
+    peerDependencies:
+      solid-js: ^1.9.7
 
   trim-lines@3.0.1:
     resolution: {integrity: sha512-kRj8B+YHZCc9kQYdWfJB2/oUl9rA99qbowYYBtr4ui4mZyAQ2JpvVBd/6U2YloATfqBhBTSMhTpgBHtU0Mf3Rg==}
@@ -21747,17 +21747,6 @@ snapshots:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
 
-  reflex-solid@file:../reflex-t3code-pin/packages/solid(reflex@file:../reflex-t3code-pin/packages/core(solid-js@1.9.18))(solid-js@1.9.18):
-    dependencies:
-      reflex: file:../reflex-t3code-pin/packages/core(solid-js@1.9.18)
-      solid-js: 1.9.18
-      uuid: 11.1.1
-
-  reflex@file:../reflex-t3code-pin/packages/core(solid-js@1.9.18):
-    dependencies:
-      solid-js: 1.9.18
-      uuid: 11.1.1
-
   reftools@1.1.9: {}
 
   regenerate-unicode-properties@10.2.2:
@@ -22566,6 +22555,17 @@ snapshots:
   tr46@6.0.0:
     dependencies:
       punycode: 2.3.1
+
+  treflex-solid@file:../reflex-t3code-treflex/packages/solid(solid-js@1.9.18)(treflex@file:../reflex-t3code-treflex/packages/core(solid-js@1.9.18)):
+    dependencies:
+      solid-js: 1.9.18
+      treflex: file:../reflex-t3code-treflex/packages/core(solid-js@1.9.18)
+      uuid: 11.1.1
+
+  treflex@file:../reflex-t3code-treflex/packages/core(solid-js@1.9.18):
+    dependencies:
+      solid-js: 1.9.18
+      uuid: 11.1.1
 
   trim-lines@3.0.1: {}
 

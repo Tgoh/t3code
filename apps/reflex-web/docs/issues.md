@@ -1,6 +1,6 @@
 # Issues
 
-Problems found while building the reflex client: gaps in reflex, mismatches with the t3code server, and anything that pushes towards a server change.
+Problems found while building the reflex client: gaps in treflex, mismatches with the t3code server, and anything that pushes towards a server change.
 
 ## Setup: `vp` does not select the pinned Node on this machine
 
@@ -8,17 +8,17 @@ The repo pins Node 26.12.1 and the server needs 24.10 or later, but `vp` stays i
 
 Workaround: use Node 26.13.0 through nvm. The pin in `package.json` isn't enforced, and `vp i` and `vp run dev` work on it.
 
-## Setup: pnpm installs `file:` reflex as a copy
+## Setup: pnpm installs `file:` treflex as a copy
 
-Under `node_modules/.pnpm`, reflex is a real directory and not a link, so changes in the reflex checkout don't reach the app by themselves. solidportal gets a link from npm. `link:` might behave like solidportal, but it hasn't been tried, and reflex's `solid-js` peer must still resolve to the app's copy.
+Under `node_modules/.pnpm`, treflex is a real directory and not a link, so changes in the pin don't reach the app until `vp i` runs again. solidportal gets a link from npm. `link:` might behave like solidportal, but it hasn't been tried, and treflex's `solid-js` peer must still resolve to the app's copy.
 
 ## Setup: `vp run check:changed` fails its unused-patches step
 
-The step installs the workspace in a temp directory, where `../../../reflex/packages/core` doesn't exist. Its other checks still run. It runs when the lockfile, the workspace file, patches or any `package.json` change, so this comes back whenever dependencies do.
+The step installs the workspace in a temp directory, where `../../../reflex-t3code-treflex/packages/core` doesn't exist. Its other checks still run. It runs when the lockfile, the workspace file, patches or any `package.json` change, so this comes back whenever dependencies do.
 
-## Setup: reflex's source fails the repo's strict flags
+## Setup: the app's tsconfig turns off two of the repo's strict flags
 
-Reflex ships as TypeScript source, so the app's typecheck covers it, and it fails `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`. The app's `tsconfig.json` turns both off, which loses them for the app's own code too.
+Treflex ships as TypeScript source, so the app's typecheck covers it. Reflex failed `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`, so the app's `tsconfig.json` turns both off. Treflex at the pin passes both; with them on, only the app's `threadHistory.ts` fails, on the `signal` it passes to `fetch`.
 
 ## Gap: the connection runtime has one public door
 
@@ -44,24 +44,36 @@ The stock client loads the first snapshot over HTTP and falls back to the socket
 
 The shell sends the same item for an archived and a deleted thread, and `thread.deleted` only reaches a thread's own stream. So a thread deleted elsewhere while closed keeps its `ThreadSession`.
 
-## Cost: a reconnect snapshot merges every row
+## Cost: a reconnect snapshot reconciles every row
 
-About 40 ms at 1,000 items and 1 s at 20,000. The bounded window keeps a socket snapshot near the low end, but it will be a visible pause if history pages have grown the thread and the socket reconnects past the replay limit.
+About 50 ms at 1,000 items and 1.1 s at 20,000. The bounded window keeps a socket snapshot near the low end, but it will be a visible pause if history pages have grown the thread and the socket reconnects past the replay limit.
 
 ## Mismatch: replaying terminal history after resizes can misdraw a line
 
 The server's history is the raw PTY bytes, written at whatever width the shell had. After resizing between 47, 53 and 80 columns and then reattaching, one prompt line drew its typed text over the prompt, because ConPTY's cursor positions no longer matched the replayed screen. A shell at one width replayed cleanly. Stock replays the same history.
 
-## Not done: in-flight marks are still in the tree
+## Not done: three in-flight marks are still in the tree
 
-`Sending`, `Stopping`, `Answering`, `Diff.Loading`, `Terminal.Ending` and `History.Loading` die with their work, so reflex's docs put them in session slots, which arrived with the pinned commit.
+`Sending`, `Stopping` and `Terminal.Ending` are `inFlight` reads of `leading` actions. The other three would each need a redesign:
 
-## Feedback for reflex
+- `Answering` holds the id of the request being answered, which each request's buttons compare against, and `inFlight` can't say which request.
+- `Diff.Loading` is cleared by `closeDiff` and by a diff with no turn, before the fetch it marks has ended.
+- `History.Loading` is cleared by a reconnect snapshot, which replaces the window the page was fetched for, while that fetch is still waiting.
 
+## Differences from the reflex build
+
+- `r.emit` no longer waits for delivery, so the shell and thread streams read the socket ahead of the receivers, and items wait in treflex's queue rather than the socket. The cursor advances as each emit is queued. A receiver failure still ends the stream with `receiver-failed`, through `endOnReceiverFailure`.
+- Sending, stopping and ending a shell show busy from when the action arrives, queued included, where the flags were set when it started.
+- Records name the wrapped actions by their own function names: `send` runs as `sendDraft`, `stopRun` as `requestStop` and `endTerminal` as `endShell`.
+- `$Id`s are minted (`~…`), so an entity's `$Id` no longer names its environment or thread. The domain keys are in `EnvironmentId` and `ThreadId`.
+
+## Feedback for treflex
+
+- `merge` is gone, and `reconcileRows` takes one array of keyed rows at a time, refuses an incoming row without a key, and is a generator an action has to `yield*`. Folding a wire payload with nested keyless arrays into a held node in place, from the synchronous apply code, needed an app-side helper (`reconcile` in `rows.ts`).
 - Selectors that return fresh objects remount `<For>` rows and wake any parent selector, because a memo compares with `===`. The docs don't warn about it. An opt-in equality setting or structural sharing would cover both.
-- `<For>` over a store array pays for two proxy walks per list change, about 13 ms of a 15 ms add at 20,000 rows against 1.4 ms with a plain array. An id list through `<For>` is the pattern reflex recommends, so `reflex-solid` could offer a helper that tracks the array and hands `<For>` a plain copy.
-- Without `keyless`, wire rows keyed by `id` need a function key, and the one key applies at every depth, so a nested array whose rows carry no `id` is replaced on every merge.
+- `<For>` over a store array pays for two proxy walks per list change, about 13 ms of a 15 ms add at 20,000 rows against 1.4 ms with a plain array. An id list through `<For>` is the pattern treflex recommends, so `treflex-solid` could offer a helper that tracks the array and hands `<For>` a plain copy.
 - `expose` and `status` have no obvious home for a live handle plus a changing display value, which is why terminal status goes through `emit` into state.
+- `treflex-eslint`'s recommended rules need type information, which the repo's oxlint JS plugins don't provide, so they aren't on.
 - "Do not create an entity only so that its removal closes a resource" conflicts with `(entity, key)` identity for view-owned resources like `CommandOutput`.
 
 ## Differences from the immutable reducer
@@ -112,7 +124,7 @@ The server's history is the raw PTY bytes, written at whatever width the shell h
 - A diff panel holds one fetched string in Local and refetches on each open. It doesn't refresh when a later checkpoint lands.
 - Restoring a checkpoint isn't offered.
 - The benchmark uses a generated fixture: `~/.t3` doesn't exist here and the dev home holds only a few short threads.
-- The benchmark calls the receiver directly, so it leaves out reflex's clone of each emitted message.
+- The benchmark calls the receiver directly, so it leaves out treflex's clone of each emitted message.
 
 ## Unmatched against the stock UI
 

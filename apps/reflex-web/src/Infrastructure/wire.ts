@@ -27,5 +27,3 @@ export type IWireProjection = IWireThreadSnapshot["projection"];
 export type IWireThreadEvent = Wire<OrchestrationV2DomainEvent>;
 export type IWireTurnItem = IWireProjection["turnItems"][number];
 export type IWireHistoryPage = Wire<OrchestrationV2ThreadHistoryPage>;
-
-export type IEmitOutcome = "delivered" | "unheard" | "failed" | "dropped";

@@ -10,7 +10,7 @@ import {
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import type { IResourceImplementation } from "reflex";
+import type { IResourceImplementation } from "treflex";
 
 import type { IWireAttachment } from "./commandEffects";
 import { connectionRuntime } from "./connection";
@@ -19,11 +19,11 @@ export type IPickedFile =
   | { Id: string; Name: string; MimeType: string; SizeBytes: number }
   | { Id: null; Name: string; Error: string };
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceTypeRegistry {
     composerFiles: {
       Params: { EnvironmentId: string };
-      Operations: {
+      Methods: {
         upload(id: string): IWireAttachment;
         remove(id: string): void;
         forget(ids: string[]): void;
@@ -58,7 +58,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
       return { Id: id, Name: file.name, MimeType: file.type, SizeBytes: file.size };
     }),
   );
-  r.operations({
+  r.methods({
     upload: async (_ctx, id) => {
       const file = held.get(id);
       if (file === undefined) throw new Error("That image is no longer held. Pick it again.");

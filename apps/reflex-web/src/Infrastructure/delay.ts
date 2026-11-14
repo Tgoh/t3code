@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { defineEffect, type IEffect, implementation } from "reflex";
+import { defineEffect, type IEffect, implementation } from "treflex";
 
 interface IDelayEffect extends IEffect {
   Type: "delay";

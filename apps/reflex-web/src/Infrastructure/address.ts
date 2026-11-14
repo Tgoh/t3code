@@ -1,4 +1,4 @@
-import { defineEffect, type IEffect, implementation } from "reflex";
+import { defineEffect, type IEffect, implementation } from "treflex";
 
 interface IAddressThreadEffect extends IEffect {
   Type: "addressThread";

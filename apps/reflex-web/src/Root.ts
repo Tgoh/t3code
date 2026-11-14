@@ -1,7 +1,7 @@
-import { fork, type IActionGenerator, type IEntity } from "reflex";
-import { createFeatureContext } from "reflex-solid";
+import { type IActionGenerator, type IEntity, start } from "treflex";
+import { createEntityFeature } from "treflex-solid";
 
-import { getDefaultEnvironment, type IEnvironment, init } from "./Environment";
+import { type IEnvironment, init, newEnvironment } from "./Environment";
 import { environmentInfo } from "./Infrastructure/environmentInfo";
 
 export interface IRoot extends IEntity {
@@ -21,10 +21,10 @@ export function* load(draft: IRoot): IActionGenerator {
     draft.Phase = "unpaired";
     return;
   }
+  const environment = yield* newEnvironment(info.EnvironmentId, info.Label);
   draft.Phase = "connected";
-  const environment = getDefaultEnvironment(info.EnvironmentId, info.Label);
   draft.Environments.push(environment);
-  yield* fork(init, environment.$Id);
+  yield* start(init, environment.$Id);
 }
 
-export default createFeatureContext<IRoot>(import.meta.url)({ load });
+export default createEntityFeature<IRoot>(import.meta.url)({ load });

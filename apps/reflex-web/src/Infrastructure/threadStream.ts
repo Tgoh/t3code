@@ -1,13 +1,13 @@
 import { subscribeDynamic } from "@t3tools/client-runtime/rpc";
 import { ORCHESTRATION_V2_WS_METHODS, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import type { IResourceImplementation } from "reflex";
+import type { IResourceImplementation } from "treflex";
 
 import { followItems } from "./followItems";
 import { encodeThreadItem } from "./threadItemCodec";
 import type { IWireThreadItem } from "./wire";
 
-declare module "reflex" {
+declare module "treflex" {
   interface IResourceTypeRegistry {
     threadStream: {
       Params: { EnvironmentId: string; ThreadId: string };
