@@ -83,6 +83,7 @@ import {
   snapshotOf,
   THREAD_ID,
 } from "./testing/threadFixture";
+import { reconcile } from "./rows";
 
 const ENV = "env-1";
 
@@ -633,6 +634,16 @@ describe("snapshots and identity", () => {
     expect(server.thread()).toBe(node);
     expect(server.thread().TurnItems["item-0"]).toBe(item);
     expect(server.thread().TurnItems["item-5"]).toBeUndefined();
+
+    function* foldParsed(draft: IOpenThread): IActionGenerator {
+      const parsed = JSON.parse(
+        JSON.stringify(run("run-0", 1, "failed")).replace("{", '{"__proto__":{"x":1},'),
+      );
+      reconcile(draft.Runs["run-0"]!, parsed);
+    }
+    await server.runtime.dispatch(foldParsed, server.openId());
+    expect(server.thread().Runs["run-0"]).toMatchObject({ id: "run-0", status: "failed" });
+    expect("x" in server.thread().Runs["run-0"]!).toBe(false);
     expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2"]);
     expect(server.thread().LastSequence).toBe(9);
   });
@@ -1091,6 +1102,7 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(setDraft, server.sessionId(), "once");
     const first = server.runtime.dispatch(send, server.sessionId());
     await server.runtime.dispatch(send, server.sessionId());
+    expect(server.runtime.processSelector(sending, () => server.session())).toBe(true);
     release();
     await first;
     expect(sent).toHaveLength(1);

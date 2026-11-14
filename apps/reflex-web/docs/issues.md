@@ -48,24 +48,21 @@ The shell sends the same item for an archived and a deleted thread, and `thread.
 
 About 50 ms at 1,000 items and 1.1 s at 20,000. The bounded window keeps a socket snapshot near the low end, but it will be a visible pause if history pages have grown the thread and the socket reconnects past the replay limit.
 
+## Cost: stream items queue in treflex, not the socket
+
+`r.emit` resolves once a message is queued, not delivered, so the shell and thread streams read the socket with no backpressure from the receivers, and the cursor advances as each emit is queued. A receiver failure ends the stream with `receiver-failed` through `endOnReceiverFailure`.
+
 ## Mismatch: replaying terminal history after resizes can misdraw a line
 
 The server's history is the raw PTY bytes, written at whatever width the shell had. After resizing between 47, 53 and 80 columns and then reattaching, one prompt line drew its typed text over the prompt, because ConPTY's cursor positions no longer matched the replayed screen. A shell at one width replayed cleanly. Stock replays the same history.
 
 ## Not done: three in-flight marks are still in the tree
 
-`Sending`, `Stopping` and `Terminal.Ending` are `inFlight` reads of `leading` actions. The other three would each need a redesign:
+`Sending`, `Stopping` and `Terminal.Ending` are `inFlight` reads of `leading` actions, so they show busy from when the action arrives, queued included. Records name those actions by their inner functions: `sendDraft`, `requestStop` and `endShell`. The other three would each need a redesign:
 
 - `Answering` holds the id of the request being answered, which each request's buttons compare against, and `inFlight` can't say which request.
 - `Diff.Loading` is cleared by `closeDiff` and by a diff with no turn, before the fetch it marks has ended.
 - `History.Loading` is cleared by a reconnect snapshot, which replaces the window the page was fetched for, while that fetch is still waiting.
-
-## Differences from the reflex build
-
-- `r.emit` no longer waits for delivery, so the shell and thread streams read the socket ahead of the receivers, and items wait in treflex's queue rather than the socket. The cursor advances as each emit is queued. A receiver failure still ends the stream with `receiver-failed`, through `endOnReceiverFailure`.
-- Sending, stopping and ending a shell show busy from when the action arrives, queued included, where the flags were set when it started.
-- Records name the wrapped actions by their own function names: `send` runs as `sendDraft`, `stopRun` as `requestStop` and `endTerminal` as `endShell`.
-- `$Id`s are minted (`~…`), so an entity's `$Id` no longer names its environment or thread. The domain keys are in `EnvironmentId` and `ThreadId`.
 
 ## Feedback for treflex
 

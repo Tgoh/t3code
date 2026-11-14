@@ -16,6 +16,8 @@ const rowId = (value: unknown): string | undefined => {
 
 function reconcileFields(target: IFields, next: IFields): void {
   for (const key of Object.keys(next)) {
+    // JSON.parse makes "__proto__" an own key, and writing it would retarget the node's prototype.
+    if (key === "__proto__") continue;
     const held = target[key];
     const value = next[key];
     if (Array.isArray(held) && Array.isArray(value)) reconcileArray(held, value);
@@ -28,7 +30,6 @@ function reconcileFields(target: IFields, next: IFields): void {
   }
 }
 
-// Rows carrying the same `id` keep their nodes wherever they moved; a row without one is replaced.
 function reconcileArray(target: unknown[], next: unknown[]): void {
   const held = new Map<string, IFields>();
   for (const row of target) {
