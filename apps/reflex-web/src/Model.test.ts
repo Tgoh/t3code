@@ -47,7 +47,7 @@ import {
   timelineEntries,
 } from "./OpenThread";
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
-import { answering, answerRequest } from "./RuntimeRequest";
+import { answering, answerRequest, type IRuntimeRequest } from "./RuntimeRequest";
 import {
   projectFolders,
   ShellReceiver,
@@ -1263,6 +1263,13 @@ describe("writing to the server", () => {
     await settled();
     expect([busy("r-1"), busy("r-2")]).toEqual([true, false]);
     expect(await answer("r-1", "decline")).toBeUndefined();
+    const folded: string[] = [];
+    function* fold(draft: IRuntimeRequest): IActionGenerator {
+      folded.push(draft.kind);
+    }
+    void server.runtime.dispatch(fold, node("r-1").$Id);
+    await settled();
+    expect(folded).toEqual(["command"]);
     const second = answer("r-2", "decline");
     await settled();
     expect([busy("r-1"), busy("r-2")]).toEqual([true, true]);

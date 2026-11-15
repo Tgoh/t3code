@@ -1,9 +1,10 @@
 import {
-  type IActionGenerator,
+  type IOpenGenerator,
   type ISelectorGenerator,
   type IWithId,
   inFlight,
   leading,
+  open,
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
@@ -26,19 +27,21 @@ export const answerRequest = leading(function* answer(
   threadId: string,
   decision: IApprovalDecision | null,
   answers: Record<string, string | ReadonlyArray<string>> | null,
-): IActionGenerator {
+): IOpenGenerator {
   (yield* outcome(draft)).Error = null;
   const requestId = draft.id;
   try {
-    yield* withCommandId((commandId) =>
-      respondRequestEffect({
-        EnvironmentId: environmentId,
-        ThreadId: threadId,
-        CommandId: commandId,
-        RequestId: requestId,
-        Decision: decision,
-        Answers: answers,
-      }),
+    yield* open(
+      withCommandId((commandId) =>
+        respondRequestEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+          RequestId: requestId,
+          Decision: decision,
+          Answers: answers,
+        }),
+      ),
     );
   } catch (error) {
     (yield* outcome(draft)).Error = error instanceof Error ? error.message : String(error);
