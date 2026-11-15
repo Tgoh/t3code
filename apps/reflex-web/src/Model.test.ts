@@ -28,6 +28,7 @@ import type {
   IRespondRequest,
   IStartTurn,
   IStopThread,
+  IThreadCommand,
   IThreadDiff,
 } from "./Infrastructure/commandEffects";
 import {
@@ -40,10 +41,12 @@ import {
   loadEarlier,
   pendingApprovalIds,
   pendingRequest,
+  loadingEarlier,
   ThreadReceiver,
+  threadSynchronized,
   timelineEntries,
 } from "./OpenThread";
-import { getDefaultRoot, type IRoot, load } from "./Root";
+import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
 import {
   projectFolders,
   ShellReceiver,
@@ -53,8 +56,10 @@ import {
   workingStartedAt,
 } from "./Shell";
 import {
+  answering,
   answerRequest,
   closeDiff,
+  diffLoading,
   closeTerminal,
   effectiveModel,
   ending,
@@ -69,6 +74,7 @@ import {
   setQuestionAnswer,
   stopping,
   stopRun,
+  terminalAttachment,
   TerminalReceiver,
 } from "./ThreadSession";
 import {
@@ -107,7 +113,7 @@ async function connect(
         },
       ],
       generateGuid: () => `guid-${(guid += 1)}`,
-      delay: () => undefined,
+      logFailure: () => undefined,
       ...commands,
       threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
       addressThread: () => address.thread,
@@ -122,6 +128,7 @@ async function connect(
     },
     { onError: (error) => console.error("action failed:", error) },
   );
+  runtime.registerReceiver(RootReceiver);
   runtime.registerReceiver(EnvironmentReceiver);
   runtime.registerReceiver(ShellReceiver);
   runtime.registerReceiver(ThreadReceiver);
@@ -722,32 +729,37 @@ describe("lifetimes", () => {
     expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
   });
 
-  it("reopens a stream that ended, unless the receiver failed it", async () => {
+  it("reopens a stream that ended on a timer, unless the receiver failed it", async () => {
     const server = await connect();
     await server.open();
-    const endThread = (Reason: string) =>
-      server.runtime.dispatch(
-        ThreadReceiver.handle,
-        server.openId(),
-        { Type: "Thread/Stream", $Ended: { Reason } } as never,
-        { publisher: { Id: server.openId() } },
-      );
-    await endThread("failed");
-    expect(server.thread().Ended).toBeUndefined();
-    await endThread("receiver-failed");
-    expect(server.thread().Ended).toBe("receiver-failed");
+    const opened: string[] = [];
+    server.runtime.on("record", (record) => {
+      if (record.Kind === "effect" && record.Type === "openResource")
+        opened.push((record.Descriptor as { Key: string }).Key);
+    });
+    const deliver = (message: object) =>
+      server.runtime.dispatch(ThreadReceiver.handle, server.openId(), message as never, {
+        publisher: { Id: server.openId() },
+      });
+    await deliver({ Type: "Thread/Stream", $Ended: { Reason: "failed" } });
+    expect(server.runtime.timers(server.openId())).toMatchObject([{ Key: "Thread/Reopen" }]);
+    await deliver({ Type: "Thread/Reopen" });
+    expect(server.runtime.timers(server.openId())).toEqual([]);
+    expect(opened).toEqual(["Thread/Stream"]);
+    await deliver({ Type: "Thread/Stream", $Ended: { Reason: "receiver-failed" } });
+    expect(server.runtime.timers(server.openId())).toEqual([]);
 
-    const endShell = (Reason: string) =>
-      server.runtime.dispatch(
-        ShellReceiver.handle,
-        server.shellId(),
-        { Type: "Shell/Stream", $Ended: { Reason } } as never,
-        { publisher: { Id: server.shellId() } },
-      );
-    await endShell("failed");
-    expect(server.environment().Replica.Shell.Error).toBeUndefined();
-    await endShell("receiver-failed");
-    expect(server.environment().Replica.Shell.Error).toBe("receiver-failed");
+    const deliverShell = (message: object) =>
+      server.runtime.dispatch(ShellReceiver.handle, server.shellId(), message as never, {
+        publisher: { Id: server.shellId() },
+      });
+    await deliverShell({ Type: "Shell/Stream", $Ended: { Reason: "failed" } });
+    expect(server.runtime.timers(server.shellId())).toMatchObject([{ Key: "Shell/Reopen" }]);
+    await deliverShell({ Type: "Shell/Reopen" });
+    expect(server.runtime.timers(server.shellId())).toEqual([]);
+    expect(opened).toEqual(["Thread/Stream", "Shell/Stream"]);
+    await deliverShell({ Type: "Shell/Stream", $Ended: { Reason: "receiver-failed" } });
+    expect(server.runtime.timers(server.shellId())).toEqual([]);
   });
 });
 
@@ -815,6 +827,9 @@ describe("history pages", () => {
     await server.open();
     await server.sendThread(window());
     const loading = server.runtime.dispatch(loadEarlier, server.openId());
+    const busy = () => server.runtime.processSelector(loadingEarlier, server.thread);
+    expect(busy()).toBe(true);
+    expect(await server.runtime.dispatch(loadEarlier, server.openId())).toBeUndefined();
     await server.sendThread({
       kind: "event",
       sequence: 2,
@@ -830,7 +845,8 @@ describe("history pages", () => {
     await loading;
     expect(server.thread().Timeline).toEqual(["c-1", "c-9"]);
     expect((server.thread().TurnItems["c-9"] as { input: string }).input).toBe("newer");
-    expect(server.thread().History).toMatchObject({ HasMore: false, Loading: false, Cursor: null });
+    expect(server.thread().History).toMatchObject({ HasMore: false, Cursor: null });
+    expect(busy()).toBe(false);
   });
 
   it("discards a page when a reconnect snapshot replaced the window during the wait", async () => {
@@ -840,6 +856,7 @@ describe("history pages", () => {
     await server.sendThread(window());
     const loading = server.runtime.dispatch(loadEarlier, server.openId());
     await server.sendThread({ ...window(), snapshotSequence: 5, historyCursor: "fresher" });
+    expect(server.runtime.processSelector(loadingEarlier, server.thread)).toBe(true);
     gate.release(pageOf("c-1", null));
     await loading;
     expect(server.thread().Timeline).toEqual(["c-9"]);
@@ -1175,9 +1192,13 @@ describe("writing to the server", () => {
 
   it("answering stays pending until the stream says so, and another device's answer clears it", async () => {
     const answers: IRespondRequest[] = [];
+    let release!: () => void;
     const server = await connect(undefined, null, {
       respondRequest: (effect: IRespondRequest) => {
         answers.push(effect);
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
       },
     });
     await server.open();
@@ -1192,7 +1213,22 @@ describe("writing to the server", () => {
     expect(pendingOf(server)).toEqual(["r-1"]);
     expect(pendingRequest(server.thread(), "r-1")?.Item?.type).toBe("approval_request");
 
-    await server.runtime.dispatch(answerRequest, server.sessionId(), "r-1", "accept", null);
+    const busy = () => server.runtime.processSelector(answering, () => server.session());
+    const answered = server.runtime.dispatch(
+      answerRequest,
+      server.sessionId(),
+      "r-1",
+      "accept",
+      null,
+    );
+    await settled();
+    expect(busy()).toBe(true);
+    expect(
+      await server.runtime.dispatch(answerRequest, server.sessionId(), "r-2", "decline", null),
+    ).toBeUndefined();
+    release();
+    await answered;
+    expect(busy()).toBe(false);
     expect(answers.map((answer) => [answer.RequestId, answer.Decision])).toEqual([
       ["r-1", "accept"],
     ]);
@@ -1204,7 +1240,6 @@ describe("writing to the server", () => {
       event: event("runtime-request.updated", { ...request, status: "resolved" }),
     } as IWireThreadItem);
     expect(pendingOf(server)).toEqual([]);
-    expect(server.environment().Local.ThreadSessions[THREAD_ID]!.Answering).toBeNull();
   });
 
   it("holds a question's answer until it's complete, and clears it once sent", async () => {
@@ -1232,23 +1267,32 @@ describe("writing to the server", () => {
 
   it("sends a thread command and leaves the row to the stream, showing a failure", async () => {
     const commands: { ThreadId: string; Command: object }[] = [];
-    let refuse = false;
+    let refusal: string | null = null;
     const server = await connect(undefined, null, {
       threadCommand: (effect: { ThreadId: string; Command: object }) => {
-        if (refuse) throw new Error("server said no");
+        if (refusal !== null) throw new Error(refusal);
         commands.push(effect);
       },
     });
+    const refused = async (command: IThreadCommand, message: string) => {
+      refusal = message;
+      await expect(
+        server.runtime.dispatch(threadCommand, server.envId(), "t-1", command),
+      ).rejects.toThrow(message);
+    };
     await server.runtime.dispatch(threadCommand, server.envId(), "t-1", { Kind: "settle" });
     expect(commands).toMatchObject([{ ThreadId: "t-1", Command: { Kind: "settle" } }]);
-    refuse = true;
-    await server.runtime.dispatch(threadCommand, server.envId(), "t-1", { Kind: "pin" });
-    expect(server.environment().Local.CommandError).toBe("server said no");
+    await refused({ Kind: "pin" }, "server said no");
+    expect(server.runtime.state.Failure).toBe("server said no");
     await server.runtime.dispatch(threadCommand, server.envId(), "t-1", {
       Kind: "visit",
       VisitedAt: "2026-01-01T00:00:00.000Z",
     });
-    expect(server.environment().Local.CommandError).toBeUndefined();
+    expect(server.runtime.state.Failure).toBe("server said no");
+    await refused({ Kind: "unpin" }, "still no");
+    expect(server.runtime.state.Failure).toBe("still no");
+    await server.runtime.dispatch(dismissFailure, "Root");
+    expect(server.runtime.state.Failure).toBeUndefined();
   });
 
   it("adding a project opens a new thread in it, and a refused one opens nothing", async () => {
@@ -1267,8 +1311,10 @@ describe("writing to the server", () => {
     const selected = server.environment().Local.SelectedThreadId!;
     expect(server.environment().Local.ThreadSessions[selected]?.NewThreadProjectId).toBe(projectId);
     refuse = true;
-    await server.runtime.dispatch(projectCommand, server.envId(), null, add);
-    expect(server.environment().Local.CommandError).toBe("no such folder");
+    await expect(
+      server.runtime.dispatch(projectCommand, server.envId(), null, add),
+    ).rejects.toThrow("no such folder");
+    expect(server.runtime.state.Failure).toBe("no such folder");
     expect(server.environment().Local.SelectedThreadId).toBe(selected);
   });
 
@@ -1346,7 +1392,7 @@ describe("diffs", () => {
     await server.sendThread(withCheckpoints());
     const panel = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
     await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
-    expect(panel()).toMatchObject({ Open: true, Text: "patch for turn 1", Loading: false });
+    expect(panel()).toMatchObject({ Open: true, Text: "patch for turn 1" });
     await server.runtime.dispatch(closeDiff, server.sessionId());
     expect(panel()).toMatchObject({ Open: false, Text: null });
     await server.runtime.dispatch(openDiff, server.sessionId(), "thread", null);
@@ -1365,16 +1411,20 @@ describe("diffs", () => {
     });
     await server.open();
     const panel = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
+    const loading = () => server.runtime.processSelector(diffLoading, () => server.session());
     const first = server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     const second = server.runtime.dispatch(openDiff, server.sessionId(), "turn", 2);
     replies.get(1)!("stale");
     await first;
-    expect(panel()).toMatchObject({ Text: null, Loading: true });
+    expect(panel()).toMatchObject({ Text: null });
+    expect(loading()).toBe(true);
     replies.get(2)!("current");
     await second;
-    expect(panel()).toMatchObject({ Text: "current", Loading: false });
+    expect(panel()).toMatchObject({ Text: "current" });
+    expect(loading()).toBe(false);
     const third = server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     await server.runtime.dispatch(closeDiff, server.sessionId());
+    expect(loading()).toBe(false);
     replies.get(1)!("late");
     await third;
     expect(panel()).toMatchObject({ Open: false, Text: null });
@@ -1389,7 +1439,7 @@ describe("diffs", () => {
     await server.open();
     await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     const panel = server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
-    expect(panel).toMatchObject({ Error: "checkpoint is missing", Loading: false, Text: null });
+    expect(panel).toMatchObject({ Error: "checkpoint is missing", Text: null });
   });
 
   it("takes a file change's counts from its run's checkpoint when the item has none", async () => {
@@ -1496,6 +1546,8 @@ describe("the terminal", () => {
   };
   const panel = (server: Awaited<ReturnType<typeof connect>>, threadId = THREAD_ID) =>
     server.environment().Local.ThreadSessions[threadId]!.Terminal;
+  const terminal = (server: Awaited<ReturnType<typeof connect>>, threadId = THREAD_ID) =>
+    server.runtime.processSelector(terminalAttachment, () => server.session(threadId));
   const attached = (server: Awaited<ReturnType<typeof connect>>) =>
     server.runtime
       .resources()
@@ -1564,8 +1616,10 @@ describe("the terminal", () => {
     await server.runtime.dispatch(selectThread, server.envId(), "a");
     await settled();
     expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]);
-    expect(panel(server, "a")).toMatchObject({ Open: true, FocusOnMount: false });
+    expect(panel(server, "a").Open).toBe(true);
+    expect(terminal(server, "a").FocusOnMount).toBe(false);
     await server.runtime.dispatch(selectThread, server.envId(), "b");
+    await settled();
     expect(attached(server)).toEqual([]);
     await server.runtime.dispatch(selectThread, server.envId(), "a");
     await settled();
@@ -1590,7 +1644,7 @@ describe("the terminal", () => {
     expect(server.terminals.has(THREAD_ID)).toBe(false);
   });
 
-  it("shows what the shell reports, and a stream that ends", async () => {
+  it("shows what the shell reports, and forgets it when the thread closes", async () => {
     const server = await connect();
     await server.open();
     await withProject(server, null);
@@ -1604,11 +1658,12 @@ describe("the terminal", () => {
         { publisher: { Id: session } },
       );
     await deliver({ Status: "running", Error: null });
-    expect(panel(server).Status).toBe("running");
+    expect(terminal(server).Status).toBe("running");
     await deliver({ Status: "exited", Error: null });
-    expect(panel(server).Status).toBe("exited");
-    await deliver({ $Ended: { Reason: "failed" } });
-    expect(panel(server)).toMatchObject({ Status: "error", Error: "failed" });
+    expect(terminal(server).Status).toBe("exited");
+    await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
+    await settled();
+    expect(terminal(server).Status).toBeNull();
   });
 });
 
@@ -1623,7 +1678,8 @@ describe("reconnect", () => {
     await server.runtime.dispatch(ThreadReceiver.handle, server.openId(), resubscribed, {
       publisher: { Id: server.openId() },
     });
-    expect(server.thread().Synchronized).toBe(false);
+    const synchronized = () => server.runtime.processSelector(threadSynchronized, server.thread);
+    expect(synchronized()).toBe(false);
     expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2"]);
 
     await server.sendThread({
@@ -1640,7 +1696,7 @@ describe("reconnect", () => {
     expect(server.thread()).toBe(node);
     expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2", "missed"]);
     expect(server.thread().LastSequence).toBe(6);
-    expect(server.thread().Synchronized).toBe(true);
+    expect(synchronized()).toBe(true);
     const row = server.runtime.resources().find((resource) => resource.Key === "Thread/Stream");
     expect(row?.ResumeFrom).toBe("LastSequence");
   });
@@ -1706,7 +1762,7 @@ describe("the replica's writers", () => {
       "ShellReceiver",
       "ThreadReceiver",
       "closeThread",
-      "loadEarlier",
+      "loadHistory",
       "loadProviders",
       "openThread",
     ]);

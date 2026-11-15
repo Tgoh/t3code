@@ -5,13 +5,14 @@ import {
   type IEntity,
   type ISelectorGenerator,
   isEnded,
-  open,
   openResource,
   receiver,
+  startTimer,
+  stopTimer,
+  transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { delayEffect } from "./Infrastructure/delay";
 import type {
   IWireProject,
   IWireShellItem,
@@ -24,28 +25,31 @@ declare module "treflex" {
   interface IResourceRegistry {
     "Shell/Stream": { Type: "shellStream" };
   }
+  interface ITimerRegistry {
+    "Shell/Reopen": {};
+  }
 }
 
 const REOPEN_MS = 1_000;
 
 export interface IShell extends IEntity {
   EnvironmentId: string;
-  Synchronized: boolean;
   LastSequence: number;
   Projects: Record<string, IWireProject>;
   Threads: Record<string, IWireThreadShell>;
-  Error?: string;
 }
 
 export function getDefaultShell(environmentId: string): Omit<IShell, "$Id"> {
   return {
     EnvironmentId: environmentId,
-    Synchronized: false,
     LastSequence: 0,
     Projects: {},
     Threads: {},
   };
 }
+
+const streamState = (draft: IShell) =>
+  transient(draft, "Shell/StreamState", { Synchronized: false });
 
 export function* openShellStream(draft: IShell): IActionGenerator {
   yield* openResource(
@@ -101,11 +105,7 @@ function applySnapshot(draft: IShell, snapshot: IWireShellSnapshot): void {
   );
 }
 
-function applyItem(draft: IShell, item: IWireShellItem): void {
-  if (item.kind === "synchronized") {
-    draft.Synchronized = true;
-    return;
-  }
+function applyItem(draft: IShell, item: Exclude<IWireShellItem, { kind: "synchronized" }>): void {
   if (item.kind === "snapshot") {
     if (item.resolvedRepositoryIdentityRoots !== undefined)
       applyEnrichment(draft, item.snapshot.projects, item.resolvedRepositoryIdentityRoots);
@@ -131,21 +131,34 @@ function applyItem(draft: IShell, item: IWireShellItem): void {
   }
 }
 
+export function* dropThreadRow(draft: IShell, threadId: string): IActionGenerator {
+  delete draft.Threads[threadId];
+}
+
+function* reopenLater(draft: IShell): IActionGenerator {
+  yield* startTimer(draft, "Shell/Reopen", ShellReceiver, REOPEN_MS);
+}
+
 export const ShellReceiver = receiver<IShell>("ShellReceiver")({
   *"Shell/Stream"(draft, message) {
     if (isEnded(message)) {
-      draft.Error = message.$Ended.Reason;
       // A batch the receiver failed would fail again on every reopen.
-      if (message.$Ended.Reason === "receiver-failed") return;
-      yield* open(delayEffect({ Ms: REOPEN_MS }));
-      delete draft.Error;
-      yield* openShellStream(draft);
+      if (message.$Ended.Reason !== "receiver-failed") yield* reopenLater(draft);
       return;
     }
-    if ("Item" in message) applyItem(draft, message.Item);
-    else draft.Synchronized = false;
+    if (!("Item" in message)) (yield* streamState(draft)).Synchronized = false;
+    else if (message.Item.kind === "synchronized") (yield* streamState(draft)).Synchronized = true;
+    else applyItem(draft, message.Item);
+  },
+  *"Shell/Reopen"(draft) {
+    yield* stopTimer(draft, "Shell/Reopen");
+    yield* openShellStream(draft);
   },
 });
+
+export function* shellSynchronized(draft: IShell): ISelectorGenerator<boolean> {
+  return (yield* streamState(draft)).Synchronized;
+}
 
 export type IThreadStatus = "running" | "waiting" | "failed" | "completed" | "stopped" | "idle";
 
@@ -222,8 +235,6 @@ export interface IProjectFolder {
   Threads: IWireThreadShell[];
 }
 
-// Stock's boring sidebar with grouping set to "separate", except that every open project gets a
-// folder, as Claude Code lists its folders; an archived one shows only while it has threads.
 export function projectFolders(
   active: IWireThreadShell[],
   projects: Record<string, IWireProject>,
@@ -286,4 +297,7 @@ export function workingStartedAt(thread: IWireThreadShell): string | null {
   return thread.latestRunStartedAt ?? thread.latestRunRequestedAt ?? null;
 }
 
-export default createEntityFeature<IShell>(import.meta.url)({}, { sidebarThreads });
+export default createEntityFeature<IShell>(import.meta.url)(
+  {},
+  { sidebarThreads, shellSynchronized },
+);

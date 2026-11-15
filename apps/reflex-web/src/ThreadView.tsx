@@ -189,11 +189,8 @@ function DiffCounts(props: { additions: number; deletions: number }) {
   );
 }
 
-function ChangedFiles(props: {
-  item: IWireCheckpoint;
-  turn: number | null;
-  onOpenDiff: (turn: number) => void;
-}) {
+function ChangedFiles(props: { item: IWireCheckpoint; turn: number | null }) {
+  const session = ThreadSession.use();
   const totals = () =>
     props.item.filesTotal ?? {
       count: props.item.files.length,
@@ -213,7 +210,7 @@ function ChangedFiles(props: {
             <button
               class="open-diff"
               data-tip="Open this turn's diff"
-              onClick={() => props.onOpenDiff(turn())}
+              onClick={() => session.openDiff("turn", turn())}
             >
               <FileDiff />
               Open diff
@@ -323,20 +320,13 @@ function MessageRow(props: IRowProps) {
 
 function ChangedFilesRow(props: IRowProps) {
   const { thread, item } = useRow(props);
-  const session = ThreadSession.use();
   const checkpoint = () => {
     const held = item();
     return held?.type === "checkpoint" ? held : null;
   };
   return (
     <Show when={checkpoint()}>
-      {(held) => (
-        <ChangedFiles
-          item={held()}
-          turn={diffTurnOf(thread.state, held())}
-          onOpenDiff={(turn) => session.openDiff("turn", turn)}
-        />
-      )}
+      {(held) => <ChangedFiles item={held()} turn={diffTurnOf(thread.state, held())} />}
     </Show>
   );
 }
@@ -480,7 +470,7 @@ function PendingApproval(props: { id: string }) {
               <span class="approval-dot">·</span>
               <button
                 classList={{ strong: option.decision === "accept" }}
-                disabled={session.state.Answering === props.id}
+                disabled={session.answering()}
                 onClick={() =>
                   session.answerRequest(props.id, option.decision as IApprovalDecision, null)
                 }
@@ -502,7 +492,6 @@ function RequestBanner(props: { id: string }) {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
   const request = createMemo(() => pendingRequest(thread.state, props.id));
-  const busy = () => session.state.Answering === props.id;
   const view = () => {
     const item = request()?.Item;
     return item == null ? null : viewOf(item);
@@ -551,7 +540,7 @@ function RequestBanner(props: { id: string }) {
               )}
             </For>
             <div class="request-actions">
-              <button class="button primary" disabled={busy() || answers() === null}>
+              <button class="button primary" disabled={session.answering() || answers() === null}>
                 Answer
               </button>
             </div>
@@ -576,6 +565,10 @@ const ThreadBody = ThreadSession.provider(() => {
   const retrying = () => {
     const status = stream.status();
     return status.State === "live" && status.Detail === "retrying";
+  };
+  const endedReason = () => {
+    const status = stream.status();
+    return status.State === "ended" ? status.Reason : null;
   };
   const runState = () => {
     const run = thread.latestRun();
@@ -633,7 +626,7 @@ const ThreadBody = ThreadSession.provider(() => {
             <h1 data-tip={thread.state.Thread?.title}>
               {thread.state.Thread?.title ?? "Loading thread…"}
             </h1>
-            <Show when={!thread.state.Synchronized}>
+            <Show when={!thread.threadSynchronized()}>
               <span class="crumb-note">syncing</span>
             </Show>
           </div>
@@ -663,8 +656,8 @@ const ThreadBody = ThreadSession.provider(() => {
             </button>
           </div>
         </header>
-        <Show when={thread.state.Ended}>
-          <p class="thread-notice">This thread's stream ended: {thread.state.Ended}</p>
+        <Show when={endedReason()}>
+          {(reason) => <p class="thread-notice">This thread's stream ended: {reason()}</p>}
         </Show>
         <Show when={retrying()}>
           <p class="thread-notice">Can't load this thread right now. Retrying.</p>
@@ -685,10 +678,10 @@ const ThreadBody = ThreadSession.provider(() => {
             <Show when={thread.state.History.HasMore}>
               <button
                 class="button load-earlier"
-                disabled={thread.state.History.Loading}
+                disabled={thread.loadingEarlier()}
                 onClick={() => thread.loadEarlier()}
               >
-                {thread.state.History.Loading ? "Loading…" : "Load earlier"}
+                {thread.loadingEarlier() ? "Loading…" : "Load earlier"}
               </button>
             </Show>
             <Show when={thread.state.History.Error}>

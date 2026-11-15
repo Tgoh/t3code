@@ -5,7 +5,7 @@ import { Composer } from "./Composer";
 import Environment from "./Environment";
 import Root from "./Root";
 import { Sidebar } from "./Sidebar";
-import ThreadSession, { modelDisplay } from "./ThreadSession";
+import ThreadSession from "./ThreadSession";
 import { ThreadView } from "./ThreadView";
 import { TooltipHost } from "./tooltip";
 
@@ -32,23 +32,9 @@ const NewThreadView = ThreadSession.provider(() => {
 
 const EnvironmentView = Environment.provider(() => {
   const environment = Environment.use();
-  const providerName = (instanceId: string) =>
-    environment.state.Replica.Providers.find((provider) => provider.InstanceId === instanceId)
-      ?.Name ?? instanceId;
   return (
     <div class="layout">
-      <Sidebar
-        state={environment.state.Replica.Shell}
-        selected={environment.state.Local.SelectedThreadId}
-        currentProjectId={environment.currentProjectId()}
-        commandError={environment.state.Local.CommandError}
-        modelOf={(selection) => modelDisplay(environment.state.Replica.Providers, selection)}
-        providerName={providerName}
-        onSelect={(id) => environment.selectThread(id)}
-        onNewThread={(projectId) => environment.newThread(projectId)}
-        onCommand={(id, command) => environment.threadCommand(id, command)}
-        onProjectCommand={(id, command) => environment.projectCommand(id, command)}
-      />
+      <Sidebar state={environment.state.Replica.Shell} />
       <main>
         <Switch fallback={<p class="empty">Select a thread.</p>}>
           <Match when={environment.selectedOpenThread()} keyed>

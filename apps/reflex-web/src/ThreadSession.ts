@@ -11,6 +11,7 @@ import {
   type ISelectorGenerator,
   inFlight,
   isEnded,
+  latest,
   leading,
   open,
   openResource,
@@ -18,6 +19,7 @@ import {
   receiver,
   resource,
   select,
+  transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -75,7 +77,6 @@ export interface IDiffPanel {
   Open: boolean;
   Scope: "turn" | "thread";
   ToTurnCount: number | null;
-  Loading: boolean;
   Text: string | null;
   Error?: string;
 }
@@ -83,10 +84,14 @@ export interface IDiffPanel {
 export interface ITerminalPanel {
   Open: boolean;
   TerminalId: string;
-  Status: ITerminalStatus | null;
-  FocusOnMount: boolean;
   Error?: string;
 }
+
+const attachment = (draft: IThreadSession) =>
+  transient(draft, "Terminal/Attachment", {
+    Status: null as ITerminalStatus | null,
+    FocusOnMount: false,
+  });
 
 export interface IThreadSession extends IEntity {
   EnvironmentId: string;
@@ -100,7 +105,6 @@ export interface IThreadSession extends IEntity {
   SendError?: string;
   StopError?: string;
   QuestionAnswers: Record<string, string>;
-  Answering: string | null;
   AnswerError?: string;
   Panels: { Diff: IDiffPanel };
   Terminal: ITerminalPanel;
@@ -120,16 +124,10 @@ export function getDefaultThreadSession(
     ModelSelection: null,
     RuntimeMode: DEFAULT_RUNTIME_MODE,
     QuestionAnswers: {},
-    Answering: null,
     Panels: {
-      Diff: { Open: false, Scope: "turn", ToTurnCount: null, Loading: false, Text: null },
+      Diff: { Open: false, Scope: "turn", ToTurnCount: null, Text: null },
     },
-    Terminal: {
-      Open: false,
-      TerminalId: DEFAULT_TERMINAL_ID,
-      Status: null,
-      FocusOnMount: false,
-    },
+    Terminal: { Open: false, TerminalId: DEFAULT_TERMINAL_ID },
   };
 }
 
@@ -378,14 +376,12 @@ export function questionAnswers(draft: IThreadSession, questions: ReadonlyArray<
   return buildPendingUserInputAnswers(questions, drafts);
 }
 
-export function* answerRequest(
+export const answerRequest = leading(function* answer(
   draft: IThreadSession,
   requestId: string,
   decision: IApprovalDecision | null,
   answers: Record<string, string | ReadonlyArray<string>> | null,
 ): IOpenGenerator {
-  if (draft.Answering !== null) return;
-  draft.Answering = requestId;
   delete draft.AnswerError;
   const environmentId = draft.EnvironmentId;
   const threadId = draft.ThreadId;
@@ -406,10 +402,9 @@ export function* answerRequest(
   } catch (error) {
     draft.AnswerError = errorText(error);
   }
-  draft.Answering = null;
-}
+});
 
-export function* openDiff(
+export const openDiff = latest(function* fetchDiff(
   draft: IThreadSession,
   scope: "turn" | "thread",
   turnCount: number | null,
@@ -422,11 +417,9 @@ export function* openDiff(
   panel.Text = null;
   delete panel.Error;
   if (toTurnCount === null) {
-    panel.Loading = false;
     panel.Text = "";
     return;
   }
-  panel.Loading = true;
   const request = {
     EnvironmentId: draft.EnvironmentId,
     ThreadId: draft.ThreadId,
@@ -441,16 +434,14 @@ export function* openDiff(
     failure = errorText(error);
   }
   const current = draft.Panels.Diff;
-  if (!current.Open || current.Scope !== scope || current.ToTurnCount !== toTurnCount) return;
-  current.Loading = false;
+  if (!current.Open) return;
   current.Text = text;
   if (failure !== null) current.Error = failure;
-}
+});
 
 export function* closeDiff(draft: IThreadSession): IActionGenerator {
   const panel = draft.Panels.Diff;
   panel.Open = false;
-  panel.Loading = false;
   panel.Text = null;
   delete panel.Error;
 }
@@ -471,16 +462,17 @@ export function* restoreTerminal(draft: IThreadSession): IActionGenerator {
   const launch = yield* rememberedTerminalEffect({ ThreadId: draft.ThreadId });
   if (launch === null || !(yield* select(isThreadOpen))) return;
   draft.Terminal.Open = true;
-  draft.Terminal.FocusOnMount = false;
+  (yield* attachment(draft)).FocusOnMount = false;
   yield* attachTerminal(draft, launch);
 }
 
 export function* openTerminal(draft: IThreadSession): IActionGenerator {
   const panel = draft.Terminal;
   panel.Open = true;
-  panel.Status = null;
-  panel.FocusOnMount = true;
   delete panel.Error;
+  const attached = yield* attachment(draft);
+  attached.Status = null;
+  attached.FocusOnMount = true;
   const launch = yield* select(terminalLaunch);
   if (launch === null) {
     panel.Error = "This thread's project isn't loaded yet.";
@@ -490,12 +482,15 @@ export function* openTerminal(draft: IThreadSession): IActionGenerator {
   yield* rememberTerminalEffect({ ThreadId: draft.ThreadId, Launch: launch });
 }
 
-export function* closeTerminal(draft: IThreadSession): IActionGenerator {
-  const panel = draft.Terminal;
-  panel.Open = false;
-  panel.Status = null;
-  delete panel.Error;
+export function* detachTerminal(draft: IThreadSession): IActionGenerator {
+  (yield* attachment(draft)).Status = null;
   yield* closeResource(draft, "Terminal/Session");
+}
+
+export function* closeTerminal(draft: IThreadSession): IActionGenerator {
+  draft.Terminal.Open = false;
+  delete draft.Terminal.Error;
+  yield* detachTerminal(draft);
   yield* rememberTerminalEffect({ ThreadId: draft.ThreadId, Launch: null });
 }
 
@@ -527,14 +522,22 @@ export function* ending(draft: IThreadSession): ISelectorGenerator<boolean> {
   return yield* inFlight(endTerminal, draft);
 }
 
+export function* answering(draft: IThreadSession): ISelectorGenerator<boolean> {
+  return yield* inFlight(answerRequest, draft);
+}
+
+export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
+  return draft.Panels.Diff.Open && (yield* inFlight(openDiff, draft));
+}
+
+export function* terminalAttachment(draft: IThreadSession) {
+  return yield* attachment(draft);
+}
+
 export const TerminalReceiver = receiver<IThreadSession>("TerminalReceiver")({
   *"Terminal/Session"(draft, message) {
-    if (isEnded(message)) {
-      draft.Terminal.Status = "error";
-      draft.Terminal.Error = message.$Ended.Reason ?? "The terminal stopped.";
-      return;
-    }
-    draft.Terminal.Status = message.Status;
+    if (isEnded(message)) return;
+    (yield* attachment(draft)).Status = message.Status;
     if (message.Error === null) delete draft.Terminal.Error;
     else draft.Terminal.Error = message.Error;
   },
@@ -567,5 +570,8 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     sending,
     stopping,
     ending,
+    answering,
+    diffLoading,
+    terminalAttachment,
   },
 );

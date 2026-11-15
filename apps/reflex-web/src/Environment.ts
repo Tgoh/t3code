@@ -1,6 +1,5 @@
 import {
   bind,
-  closeResource,
   entity,
   generateGuid,
   type IActionGenerator,
@@ -26,8 +25,9 @@ import {
 } from "./Infrastructure/commandEffects";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import { getDefaultOpenThread, type IOpenThread, openThreadStream } from "./OpenThread";
-import { getDefaultShell, type IShell, openShellStream } from "./Shell";
+import { dropThreadRow, getDefaultShell, type IShell, openShellStream } from "./Shell";
 import {
+  detachTerminal,
   getDefaultThreadSession,
   type IReplica,
   type IThreadSession,
@@ -41,7 +41,6 @@ export interface IEnvironment extends IEntity {
   Local: IEntity & {
     SelectedThreadId: string | null;
     ThreadSessions: Record<string, IThreadSession>;
-    CommandError?: string;
   };
 }
 
@@ -109,9 +108,7 @@ export function* openThread(draft: IEnvironment, threadId: string): IActionGener
 export function* closeThread(draft: IEnvironment, threadId: string): IActionGenerator {
   delete draft.Replica.OpenThreads[threadId];
   const session = draft.Local.ThreadSessions[threadId];
-  if (session === undefined) return;
-  session.Terminal.Status = null;
-  yield* closeResource(session, "Terminal/Session");
+  if (session !== undefined) yield* start(detachTerminal, session);
 }
 
 export function* selectThread(draft: IEnvironment, threadId: string): IActionGenerator {
@@ -138,8 +135,8 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
 
 function* forgetThread(draft: IEnvironment, threadId: string): IActionGenerator {
   delete draft.Replica.OpenThreads[threadId];
-  delete draft.Replica.Shell.Threads[threadId];
   delete draft.Local.ThreadSessions[threadId];
+  yield* start(dropThreadRow, draft.Replica.Shell, threadId);
   yield* rememberTerminalEffect({ ThreadId: threadId, Launch: null });
   if (draft.Local.SelectedThreadId === threadId) {
     draft.Local.SelectedThreadId = null;
@@ -152,7 +149,6 @@ export function* threadCommand(
   threadId: string,
   command: IThreadCommand,
 ): IOpenGenerator {
-  delete draft.Local.CommandError;
   const environmentId = draft.EnvironmentId;
   try {
     yield* open(
@@ -167,10 +163,8 @@ export function* threadCommand(
     );
   } catch (error) {
     // A visit is bookkeeping the user didn't ask for, and the next one covers it.
-    if (command.Kind !== "visit") {
-      draft.Local.CommandError = error instanceof Error ? error.message : String(error);
-    }
-    return;
+    if (command.Kind === "visit") return;
+    throw error;
   }
   // The shell doesn't say why a row left, and only an open thread's stream reports a deletion.
   if (command.Kind === "delete") yield* forgetThread(draft, threadId);
@@ -181,24 +175,18 @@ export function* projectCommand(
   projectId: string | null,
   command: IProjectCommand,
 ): IOpenGenerator {
-  delete draft.Local.CommandError;
   const environmentId = draft.EnvironmentId;
   const target = projectId ?? (yield* generateGuid());
-  try {
-    yield* open(
-      withCommandId((commandId) =>
-        projectCommandEffect({
-          EnvironmentId: environmentId,
-          ProjectId: target,
-          CommandId: commandId,
-          Command: command,
-        }),
-      ),
-    );
-  } catch (error) {
-    draft.Local.CommandError = error instanceof Error ? error.message : String(error);
-    return;
-  }
+  yield* open(
+    withCommandId((commandId) =>
+      projectCommandEffect({
+        EnvironmentId: environmentId,
+        ProjectId: target,
+        CommandId: commandId,
+        Command: command,
+      }),
+    ),
+  );
   if (command.Kind === "create") yield* newThread(draft, target);
 }
 

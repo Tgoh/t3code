@@ -15,7 +15,7 @@ import type {
   IWireThreadItem,
 } from "../src/Infrastructure/wire";
 import { type IOpenThread, ThreadReceiver, timelineEntries } from "../src/OpenThread";
-import { getDefaultRoot, type IRoot, load } from "../src/Root";
+import { getDefaultRoot, type IRoot, load, RootReceiver } from "../src/Root";
 import {
   assistantItem,
   event,
@@ -69,9 +69,12 @@ async function connected(projection: IWireProjection) {
       addressThread: () => null,
       serverProviders: () => [],
       generateGuid: guids("bench"),
+      rememberedTerminal: () => null,
+      logFailure: (effect: object) => console.error("action failed:", effect),
     },
     { onError: (error) => console.error("action failed:", error) },
   );
+  runtime.registerReceiver(RootReceiver);
   runtime.registerReceiver(EnvironmentReceiver);
   runtime.registerReceiver(ThreadReceiver);
   await runtime.dispatch(load, "Root");

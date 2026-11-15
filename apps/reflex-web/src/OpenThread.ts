@@ -11,15 +11,19 @@ import {
   type IEntity,
   type IOpenGenerator,
   type ISelectorGenerator,
+  inFlight,
   isEnded,
+  leading,
   open,
   openResource,
   publishToNearest,
   receiver,
+  startTimer,
+  stopTimer,
+  transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { delayEffect } from "./Infrastructure/delay";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type {
   IWireHistoryPage,
@@ -37,6 +41,9 @@ declare module "treflex" {
   }
   interface IMessageRegistry {
     "Thread/Deleted": { ThreadId: string };
+  }
+  interface ITimerRegistry {
+    "Thread/Reopen": {};
   }
 }
 
@@ -59,8 +66,6 @@ export interface IOpenThread extends IEntity {
   EnvironmentId: string;
   ThreadId: string;
   LastSequence: number;
-  Synchronized: boolean;
-  Ended?: string;
   Thread: IWireProjection["thread"] | null;
   Runs: Record<string, IWireProjection["runs"][number]>;
   Attempts: Record<string, IWireProjection["attempts"][number]>;
@@ -84,7 +89,6 @@ export interface IOpenThread extends IEntity {
     Cursor: string | null;
     HasMore: boolean;
     LatestLocalTurnOrdinal: number | null;
-    Loading: boolean;
     Error?: string;
   };
 }
@@ -93,8 +97,10 @@ export const NO_HISTORY: IOpenThread["History"] = {
   Cursor: null,
   HasMore: false,
   LatestLocalTurnOrdinal: null,
-  Loading: false,
 };
+
+const streamState = (draft: IOpenThread) =>
+  transient(draft, "Thread/StreamState", { Synchronized: false });
 
 export function getDefaultOpenThread(
   environmentId: string,
@@ -104,7 +110,6 @@ export function getDefaultOpenThread(
     EnvironmentId: environmentId,
     ThreadId: threadId,
     LastSequence: 0,
-    Synchronized: false,
     Thread: null,
     Runs: {},
     Attempts: {},
@@ -411,13 +416,12 @@ function applySnapshot(draft: IOpenThread, item: IWireThreadSnapshot): void {
     Cursor: item.historyCursor ?? null,
     HasMore: item.hasMoreHistory ?? false,
     LatestLocalTurnOrdinal: item.latestLocalTurnOrdinal ?? null,
-    Loading: false,
   };
 }
 
 function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator {
   if (item.kind === "synchronized") {
-    draft.Synchronized = true;
+    (yield* streamState(draft)).Synchronized = true;
     return;
   }
   if (item.kind === "snapshot") {
@@ -436,21 +440,29 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
   if (draft.Thread !== null) applyEvent(draft, item.event);
 }
 
+function* reopenLater(draft: IOpenThread): IActionGenerator {
+  yield* startTimer(draft, "Thread/Reopen", ThreadReceiver, REOPEN_MS);
+}
+
 export const ThreadReceiver = receiver<IOpenThread>("ThreadReceiver")({
   *"Thread/Stream"(draft, message) {
     if (isEnded(message)) {
-      draft.Ended = message.$Ended.Reason;
       // A batch the receiver failed would fail again on every reopen.
-      if (message.$Ended.Reason === "receiver-failed") return;
-      yield* open(delayEffect({ Ms: REOPEN_MS }));
-      delete draft.Ended;
-      yield* openThreadStream(draft);
+      if (message.$Ended.Reason !== "receiver-failed") yield* reopenLater(draft);
       return;
     }
     if ("Item" in message) yield* applyItem(draft, message.Item);
-    else draft.Synchronized = false;
+    else (yield* streamState(draft)).Synchronized = false;
+  },
+  *"Thread/Reopen"(draft) {
+    yield* stopTimer(draft, "Thread/Reopen");
+    yield* openThreadStream(draft);
   },
 });
+
+export function* threadSynchronized(draft: IOpenThread): ISelectorGenerator<boolean> {
+  return (yield* streamState(draft)).Synchronized;
+}
 
 function mergeOlderRows(draft: IOpenThread, items: IWireHistoryPage["items"]): void {
   const head: string[] = [];
@@ -476,9 +488,8 @@ function mergeOlderRows(draft: IOpenThread, items: IWireHistoryPage["items"]): v
   draft.Timeline = [...head, ...draft.Timeline.filter((id) => !inPage.has(id))];
 }
 
-export function* loadEarlier(draft: IOpenThread): IOpenGenerator {
-  if (draft.History.Loading || draft.History.Cursor === null || !draft.History.HasMore) return;
-  draft.History.Loading = true;
+export const loadEarlier = leading(function* loadHistory(draft: IOpenThread): IOpenGenerator {
+  if (draft.History.Cursor === null || !draft.History.HasMore) return;
   delete draft.History.Error;
   const threadId = draft.ThreadId;
   let cursor = draft.History.Cursor;
@@ -497,13 +508,15 @@ export function* loadEarlier(draft: IOpenThread): IOpenGenerator {
       if (page.nextCursor === cursor) throw new Error("History did not advance.");
       cursor = page.nextCursor;
     }
-    draft.History.Loading = false;
   } catch (error) {
     if (draft.History.Cursor === cursor) {
       draft.History.Error = error instanceof Error ? error.message : String(error);
-      draft.History.Loading = false;
     }
   }
+});
+
+export function* loadingEarlier(draft: IOpenThread): ISelectorGenerator<boolean> {
+  return yield* inFlight(loadEarlier, draft);
 }
 
 function checkpointOfRun(draft: IOpenThread, runId: string | null) {
@@ -643,5 +656,12 @@ export function* pendingQuestionIds(draft: IOpenThread): ISelectorGenerator<stri
 
 export default createEntityFeature<IOpenThread>(import.meta.url)(
   { loadEarlier },
-  { latestRun, pendingApprovalIds, pendingQuestionIds, queuedRuns },
+  {
+    latestRun,
+    pendingApprovalIds,
+    pendingQuestionIds,
+    queuedRuns,
+    loadingEarlier,
+    threadSynchronized,
+  },
 );

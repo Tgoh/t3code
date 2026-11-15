@@ -16,6 +16,7 @@ import {
 } from "solid-js";
 
 import { ProjectBadge, ProviderIcon, T3Mark } from "./brand";
+import Environment from "./Environment";
 import {
   AlarmClockOff,
   ArrowRightLeft,
@@ -39,13 +40,11 @@ import {
   SquarePen,
   Trash2,
   Undo2,
+  X,
 } from "./icons";
-import type {
-  IProjectCommand,
-  IThreadCommand,
-  IWireModelSelection,
-} from "./Infrastructure/commandEffects";
+import type { IProjectCommand, IThreadCommand } from "./Infrastructure/commandEffects";
 import type { IWireProject, IWireThreadShell } from "./Infrastructure/wire";
+import Root from "./Root";
 import Shell, {
   type IProjectFolder,
   type ISidebarStatus,
@@ -56,6 +55,7 @@ import Shell, {
   workingStartedAt,
 } from "./Shell";
 import { StageArt } from "./StageArt";
+import { modelDisplay } from "./ThreadSession";
 import { hoverCard } from "./tooltip";
 
 const CONNECTION_LABEL: Record<string, string> = {
@@ -216,11 +216,11 @@ function ThreadCard(props: {
   renaming: boolean;
   now: number;
   second: number;
-  onSelect: () => void;
-  onCommand: (command: IThreadCommand) => void;
   onMenu: (x: number, y: number) => void;
   onRenamed: (title: string | null) => void;
 }) {
+  const environment = Environment.use();
+  const select = () => environment.selectThread(props.thread.id);
   const status = () => {
     const held = sidebarStatus(props.thread);
     return held === "done" && props.selected ? null : held;
@@ -231,7 +231,7 @@ function ThreadCard(props: {
   };
   const act = (event: MouseEvent, command: IThreadCommand) => {
     event.stopPropagation();
-    props.onCommand(command);
+    environment.threadCommand(props.thread.id, command);
   };
   return (
     <li>
@@ -250,12 +250,12 @@ function ThreadCard(props: {
             (status() === null || status() === "working" || status() === "approval"),
           dimmed: !props.selected && status() === "working",
         }}
-        onClick={props.onSelect}
+        onClick={select}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
-          props.onSelect();
+          select();
         }}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -417,11 +417,12 @@ function ProjectMenu(props: {
   project: IWireProject;
   x: number;
   y: number;
-  onCommand: (command: IProjectCommand) => void;
-  onNewThread: () => void;
   onRename: () => void;
   onClose: () => void;
 }) {
+  const environment = Environment.use();
+  const command = (command: IProjectCommand) =>
+    environment.projectCommand(props.project.id, command);
   const choose = (act: () => void) => {
     act();
     props.onClose();
@@ -431,7 +432,7 @@ function ProjectMenu(props: {
       <MenuItem
         icon={<SquarePen />}
         label="New thread"
-        onSelect={() => choose(props.onNewThread)}
+        onSelect={() => choose(() => environment.newThread(props.project.id))}
       />
       <Show
         when={props.project.pinnedAt != null}
@@ -439,14 +440,14 @@ function ProjectMenu(props: {
           <MenuItem
             icon={<Pin />}
             label="Pin project"
-            onSelect={() => choose(() => props.onCommand({ Kind: "pin" }))}
+            onSelect={() => choose(() => command({ Kind: "pin" }))}
           />
         }
       >
         <MenuItem
           icon={<PinOff />}
           label="Unpin project"
-          onSelect={() => choose(() => props.onCommand({ Kind: "unpin" }))}
+          onSelect={() => choose(() => command({ Kind: "unpin" }))}
         />
       </Show>
       <MenuItem icon={<PenLine />} label="Rename" onSelect={() => choose(props.onRename)} />
@@ -459,10 +460,10 @@ function ThreadMenu(props: {
   x: number;
   y: number;
   now: number;
-  onCommand: (command: IThreadCommand) => void;
   onRename: () => void;
   onClose: () => void;
 }) {
+  const environment = Environment.use();
   const [confirmingDelete, setConfirmingDelete] = createSignal(false);
   const snoozed = () => isSnoozed(props.thread, props.now);
   const settled = () => props.thread.settledOverride === "settled";
@@ -473,7 +474,7 @@ function ThreadMenu(props: {
       : resolveSnoozePresets(new Date(props.now)),
   );
   const choose = (command: IThreadCommand) => {
-    props.onCommand(command);
+    environment.threadCommand(props.thread.id, command);
     props.onClose();
   };
   return (
@@ -558,10 +559,10 @@ function FolderHeader(props: {
   open: boolean;
   renaming: boolean;
   onToggle: () => void;
-  onNewThread: () => void;
   onMenu: (x: number, y: number) => void;
   onRenamed: (title: string | null) => void;
 }) {
+  const environment = Environment.use();
   const title = () => props.folder.Project?.title ?? "Unknown project";
   const needsYou = () =>
     props.folder.Threads.some((thread) => {
@@ -609,7 +610,7 @@ function FolderHeader(props: {
               data-tip="New thread"
               onClick={(event) => {
                 event.stopPropagation();
-                props.onNewThread();
+                environment.newThread(props.folder.ProjectId);
               }}
             >
               <SquarePen />
@@ -642,15 +643,17 @@ function folderTitle(path: string): string {
   );
 }
 
-function AddProjectForm(props: {
-  onAdd: (title: string, workspaceRoot: string) => void;
-  onClose: () => void;
-}) {
+function AddProjectForm(props: { onClose: () => void }) {
+  const environment = Environment.use();
   const [path, setPath] = createSignal("");
   const submit = () => {
     const root = path().trim();
     if (root === "") return;
-    props.onAdd(folderTitle(root), root);
+    environment.projectCommand(null, {
+      Kind: "create",
+      Title: folderTitle(root),
+      WorkspaceRoot: root,
+    });
     props.onClose();
   };
   return (
@@ -721,24 +724,24 @@ function SectionHeader(props: {
   );
 }
 
-export const Sidebar = Shell.provider<{
-  selected: string | null;
-  currentProjectId: string | null;
-  commandError: string | undefined;
-  modelOf: (selection: IWireModelSelection) => IModelDisplay;
-  providerName: (instanceId: string) => string;
-  onSelect: (id: string) => void;
-  onNewThread: (projectId: string) => void;
-  onCommand: (threadId: string, command: IThreadCommand) => void;
-  onProjectCommand: (projectId: string | null, command: IProjectCommand) => void;
-}>((props) => {
+export const Sidebar = Shell.provider(() => {
+  const root = Root.use();
+  const environment = Environment.use();
   const shell = Shell.use();
+  const selected = () => environment.state.Local.SelectedThreadId;
+  const providers = () => environment.state.Replica.Providers;
+  const providerName = (instanceId: string) =>
+    providers().find((provider) => provider.InstanceId === instanceId)?.Name ?? instanceId;
   const stream = useResource(() => shell.state, "Shell/Stream");
   const connection = () => {
     const status = stream.status();
     if (status.State !== "live") return status.State;
     const label = CONNECTION_LABEL[status.Detail ?? "connected"] ?? status.Detail;
-    return label === "connected" && !shell.state.Synchronized ? "syncing" : label;
+    return label === "connected" && !shell.shellSynchronized() ? "syncing" : label;
+  };
+  const endedReason = () => {
+    const status = stream.status();
+    return status.State === "ended" ? status.Reason : null;
   };
   const [now, setNow] = createSignal(Date.now());
   const tick = setInterval(() => setNow(Date.now()), MINUTE);
@@ -787,31 +790,29 @@ export const Sidebar = Shell.provider<{
   };
   // A collapsed shelf still shows the open thread, so its row doesn't vanish on settling it.
   const shelf = (threads: IWireThreadShell[], open: boolean, limit = Infinity) =>
-    open ? threads.slice(0, limit) : threads.filter((thread) => thread.id === props.selected);
+    open ? threads.slice(0, limit) : threads.filter((thread) => thread.id === selected());
   const projects = () =>
     Object.values(shell.state.Projects).filter((project) => project.archivedAt == null);
-  const targetProject = () => props.currentProjectId ?? projects()[0]?.id ?? null;
+  const targetProject = () => environment.currentProjectId() ?? projects()[0]?.id ?? null;
   const card = (thread: IWireThreadShell, section: ICardSection) => (
     <ThreadCard
       thread={thread}
       section={section}
       projectName={shell.state.Projects[thread.projectId]?.title ?? "Unknown project"}
-      model={props.modelOf(thread.modelSelection)}
+      model={modelDisplay(providers(), thread.modelSelection)}
       previousProviders={(thread.providerInstanceHistory ?? [])
         .filter((instanceId) => instanceId !== thread.modelSelection.instanceId)
-        .map((instanceId) => props.providerName(instanceId))}
-      selected={props.selected === thread.id}
+        .map(providerName)}
+      selected={selected() === thread.id}
       renaming={renaming() === thread.id}
       now={now()}
       second={second()}
-      onSelect={() => props.onSelect(thread.id)}
-      onCommand={(command) => props.onCommand(thread.id, command)}
       onMenu={(x, y) => setMenu({ Id: thread.id, X: x, Y: y })}
       onRenamed={(title) => {
         setRenaming(null);
         const trimmed = title?.trim();
         if (trimmed && trimmed !== thread.title) {
-          props.onCommand(thread.id, { Kind: "rename", Title: trimmed });
+          environment.threadCommand(thread.id, { Kind: "rename", Title: trimmed });
         }
       }}
     />
@@ -837,7 +838,7 @@ export const Sidebar = Shell.provider<{
               class="icon-button"
               aria-label="New thread"
               data-tip="New thread"
-              onClick={() => props.onNewThread(projectId())}
+              onClick={() => environment.newThread(projectId())}
             >
               <SquarePen />
             </button>
@@ -850,7 +851,7 @@ export const Sidebar = Shell.provider<{
               aria-label="New thread in project"
               value=""
               onChange={(event) => {
-                props.onNewThread(event.currentTarget.value);
+                environment.newThread(event.currentTarget.value);
                 event.currentTarget.value = "";
               }}
             >
@@ -887,27 +888,30 @@ export const Sidebar = Shell.provider<{
         </button>
       </div>
       <Show when={addingProject()}>
-        <AddProjectForm
-          onAdd={(title, workspaceRoot) =>
-            props.onProjectCommand(null, {
-              Kind: "create",
-              Title: title,
-              WorkspaceRoot: workspaceRoot,
-            })
-          }
-          onClose={() => setAddingProject(false)}
-        />
+        <AddProjectForm onClose={() => setAddingProject(false)} />
       </Show>
-      <Show when={shell.state.Error}>
-        <p class="sidebar-error">The shell stream ended: {shell.state.Error}</p>
+      <Show when={endedReason()}>
+        {(reason) => <p class="sidebar-error">The shell stream ended: {reason()}</p>}
       </Show>
-      <Show when={props.commandError}>
-        <p class="sidebar-error">That didn't work: {props.commandError}</p>
+      <Show when={root.state.Failure}>
+        {(failure) => (
+          <p class="sidebar-error">
+            That didn't work: {failure()}
+            <button
+              class="icon-button small"
+              aria-label="Dismiss"
+              data-tip="Dismiss"
+              onClick={() => root.dismissFailure()}
+            >
+              <X />
+            </button>
+          </p>
+        )}
       </Show>
       <Show
         when={shell.sidebarThreads().length > 0 || folders().length > 0}
         fallback={
-          <p class="empty">{shell.state.Synchronized ? "No threads yet." : "Loading threads…"}</p>
+          <p class="empty">{shell.shellSynchronized() ? "No threads yet." : "Loading threads…"}</p>
         }
       >
         <ul class="thread-list">
@@ -932,13 +936,12 @@ export const Sidebar = Shell.provider<{
                     open={!closedFolders().has(folder.ProjectId)}
                     renaming={renamingProject() === folder.ProjectId}
                     onToggle={() => toggleFolder(folder.ProjectId)}
-                    onNewThread={() => props.onNewThread(folder.ProjectId)}
                     onMenu={(x, y) => setProjectMenu({ Id: folder.ProjectId, X: x, Y: y })}
                     onRenamed={(title) => {
                       setRenamingProject(null);
                       const trimmed = title?.trim();
                       if (trimmed && trimmed !== folder.Project?.title) {
-                        props.onProjectCommand(folder.ProjectId, {
+                        environment.projectCommand(folder.ProjectId, {
                           Kind: "rename",
                           Title: trimmed,
                         });
@@ -948,7 +951,7 @@ export const Sidebar = Shell.provider<{
                   <For
                     each={
                       closedFolders().has(folder.ProjectId)
-                        ? folder.Threads.filter((thread) => thread.id === props.selected)
+                        ? folder.Threads.filter((thread) => thread.id === selected())
                         : folder.Threads
                     }
                   >
@@ -1003,7 +1006,6 @@ export const Sidebar = Shell.provider<{
             x={menu()?.X ?? 0}
             y={menu()?.Y ?? 0}
             now={now()}
-            onCommand={(command) => props.onCommand(thread.id, command)}
             onRename={() => setRenaming(thread.id)}
             onClose={() => setMenu(null)}
           />
@@ -1015,8 +1017,6 @@ export const Sidebar = Shell.provider<{
             project={project}
             x={projectMenu()?.X ?? 0}
             y={projectMenu()?.Y ?? 0}
-            onCommand={(command) => props.onProjectCommand(project.id, command)}
-            onNewThread={() => props.onNewThread(project.id)}
             onRename={() => setRenamingProject(project.id)}
             onClose={() => setProjectMenu(null)}
           />

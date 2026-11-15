@@ -1,17 +1,33 @@
-import { type IActionGenerator, type IEntity, start } from "treflex";
+import {
+  type IActionGenerator,
+  type IEntity,
+  type IReceiverId,
+  type ISerializedThrow,
+  receiver,
+  start,
+} from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
 import { type IEnvironment, init, newEnvironment } from "./Environment";
 import { environmentInfo } from "./Infrastructure/environmentInfo";
+import { logFailureEffect } from "./Infrastructure/failureLog";
 
 export interface IRoot extends IEntity {
+  readonly $Receiver?: IReceiverId<IRoot>;
   Phase: "loading" | "unpaired" | "connected";
   Label: string;
   Environments: IEnvironment[];
+  Failure?: string;
 }
 
 export function getDefaultRoot(id: string): IRoot {
-  return { $Id: id, Phase: "loading", Label: "", Environments: [] };
+  return {
+    $Id: id,
+    $Receiver: RootReceiver.Id,
+    Phase: "loading",
+    Label: "",
+    Environments: [],
+  };
 }
 
 export function* load(draft: IRoot): IActionGenerator {
@@ -27,4 +43,18 @@ export function* load(draft: IRoot): IActionGenerator {
   yield* start(init, environment.$Id);
 }
 
-export default createEntityFeature<IRoot>(import.meta.url)({ load });
+export function* dismissFailure(draft: IRoot): IActionGenerator {
+  delete draft.Failure;
+}
+
+const describe = (thrown: ISerializedThrow): string =>
+  thrown.Thrown === "error" ? thrown.Message : JSON.stringify(thrown.Data ?? null);
+
+export const RootReceiver = receiver<IRoot>("RootReceiver")({
+  *"Action/Error"(draft, failure) {
+    draft.Failure = describe(failure.Error);
+    yield* logFailureEffect({ ActionName: failure.ActionName, Error: failure.Error });
+  },
+});
+
+export default createEntityFeature<IRoot>(import.meta.url)({ load, dismissFailure });

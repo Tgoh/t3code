@@ -88,7 +88,7 @@ export function DiffPanel() {
         </Show>
       </div>
       <div class="diff-body">
-        <Show when={panel().Loading}>
+        <Show when={session.diffLoading()}>
           <p class="empty">Loading diff…</p>
         </Show>
         <Show when={panel().Error}>

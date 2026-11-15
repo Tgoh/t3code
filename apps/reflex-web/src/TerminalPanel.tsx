@@ -12,8 +12,13 @@ export function TerminalPanel() {
   const live = useResource(() => session.state, "Terminal/Session");
   const state = () => {
     const status = live.status();
+    if (status.State === "ended") return "error";
     if (status.State === "live" && RECONNECTING.has(status.Detail ?? "")) return "reconnecting";
-    return panel().Status ?? "starting";
+    return session.terminalAttachment().Status ?? "starting";
+  };
+  const error = () => {
+    const status = live.status();
+    return panel().Error ?? (status.State === "ended" ? status.Reason : undefined);
   };
   const [host, setHost] = createSignal<HTMLDivElement>();
   createEffect(() => {
@@ -23,7 +28,7 @@ export function TerminalPanel() {
     onCleanup(
       view.mount(
         element,
-        untrack(() => panel().FocusOnMount),
+        untrack(() => session.terminalAttachment().FocusOnMount),
       ),
     );
   });
@@ -51,8 +56,8 @@ export function TerminalPanel() {
           <X />
         </button>
       </div>
-      <Show when={panel().Error}>
-        <p class="composer-error terminal-error">{panel().Error}</p>
+      <Show when={error()}>
+        <p class="composer-error terminal-error">{error()}</p>
       </Show>
       <div class="terminal-host" ref={setHost} />
     </aside>

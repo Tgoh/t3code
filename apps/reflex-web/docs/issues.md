@@ -56,22 +56,29 @@ About 50 ms at 1,000 items and 1.1 s at 20,000. The bounded window keeps a socke
 
 The server's history is the raw PTY bytes, written at whatever width the shell had. After resizing between 47, 53 and 80 columns and then reattaching, one prompt line drew its typed text over the prompt, because ConPTY's cursor positions no longer matched the replayed screen. A shell at one width replayed cleanly. Stock replays the same history.
 
-## Not done: three in-flight marks are still in the tree
+## Limit: busy marks are per action
 
-`Sending`, `Stopping` and `Terminal.Ending` are `inFlight` reads of `leading` actions, so they show busy from when the action arrives, queued included. Records name those actions by their inner functions: `sendDraft`, `requestStop` and `endShell`. The other three would each need a redesign:
+Every busy mark is an `inFlight` read, which says whether an action runs on an entity and not which arguments it runs with. A per-argument mark would have to be composed: write the id into a transient when the action starts, and return it from a selector only while `inFlight` is true. This client doesn't, and nothing but a repeat of the same `latest` action can stop a running one. So:
 
-- `Answering` holds the id of the request being answered, which each request's buttons compare against, and `inFlight` can't say which request.
-- `Diff.Loading` is cleared by `closeDiff` and by a diff with no turn, before the fetch it marks has ended.
-- `History.Loading` is cleared by a reconnect snapshot, which replaces the window the page was fetched for, while that fetch is still waiting.
+- While any request is being answered, every request's buttons are disabled.
+- A reconnect snapshot during a history fetch leaves "Load earlier" on "Loading…" until the stale fetch returns and is discarded.
 
 ## Feedback for treflex
 
-- `merge` is gone, and `reconcileRows` takes one array of keyed rows at a time, refuses an incoming row without a key, and is a generator an action has to `yield*`. Folding a wire payload with nested keyless arrays into a held node in place, from the synchronous apply code, needed an app-side helper (`reconcile` in `rows.ts`).
-- Selectors that return fresh objects remount `<For>` rows and wake any parent selector, because a memo compares with `===`. The docs don't warn about it. An opt-in equality setting or structural sharing would cover both.
+- `merge` is gone, and `reconcileRows` takes one array of keyed rows at a time, refuses an incoming row without a key, and is a generator an action has to `yield*`. Folding a wire payload with nested keyless arrays into a held node in place, from the synchronous apply code, needed an app-side helper (`reconcile` in `rows.ts`). Records keyed by id, which keep a delta's lookups constant, aren't accepted at all.
+- `reconcileRows` throws a `TypeError` without `update`, where the table in `docs/advanced/state-tree.md` says a missing `update` keeps a matched row's contents.
+- Selectors that return fresh objects remount `<For>` rows and wake any parent selector, because a memo compares with `===`. An opt-in equality setting or structural sharing would cover both.
+- `inFlight(action, owner)` has no per-argument form, so a per-argument mark has to be composed, and one action can't stop another's run on the same entity. The limits above follow from that.
+- A transient costs a named helper and a selector for each view that reads it: here three transients (shell sync, thread sync, terminal status and focus) and three selectors. Nothing here snapshots, so they buy no behaviour in this app.
+- No entity hears its own failures, so `Root`, the parent of `Environment`, is the nearest error boundary for the Environment's own commands. A failure the boundary writes has no clearing rule of its own, so `Root` needed a dismiss action.
+- A record tap turns on the whole journal, which clones every write. With one no-op tap, the benchmark's per-delta p50 rose roughly 12–25%, so the boundary logs through an effect instead.
+- There's no public way to react to derived state (`watch` is internal to treflex), so marking a thread visited when a completion is on screen stays in `ThreadBody`'s view effect. The model could do it at its write sites instead, in `selectThread` and in the shell delivery through `publishToNearest`.
+- A timer recurs, so every backoff tick starts with `stopTimer`. There's no one-shot timer.
+- Wrapping an action in `leading` or `latest` renames it in records to its inner function, which can't share the export's name (esbuild renames it), so `Model.test.ts`'s writer list names `loadHistory`.
 - `<For>` over a store array pays for two proxy walks per list change, about 13 ms of a 15 ms add at 20,000 rows against 1.4 ms with a plain array. An id list through `<For>` is the pattern treflex recommends, so `treflex-solid` could offer a helper that tracks the array and hands `<For>` a plain copy.
-- `expose` and `status` have no obvious home for a live handle plus a changing display value, which is why terminal status goes through `emit` into state.
+- A resource has one `r.status` detail string, and the terminal's connection phase already uses it, so the shell process's status goes through `emit` into a transient.
 - `treflex-eslint`'s recommended rules need type information, which the repo's oxlint JS plugins don't provide, so they aren't on.
-- "Do not create an entity only so that its removal closes a resource" conflicts with `(entity, key)` identity for view-owned resources like `CommandOutput`.
+- "Do not create an entity only so that its removal closes a resource" sits against component state being a documented resource owner: `CommandOutput` mounts an empty `useComponentState` for nothing but owning its subscription.
 
 ## Differences from the immutable reducer
 
