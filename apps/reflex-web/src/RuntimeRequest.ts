@@ -21,6 +21,13 @@ export type IRuntimeRequest = IWithId<IWireProjection["runtimeRequests"][number]
 const outcome = (draft: IRuntimeRequest) =>
   transient(draft, "Request/Answer", { Error: null as string | null });
 
+// Follows usePendingThreadRequests in apps/web: a message-mode question outlives its provider
+// turn, but an approval needs the live provider session.
+export function canAnswer(request: IRuntimeRequest): boolean {
+  const capability = request.responseCapability.type;
+  return request.kind === "user_input" ? capability !== "not_resumable" : capability === "live";
+}
+
 export function* answerRequest(
   draft: IRuntimeRequest,
   environmentId: string,
@@ -28,6 +35,7 @@ export function* answerRequest(
   decision: IApprovalDecision | null,
   answers: Record<string, string | ReadonlyArray<string>> | null,
 ): IOpenGenerator {
+  if (!canAnswer(draft)) return;
   (yield* outcome(draft)).Error = null;
   const requestId = draft.id;
   try {

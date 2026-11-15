@@ -58,8 +58,8 @@ import OpenThread, {
   runText,
   timelineItem,
 } from "./OpenThread";
-import RuntimeRequest from "./RuntimeRequest";
-import { hasUnseenCompletion, runStatus } from "./Shell";
+import RuntimeRequest, { canAnswer } from "./RuntimeRequest";
+import { needsVisit, runStatus } from "./Shell";
 import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession, { questionAnswers } from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
@@ -463,31 +463,40 @@ const PendingApproval = RuntimeRequest.provider(() => {
         <code class="approval-subject">{item()?.prompt ?? item()?.requestKind}</code>
       </div>
       <div class="approval-actions">
-        <span class="approval-state">
-          <ShieldQuestion />
-          Waiting for approval
-        </span>
-        <For each={options()}>
-          {(option) => (
-            <>
-              <span class="approval-dot">·</span>
-              <button
-                classList={{ strong: option.decision === "accept" }}
-                disabled={request.answering()}
-                onClick={() =>
-                  request.answerRequest(
-                    thread.state.EnvironmentId,
-                    thread.state.ThreadId,
-                    option.decision as IApprovalDecision,
-                    null,
-                  )
-                }
-              >
-                {option.label}
-              </button>
-            </>
-          )}
-        </For>
+        <Show
+          when={canAnswer(request.state)}
+          fallback={
+            <span class="approval-state">
+              Provider process is gone. Interrupt or restart the run to respond.
+            </span>
+          }
+        >
+          <span class="approval-state">
+            <ShieldQuestion />
+            Waiting for approval
+          </span>
+          <For each={options()}>
+            {(option) => (
+              <>
+                <span class="approval-dot">·</span>
+                <button
+                  classList={{ strong: option.decision === "accept" }}
+                  disabled={request.answering()}
+                  onClick={() =>
+                    request.answerRequest(
+                      thread.state.EnvironmentId,
+                      thread.state.ThreadId,
+                      option.decision as IApprovalDecision,
+                      null,
+                    )
+                  }
+                >
+                  {option.label}
+                </button>
+              </>
+            )}
+          </For>
+        </Show>
       </div>
       <Show when={request.answerError()}>
         {(error) => <p class="composer-error">Couldn't answer: {error()}</p>}
@@ -542,6 +551,7 @@ const RequestBanner = RuntimeRequest.provider(() => {
                 <label class="question">
                   {question.header}
                   <input
+                    disabled={!canAnswer(request.state)}
                     list={`options-${question.id}`}
                     value={session.state.QuestionAnswers[request.state.id]?.[question.id] ?? ""}
                     onInput={(event) =>
@@ -559,7 +569,10 @@ const RequestBanner = RuntimeRequest.provider(() => {
               )}
             </For>
             <div class="request-actions">
-              <button class="button primary" disabled={request.answering() || answers() === null}>
+              <button
+                class="button primary"
+                disabled={!canAnswer(request.state) || request.answering() || answers() === null}
+              >
                 Answer
               </button>
             </div>
@@ -617,7 +630,7 @@ const ThreadBody = ThreadSession.provider(() => {
   let visitedCompletion: string | null | undefined;
   createEffect(() => {
     const row = environment.state.Replica.Shell.Threads[thread.state.ThreadId];
-    if (row === undefined || !hasUnseenCompletion(row)) return;
+    if (row === undefined || !needsVisit(row)) return;
     if (visitedCompletion === row.latestRunCompletedAt) return;
     visitedCompletion = row.latestRunCompletedAt;
     environment.threadCommand(row.id, { Kind: "visit", VisitedAt: row.updatedAt });
@@ -741,7 +754,11 @@ const ThreadBody = ThreadSession.provider(() => {
               <div class="banner-title">
                 <strong>Queued</strong>
                 <Show when={runState() !== "running" && runState() !== "waiting"}>
-                  <button class="button" onClick={() => session.queueAction(null)}>
+                  <button
+                    class="button"
+                    disabled={session.queueing()}
+                    onClick={() => session.queueAction(null)}
+                  >
                     Resume
                   </button>
                 </Show>
@@ -749,7 +766,11 @@ const ThreadBody = ThreadSession.provider(() => {
               <For each={thread.queuedRunIds()}>
                 {(runId) => (
                   <p class="queued">
-                    <button class="button" onClick={() => session.queueAction(runId)}>
+                    <button
+                      class="button"
+                      disabled={session.queueing()}
+                      onClick={() => session.queueAction(runId)}
+                    >
                       Cancel
                     </button>
                     <span>{runText(thread.state, runId)}</span>

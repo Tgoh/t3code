@@ -92,7 +92,9 @@ export const Sidebar = Shell.provider(() => {
   onCleanup(() => clearInterval(tick));
   const [second, setSecond] = createSignal(Date.now());
   const anyWorking = createMemo(() =>
-    shell.sidebarThreads().some((thread) => sidebarStatus(thread) === "working"),
+    shell
+      .sidebarThreads()
+      .some((thread) => sidebarStatus(thread, shell.subagentRequests()[thread.id]) === "working"),
   );
   createEffect(() => {
     if (!anyWorking()) return;
@@ -100,7 +102,9 @@ export const Sidebar = Shell.provider(() => {
     const ticking = setInterval(() => setSecond(Date.now()), SECOND);
     onCleanup(() => clearInterval(ticking));
   });
-  const sections = createMemo(() => sidebarSections(shell.sidebarThreads(), now()));
+  const sections = createMemo(() =>
+    sidebarSections(shell.sidebarThreads(), now(), shell.subagentRequests()),
+  );
   const [snoozedOpen, setSnoozedOpen] = createSignal(false);
   const [settledOpen, setSettledOpen] = createSignal(false);
   const [settledShown, setSettledShown] = createSignal(SETTLED_PAGE);

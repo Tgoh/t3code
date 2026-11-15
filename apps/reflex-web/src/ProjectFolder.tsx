@@ -6,7 +6,7 @@ import { ChevronRight, Ellipsis, PenLine, Pin, PinOff, SquarePen } from "./icons
 import type { IProjectCommand } from "./Infrastructure/commandEffects";
 import type { IWireProject } from "./Infrastructure/wire";
 import { MenuItem, Popup } from "./Menu";
-import { type IProjectFolder, sidebarStatus } from "./Shell";
+import Shell, { type IProjectFolder, sidebarStatus } from "./Shell";
 import { RenameInput } from "./ThreadCard";
 
 export function ProjectMenu(props: {
@@ -60,10 +60,11 @@ export function FolderHeader(props: {
   onRenamed: (title: string | null) => void;
 }) {
   const environment = Environment.use();
+  const shell = Shell.use();
   const title = () => props.folder.Project?.title ?? "Unknown project";
   const needsYou = () =>
     props.folder.Threads.some((thread) => {
-      const status = sidebarStatus(thread);
+      const status = sidebarStatus(thread, shell.subagentRequests()[thread.id]);
       return status !== null && status !== "working";
     });
   return (

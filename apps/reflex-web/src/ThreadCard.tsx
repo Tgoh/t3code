@@ -27,7 +27,13 @@ import {
 import type { IThreadCommand } from "./Infrastructure/commandEffects";
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { MenuItem, Popup } from "./Menu";
-import { type ISidebarStatus, isSnoozed, sidebarStatus, workingStartedAt } from "./Shell";
+import Shell, {
+  canSnooze,
+  type ISidebarStatus,
+  isSnoozed,
+  sidebarStatus,
+  workingStartedAt,
+} from "./Shell";
 import { relativeTime, timeUntil } from "./timestamps";
 import { hoverCard } from "./tooltip";
 
@@ -164,9 +170,10 @@ export function ThreadCard(props: {
   onRenamed: (title: string | null) => void;
 }) {
   const environment = Environment.use();
+  const shell = Shell.use();
   const select = () => environment.selectThread(props.thread.id);
   const status = () => {
-    const held = sidebarStatus(props.thread);
+    const held = sidebarStatus(props.thread, shell.subagentRequests()[props.thread.id]);
     return held === "done" && props.selected ? null : held;
   };
   const workingFor = () => {
@@ -308,12 +315,14 @@ export function ThreadMenu(props: {
   onClose: () => void;
 }) {
   const environment = Environment.use();
+  const shell = Shell.use();
   const [confirmingDelete, setConfirmingDelete] = createSignal(false);
-  const snoozed = () => isSnoozed(props.thread, props.now);
+  const subagent = () => shell.subagentRequests()[props.thread.id];
+  const snoozed = () => isSnoozed(props.thread, props.now, subagent());
   const settled = () => props.thread.settledOverride === "settled";
   const pinned = () => props.thread.pinnedAt != null;
   const presets = createMemo(() =>
-    snoozed() || props.thread.pendingRuntimeRequest !== null
+    snoozed() || !canSnooze(props.thread, subagent(), props.now)
       ? []
       : resolveSnoozePresets(new Date(props.now)),
   );
