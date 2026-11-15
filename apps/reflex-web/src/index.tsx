@@ -36,7 +36,10 @@ import { TerminalReceiver } from "./ThreadSession";
 
 await pairFromUrl();
 
-const runtime = createRuntime(getDefaultRoot("Root"));
+const runtime = createRuntime(getDefaultRoot("Root"), {
+  // Takes what nothing else does, so the browser doesn't report it again as an unhandled rejection.
+  onError: () => {},
+});
 runtime.on("failure", (failure) =>
   console.error(`[reflex-web] ${failure.ActionName} failed:`, failure.Error),
 );
