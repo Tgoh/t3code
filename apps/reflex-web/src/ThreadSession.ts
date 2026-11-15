@@ -358,6 +358,7 @@ export function* queueAction(draft: IThreadSession, runId: string | null): IOpen
     draft.StopError = errorText(error);
   }
 }
+leading(queueAction);
 
 export function* setQuestionAnswer(
   draft: IThreadSession,
@@ -514,6 +515,10 @@ export function* stopping(draft: IThreadSession): ISelectorGenerator<boolean> {
   return yield* inFlight(stopRun, draft);
 }
 
+export function* queueing(draft: IThreadSession): ISelectorGenerator<boolean> {
+  return yield* inFlight(queueAction, draft);
+}
+
 export function* ending(draft: IThreadSession): ISelectorGenerator<boolean> {
   return yield* inFlight(endTerminal, draft);
 }
@@ -561,6 +566,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     stopRequested,
     sending,
     stopping,
+    queueing,
     ending,
     diffLoading,
     terminalAttachment,

@@ -47,6 +47,7 @@ import type { IWireProject, IWireThreadShell } from "./Infrastructure/wire";
 import Root from "./Root";
 import Shell, {
   type IProjectFolder,
+  canSnooze,
   type ISidebarStatus,
   isSnoozed,
   projectFolders,
@@ -220,9 +221,10 @@ function ThreadCard(props: {
   onRenamed: (title: string | null) => void;
 }) {
   const environment = Environment.use();
+  const shell = Shell.use();
   const select = () => environment.selectThread(props.thread.id);
   const status = () => {
-    const held = sidebarStatus(props.thread);
+    const held = sidebarStatus(props.thread, shell.subagentRequests()[props.thread.id]);
     return held === "done" && props.selected ? null : held;
   };
   const workingFor = () => {
@@ -464,12 +466,14 @@ function ThreadMenu(props: {
   onClose: () => void;
 }) {
   const environment = Environment.use();
+  const shell = Shell.use();
   const [confirmingDelete, setConfirmingDelete] = createSignal(false);
-  const snoozed = () => isSnoozed(props.thread, props.now);
+  const subagent = () => shell.subagentRequests()[props.thread.id];
+  const snoozed = () => isSnoozed(props.thread, props.now, subagent());
   const settled = () => props.thread.settledOverride === "settled";
   const pinned = () => props.thread.pinnedAt != null;
   const presets = createMemo(() =>
-    snoozed() || props.thread.pendingRuntimeRequest !== null
+    snoozed() || !canSnooze(props.thread, subagent(), props.now)
       ? []
       : resolveSnoozePresets(new Date(props.now)),
   );
@@ -563,10 +567,11 @@ function FolderHeader(props: {
   onRenamed: (title: string | null) => void;
 }) {
   const environment = Environment.use();
+  const shell = Shell.use();
   const title = () => props.folder.Project?.title ?? "Unknown project";
   const needsYou = () =>
     props.folder.Threads.some((thread) => {
-      const status = sidebarStatus(thread);
+      const status = sidebarStatus(thread, shell.subagentRequests()[thread.id]);
       return status !== null && status !== "working";
     });
   return (
@@ -748,7 +753,9 @@ export const Sidebar = Shell.provider(() => {
   onCleanup(() => clearInterval(tick));
   const [second, setSecond] = createSignal(Date.now());
   const anyWorking = createMemo(() =>
-    shell.sidebarThreads().some((thread) => sidebarStatus(thread) === "working"),
+    shell
+      .sidebarThreads()
+      .some((thread) => sidebarStatus(thread, shell.subagentRequests()[thread.id]) === "working"),
   );
   createEffect(() => {
     if (!anyWorking()) return;
@@ -756,7 +763,9 @@ export const Sidebar = Shell.provider(() => {
     const ticking = setInterval(() => setSecond(Date.now()), SECOND);
     onCleanup(() => clearInterval(ticking));
   });
-  const sections = createMemo(() => sidebarSections(shell.sidebarThreads(), now()));
+  const sections = createMemo(() =>
+    sidebarSections(shell.sidebarThreads(), now(), shell.subagentRequests()),
+  );
   const [snoozedOpen, setSnoozedOpen] = createSignal(false);
   const [settledOpen, setSettledOpen] = createSignal(false);
   const [settledShown, setSettledShown] = createSignal(SETTLED_PAGE);

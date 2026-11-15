@@ -27,6 +27,7 @@ import type {
 import { parseDiff } from "./diffView";
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import type {
+  IQueueCommand,
   IRespondRequest,
   IStartTurn,
   IStopThread,
@@ -48,13 +49,15 @@ import {
   timelineIds,
 } from "./OpenThread";
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
-import { answering, answerRequest, type IRuntimeRequest } from "./RuntimeRequest";
+import { answering, answerRequest, canAnswer, type IRuntimeRequest } from "./RuntimeRequest";
 import {
+  canSnooze,
   projectFolders,
   ShellReceiver,
   sidebarSections,
   sidebarStatus,
   sidebarThreads,
+  subagentRequests,
   workingStartedAt,
 } from "./Shell";
 import {
@@ -67,6 +70,8 @@ import {
   type IThreadSession,
   openDiff,
   openTerminal,
+  queueAction,
+  queueing,
   questionAnswers,
   send,
   sending,
@@ -952,6 +957,8 @@ describe("the sidebar", () => {
     updatedAt,
     title: id,
     status: "idle",
+    latestRunId: null,
+    activeProviderThreadId: null,
     pendingRuntimeRequest: null,
     lineage: { rootThreadId: id, parentThreadId: null, relationshipToParent: null },
     ...extra,
@@ -959,6 +966,11 @@ describe("the sidebar", () => {
 
   it("lists top-level threads and leaves subagents out, live", async () => {
     const server = await connect();
+    const requestsOf = () =>
+      server.runtime.processSelector(subagentRequests, () => server.environment().Replica.Shell);
+    const empty = requestsOf();
+    expect(empty).toEqual({});
+    expect(requestsOf()).toBe(empty);
     await server.sendShell({
       kind: "snapshot",
       snapshot: {
@@ -967,7 +979,13 @@ describe("the sidebar", () => {
         threads: [
           row("old", "p-1", "2026-01-01T00:00:00.000Z"),
           row("child", "p-1", "2026-01-09T00:00:00.000Z", {
-            lineage: { rootThreadId: "x", parentThreadId: "x", relationshipToParent: "subagent" },
+            lineage: {
+              rootThreadId: "old",
+              parentThreadId: "old",
+              relationshipToParent: "subagent",
+            },
+            status: "running",
+            pendingRuntimeRequest: { id: "r", kind: "command" },
           }),
         ],
         archivedThreads: [],
@@ -980,6 +998,9 @@ describe("the sidebar", () => {
         .map((thread) => thread.id)
         .sort();
     expect(read()).toEqual(["old"]);
+    expect(server.runtime.processSelector(subagentRequests, () => shell)).toEqual({
+      old: "approval",
+    });
     await server.sendShell({
       kind: "thread.updated",
       sequence: 2,
@@ -987,6 +1008,51 @@ describe("the sidebar", () => {
       thread: row("new", "p-1", "2026-01-05T00:00:00.000Z"),
     } as unknown as IWireShellItem);
     expect(read()).toEqual(["new", "old"]);
+
+    const at = "2026-01-01T00:00:00.000Z";
+    const child = (
+      id: string,
+      parentThreadId: string,
+      kind: string | null,
+      extra: { sideChat?: boolean; [field: string]: unknown } = {},
+    ) => {
+      const { sideChat, ...fields } = extra;
+      return row(id, "p-1", at, {
+        status: "running",
+        lineage: {
+          rootThreadId: parentThreadId,
+          parentThreadId,
+          relationshipToParent: sideChat ? null : "subagent",
+          ...(sideChat ? { sideChat } : {}),
+        },
+        pendingRuntimeRequest: kind === null ? null : { id: `r-${id}`, kind },
+        ...fields,
+      });
+    };
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 3,
+        projects: [{ id: "p-1", title: "One", workspaceRoot: "/1" }],
+        threads: [
+          child("side-question", "side-parent", "user_input", { sideChat: true }),
+          child("subagent-question", "question-parent", "user_input"),
+          child("native", "native-parent", "command", { creationSource: "provider" }),
+          child("finished", "finished-parent", "command", { status: "completed" }),
+          child("mid", "top", null),
+          child("grandchild", "mid", "command"),
+          child("both-subagent", "both", "command"),
+          child("both-side", "both", "user_input", { sideChat: true }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    expect(server.runtime.processSelector(subagentRequests, () => shell)).toEqual({
+      "side-parent": "user_input",
+      mid: "approval",
+      top: "approval",
+      both: "approval",
+    });
   });
 
   it("sorts rows into pinned, active, snoozed and settled", () => {
@@ -1010,21 +1076,51 @@ describe("the sidebar", () => {
         snoozedUntil: future,
         snoozedAt: at,
         status: "failed",
+        latestRunId: "run",
         latestRunCompletedAt: "2026-01-01T06:00:00.000Z",
       }),
       row("failed-before", "p", at, {
         snoozedUntil: future,
         snoozedAt: "2026-01-01T06:00:00.000Z",
         status: "failed",
+        latestRunId: "run",
         latestRunCompletedAt: at,
       }),
+      row("failed-undated", "p", at, {
+        snoozedUntil: future,
+        snoozedAt: at,
+        status: "failed",
+        latestRunId: "run",
+        latestRunCompletedAt: null,
+      }),
+      row("subagent-asked", "p", at, { snoozedUntil: future, snoozedAt: at }),
     ];
-    const sections = sidebarSections(threads as never, now);
+    const sections = sidebarSections(threads as never, now, { "subagent-asked": "approval" });
     const ids = (list: { id: string }[]) => list.map((thread) => thread.id);
     expect(ids(sections.Pinned)).toEqual(["pinned-first", "pinned"]);
-    expect(ids(sections.Active)).toEqual(["active", "woke", "asked", "failed-since"]);
-    expect(ids(sections.Snoozed)).toEqual(["snoozed", "failed-before"]);
+    expect(ids(sections.Active)).toEqual([
+      "active",
+      "woke",
+      "asked",
+      "failed-since",
+      "subagent-asked",
+    ]);
+    expect(ids(sections.Snoozed)).toEqual(["snoozed", "failed-before", "failed-undated"]);
     expect(ids(sections.Settled)).toEqual(["settled-new", "settled-old"]);
+
+    const snoozable = (extra: object, subagent?: "approval") =>
+      canSnooze(row("t", "p", at, { latestRunId: "run", ...extra }) as never, subagent, now);
+    const sent = { latestUserMessageAt: "2026-01-01T11:59:00.000Z", status: "completed" };
+    expect([
+      snoozable({ status: "completed" }),
+      snoozable({ status: "queued" }),
+      snoozable({ ...sent, latestRunRequestedAt: "2026-01-01T11:00:00.000Z" }),
+      snoozable({ ...sent, latestRunRequestedAt: "2026-01-01T11:59:30.000Z" }),
+      snoozable({ ...sent, latestUserMessageAt: "2026-01-01T09:00:00.000Z" }),
+      snoozable({ pendingRuntimeRequest: { id: "r", kind: "command" } }),
+      snoozable({}, "approval"),
+      snoozable({ pendingGuestMessageCount: 1 }),
+    ]).toEqual([true, false, false, true, true, false, false, false]);
   });
 
   it("folds active rows into a folder per open project, pinned first and archived last", () => {
@@ -1059,8 +1155,26 @@ describe("the sidebar", () => {
 
   it("derives a row's status and how long it has been working", () => {
     const at = "2026-01-01T00:00:00.000Z";
-    const status = (extra: object) => sidebarStatus(row("t", "p", at, extra) as never);
+    const status = (extra: object, subagent?: "approval" | "user_input") =>
+      sidebarStatus(row("t", "p", at, { latestRunId: "r", ...extra }) as never, subagent);
     expect(status({ status: "running" })).toBe("working");
+    const holding = { pendingBackgroundTasks: [{ kind: "subagent", awaited: true }] };
+    const unseen = { latestRunCompletedAt: at, lastVisitedAt: "2025-01-01" };
+    expect(status({ status: "completed", ...unseen, ...holding })).toBeNull();
+    expect(status({ status: "running", ...holding })).toBeNull();
+    expect(status({ status: "idle", ...unseen })).toBeNull();
+    expect(status({ status: "running", latestRunId: null })).toBeNull();
+    expect(status({ status: "running" }, "approval")).toBe("approval");
+    expect(status({ status: "running" }, "user_input")).toBe("input");
+    expect(
+      status(
+        { status: "running", pendingRuntimeRequest: { id: "r", kind: "user_input" } },
+        "approval",
+      ),
+    ).toBe("approval");
+    expect(status({ status: "completed", latestRunId: "r", lastVisitedAt: "2025-01-01" })).toBe(
+      "done",
+    );
     expect(status({ status: "running", pendingRuntimeRequest: { id: "r", kind: "command" } })).toBe(
       "approval",
     );
@@ -1074,9 +1188,14 @@ describe("the sidebar", () => {
     expect(status({ status: "completed", latestRunCompletedAt: at, lastVisitedAt: at })).toBeNull();
 
     const started = (extra: object) => workingStartedAt(row("t", "p", at, extra) as never);
-    expect(started({ activityRunStartedAt: "activity" })).toBe("activity");
-    expect(started({ activeRunId: "a", latestRunId: "a", latestRunStartedAt: "run" })).toBe("run");
-    expect(started({ activeRunId: "a", latestRunId: "b", latestRunStartedAt: "run" })).toBeNull();
+    const run = "2026-01-01T01:00:00.000Z";
+    expect(started({ latestRunId: "a", activityRunStartedAt: run })).toBe(run);
+    expect(started({ latestRunId: "a", activityRunStartedAt: "not a time" })).toBeNull();
+    expect(started({ activityRunStartedAt: run })).toBeNull();
+    const live = { status: "running", activeRunId: "a", latestRunId: "a", latestRunStartedAt: run };
+    expect(started(live)).toBe(run);
+    expect(started({ ...live, latestRunId: "b" })).toBeNull();
+    expect(started({ ...live, status: "completed" })).toBeNull();
   });
 });
 
@@ -1259,6 +1378,37 @@ describe("writing to the server", () => {
     expect(server.runtime.processSelector(stopping, () => server.session())).toBe(false);
   });
 
+  it("a queue command drops every queue press until it's answered, as stock's one busy run does", async () => {
+    const commands: IQueueCommand[] = [];
+    const releases: (() => void)[] = [];
+    const server = await connect(undefined, null, {
+      queueCommand: (effect: IQueueCommand) => {
+        commands.push(effect);
+        return new Promise<void>((resolve) => {
+          releases.push(resolve);
+        });
+      },
+    });
+    await server.open();
+    const busy = () => server.runtime.processSelector(queueing, () => server.session());
+    const press = (runId: string | null) =>
+      server.runtime.dispatch(queueAction, server.sessionId(), runId);
+    const first = press("run-a");
+    await settled();
+    const dropped = [press("run-a"), press("run-b"), press(null)];
+    await settled();
+    expect(commands.map((command) => command.RunId)).toEqual(["run-a"]);
+    expect(busy()).toBe(true);
+    releases.forEach((release) => release());
+    await Promise.all([first, ...dropped]);
+    expect(busy()).toBe(false);
+    const second = press("run-b");
+    await settled();
+    releases.forEach((release) => release());
+    await second;
+    expect(commands.map((command) => command.RunId)).toEqual(["run-a", "run-b"]);
+  });
+
   it("answering marks only its own request, and the stream or another device clears it", async () => {
     const answers: IRespondRequest[] = [];
     const releases: (() => void)[] = [];
@@ -1271,7 +1421,12 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
-    const request = (id: string) => ({ id, kind: "command", status: "pending" });
+    const request = (id: string) => ({
+      id,
+      kind: "command",
+      status: "pending",
+      responseCapability: { type: "live" },
+    });
     await server.sendThread(
       snapshotOf(
         {
@@ -1334,7 +1489,7 @@ describe("writing to the server", () => {
     expect(node("r-2")).toBe(held);
   });
 
-  it("holds a question's answer per request until it's complete", async () => {
+  it("holds a question's answer per request until it's complete, and sends only what the provider can take", async () => {
     const answers: IRespondRequest[] = [];
     const server = await connect(undefined, null, {
       respondRequest: (effect: IRespondRequest) => {
@@ -1342,15 +1497,43 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
+    const request = (id: string, kind: string, type: string) => ({
+      id,
+      kind,
+      status: "pending",
+      responseCapability: { type },
+    });
     await server.sendThread(
       snapshotOf(
         {
           ...emptyProjection(),
-          runtimeRequests: [{ id: "r-1", kind: "user_input", status: "pending" }],
+          runtimeRequests: [
+            request("r-1", "user_input", "message"),
+            request("gone-question", "user_input", "not_resumable"),
+            request("gone-approval", "command", "message"),
+          ],
         } as never,
         1,
       ),
     );
+    const node = (id: string) => server.thread().RuntimeRequests[id]!;
+    expect(["r-1", "gone-question", "gone-approval"].map((id) => canAnswer(node(id)))).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    await server.runtime.dispatch(answerRequest, node("gone-question").$Id, ENV, THREAD_ID, null, {
+      one: "typed",
+    });
+    await server.runtime.dispatch(
+      answerRequest,
+      node("gone-approval").$Id,
+      ENV,
+      THREAD_ID,
+      "accept",
+      null,
+    );
+    expect(answers).toEqual([]);
     const questions = [
       { id: "one", options: [] },
       { id: "many", options: [{ label: "a" }, { label: "b" }], multiSelect: true },
@@ -1364,9 +1547,8 @@ describe("writing to the server", () => {
     await type("many", "a, b");
     expect(built()).toEqual({ one: "typed", many: ["a", "b"] });
     expect(built("r-2")).toBeNull();
-    const request = server.thread().RuntimeRequests["r-1"]!.$Id;
-    await server.runtime.dispatch(answerRequest, request, ENV, THREAD_ID, null, built());
-    expect(answers[0]!.Answers).toEqual({ one: "typed", many: ["a", "b"] });
+    await server.runtime.dispatch(answerRequest, node("r-1").$Id, ENV, THREAD_ID, null, built());
+    expect(answers.map((answer) => answer.Answers)).toEqual([{ one: "typed", many: ["a", "b"] }]);
   });
 
   it("sends a thread command and leaves the row to the stream, showing a failure", async () => {
@@ -1841,7 +2023,14 @@ describe("the replica's writers", () => {
       ...snapshotOf(
         {
           ...longThread(3),
-          runtimeRequests: [{ id: "r-1", kind: "command", status: "pending" }],
+          runtimeRequests: [
+            {
+              id: "r-1",
+              kind: "command",
+              status: "pending",
+              responseCapability: { type: "live" },
+            },
+          ],
         } as never,
         1,
       ),

@@ -1,5 +1,8 @@
+import { hasQueuedTurnStart } from "@t3tools/client-runtime/state/thread-settled";
 import { sortActiveThreadsByOrderKey } from "@t3tools/client-runtime/state/thread-sort";
-import { isListedThreadLineage } from "@t3tools/contracts";
+import { isListedThreadLineage, isProviderNativeSubagentThread } from "@t3tools/contracts";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import * as DateTime from "effect/DateTime";
 import {
   type IActionGenerator,
   type IEntity,
@@ -190,19 +193,105 @@ export function* sidebarThreads(draft: IShell): ISelectorGenerator<IWireThreadSh
   );
 }
 
+export type ISubagentRequest = "approval" | "user_input";
+
+const isChildRunLive = (thread: IWireThreadShell) =>
+  thread.activityRunStatus !== undefined
+    ? thread.activityRunStatus !== null
+    : thread.status === "preparing" ||
+      thread.status === "starting" ||
+      thread.status === "running" ||
+      thread.status === "waiting";
+
+function requestOf(thread: IWireThreadShell): ISubagentRequest | null {
+  const kind = thread.pendingRuntimeRequest?.kind;
+  if (kind === undefined || kind === "auth_refresh") return null;
+  return kind === "user_input" ? "user_input" : "approval";
+}
+
+const NO_SUBAGENT_REQUESTS: Record<string, ISubagentRequest> = Object.freeze({});
+
+// Follows pendingSubagentRequestsByThread in packages/client-runtime/src/state/threadShell.ts,
+// without tasks delegated to linked environments.
+export function* subagentRequests(
+  draft: IShell,
+): ISelectorGenerator<Record<string, ISubagentRequest>> {
+  const threads = draft.Threads;
+  const requests: Record<string, ISubagentRequest> = {};
+  const flagApproval = (firstParentId: string | null, seen: Set<string>) => {
+    let parentId = firstParentId;
+    while (parentId !== null && !seen.has(parentId)) {
+      seen.add(parentId);
+      requests[parentId] = "approval";
+      const parent = threads[parentId];
+      parentId =
+        parent?.lineage.relationshipToParent === "subagent" || parent?.lineage.sideChat === true
+          ? parent.lineage.parentThreadId
+          : null;
+    }
+  };
+  for (const child of Object.values(threads)) {
+    const parentId = child.lineage.parentThreadId;
+    if (child.lineage.sideChat === true) {
+      const request = requestOf(child);
+      if (parentId !== null && request !== null && requests[parentId] !== "approval")
+        requests[parentId] = request;
+      continue;
+    }
+    if (child.lineage.relationshipToParent !== "subagent") continue;
+    // The coordinator answers a subagent's questions, so only its approvals reach the user.
+    if (
+      requestOf(child) === "approval" &&
+      !isProviderNativeSubagentThread(child) &&
+      isChildRunLive(child)
+    )
+      flagApproval(parentId, new Set([child.id]));
+  }
+  return Object.keys(requests).length === 0 ? NO_SUBAGENT_REQUESTS : requests;
+}
+
+function runCompletedAt(thread: IWireThreadShell): string | null {
+  if (thread.latestRunCompletedAt !== undefined) return thread.latestRunCompletedAt;
+  const status = thread.status;
+  return status === "idle" ||
+    status === "completed" ||
+    status === "interrupted" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "rolled_back"
+    ? thread.updatedAt
+    : null;
+}
+
+// Follows shellRuntime in packages/client-runtime/src/state/models.ts.
+function runtimeStatus(thread: IWireThreadShell): IWireThreadShell["status"] | null {
+  const parkAtIdle =
+    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) &&
+    thread.status !== "failed";
+  if (thread.latestRunId === null && thread.activeProviderThreadId === null && !parkAtIdle)
+    return null;
+  return parkAtIdle ? "idle" : (thread.activityRunStatus ?? thread.status);
+}
+
 export type ISidebarStatus = "working" | "approval" | "input" | "failed" | "done" | null;
 
 // Follows resolveSidebarThreadStatus and hasUnseenCompletion in apps/web/src/components/Sidebar.logic.ts.
-export function sidebarStatus(thread: IWireThreadShell): ISidebarStatus {
-  const request = thread.pendingRuntimeRequest;
-  if (request !== null && request.kind === "user_input") return "input";
-  if (request !== null && request.kind !== "auth_refresh") return "approval";
-  const status = runStatus(thread.activityRunStatus ?? thread.status);
+export function sidebarStatus(
+  thread: IWireThreadShell,
+  subagent: ISubagentRequest | undefined,
+): ISidebarStatus {
+  const request = requestOf(thread);
+  if (request === "approval" || subagent === "approval") return "approval";
+  if (request === "user_input" || subagent === "user_input") return "input";
+  const runtime = runtimeStatus(thread);
+  if (runtime === "idle") return null;
+  const status = runtime === null ? null : runStatus(runtime);
   if (status === "running" || status === "waiting") return "working";
   if (status === "failed") return "failed";
-  const completed = thread.latestRunCompletedAt;
+  const completed = thread.latestRunId === null ? null : runCompletedAt(thread);
   const visited = thread.lastVisitedAt;
-  return completed != null && visited != null && Date.parse(completed) > Date.parse(visited)
+  if (completed == null || Number.isNaN(Date.parse(completed)) || !visited) return null;
+  return Number.isNaN(Date.parse(visited)) || Date.parse(completed) > Date.parse(visited)
     ? "done"
     : null;
 }
@@ -214,16 +303,61 @@ export interface ISidebarSections {
   Settled: IWireThreadShell[];
 }
 
-// Follows threadRaisedHandWhileSnoozed in packages/client-runtime/src/state/threadSettled.ts: only a
-// request for the user or a fresh failure ends a snooze early.
-export function isSnoozed(thread: IWireThreadShell, now: number): boolean {
-  if (thread.snoozedUntil == null || Date.parse(thread.snoozedUntil) <= now) return false;
-  if (thread.pendingRuntimeRequest !== null || (thread.pendingGuestMessageCount ?? 0) > 0)
-    return false;
-  if (thread.status !== "failed") return true;
-  const failedAt = thread.latestRunCompletedAt;
+function failureEdgeAt(thread: IWireThreadShell): string | null | undefined {
+  if (runtimeStatus(thread) !== "failed") return undefined;
+  return thread.latestRunId !== null && thread.status === "failed"
+    ? runCompletedAt(thread)
+    : thread.updatedAt;
+}
+
+function asksForUser(thread: IWireThreadShell, subagent: ISubagentRequest | undefined): boolean {
+  return (
+    thread.pendingRuntimeRequest !== null ||
+    subagent !== undefined ||
+    (thread.pendingGuestMessageCount ?? 0) > 0
+  );
+}
+
+// Follows canSnooze in packages/client-runtime/src/state/threadSettled.ts.
+export function canSnooze(
+  thread: IWireThreadShell,
+  subagent: ISubagentRequest | undefined,
+  now: number,
+): boolean {
+  if (asksForUser(thread, subagent)) return false;
+  const status = runtimeStatus(thread);
+  return !hasQueuedTurnStart(
+    {
+      latestUserMessageAt: thread.latestUserMessageAt,
+      runtime: status === null ? null : { status },
+      latestRun:
+        thread.latestRunId === null
+          ? null
+          : {
+              requestedAt: thread.latestRunRequestedAt ?? null,
+              startedAt: thread.latestRunStartedAt ?? null,
+              completedAt: runCompletedAt(thread),
+            },
+    },
+    { now: DateTime.formatIso(DateTime.makeUnsafe(now)) },
+  );
+}
+
+// Follows effectiveSnoozed and threadRaisedHandWhileSnoozed in
+// packages/client-runtime/src/state/threadSettled.ts.
+export function isSnoozed(
+  thread: IWireThreadShell,
+  now: number,
+  subagent: ISubagentRequest | undefined,
+): boolean {
+  if (thread.snoozedUntil == null) return false;
+  const wakeAt = Date.parse(thread.snoozedUntil);
+  if (Number.isNaN(wakeAt) || wakeAt <= now) return false;
+  if (asksForUser(thread, subagent)) return false;
+  const failedAt = failureEdgeAt(thread);
+  if (failedAt === undefined) return true;
   const snoozedAt = thread.snoozedAt;
-  return failedAt != null && snoozedAt != null && Date.parse(failedAt) <= Date.parse(snoozedAt);
+  return snoozedAt != null && (failedAt == null || !(Date.parse(failedAt) > Date.parse(snoozedAt)));
 }
 
 const newestFirst = (left: string | null | undefined, right: string | null | undefined): number =>
@@ -265,10 +399,14 @@ export function projectFolders(
 }
 
 // `threads` keeps its order within Active, so the inbox stays on the server's order key.
-export function sidebarSections(threads: IWireThreadShell[], now: number): ISidebarSections {
+export function sidebarSections(
+  threads: IWireThreadShell[],
+  now: number,
+  subagents: Record<string, ISubagentRequest>,
+): ISidebarSections {
   const sections: ISidebarSections = { Pinned: [], Active: [], Snoozed: [], Settled: [] };
   for (const thread of threads) {
-    if (isSnoozed(thread, now)) sections.Snoozed.push(thread);
+    if (isSnoozed(thread, now, subagents[thread.id])) sections.Snoozed.push(thread);
     else if (thread.settledOverride === "settled") sections.Settled.push(thread);
     else if (thread.pinnedAt != null) sections.Pinned.push(thread);
     else sections.Active.push(thread);
@@ -283,7 +421,7 @@ export function sidebarSections(threads: IWireThreadShell[], now: number): ISide
   return sections;
 }
 
-export function hasUnseenCompletion(thread: IWireThreadShell): boolean {
+export function needsVisit(thread: IWireThreadShell): boolean {
   const completed = thread.latestRunCompletedAt;
   if (completed == null) return false;
   const visited = thread.lastVisitedAt;
@@ -292,12 +430,16 @@ export function hasUnseenCompletion(thread: IWireThreadShell): boolean {
 
 // Follows resolveThreadWorkingStartedAt in packages/client-runtime/src/state/models.ts.
 export function workingStartedAt(thread: IWireThreadShell): string | null {
-  if (thread.activityRunStartedAt !== undefined) return thread.activityRunStartedAt;
-  if (thread.latestRunCompletedAt != null || thread.latestRunId !== thread.activeRunId) return null;
-  return thread.latestRunStartedAt ?? thread.latestRunRequestedAt ?? null;
+  const valid = (value: string | null | undefined) =>
+    value != null && Number.isFinite(Date.parse(value)) ? value : null;
+  if (runtimeStatus(thread) === null) return null;
+  if (thread.activityRunStartedAt !== undefined) return valid(thread.activityRunStartedAt);
+  if (thread.latestRunId === null || thread.latestRunId !== thread.activeRunId) return null;
+  if (runCompletedAt(thread) !== null) return null;
+  return valid(thread.latestRunStartedAt) ?? valid(thread.latestRunRequestedAt);
 }
 
 export default createEntityFeature<IShell>(import.meta.url)(
   {},
-  { sidebarThreads, shellSynchronized },
+  { sidebarThreads, shellSynchronized, subagentRequests },
 );
