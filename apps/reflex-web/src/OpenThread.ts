@@ -21,7 +21,6 @@ import {
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
-import { $TRACK, untrack } from "solid-js";
 
 import type { IHistoryWindow } from "./HistoryWindow";
 import type {
@@ -583,10 +582,7 @@ export function timelineEntries(draft: IOpenThread): ITimelineEntry[] {
 }
 
 export function* timelineIds(draft: IOpenThread): ISelectorGenerator<string[]> {
-  const timeline = draft.Timeline;
-  // $TRACK subscribes to every write into the array, so the copy can skip tracking each index.
-  void (timeline as unknown as Record<symbol, unknown>)[$TRACK];
-  return untrack(() => [...timeline]);
+  return [...draft.Timeline];
 }
 
 const ACTIVE_RUN = new Set(["preparing", "starting", "running", "waiting"]);
