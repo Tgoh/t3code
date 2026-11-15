@@ -113,7 +113,6 @@ async function connect(
         },
       ],
       generateGuid: () => `guid-${(guid += 1)}`,
-      logFailure: () => undefined,
       ...commands,
       threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
       addressThread: () => address.thread,

@@ -23,7 +23,6 @@ import {
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
 import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
-import { logFailureImpl } from "./Infrastructure/failureLog";
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { shellStream } from "./Infrastructure/shellStream";
 import { rememberedTerminalImpl, rememberTerminalImpl } from "./Infrastructure/terminalMemory";
@@ -37,10 +36,10 @@ import { TerminalReceiver } from "./ThreadSession";
 
 await pairFromUrl();
 
-const runtime = createRuntime(getDefaultRoot("Root"), {
-  onError: (error: unknown) => console.error("[reflex-web] action failed:", error),
-});
-runtime.registerImplementation(logFailureImpl);
+const runtime = createRuntime(getDefaultRoot("Root"));
+runtime.on("failure", (failure) =>
+  console.error(`[reflex-web] ${failure.ActionName} failed:`, failure.Error),
+);
 runtime.registerImplementation(environmentInfoImpl);
 runtime.registerImplementation(threadHistoryPageImpl);
 runtime.registerImplementation(startTurnImpl);

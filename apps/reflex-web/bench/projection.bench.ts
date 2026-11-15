@@ -70,7 +70,6 @@ async function connected(projection: IWireProjection) {
       serverProviders: () => [],
       generateGuid: guids("bench"),
       rememberedTerminal: () => null,
-      logFailure: (effect: object) => console.error("action failed:", effect),
     },
     { onError: (error) => console.error("action failed:", error) },
   );

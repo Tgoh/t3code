@@ -10,7 +10,6 @@ import { createEntityFeature } from "treflex-solid";
 
 import { type IEnvironment, init, newEnvironment } from "./Environment";
 import { environmentInfo } from "./Infrastructure/environmentInfo";
-import { logFailureEffect } from "./Infrastructure/failureLog";
 
 export interface IRoot extends IEntity {
   readonly $Receiver?: IReceiverId<IRoot>;
@@ -53,7 +52,6 @@ const describe = (thrown: ISerializedThrow): string =>
 export const RootReceiver = receiver<IRoot>("RootReceiver")({
   *"Action/Error"(draft, failure) {
     draft.Failure = describe(failure.Error);
-    yield* logFailureEffect({ ActionName: failure.ActionName, Error: failure.Error });
   },
 });
 
