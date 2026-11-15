@@ -22,6 +22,20 @@ export function firstAfterChange(
   return Math.max(0, Math.min(first, next.length - 1));
 }
 
+export function keepsWindow(
+  previous: readonly string[],
+  previousFirst: number,
+  next: readonly string[],
+  first: number,
+): boolean {
+  const kept = previous.length - previousFirst;
+  if (next.length - first < kept) return false;
+  for (let offset = 0; offset < kept; offset += 1) {
+    if (previous[previousFirst + offset] !== next[first + offset]) return false;
+  }
+  return true;
+}
+
 export function grow(first: number): number {
   return Math.max(0, first - CHUNK_ROWS);
 }

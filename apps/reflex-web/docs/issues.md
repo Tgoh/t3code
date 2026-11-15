@@ -131,7 +131,8 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 
 - Sidebar: no Search box, thread filter, sidebar toggle, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
 - Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
-- Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, drag reorder, auto-settle toggle or search.- Sidebar: every settled thread is streamed, where stock omits older ones and pages them in.
+- Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, drag reorder, auto-settle toggle or search.
+- Sidebar: every settled thread is streamed, where stock omits older ones and pages them in.
 - Projects: Add project takes a typed folder path, with no folder browser, clone or new-folder option. Folders group one per project, as stock's "separate" mode, with no repository grouping, and every open project has a folder, where stock shows an idle one only while pinned. No project archive, delete, settings or reorder.
 - Sidebar: Waiting, Limited and a waiting guest message's Request aren't distinct states, drafts have no card, and the thread list shows no scrollbar.
 - Sidebar hover card: no environment, terminal process or pull request lines, and a long branch is cut at the end rather than the middle.
@@ -141,6 +142,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Tooltips: no keyboard shortcut hints, because this client has no shortcuts, and a quick move between triggers opens instantly everywhere, where stock does that only inside the sidebar.
 - Timeline: no "Worked for" fold or work-group summary, so tool rows always show; their wording is this client's (`Command: …`), not stock's (`Ran command`).
 - Timeline: no minimap, and the scroll-to-end pill doesn't summarise what's waiting below.
+- Timeline: when the composer grows while the view is stuck to the bottom (queued-turn chips, say), a gap stays below the last row, because the stick-to-bottom observer watches the timeline's content, not its scroller.
 - Message actions: copy and time show on every finished assistant message, where stock shows them only on the last of a response. Where a changed files card follows, they sit above the card, not below it, so that gap is 30px against stock's 16px. There's no edit, fork or prompt link action.
 - Timeline: approvals show every option inline, with no More menu and no decline-by-typing placeholder.
 - Timeline: an expanded image has no next, previous or zoom, images inside markdown don't expand, and an attachment URL isn't refreshed, so a thread left open past its expiry shows a name chip after a reload of the image.

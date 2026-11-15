@@ -23,7 +23,7 @@ import { needsVisit, runStatus } from "./Shell";
 import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession from "./ThreadSession";
 import { TimelineRow } from "./TimelineRows";
-import { firstAfterChange, grow, INITIAL_ROWS, trimToTail } from "./timelineWindow";
+import { firstAfterChange, grow, INITIAL_ROWS, keepsWindow, trimToTail } from "./timelineWindow";
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
@@ -54,17 +54,26 @@ function isTabbable(element: Element): boolean {
   return details == null || details.open || element.closest("summary") !== null;
 }
 
-function focusableBefore(root: HTMLElement, boundary: Element | null): HTMLElement | null {
-  if (boundary === null || !boundary.isConnected) return null;
+function tabbableFrom(
+  root: HTMLElement,
+  start: Element | null,
+  forward: boolean,
+): HTMLElement | null {
+  if (start === null || !start.isConnected) return null;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-  walker.currentNode = boundary;
-  for (let node = walker.previousNode(); node !== null; node = walker.previousNode()) {
+  walker.currentNode = start;
+  const step = () => (forward ? walker.nextNode() : walker.previousNode());
+  for (let node = step(); node !== null; node = step()) {
     if (node !== root && isTabbable(node as Element)) return node as HTMLElement;
   }
   return null;
 }
 
-function TimelineSentinel(props: { root: HTMLElement; onReach: () => void; onFocus: () => void }) {
+function TimelineSentinel(props: {
+  root: HTMLElement;
+  onReach: () => void;
+  onFocus: (forward: boolean) => void;
+}) {
   const [sentinel, setSentinel] = createSignal<HTMLButtonElement>();
   onMount(() => {
     const element = sentinel();
@@ -88,8 +97,16 @@ function TimelineSentinel(props: { root: HTMLElement; onReach: () => void; onFoc
       ref={setSentinel}
       class="timeline-sentinel"
       aria-label="Show earlier messages"
-      onFocus={() => props.onFocus()}
-      onClick={() => props.onFocus()}
+      onFocus={(event) => {
+        const from = event.relatedTarget;
+        props.onFocus(
+          !(from instanceof Node) ||
+            (from.compareDocumentPosition(event.currentTarget) &
+              Node.DOCUMENT_POSITION_FOLLOWING) !==
+              0,
+        );
+      }}
+      onClick={() => props.onFocus(true)}
     />
   );
 }
@@ -144,12 +161,16 @@ const ThreadBody = ThreadSession.provider(() => {
     const found = children[low] ?? null;
     return found === head ? head.nextElementSibling : found;
   };
+  let correcting = false;
   const keepStill = () => {
+    if (correcting) return;
     const anchor = firstVisible();
     if (anchor === null) return;
     const before = anchor.getBoundingClientRect().top;
+    correcting = true;
     // Measured after the patch, so native anchoring has applied; the difference is 0 where it did.
     queueMicrotask(() => {
+      correcting = false;
       if (anchor.isConnected) scroller.scrollBy(0, anchor.getBoundingClientRect().top - before);
     });
   };
@@ -165,12 +186,15 @@ const ThreadBody = ThreadSession.provider(() => {
     const moved = firstAfterChange(held.Ids, ids, held.First);
     const isStuck = untrack(stuck);
     const first = isStuck ? trimToTail(ids.length, moved, held.Floor) : moved;
-    if (!isStuck) keepStill();
+    if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
+    const trimmed = first !== moved;
+    const before = trimmed ? scroller.scrollTop : 0;
     setTimeline({ ...held, Ids: ids, First: first });
-    // In this task, so the scroll event the trim causes isn't read as the user scrolling up.
-    if (first !== moved)
+    // Only the trim's own shift, so the scroll event it causes isn't read as the user scrolling up
+    // and a scroll-up in the same frame still is.
+    if (trimmed)
       queueMicrotask(() => {
-        lastTop = scroller.scrollTop;
+        lastTop += scroller.scrollTop - before;
       });
   });
   const windowIds = createMemo(() => {
@@ -178,18 +202,23 @@ const ThreadBody = ThreadSession.provider(() => {
     return held.Ids.slice(held.First);
   });
   const reachedTop = () => timeline().First === 0;
-  const growTo = (first: number) => {
+  const growTo = (first: number, keep = stuck()) => {
     if (!stuck()) keepStill();
     setTimeline((held) => ({
       ...held,
       First: first,
-      Floor: stuck() ? Math.max(held.Floor, held.Ids.length - first) : held.Floor,
+      Floor: keep ? Math.max(held.Floor, held.Ids.length - first) : held.Floor,
     }));
   };
-  const showAll = () => {
+  const showAll = (forward: boolean) => {
     const boundary = head.nextElementSibling;
-    growTo(0);
-    queueMicrotask(() => (focusableBefore(content, boundary) ?? scroller).focus());
+    growTo(0, true);
+    queueMicrotask(() => {
+      const target = forward
+        ? tabbableFrom(content, head, true)
+        : tabbableFrom(content, boundary, false);
+      (target ?? scroller).focus();
+    });
   };
   onMount(() => {
     const observer = new ResizeObserver(() => {

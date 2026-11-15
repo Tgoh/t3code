@@ -6,6 +6,7 @@ import {
   grow,
   INITIAL_ROWS,
   initialFirst,
+  keepsWindow,
   trimToTail,
 } from "./timelineWindow";
 
@@ -50,6 +51,15 @@ describe("the timeline window", () => {
 
   it("stays at the top when a history page lands above it", () => {
     expect(firstAfterChange(ids(50, 100), ids(0, 100), 0)).toBe(0);
+  });
+
+  it("tells a plain append below the window from a change within it", () => {
+    const before = ids(0, 100);
+    expect(keepsWindow(before, 40, ids(0, 102), 40)).toBe(true);
+    expect(keepsWindow(before, 40, ["new", ...before], 41)).toBe(true);
+    expect(keepsWindow(before, 40, ["new", ...before], 40)).toBe(false);
+    expect(keepsWindow(before, 40, before.toSpliced(70, 0, "new"), 40)).toBe(false);
+    expect(keepsWindow(before, 40, before.toSpliced(70, 1), 40)).toBe(false);
   });
 
   it("grows a chunk at a time down to the top", () => {
