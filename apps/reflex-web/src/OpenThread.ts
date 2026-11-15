@@ -257,7 +257,10 @@ function setThread(draft: IOpenThread, thread: NonNullable<IOpenThread["Thread"]
   else reconcile(draft.Thread, thread);
 }
 
-function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
+function applyEvent(
+  draft: IOpenThread,
+  event: Exclude<IWireThreadEvent, { type: "runtime-request.updated" }>,
+): void {
   switch (event.type) {
     case "thread.pull-request-link-updated": {
       const thread = JSON.parse(JSON.stringify(draft.Thread)) as OrchestrationV2AppThread;
@@ -347,6 +350,8 @@ function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
       return;
     case "checkpoint.captured":
       put(draft.Checkpoints, event.payload);
+      return;
+    case "checkpoint.rollback-requested":
       return;
     case "context-handoff.updated":
       put(draft.ContextHandoffs, event.payload);
