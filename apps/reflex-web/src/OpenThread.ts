@@ -7,14 +7,12 @@ import {
 } from "@t3tools/shared/orchestrationV2DedupedBodies";
 import { isOrchestrationV2TurnItemVisible } from "@t3tools/shared/orchestrationV2Timeline";
 import {
+  entity,
   type IActionGenerator,
   type IEntity,
-  type IOpenGenerator,
+  type IReceiverId,
   type ISelectorGenerator,
-  inFlight,
   isEnded,
-  leading,
-  open,
   openResource,
   publishToNearest,
   receiver,
@@ -24,7 +22,7 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { threadHistoryPage } from "./Infrastructure/threadHistory";
+import type { IHistoryWindow } from "./HistoryWindow";
 import type {
   IWireHistoryPage,
   IWireProjection,
@@ -64,6 +62,7 @@ export interface ITimelineEntry extends ITimelineRow {
 }
 
 export interface IOpenThread extends IEntity {
+  readonly $Receiver?: IReceiverId<IOpenThread>;
   EnvironmentId: string;
   ThreadId: string;
   LastSequence: number;
@@ -86,19 +85,9 @@ export interface IOpenThread extends IEntity {
   InheritedItems: Record<string, IWireTurnItem>;
   Timeline: string[];
   Rows: Record<string, ITimelineRow>;
-  History: {
-    Cursor: string | null;
-    HasMore: boolean;
-    LatestLocalTurnOrdinal: number | null;
-    Error?: string;
-  };
+  History: IHistoryWindow | null;
+  LatestLocalTurnOrdinal: number | null;
 }
-
-export const NO_HISTORY: IOpenThread["History"] = {
-  Cursor: null,
-  HasMore: false,
-  LatestLocalTurnOrdinal: null,
-};
 
 const streamState = (draft: IOpenThread) =>
   transient(draft, "Thread/StreamState", { Synchronized: false });
@@ -108,6 +97,7 @@ export function getDefaultOpenThread(
   threadId: string,
 ): Omit<IOpenThread, "$Id"> {
   return {
+    $Receiver: ThreadReceiver.Id,
     EnvironmentId: environmentId,
     ThreadId: threadId,
     LastSequence: 0,
@@ -130,7 +120,8 @@ export function getDefaultOpenThread(
     InheritedItems: {},
     Timeline: [],
     Rows: {},
-    History: { ...NO_HISTORY },
+    History: null,
+    LatestLocalTurnOrdinal: null,
   };
 }
 
@@ -164,7 +155,7 @@ const isLocalRow = (draft: IOpenThread, row: ITimelineRow): boolean =>
   row.visibility === "local" || row.sourceThreadId === draft.ThreadId;
 
 const hasPartialWindow = (draft: IOpenThread): boolean =>
-  draft.History.HasMore || draft.History.Cursor !== null;
+  draft.History !== null && (draft.History.HasMore || draft.History.Cursor !== null);
 
 // Reads only this item's run, so a view can call it per row. The other items are read only for a
 // row the first check hides, because a reactive reader of them re-runs on every added row.
@@ -203,7 +194,7 @@ function oldestLocalOrdinal(draft: IOpenThread): number | null {
 }
 
 function isBelowWindow(draft: IOpenThread, item: IWireTurnItem): boolean {
-  const watermark = draft.History.LatestLocalTurnOrdinal;
+  const watermark = draft.LatestLocalTurnOrdinal;
   if (watermark !== null && item.ordinal <= watermark) return true;
   const oldest = oldestLocalOrdinal(draft);
   return oldest !== null && item.ordinal < oldest;
@@ -255,9 +246,9 @@ function applyTurnItem(draft: IOpenThread, wire: IWireTurnItem): void {
   const heldOrdinal = held?.ordinal;
   put(draft.TurnItems, payload);
   placeRow(draft, payload, heldOrdinal);
-  const watermark = draft.History.LatestLocalTurnOrdinal;
+  const watermark = draft.LatestLocalTurnOrdinal;
   if (hasPartialWindow(draft) && (watermark === null || payload.ordinal > watermark)) {
-    draft.History.LatestLocalTurnOrdinal = payload.ordinal;
+    draft.LatestLocalTurnOrdinal = payload.ordinal;
   }
 }
 
@@ -367,7 +358,11 @@ function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
   }
 }
 
-function applySnapshot(draft: IOpenThread, item: IWireThreadSnapshot): void {
+function applySnapshot(
+  draft: IOpenThread,
+  item: IWireThreadSnapshot,
+  history: IHistoryWindow,
+): void {
   // restoreLocalVisibleTurnItems reads only row fields the wire form shares.
   const projection = (
     item.turnItemsOmitLocalVisible === true
@@ -409,11 +404,30 @@ function applySnapshot(draft: IOpenThread, item: IWireThreadSnapshot): void {
   reconcile(draft.InheritedItems, inherited);
   reconcile(draft.Rows, rows);
   reconcile(draft.Timeline, timeline);
-  draft.History = {
-    Cursor: item.historyCursor ?? null,
-    HasMore: item.hasMoreHistory ?? false,
-    LatestLocalTurnOrdinal: item.latestLocalTurnOrdinal ?? null,
-  };
+  draft.History = history;
+  draft.LatestLocalTurnOrdinal = item.latestLocalTurnOrdinal ?? null;
+}
+
+// The same window carries on, so a fetch already running in it still lands.
+function* windowOf(
+  draft: IOpenThread,
+  item: IWireThreadSnapshot,
+): IActionGenerator<IHistoryWindow> {
+  const cursor = item.historyCursor ?? null;
+  const hasMore = item.hasMoreHistory ?? false;
+  const held = draft.History;
+  if (
+    held !== null &&
+    held.Cursor === cursor &&
+    held.HasMore === hasMore &&
+    held.Error === undefined
+  )
+    return held;
+  return yield* entity<IHistoryWindow>({
+    ThreadId: draft.ThreadId,
+    Cursor: cursor,
+    HasMore: hasMore,
+  });
 }
 
 function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator {
@@ -422,9 +436,10 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     return;
   }
   if (item.kind === "snapshot") {
-    // First, so the mints end their steps before any of the snapshot's writes.
+    // In this order, so the mints end their steps before any of the snapshot's writes.
+    const history = yield* windowOf(draft, item);
     yield* reconcileEntities(draft.RuntimeRequests, item.projection.runtimeRequests);
-    applySnapshot(draft, item);
+    applySnapshot(draft, item, history);
     return;
   }
   if (item.sequence <= draft.LastSequence) return;
@@ -460,6 +475,10 @@ export const ThreadReceiver = receiver<IOpenThread>("ThreadReceiver")({
     yield* stopTimer(draft, "Thread/Reopen");
     yield* openThreadStream(draft);
   },
+  // A page can queue behind a snapshot that replaces its window.
+  *"History/Page"(draft, { WindowId, Items }) {
+    if (draft.History?.$Id === WindowId) mergeOlderRows(draft, Items);
+  },
 });
 
 export function* threadSynchronized(draft: IOpenThread): ISelectorGenerator<boolean> {
@@ -488,37 +507,6 @@ function mergeOlderRows(draft: IOpenThread, items: IWireHistoryPage["items"]): v
   }
   if (head.length === 0) return;
   draft.Timeline = [...head, ...draft.Timeline.filter((id) => !inPage.has(id))];
-}
-
-export const loadEarlier = leading(function* loadHistory(draft: IOpenThread): IOpenGenerator {
-  if (draft.History.Cursor === null || !draft.History.HasMore) return;
-  delete draft.History.Error;
-  const threadId = draft.ThreadId;
-  let cursor = draft.History.Cursor;
-  try {
-    for (;;) {
-      const page: IWireHistoryPage = yield* open(threadHistoryPage(threadId, cursor));
-      // A reconnect snapshot during the wait replaced the window this cursor pointed into.
-      if (draft.History.Cursor !== cursor) return;
-      mergeOlderRows(draft, page.items);
-      draft.History.Cursor = page.nextCursor;
-      draft.History.HasMore = page.hasMoreHistory;
-      const reachedUser = page.items.some(
-        ({ item }) => item.type === "user_message" && item.createdBy === "user",
-      );
-      if (!page.hasMoreHistory || reachedUser || page.nextCursor === null) break;
-      if (page.nextCursor === cursor) throw new Error("History did not advance.");
-      cursor = page.nextCursor;
-    }
-  } catch (error) {
-    if (draft.History.Cursor === cursor) {
-      draft.History.Error = error instanceof Error ? error.message : String(error);
-    }
-  }
-});
-
-export function* loadingEarlier(draft: IOpenThread): ISelectorGenerator<boolean> {
-  return yield* inFlight(loadEarlier, draft);
 }
 
 function checkpointOfRun(draft: IOpenThread, runId: string | null) {
@@ -657,13 +645,12 @@ export function* pendingQuestionIds(draft: IOpenThread): ISelectorGenerator<stri
 }
 
 export default createEntityFeature<IOpenThread>(import.meta.url)(
-  { loadEarlier },
+  {},
   {
     latestRun,
     pendingApprovalIds,
     pendingQuestionIds,
     queuedRuns,
-    loadingEarlier,
     threadSynchronized,
   },
 );

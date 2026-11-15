@@ -15,7 +15,9 @@ import {
   selectThread,
   threadCommand,
 } from "./Environment";
+import { loadEarlier, loadingEarlier } from "./HistoryWindow";
 import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
+import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type {
   IWireHistoryPage,
   IWireShellItem,
@@ -38,10 +40,8 @@ import {
   isRowVisible,
   latestDiffTurn,
   latestRun,
-  loadEarlier,
   pendingApprovalIds,
   pendingRequest,
-  loadingEarlier,
   ThreadReceiver,
   threadSynchronized,
   timelineEntries,
@@ -820,15 +820,19 @@ describe("history pages", () => {
     return { promise, release };
   };
 
+  const historyId = (server: Awaited<ReturnType<typeof connect>>) => server.thread().History!.$Id;
+  const loadingOf = (server: Awaited<ReturnType<typeof connect>>) =>
+    server.runtime.processSelector(loadingEarlier, () => server.thread().History!);
+
   it("prepends a page, and a live update made during the wait wins over it", async () => {
     const gate = gated();
     const server = await connect(() => gate.promise);
     await server.open();
     await server.sendThread(window());
-    const loading = server.runtime.dispatch(loadEarlier, server.openId());
-    const busy = () => server.runtime.processSelector(loadingEarlier, server.thread);
+    const loading = server.runtime.dispatch(loadEarlier, historyId(server));
+    const busy = () => loadingOf(server);
     expect(busy()).toBe(true);
-    expect(await server.runtime.dispatch(loadEarlier, server.openId())).toBeUndefined();
+    expect(await server.runtime.dispatch(loadEarlier, historyId(server))).toBeUndefined();
     await server.sendThread({
       kind: "event",
       sequence: 2,
@@ -842,24 +846,60 @@ describe("history pages", () => {
       ],
     } as unknown as IWireHistoryPage);
     await loading;
+    await settled();
     expect(server.thread().Timeline).toEqual(["c-1", "c-9"]);
     expect((server.thread().TurnItems["c-9"] as { input: string }).input).toBe("newer");
     expect(server.thread().History).toMatchObject({ HasMore: false, Cursor: null });
     expect(busy()).toBe(false);
   });
 
-  it("discards a page when a reconnect snapshot replaced the window during the wait", async () => {
+  it("drops a fetch at once when a reconnect snapshot replaces the window, keeps it through the same window, and clears a failure", async () => {
     const gate = gated();
-    const server = await connect(() => gate.promise);
+    let fetchPage = () => gate.promise;
+    const server = await connect(() => fetchPage());
     await server.open();
     await server.sendThread(window());
-    const loading = server.runtime.dispatch(loadEarlier, server.openId());
+    const loading = server.runtime.dispatch(loadEarlier, historyId(server));
+    await server.sendThread({ ...window(), snapshotSequence: 3 });
+    expect(loadingOf(server)).toBe(true);
     await server.sendThread({ ...window(), snapshotSequence: 5, historyCursor: "fresher" });
-    expect(server.runtime.processSelector(loadingEarlier, server.thread)).toBe(true);
+    expect(loadingOf(server)).toBe(false);
+    expect(await loading).toBeUndefined();
+    gate.release(pageOf("c-1", null));
+    await settled();
+    expect(server.thread().Timeline).toEqual(["c-9"]);
+    expect(server.thread().History!.Cursor).toBe("fresher");
+
+    fetchPage = () => Promise.reject(new Error("socket closed"));
+    await server.runtime.dispatch(loadEarlier, historyId(server));
+    expect(server.thread().History!.Error).toBe("socket closed");
+    await server.sendThread({ ...window(), snapshotSequence: 7, historyCursor: "fresher" });
+    expect(server.thread().History!.Error).toBeUndefined();
+  });
+
+  it("drops a page that queued behind the snapshot replacing its window", async () => {
+    const gate = gated();
+    const held = gated();
+    const server = await connect((cursor) => (cursor === "hold" ? held.promise : gate.promise));
+    await server.open();
+    await server.sendThread(window());
+    const loading = server.runtime.dispatch(loadEarlier, historyId(server));
+    function* hold(draft: IOpenThread): IActionGenerator {
+      yield* threadHistoryPage(draft.ThreadId, "hold");
+    }
+    const holding = server.runtime.dispatch(hold, server.openId());
+    const replaced = server.sendThread({
+      ...window(),
+      snapshotSequence: 5,
+      historyCursor: "fresher",
+    });
     gate.release(pageOf("c-1", null));
     await loading;
+    held.release(pageOf("unused", null));
+    await Promise.all([holding, replaced]);
+    await settled();
     expect(server.thread().Timeline).toEqual(["c-9"]);
-    expect(server.thread().History.Cursor).toBe("fresher");
+    expect(server.thread().History!.Cursor).toBe("fresher");
   });
 
   it("stops without writing when the thread closes during the wait", async () => {
@@ -867,7 +907,7 @@ describe("history pages", () => {
     const server = await connect(() => gate.promise);
     await server.open();
     await server.sendThread(window());
-    const loading = server.runtime.dispatch(loadEarlier, server.openId());
+    const loading = server.runtime.dispatch(loadEarlier, historyId(server));
     await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
     gate.release(pageOf("c-1", null));
     await loading;
@@ -1730,7 +1770,7 @@ describe("reconnect", () => {
 });
 
 describe("the replica's writers", () => {
-  it("are the stream receivers, opening and closing, history pages, providers and an answer's error mark", async () => {
+  it("are the stream receivers, opening and closing, history pages and providers, plus every action on a replica entity", async () => {
     const server = await connect(
       async () =>
         ({
@@ -1781,7 +1821,7 @@ describe("the replica's writers", () => {
     await server.runtime.dispatch(closeTerminal, server.sessionId());
     const request = server.thread().RuntimeRequests["r-1"]!.$Id;
     await server.runtime.dispatch(answerRequest, request, ENV, THREAD_ID, "accept", null);
-    await server.runtime.dispatch(loadEarlier, server.openId());
+    await server.runtime.dispatch(loadEarlier, server.thread().History!.$Id);
     await server.sendThread({
       kind: "event",
       sequence: 2,

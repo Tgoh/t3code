@@ -19,6 +19,7 @@ import { Composer } from "./Composer";
 import { CopyButton } from "./CopyButton";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
+import HistoryWindow from "./HistoryWindow";
 import {
   Bot,
   Brain,
@@ -574,6 +575,26 @@ const RequestBanner = RuntimeRequest.provider(() => {
   );
 });
 
+const LoadEarlier = HistoryWindow.provider(() => {
+  const history = HistoryWindow.use();
+  return (
+    <>
+      <Show when={history.state.HasMore}>
+        <button
+          class="button load-earlier"
+          disabled={history.loadingEarlier()}
+          onClick={() => history.loadEarlier()}
+        >
+          {history.loadingEarlier() ? "Loading…" : "Load earlier"}
+        </button>
+      </Show>
+      <Show when={history.state.Error}>
+        <p class="thread-notice">{history.state.Error}</p>
+      </Show>
+    </>
+  );
+});
+
 const ThreadBody = ThreadSession.provider(() => {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
@@ -692,17 +713,8 @@ const ThreadBody = ThreadSession.provider(() => {
           }}
         >
           <div class="timeline-lane" ref={content}>
-            <Show when={thread.state.History.HasMore}>
-              <button
-                class="button load-earlier"
-                disabled={thread.loadingEarlier()}
-                onClick={() => thread.loadEarlier()}
-              >
-                {thread.loadingEarlier() ? "Loading…" : "Load earlier"}
-              </button>
-            </Show>
-            <Show when={thread.state.History.Error}>
-              <p class="thread-notice">{thread.state.History.Error}</p>
+            <Show when={thread.state.History} keyed>
+              {(history) => <LoadEarlier state={history} />}
             </Show>
             <For each={thread.state.Timeline}>{(id) => <TimelineRow id={id} />}</For>
             <For each={thread.pendingApprovalIds()}>
