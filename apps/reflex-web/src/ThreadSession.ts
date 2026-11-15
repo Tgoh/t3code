@@ -91,6 +91,9 @@ const attachment = (draft: IThreadSession) =>
     FocusOnMount: false,
   });
 
+const expandedRows = (owner: IThreadSession) =>
+  transient(owner, "Timeline/Expanded", { Rows: {} as Record<string, true> });
+
 export interface IThreadSession extends IEntity {
   EnvironmentId: string;
   ThreadId: string;
@@ -371,6 +374,12 @@ export function* setQuestionAnswer(
   else held[questionId] = text;
 }
 
+export function* toggleRowExpanded(draft: IThreadSession, rowId: string): IActionGenerator {
+  const expanded = yield* expandedRows(draft);
+  if (expanded.Rows[rowId]) delete expanded.Rows[rowId];
+  else expanded.Rows[rowId] = true;
+}
+
 interface IAskedQuestion {
   id: string;
   options: ReadonlyArray<{ label: string }>;
@@ -531,6 +540,10 @@ export function* terminalAttachment(draft: IThreadSession) {
   return yield* attachment(draft);
 }
 
+export function* expandedTimelineRows(draft: IThreadSession) {
+  return (yield* expandedRows(draft)).Rows;
+}
+
 export const TerminalReceiver = receiver<IThreadSession>("TerminalReceiver")({
   *"Terminal/Session"(draft, message) {
     if (isEnded(message)) return;
@@ -551,6 +564,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     stopRun,
     queueAction,
     setQuestionAnswer,
+    toggleRowExpanded,
     openDiff,
     closeDiff,
     openTerminal,
@@ -570,5 +584,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     ending,
     diffLoading,
     terminalAttachment,
+    expandedTimelineRows,
   },
 );

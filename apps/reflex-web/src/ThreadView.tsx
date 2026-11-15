@@ -1,8 +1,6 @@
-// @effect-diagnostics globalTimers:off -- A view-only reset of the copied icon, outside any Effect runtime.
-import { type IActionGenerator, type IEntity } from "treflex";
-import { useComponentState, useResource } from "treflex-solid";
+import { useResource } from "treflex-solid";
 import {
-  type Component,
+  createComputed,
   createEffect,
   createMemo,
   createSignal,
@@ -10,584 +8,22 @@ import {
   onCleanup,
   onMount,
   Show,
+  untrack,
 } from "solid-js";
-import { Dynamic } from "solid-js/web";
 
 import { ProjectBadge } from "./brand";
-import { CommandOutput } from "./CommandOutput";
 import { Composer } from "./Composer";
-import { CopyButton } from "./CopyButton";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
-import {
-  Bot,
-  Brain,
-  ChevronDown,
-  ChevronRight,
-  CircleAlert,
-  CircleHelp,
-  File,
-  FileDiff,
-  FileSearch,
-  Globe,
-  Link,
-  ListTodo,
-  MessageCircleQuestion,
-  PanelBottom,
-  PanelRight,
-  ShieldQuestion,
-  SquarePen,
-  Terminal,
-  Wrench,
-  X,
-} from "./icons";
-import {
-  attachmentUrlEffect,
-  type IApprovalDecision,
-  type IWireAttachment,
-} from "./Infrastructure/commandEffects";
-import type { IWireTurnItem } from "./Infrastructure/wire";
-import { Markdown } from "./Markdown";
-import OpenThread, {
-  diffTurnOf,
-  fileChangeCounts,
-  isRowVisible,
-  latestDiffTurn,
-  pendingRequest,
-  runText,
-  timelineItem,
-} from "./OpenThread";
-import RuntimeRequest, { canAnswer } from "./RuntimeRequest";
+import { ChevronDown, PanelBottom, PanelRight } from "./icons";
+import OpenThread, { latestDiffTurn, runText } from "./OpenThread";
+import { PendingApproval, RequestBanner } from "./RequestViews";
 import { needsVisit, runStatus } from "./Shell";
 import { TerminalPanel } from "./TerminalPanel";
-import ThreadSession, { questionAnswers } from "./ThreadSession";
-import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
-import { viewOf } from "./turnItemView";
-
-function Body(props: { text: string; format: "markdown" | "text" | "code"; fromUser?: boolean }) {
-  return (
-    <Show
-      when={props.format === "markdown"}
-      fallback={<pre class={props.format === "code" ? "work-code" : "work-text"}>{props.text}</pre>}
-    >
-      <Markdown text={props.text} fromUser={props.fromUser === true} />
-    </Show>
-  );
-}
-
-function MessageTime(props: { at: string }) {
-  return (
-    <span class="message-time" data-tip={fullTimestamp(props.at)}>
-      {dayAwareTimestamp(props.at)}
-    </span>
-  );
-}
-
-const ROW_ICONS: Record<string, Component> = {
-  reasoning: Brain,
-  todo_list: ListTodo,
-  command_execution: Terminal,
-  file_change: SquarePen,
-  file_search: FileSearch,
-  web_search: Globe,
-  dynamic_tool: Wrench,
-  subagent: Bot,
-  approval_request: ShieldQuestion,
-  user_input_request: MessageCircleQuestion,
-  secret_request: ShieldQuestion,
-  link_request: Link,
-  error: CircleAlert,
-};
-
-function RowIcon(props: { type: string }) {
-  return (
-    <span class="work-icon">
-      <Dynamic component={ROW_ICONS[props.type] ?? CircleHelp} />
-    </span>
-  );
-}
-
-type IWireCheckpoint = Extract<IWireTurnItem, { type: "checkpoint" }>;
-
-interface IAttachmentImage extends IEntity {
-  Url: string | null;
-  Failed: boolean;
-}
-
-function* loadAttachmentUrl(
-  draft: IAttachmentImage,
-  environmentId: string,
-  attachmentId: string,
-): IActionGenerator {
-  try {
-    draft.Url = yield* attachmentUrlEffect({
-      EnvironmentId: environmentId,
-      AttachmentId: attachmentId,
-    });
-  } catch {
-    draft.Failed = true;
-  }
-}
-
-function AttachmentImage(props: {
-  environmentId: string;
-  file: IWireAttachment;
-  grouped: boolean;
-}) {
-  const local = useComponentState<IAttachmentImage>(() => ({ Url: null, Failed: false }));
-  onMount(() => local.dispatch(loadAttachmentUrl, props.environmentId, props.file.id));
-  const [expanded, setExpanded] = createSignal(false);
-  return (
-    <Show
-      when={props.file.mimeType.startsWith("image/") && !local.state.Failed}
-      fallback={<span class="attachment-chip">{props.file.name}</span>}
-    >
-      <Show when={local.state.Url} fallback={<span class="attachment-image placeholder" />}>
-        {(url) => (
-          <>
-            <button
-              class="attachment-open"
-              aria-label={`Preview ${props.file.name}`}
-              onClick={() => setExpanded(true)}
-            >
-              <img
-                class="attachment-image"
-                classList={{ grouped: props.grouped }}
-                src={url()}
-                alt={props.file.name}
-                onError={() => local.dispatch(markFailed)}
-              />
-            </button>
-            <Show when={expanded()}>
-              <dialog
-                class="image-dialog"
-                ref={(dialog) => queueMicrotask(() => dialog.showModal())}
-                onClose={() => setExpanded(false)}
-                onClick={(event) => event.currentTarget.close()}
-              >
-                <img src={url()} alt={props.file.name} />
-                <button class="icon-button image-dialog-close" aria-label="Close preview">
-                  <X />
-                </button>
-              </dialog>
-            </Show>
-          </>
-        )}
-      </Show>
-    </Show>
-  );
-}
-
-function* markFailed(draft: IAttachmentImage): IActionGenerator {
-  draft.Failed = true;
-}
-
-function DiffCounts(props: { additions: number; deletions: number }) {
-  return (
-    <span class="diff-counts">
-      <span class="added-text">+{props.additions}</span>{" "}
-      <span class="removed-text">-{props.deletions}</span>
-    </span>
-  );
-}
-
-function ChangedFiles(props: { item: IWireCheckpoint; turn: number | null }) {
-  const session = ThreadSession.use();
-  const totals = () =>
-    props.item.filesTotal ?? {
-      count: props.item.files.length,
-      additions: props.item.files.reduce((total, file) => total + file.additions, 0),
-      deletions: props.item.files.reduce((total, file) => total + file.deletions, 0),
-    };
-  return (
-    <article class="row changed-files">
-      <header>
-        <span>
-          {totals().count} changed file{totals().count === 1 ? "" : "s"}
-        </span>
-        <DiffCounts additions={totals().additions} deletions={totals().deletions} />
-        <span class="composer-spacer" />
-        <Show when={props.turn}>
-          {(turn) => (
-            <button
-              class="open-diff"
-              data-tip="Open this turn's diff"
-              onClick={() => session.openDiff("turn", turn())}
-            >
-              <FileDiff />
-              Open diff
-            </button>
-          )}
-        </Show>
-      </header>
-      <ul>
-        <For each={props.item.files}>
-          {(file) => (
-            <li>
-              <File />
-              <span class="changed-path">{file.path}</span>
-              <DiffCounts additions={file.additions} deletions={file.deletions} />
-            </li>
-          )}
-        </For>
-      </ul>
-    </article>
-  );
-}
-
-interface IRowProps {
-  id: string;
-}
-
-function useRow(props: IRowProps) {
-  const thread = OpenThread.use();
-  return {
-    thread,
-    item: () => timelineItem(thread.state, props.id),
-    inherited: () => thread.state.Rows[props.id]?.visibility === "inherited",
-  };
-}
-
-function UserRow(props: IRowProps) {
-  const { thread, item, inherited } = useRow(props);
-  const message = () => {
-    const held = item();
-    return held?.type === "user_message" ? held : null;
-  };
-  const attachments = () => message()?.attachments ?? [];
-  const createdAt = () => {
-    const held = message();
-    return held === null ? undefined : (held.startedAt ?? held.updatedAt);
-  };
-  return (
-    <article class="row user" classList={{ inherited: inherited() }}>
-      <For each={attachments()}>
-        {(file) => (
-          <AttachmentImage
-            environmentId={thread.state.EnvironmentId}
-            file={file}
-            grouped={Boolean(message()?.text)}
-          />
-        )}
-      </For>
-      <Show when={message()?.text}>
-        {(text) => (
-          <div class="bubble" classList={{ grouped: attachments().length > 0 }}>
-            <Body text={text()} format="markdown" fromUser />
-          </div>
-        )}
-      </Show>
-      <div class="message-actions">
-        <Show when={createdAt()}>{(at) => <MessageTime at={at()} />}</Show>
-        <Show when={message()?.text}>
-          {(text) => <CopyButton text={text()} label="Copy message" />}
-        </Show>
-      </div>
-    </article>
-  );
-}
-
-function MessageRow(props: IRowProps) {
-  const { item, inherited } = useRow(props);
-  const view = createMemo(() => {
-    const held = item();
-    return held === undefined ? undefined : viewOf(held);
-  });
-  const updatedAt = () => (item()?.status === "completed" ? item()?.updatedAt : undefined);
-  return (
-    <article class={`row ${view()?.Tone}`} classList={{ inherited: inherited() }}>
-      <Show when={view()?.Tone === "plan"}>
-        <header class="plan-title">{view()?.Label}</header>
-      </Show>
-      <Show when={view()?.Body}>
-        {(text) => <Body text={text()} format={view()?.Format ?? "text"} />}
-      </Show>
-      <Show when={view()?.Tone === "assistant"}>
-        <div class="message-actions">
-          <Show when={updatedAt()}>
-            {(at) => (
-              <>
-                <Show when={view()?.Body}>
-                  {(text) => <CopyButton text={text()} label="Copy message" />}
-                </Show>
-                <MessageTime at={at()} />
-              </>
-            )}
-          </Show>
-        </div>
-      </Show>
-    </article>
-  );
-}
-
-function ChangedFilesRow(props: IRowProps) {
-  const { thread, item } = useRow(props);
-  const checkpoint = () => {
-    const held = item();
-    return held?.type === "checkpoint" ? held : null;
-  };
-  return (
-    <Show when={checkpoint()}>
-      {(held) => <ChangedFiles item={held()} turn={diffTurnOf(thread.state, held())} />}
-    </Show>
-  );
-}
-
-function WorkRow(props: IRowProps) {
-  const { thread, item, inherited } = useRow(props);
-  const session = ThreadSession.use();
-  const view = createMemo(() => {
-    const held = item();
-    if (held === undefined) return undefined;
-    return viewOf(held, held.type === "file_change" ? fileChangeCounts(thread.state, held) : null);
-  });
-  const diffTurn = createMemo(() => {
-    const held = item();
-    return held === undefined ? null : diffTurnOf(thread.state, held);
-  });
-  const [expanded, setExpanded] = createSignal(false);
-  const live = () => {
-    const status = item()?.status;
-    return status === "running" || status === "pending" || status === "waiting" ? status : null;
-  };
-  const label = () => (
-    <>
-      <RowIcon type={item()?.type ?? ""} />
-      <span class="work-label">{view()?.Label}</span>
-      <Show when={live()}>
-        <span class="work-live">{live()}</span>
-      </Show>
-    </>
-  );
-  const body = () => (
-    <Show when={view()?.Body}>
-      {(text) => <Body text={text()} format={view()?.Format ?? "text"} />}
-    </Show>
-  );
-  return (
-    <article
-      class={`row work ${view()?.Tone}`}
-      classList={{ inherited: inherited(), "with-action": diffTurn() !== null }}
-    >
-      <Show
-        when={view()?.Collapsed && (view()?.Body || view()?.LiveOutput)}
-        fallback={
-          <>
-            <div class="work-line">{label()}</div>
-            {body()}
-          </>
-        }
-      >
-        <details onToggle={(event) => setExpanded(event.currentTarget.open)}>
-          <summary class="work-line">
-            {label()}
-            <ChevronRight class="work-chevron" />
-          </summary>
-          <div class="work-detail">
-            <Show when={view()?.LiveOutput && expanded()}>
-              <CommandOutput
-                environmentId={thread.state.EnvironmentId}
-                threadId={thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId}
-                itemId={props.id}
-              />
-            </Show>
-            {body()}
-          </div>
-        </details>
-      </Show>
-      <Show when={diffTurn()}>
-        {(turn) => (
-          <button class="diff-link" onClick={() => session.openDiff("turn", turn())}>
-            View diff
-          </button>
-        )}
-      </Show>
-    </article>
-  );
-}
-
-const ROWS: Record<string, Component<IRowProps>> = {
-  user: UserRow,
-  message: MessageRow,
-  "changed-files": ChangedFilesRow,
-  work: WorkRow,
-};
-
-function rowKind(item: IWireTurnItem): string | null {
-  switch (item.type) {
-    case "user_message":
-      return "user";
-    case "assistant_message":
-    case "proposed_plan":
-    case "todo_list":
-      return "message";
-    case "checkpoint":
-      return (item.filesTotal?.count ?? item.files.length) === 0 ? null : "changed-files";
-    case "approval_request":
-      return item.status === "waiting" ? null : "work";
-    default:
-      return "work";
-  }
-}
-
-function TimelineRow(props: IRowProps) {
-  const thread = OpenThread.use();
-  const kind = createMemo(() => {
-    const item = timelineItem(thread.state, props.id);
-    return item === undefined || !isRowVisible(thread.state, props.id) ? null : rowKind(item);
-  });
-  return <Dynamic component={ROWS[kind() ?? ""]} id={props.id} />;
-}
-
-const PendingApproval = RuntimeRequest.provider(() => {
-  const thread = OpenThread.use();
-  const request = RuntimeRequest.use();
-  const item = createMemo(() => {
-    const held = pendingRequest(thread.state, request.state.id)?.Item;
-    return held?.type === "approval_request" ? held : null;
-  });
-  const options = () => {
-    const given = item()?.options;
-    return given?.length
-      ? given
-      : ([
-          { decision: "decline", label: "Decline" },
-          { decision: "accept", label: "Approve" },
-        ] as const);
-  };
-  return (
-    <div class="pending-approval">
-      <div class="work-line">
-        <RowIcon type="command_execution" />
-        <code class="approval-subject">{item()?.prompt ?? item()?.requestKind}</code>
-      </div>
-      <div class="approval-actions">
-        <Show
-          when={canAnswer(request.state)}
-          fallback={
-            <span class="approval-state">
-              Provider process is gone. Interrupt or restart the run to respond.
-            </span>
-          }
-        >
-          <span class="approval-state">
-            <ShieldQuestion />
-            Waiting for approval
-          </span>
-          <For each={options()}>
-            {(option) => (
-              <>
-                <span class="approval-dot">·</span>
-                <button
-                  classList={{ strong: option.decision === "accept" }}
-                  disabled={request.answering()}
-                  onClick={() =>
-                    request.answerRequest(
-                      thread.state.EnvironmentId,
-                      thread.state.ThreadId,
-                      option.decision as IApprovalDecision,
-                      null,
-                    )
-                  }
-                >
-                  {option.label}
-                </button>
-              </>
-            )}
-          </For>
-        </Show>
-      </div>
-      <Show when={request.answerError()}>
-        {(error) => <p class="composer-error">Couldn't answer: {error()}</p>}
-      </Show>
-    </div>
-  );
-});
-
-const RequestBanner = RuntimeRequest.provider(() => {
-  const thread = OpenThread.use();
-  const session = ThreadSession.use();
-  const request = RuntimeRequest.use();
-  const item = createMemo(() => pendingRequest(thread.state, request.state.id)?.Item ?? null);
-  const view = () => {
-    const held = item();
-    return held === null ? null : viewOf(held);
-  };
-  const questions = () => {
-    const held = item();
-    return held?.type === "user_input_request" ? held.questions : null;
-  };
-  const answers = () => {
-    const asked = questions();
-    return asked === null ? null : questionAnswers(session.state, request.state.id, asked);
-  };
-  return (
-    <div class="composer-banner warning">
-      <div class="banner-title">
-        <ShieldQuestion />
-        <strong>{view()?.Label ?? `Request: ${request.state.kind}`}</strong>
-      </div>
-      <Show when={view()?.Body?.replace(/\n?Status: \w+$/, "")}>
-        {(body) => <pre class="banner-body">{body()}</pre>}
-      </Show>
-      <Show when={questions()}>
-        {(asked) => (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const given = answers();
-              if (given !== null)
-                request.answerRequest(
-                  thread.state.EnvironmentId,
-                  thread.state.ThreadId,
-                  null,
-                  given,
-                );
-            }}
-          >
-            <For each={asked()}>
-              {(question) => (
-                <label class="question">
-                  {question.header}
-                  <input
-                    disabled={!canAnswer(request.state)}
-                    list={`options-${question.id}`}
-                    value={session.state.QuestionAnswers[request.state.id]?.[question.id] ?? ""}
-                    onInput={(event) =>
-                      session.setQuestionAnswer(
-                        request.state.id,
-                        question.id,
-                        event.currentTarget.value,
-                      )
-                    }
-                  />
-                  <datalist id={`options-${question.id}`}>
-                    <For each={question.options}>{(option) => <option value={option.label} />}</For>
-                  </datalist>
-                </label>
-              )}
-            </For>
-            <div class="request-actions">
-              <button
-                class="button primary"
-                disabled={!canAnswer(request.state) || request.answering() || answers() === null}
-              >
-                Answer
-              </button>
-            </div>
-          </form>
-        )}
-      </Show>
-      <Show when={questions() === null}>
-        <p class="banner-body">Answer this one in the stock client.</p>
-      </Show>
-      <Show when={request.answerError()}>
-        {(error) => <p class="composer-error">Couldn't answer: {error()}</p>}
-      </Show>
-    </div>
-  );
-});
+import ThreadSession from "./ThreadSession";
+import { TimelineRow } from "./TimelineRows";
+import { firstAfterChange, grow, INITIAL_ROWS, trimToTail } from "./timelineWindow";
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
@@ -608,6 +44,36 @@ const LoadEarlier = HistoryWindow.provider(() => {
     </>
   );
 });
+
+function TimelineSentinel(props: { root: HTMLElement; onReach: () => void; onFocus: () => void }) {
+  const [sentinel, setSentinel] = createSignal<HTMLButtonElement>();
+  onMount(() => {
+    const element = sentinel();
+    if (element === undefined) return;
+    const observer = new IntersectionObserver(
+      (entries, held) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        props.onReach();
+        // Observations report only changes, so one that leaves the sentinel in range re-observes it.
+        if (!element.isConnected) return;
+        held.unobserve(element);
+        held.observe(element);
+      },
+      { root: props.root, rootMargin: "800px 0px 0px 0px" },
+    );
+    observer.observe(element);
+    onCleanup(() => observer.disconnect());
+  });
+  return (
+    <button
+      ref={setSentinel}
+      class="timeline-sentinel"
+      aria-label="Show earlier messages"
+      onFocus={() => props.onFocus()}
+      onClick={() => props.onFocus()}
+    />
+  );
+}
 
 const ThreadBody = ThreadSession.provider(() => {
   const thread = OpenThread.use();
@@ -639,14 +105,79 @@ const ThreadBody = ThreadSession.provider(() => {
   const diffOpen = () => session.state.Panels.Diff.Open;
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
+  let head!: HTMLDivElement;
   const [stuck, setStuck] = createSignal(true);
   let lastTop = 0;
   const scrollToEnd = () => {
     scroller.scrollTop = scroller.scrollHeight;
   };
+
+  const [timeline, setTimeline] = createSignal({
+    Ids: [] as readonly string[],
+    First: 0,
+    Floor: INITIAL_ROWS,
+  });
+  createComputed(() => {
+    const ids = thread.timelineIds();
+    const held = untrack(timeline);
+    const moved = firstAfterChange(held.Ids, ids, held.First);
+    const first = untrack(stuck) ? trimToTail(ids.length, moved, held.Floor) : moved;
+    setTimeline({ ...held, Ids: ids, First: first });
+    // In this task, so the scroll event the trim causes isn't read as the user scrolling up.
+    if (first !== moved)
+      queueMicrotask(() => {
+        scrollToEnd();
+        lastTop = scroller.scrollTop;
+      });
+  });
+  const windowIds = createMemo(() => {
+    const held = timeline();
+    return held.Ids.slice(held.First);
+  });
+  const reachedTop = () => timeline().First === 0;
+  const growTo = (first: number) =>
+    setTimeline((held) => ({
+      ...held,
+      First: first,
+      Floor: stuck() ? Math.max(held.Floor, held.Ids.length - first) : held.Floor,
+    }));
+  const showAll = () => {
+    growTo(0);
+    scroller.focus({ preventScroll: true });
+  };
+
+  let anchor: Element | null = null;
+  let anchorOffset = 0;
+  const offsetOf = (element: Element) =>
+    element.getBoundingClientRect().top - content.getBoundingClientRect().top;
+  const firstVisible = (): Element | null => {
+    const children = content.children;
+    const top = scroller.getBoundingClientRect().top;
+    let low = 0;
+    let high = children.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (children[middle]!.getBoundingClientRect().bottom > top) high = middle;
+      else low = middle + 1;
+    }
+    const found = children[low] ?? null;
+    return found === head ? head.nextElementSibling : found;
+  };
+  const recordAnchor = () => {
+    anchor = firstVisible();
+    anchorOffset = anchor === null ? 0 : offsetOf(anchor);
+  };
   onMount(() => {
     const observer = new ResizeObserver(() => {
-      if (stuck()) scrollToEnd();
+      if (stuck()) {
+        scrollToEnd();
+        return;
+      }
+      if (anchor?.isConnected) {
+        const shift = offsetOf(anchor) - anchorOffset;
+        if (shift !== 0) scroller.scrollBy(0, shift);
+      }
+      recordAnchor();
     });
     observer.observe(content);
     onCleanup(() => observer.disconnect());
@@ -717,6 +248,7 @@ const ThreadBody = ThreadSession.provider(() => {
         <div
           class="timeline"
           ref={scroller}
+          tabIndex={-1}
           onScroll={() => {
             const top = scroller.scrollTop;
             if (scroller.scrollHeight - top - scroller.clientHeight < 40) setStuck(true);
@@ -724,13 +256,27 @@ const ThreadBody = ThreadSession.provider(() => {
             // arrived, which leaves a follow-up scroll looking far from the end.
             else if (top < lastTop) setStuck(false);
             lastTop = top;
+            if (!stuck()) recordAnchor();
           }}
         >
           <div class="timeline-lane" ref={content}>
-            <Show when={thread.state.History} keyed>
-              {(history) => <LoadEarlier state={history} />}
-            </Show>
-            <For each={thread.timelineIds()}>{(id) => <TimelineRow id={id} />}</For>
+            <div ref={head}>
+              <Show
+                when={reachedTop()}
+                fallback={
+                  <TimelineSentinel
+                    root={scroller}
+                    onReach={() => growTo(grow(timeline().First))}
+                    onFocus={showAll}
+                  />
+                }
+              >
+                <Show when={thread.state.History} keyed>
+                  {(history) => <LoadEarlier state={history} />}
+                </Show>
+              </Show>
+            </div>
+            <For each={windowIds()}>{(id) => <TimelineRow id={id} />}</For>
             <For each={thread.pendingApprovalIds()}>
               {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
             </For>
