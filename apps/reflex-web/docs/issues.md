@@ -58,14 +58,13 @@ The server's history is the raw PTY bytes, written at whatever width the shell h
 
 ## Limit: busy marks are per action
 
-Every busy mark is an `inFlight` read, which says whether an action runs on an entity and not which arguments it runs with. A per-argument mark would have to be composed: write the id into a transient when the action starts, and return it from a selector only while `inFlight` is true. This client doesn't, and nothing but a repeat of the same `latest` action can stop a running one. So:
+Every busy mark is an `inFlight` read, which says whether an action runs on an entity and not which arguments it runs with. A per-argument mark would have to be composed: write the id into a transient when the action starts, and return it from a selector only while `inFlight` is true. This client doesn't, and nothing but a repeat of the same `latest` action can stop a running one. So a reconnect snapshot during a history fetch leaves "Load earlier" on "Loading…" until the stale fetch returns and is discarded.
 
-- While any request is being answered, every request's buttons are disabled.
-- A reconnect snapshot during a history fetch leaves "Load earlier" on "Loading…" until the stale fetch returns and is discarded.
+Runtime requests are entities instead, so each answer's mark is its request's.
 
 ## Feedback for treflex
 
-- `merge` is gone, and `reconcileRows` takes one array of keyed rows at a time, refuses an incoming row without a key, and is a generator an action has to `yield*`. Folding a wire payload with nested keyless arrays into a held node in place, from the synchronous apply code, needed an app-side helper (`reconcile` in `rows.ts`). Records keyed by id, which keep a delta's lookups constant, aren't accepted at all.
+- `merge` is gone, and `reconcileRows` takes one array of keyed rows at a time, refuses an incoming row without a key, and is a generator an action has to `yield*`. Folding a wire payload with nested keyless arrays into a held node in place, from the synchronous apply code, needed an app-side helper (`reconcile` in `rows.ts`). Records keyed by id, which keep a delta's lookups constant, aren't accepted at all, so the entity-aware fold for runtime requests (`reconcileEntities`, minting first so a snapshot's writes land in one step) is app-side too.
 - `reconcileRows` throws a `TypeError` without `update`, where the table in `docs/advanced/state-tree.md` says a missing `update` keeps a matched row's contents.
 - Selectors that return fresh objects remount `<For>` rows and wake any parent selector, because a memo compares with `===`. An opt-in equality setting or structural sharing would cover both.
 - `inFlight(action, owner)` has no per-argument form, so a per-argument mark has to be composed, and one action can't stop another's run on the same entity. The limits above follow from that.

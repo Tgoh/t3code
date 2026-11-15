@@ -33,7 +33,8 @@ import type {
   IWireThreadSnapshot,
   IWireTurnItem,
 } from "./Infrastructure/wire";
-import { byId, put, reconcile } from "./rows";
+import { byId, put, putEntity, reconcile, reconcileEntities } from "./rows";
+import type { IRuntimeRequest } from "./RuntimeRequest";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -74,7 +75,7 @@ export interface IOpenThread extends IEntity {
   ProviderSessions: Record<string, IWireProjection["providerSessions"][number]>;
   ProviderThreads: Record<string, IWireProjection["providerThreads"][number]>;
   ProviderTurns: Record<string, IWireProjection["providerTurns"][number]>;
-  RuntimeRequests: Record<string, IWireProjection["runtimeRequests"][number]>;
+  RuntimeRequests: Record<string, IRuntimeRequest>;
   Messages: Record<string, IWireProjection["messages"][number]>;
   Plans: Record<string, IWireProjection["plans"][number]>;
   CheckpointScopes: Record<string, IWireProjection["checkpointScopes"][number]>;
@@ -344,9 +345,6 @@ function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
       );
       return;
     }
-    case "runtime-request.updated":
-      put(draft.RuntimeRequests, event.payload);
-      return;
     case "message.updated":
       put(draft.Messages, event.payload);
       return;
@@ -401,7 +399,6 @@ function applySnapshot(draft: IOpenThread, item: IWireThreadSnapshot): void {
   reconcile(draft.ProviderSessions, byId(projection.providerSessions));
   reconcile(draft.ProviderThreads, byId(projection.providerThreads));
   reconcile(draft.ProviderTurns, byId(projection.providerTurns));
-  reconcile(draft.RuntimeRequests, byId(projection.runtimeRequests));
   reconcile(draft.Messages, sources.Messages);
   reconcile(draft.Plans, byId(projection.plans));
   reconcile(draft.CheckpointScopes, byId(projection.checkpointScopes));
@@ -425,6 +422,8 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     return;
   }
   if (item.kind === "snapshot") {
+    // First, so the mints end their steps before any of the snapshot's writes.
+    yield* reconcileEntities(draft.RuntimeRequests, item.projection.runtimeRequests);
     applySnapshot(draft, item);
     return;
   }
@@ -437,7 +436,10 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     yield* publishToNearest(draft, "Thread/Deleted", { ThreadId: draft.ThreadId });
     return;
   }
-  if (draft.Thread !== null) applyEvent(draft, item.event);
+  if (draft.Thread === null) return;
+  if (item.event.type === "runtime-request.updated")
+    yield* putEntity(draft.RuntimeRequests, item.event.payload);
+  else applyEvent(draft, item.event);
 }
 
 function* reopenLater(draft: IOpenThread): IActionGenerator {

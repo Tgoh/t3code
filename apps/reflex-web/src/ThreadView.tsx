@@ -56,6 +56,7 @@ import OpenThread, {
   pendingRequest,
   timelineItem,
 } from "./OpenThread";
+import RuntimeRequest from "./RuntimeRequest";
 import { hasUnseenCompletion, runStatus } from "./Shell";
 import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession, { questionAnswers } from "./ThreadSession";
@@ -437,11 +438,11 @@ function TimelineRow(props: IRowProps) {
   return <Dynamic component={ROWS[kind() ?? ""]} id={props.id} />;
 }
 
-function PendingApproval(props: { id: string }) {
+const PendingApproval = RuntimeRequest.provider(() => {
   const thread = OpenThread.use();
-  const session = ThreadSession.use();
+  const request = RuntimeRequest.use();
   const item = createMemo(() => {
-    const held = pendingRequest(thread.state, props.id)?.Item;
+    const held = pendingRequest(thread.state, request.state.id)?.Item;
     return held?.type === "approval_request" ? held : null;
   });
   const options = () => {
@@ -470,9 +471,14 @@ function PendingApproval(props: { id: string }) {
               <span class="approval-dot">·</span>
               <button
                 classList={{ strong: option.decision === "accept" }}
-                disabled={session.answering()}
+                disabled={request.answering()}
                 onClick={() =>
-                  session.answerRequest(props.id, option.decision as IApprovalDecision, null)
+                  request.answerRequest(
+                    thread.state.EnvironmentId,
+                    thread.state.ThreadId,
+                    option.decision as IApprovalDecision,
+                    null,
+                  )
                 }
               >
                 {option.label}
@@ -481,34 +487,35 @@ function PendingApproval(props: { id: string }) {
           )}
         </For>
       </div>
-      <Show when={session.state.AnswerError}>
-        <p class="composer-error">Couldn't answer: {session.state.AnswerError}</p>
+      <Show when={request.answerError()}>
+        {(error) => <p class="composer-error">Couldn't answer: {error()}</p>}
       </Show>
     </div>
   );
-}
+});
 
-function RequestBanner(props: { id: string }) {
+const RequestBanner = RuntimeRequest.provider(() => {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
-  const request = createMemo(() => pendingRequest(thread.state, props.id));
+  const request = RuntimeRequest.use();
+  const pending = createMemo(() => pendingRequest(thread.state, request.state.id));
   const view = () => {
-    const item = request()?.Item;
+    const item = pending()?.Item;
     return item == null ? null : viewOf(item);
   };
   const questions = () => {
-    const item = request()?.Item;
+    const item = pending()?.Item;
     return item?.type === "user_input_request" ? item.questions : null;
   };
   const answers = () => {
     const asked = questions();
-    return asked === null ? null : questionAnswers(session.state, asked);
+    return asked === null ? null : questionAnswers(session.state, request.state.id, asked);
   };
   return (
     <div class="composer-banner warning">
       <div class="banner-title">
         <ShieldQuestion />
-        <strong>{view()?.Label ?? `Request: ${request()?.Kind}`}</strong>
+        <strong>{view()?.Label ?? `Request: ${request.state.kind}`}</strong>
       </div>
       <Show when={view()?.Body?.replace(/\n?Status: \w+$/, "")}>
         {(body) => <pre class="banner-body">{body()}</pre>}
@@ -519,7 +526,13 @@ function RequestBanner(props: { id: string }) {
             onSubmit={(event) => {
               event.preventDefault();
               const given = answers();
-              if (given !== null) session.answerRequest(props.id, null, given);
+              if (given !== null)
+                request.answerRequest(
+                  thread.state.EnvironmentId,
+                  thread.state.ThreadId,
+                  null,
+                  given,
+                );
             }}
           >
             <For each={asked()}>
@@ -528,9 +541,13 @@ function RequestBanner(props: { id: string }) {
                   {question.header}
                   <input
                     list={`options-${question.id}`}
-                    value={session.state.QuestionAnswers[question.id] ?? ""}
+                    value={session.state.QuestionAnswers[request.state.id]?.[question.id] ?? ""}
                     onInput={(event) =>
-                      session.setQuestionAnswer(question.id, event.currentTarget.value)
+                      session.setQuestionAnswer(
+                        request.state.id,
+                        question.id,
+                        event.currentTarget.value,
+                      )
                     }
                   />
                   <datalist id={`options-${question.id}`}>
@@ -540,7 +557,7 @@ function RequestBanner(props: { id: string }) {
               )}
             </For>
             <div class="request-actions">
-              <button class="button primary" disabled={session.answering() || answers() === null}>
+              <button class="button primary" disabled={request.answering() || answers() === null}>
                 Answer
               </button>
             </div>
@@ -550,12 +567,12 @@ function RequestBanner(props: { id: string }) {
       <Show when={questions() === null}>
         <p class="banner-body">Answer this one in the stock client.</p>
       </Show>
-      <Show when={session.state.AnswerError}>
-        <p class="composer-error">Couldn't answer: {session.state.AnswerError}</p>
+      <Show when={request.answerError()}>
+        {(error) => <p class="composer-error">Couldn't answer: {error()}</p>}
       </Show>
     </div>
   );
-}
+});
 
 const ThreadBody = ThreadSession.provider(() => {
   const thread = OpenThread.use();
@@ -688,7 +705,9 @@ const ThreadBody = ThreadSession.provider(() => {
               <p class="thread-notice">{thread.state.History.Error}</p>
             </Show>
             <For each={thread.state.Timeline}>{(id) => <TimelineRow id={id} />}</For>
-            <For each={thread.pendingApprovalIds()}>{(id) => <PendingApproval id={id} />}</For>
+            <For each={thread.pendingApprovalIds()}>
+              {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
+            </For>
             <Show when={thread.state.Thread !== null && thread.state.Timeline.length === 0}>
               <p class="empty">Nothing here yet.</p>
             </Show>
@@ -701,7 +720,9 @@ const ThreadBody = ThreadSession.provider(() => {
               Scroll to end
             </button>
           </Show>
-          <For each={thread.pendingQuestionIds()}>{(id) => <RequestBanner id={id} />}</For>
+          <For each={thread.pendingQuestionIds()}>
+            {(id) => <RequestBanner state={thread.state.RuntimeRequests[id]!} />}
+          </For>
           <Show when={thread.queuedRuns().length > 0}>
             <div class="composer-banner">
               <div class="banner-title">

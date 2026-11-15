@@ -25,7 +25,6 @@ import { createEntityFeature } from "treflex-solid";
 
 import {
   closeTerminalEffect,
-  type IApprovalDecision,
   type IProviderOption,
   type IStartTurn,
   type IWireAttachment,
@@ -33,7 +32,6 @@ import {
   type IWireModelSelection,
   type IWireRuntimeMode,
   queueCommandEffect,
-  respondRequestEffect,
   startTurnEffect,
   stopThreadEffect,
   threadDiffEffect,
@@ -104,8 +102,7 @@ export interface IThreadSession extends IEntity {
   RuntimeMode: IWireRuntimeMode;
   SendError?: string;
   StopError?: string;
-  QuestionAnswers: Record<string, string>;
-  AnswerError?: string;
+  QuestionAnswers: Record<string, Record<string, string>>;
   Panels: { Diff: IDiffPanel };
   Terminal: ITerminalPanel;
 }
@@ -347,10 +344,13 @@ export function* queueAction(draft: IThreadSession, runId: string | null): IOpen
 
 export function* setQuestionAnswer(
   draft: IThreadSession,
+  requestId: string,
   questionId: string,
   text: string,
 ): IActionGenerator {
-  draft.QuestionAnswers[questionId] = text;
+  const held = draft.QuestionAnswers[requestId];
+  if (held === undefined) draft.QuestionAnswers[requestId] = { [questionId]: text };
+  else held[questionId] = text;
 }
 
 interface IAskedQuestion {
@@ -359,10 +359,15 @@ interface IAskedQuestion {
   multiSelect?: boolean | undefined;
 }
 
-export function questionAnswers(draft: IThreadSession, questions: ReadonlyArray<IAskedQuestion>) {
+export function questionAnswers(
+  draft: IThreadSession,
+  requestId: string,
+  questions: ReadonlyArray<IAskedQuestion>,
+) {
+  const typed = draft.QuestionAnswers[requestId] ?? {};
   const drafts = Object.fromEntries(
     questions.map((question) => {
-      const text = draft.QuestionAnswers[question.id] ?? "";
+      const text = typed[question.id] ?? "";
       const parts = text.split(",").map((part) => part.trim());
       const isOption = (part: string) => question.options.some(({ label }) => label === part);
       return [
@@ -375,34 +380,6 @@ export function questionAnswers(draft: IThreadSession, questions: ReadonlyArray<
   );
   return buildPendingUserInputAnswers(questions, drafts);
 }
-
-export const answerRequest = leading(function* answer(
-  draft: IThreadSession,
-  requestId: string,
-  decision: IApprovalDecision | null,
-  answers: Record<string, string | ReadonlyArray<string>> | null,
-): IOpenGenerator {
-  delete draft.AnswerError;
-  const environmentId = draft.EnvironmentId;
-  const threadId = draft.ThreadId;
-  try {
-    yield* open(
-      withCommandId((commandId) =>
-        respondRequestEffect({
-          EnvironmentId: environmentId,
-          ThreadId: threadId,
-          CommandId: commandId,
-          RequestId: requestId,
-          Decision: decision,
-          Answers: answers,
-        }),
-      ),
-    );
-    draft.QuestionAnswers = {};
-  } catch (error) {
-    draft.AnswerError = errorText(error);
-  }
-});
 
 export const openDiff = latest(function* fetchDiff(
   draft: IThreadSession,
@@ -522,10 +499,6 @@ export function* ending(draft: IThreadSession): ISelectorGenerator<boolean> {
   return yield* inFlight(endTerminal, draft);
 }
 
-export function* answering(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(answerRequest, draft);
-}
-
 export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
   return draft.Panels.Diff.Open && (yield* inFlight(openDiff, draft));
 }
@@ -554,7 +527,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     stopRun,
     queueAction,
     setQuestionAnswer,
-    answerRequest,
     openDiff,
     closeDiff,
     openTerminal,
@@ -570,7 +542,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     sending,
     stopping,
     ending,
-    answering,
     diffLoading,
     terminalAttachment,
   },

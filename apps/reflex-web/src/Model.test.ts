@@ -47,6 +47,7 @@ import {
   timelineEntries,
 } from "./OpenThread";
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
+import { answering, answerRequest } from "./RuntimeRequest";
 import {
   projectFolders,
   ShellReceiver,
@@ -56,8 +57,6 @@ import {
   workingStartedAt,
 } from "./Shell";
 import {
-  answering,
-  answerRequest,
   closeDiff,
   diffLoading,
   closeTerminal,
@@ -1056,7 +1055,7 @@ describe("selection", () => {
 describe("writing to the server", () => {
   const requestItem = (requestId: string) =>
     ({
-      ...commandItem("approval", "run-1", 1),
+      ...commandItem(`approval-${requestId}`, "run-1", 1),
       type: "approval_request",
       requestId,
       requestKind: "command",
@@ -1190,59 +1189,75 @@ describe("writing to the server", () => {
     expect(server.runtime.processSelector(stopping, () => server.session())).toBe(false);
   });
 
-  it("answering stays pending until the stream says so, and another device's answer clears it", async () => {
+  it("answering marks only its own request, and the stream or another device clears it", async () => {
     const answers: IRespondRequest[] = [];
-    let release!: () => void;
+    const releases: (() => void)[] = [];
     const server = await connect(undefined, null, {
       respondRequest: (effect: IRespondRequest) => {
         answers.push(effect);
         return new Promise<void>((resolve) => {
-          release = resolve;
+          releases.push(resolve);
         });
       },
     });
     await server.open();
-    const request = { id: "r-1", kind: "command", status: "pending" };
-    const item = requestItem("r-1");
+    const request = (id: string) => ({ id, kind: "command", status: "pending" });
     await server.sendThread(
       snapshotOf(
-        { ...emptyProjection(), runtimeRequests: [request], turnItems: [item] } as never,
+        {
+          ...emptyProjection(),
+          runtimeRequests: [request("r-1"), request("r-2")],
+          turnItems: [requestItem("r-1"), requestItem("r-2")],
+        } as never,
         1,
       ),
     );
-    expect(pendingOf(server)).toEqual(["r-1"]);
+    expect(pendingOf(server)).toEqual(["r-1", "r-2"]);
     expect(pendingRequest(server.thread(), "r-1")?.Item?.type).toBe("approval_request");
 
-    const busy = () => server.runtime.processSelector(answering, () => server.session());
-    const answered = server.runtime.dispatch(
-      answerRequest,
-      server.sessionId(),
-      "r-1",
-      "accept",
-      null,
-    );
+    const node = (id: string) => server.thread().RuntimeRequests[id]!;
+    const busy = (id: string) => server.runtime.processSelector(answering, () => node(id));
+    const answer = (id: string, decision: "accept" | "decline") =>
+      server.runtime.dispatch(answerRequest, node(id).$Id, ENV, THREAD_ID, decision, null);
+    const first = answer("r-1", "accept");
     await settled();
-    expect(busy()).toBe(true);
-    expect(
-      await server.runtime.dispatch(answerRequest, server.sessionId(), "r-2", "decline", null),
-    ).toBeUndefined();
-    release();
-    await answered;
-    expect(busy()).toBe(false);
+    expect([busy("r-1"), busy("r-2")]).toEqual([true, false]);
+    expect(await answer("r-1", "decline")).toBeUndefined();
+    const second = answer("r-2", "decline");
+    await settled();
+    expect([busy("r-1"), busy("r-2")]).toEqual([true, true]);
+    releases.forEach((release) => release());
+    await Promise.all([first, second]);
+    expect([busy("r-1"), busy("r-2")]).toEqual([false, false]);
     expect(answers.map((answer) => [answer.RequestId, answer.Decision])).toEqual([
       ["r-1", "accept"],
+      ["r-2", "decline"],
     ]);
-    expect(pendingOf(server)).toHaveLength(1);
+    expect(pendingOf(server)).toHaveLength(2);
 
+    const held = node("r-2");
     await server.sendThread({
       kind: "event",
       sequence: 2,
-      event: event("runtime-request.updated", { ...request, status: "resolved" }),
+      event: event("runtime-request.updated", { ...request("r-2"), status: "resolved" }),
     } as IWireThreadItem);
-    expect(pendingOf(server)).toEqual([]);
+    expect(pendingOf(server)).toEqual(["r-1"]);
+    expect(node("r-2")).toBe(held);
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runtimeRequests: [request("r-2")],
+          turnItems: [requestItem("r-2")],
+        } as never,
+        3,
+      ),
+    );
+    expect(pendingOf(server)).toEqual(["r-2"]);
+    expect(node("r-2")).toBe(held);
   });
 
-  it("holds a question's answer until it's complete, and clears it once sent", async () => {
+  it("holds a question's answer per request until it's complete", async () => {
     const answers: IRespondRequest[] = [];
     const server = await connect(undefined, null, {
       respondRequest: (effect: IRespondRequest) => {
@@ -1250,19 +1265,31 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runtimeRequests: [{ id: "r-1", kind: "user_input", status: "pending" }],
+        } as never,
+        1,
+      ),
+    );
     const questions = [
       { id: "one", options: [] },
       { id: "many", options: [{ label: "a" }, { label: "b" }], multiSelect: true },
     ];
-    const built = () => questionAnswers(server.session(), questions);
+    const built = (requestId = "r-1") => questionAnswers(server.session(), requestId, questions);
+    const type = (questionId: string, text: string) =>
+      server.runtime.dispatch(setQuestionAnswer, server.sessionId(), "r-1", questionId, text);
     expect(built()).toBeNull();
-    await server.runtime.dispatch(setQuestionAnswer, server.sessionId(), "one", "typed");
+    await type("one", "typed");
     expect(built()).toBeNull();
-    await server.runtime.dispatch(setQuestionAnswer, server.sessionId(), "many", "a, b");
+    await type("many", "a, b");
     expect(built()).toEqual({ one: "typed", many: ["a", "b"] });
-    await server.runtime.dispatch(answerRequest, server.sessionId(), "r-1", null, built());
+    expect(built("r-2")).toBeNull();
+    const request = server.thread().RuntimeRequests["r-1"]!.$Id;
+    await server.runtime.dispatch(answerRequest, request, ENV, THREAD_ID, null, built());
     expect(answers[0]!.Answers).toEqual({ one: "typed", many: ["a", "b"] });
-    expect(server.session().QuestionAnswers).toEqual({});
   });
 
   it("sends a thread command and leaves the row to the stream, showing a failure", async () => {
@@ -1703,7 +1730,7 @@ describe("reconnect", () => {
 });
 
 describe("the replica's writers", () => {
-  it("are the stream receivers, opening and closing, history pages and providers", async () => {
+  it("are the stream receivers, opening and closing, history pages, providers and an answer's error mark", async () => {
     const server = await connect(
       async () =>
         ({
@@ -1734,7 +1761,13 @@ describe("the replica's writers", () => {
     });
     await server.open();
     await server.sendThread({
-      ...snapshotOf(longThread(3), 1),
+      ...snapshotOf(
+        {
+          ...longThread(3),
+          runtimeRequests: [{ id: "r-1", kind: "command", status: "pending" }],
+        } as never,
+        1,
+      ),
       historyCursor: "older",
       hasMoreHistory: true,
     });
@@ -1746,7 +1779,8 @@ describe("the replica's writers", () => {
     await server.runtime.dispatch(openDiff, server.sessionId(), "thread", null);
     await server.runtime.dispatch(openTerminal, server.sessionId());
     await server.runtime.dispatch(closeTerminal, server.sessionId());
-    await server.runtime.dispatch(answerRequest, server.sessionId(), "r-1", "accept", null);
+    const request = server.thread().RuntimeRequests["r-1"]!.$Id;
+    await server.runtime.dispatch(answerRequest, request, ENV, THREAD_ID, "accept", null);
     await server.runtime.dispatch(loadEarlier, server.openId());
     await server.sendThread({
       kind: "event",
@@ -1761,6 +1795,7 @@ describe("the replica's writers", () => {
       "EnvironmentReceiver",
       "ShellReceiver",
       "ThreadReceiver",
+      "answer",
       "closeThread",
       "loadHistory",
       "loadProviders",

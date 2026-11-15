@@ -1,3 +1,5 @@
+import { entity, type IActionGenerator, type IWithId } from "treflex";
+
 export function byId<T extends { id: string }>(rows: ReadonlyArray<T>): Record<string, T> {
   const out: Record<string, T> = {};
   for (const row of rows) out[row.id] = row;
@@ -26,7 +28,7 @@ function reconcileFields(target: IFields, next: IFields): void {
     else if (held !== value) target[key] = value;
   }
   for (const key of Object.keys(target)) {
-    if (!Object.hasOwn(next, key)) delete target[key];
+    if (key !== "$Id" && !Object.hasOwn(next, key)) delete target[key];
   }
 }
 
@@ -52,8 +54,9 @@ function reconcileArray(target: unknown[], next: unknown[]): void {
 
 /**
  * Folds a plain payload into a live node in place: changed scalars are assigned, keys the payload
- * no longer carries are deleted, and nested rows keep their nodes, so a write over a held node
- * notifies only the views of what changed. Assigning the payload instead would replace the node.
+ * no longer carries are deleted except an entity's `$Id`, and nested rows keep their nodes, so a
+ * write over a held node notifies only the views of what changed. Assigning the payload instead
+ * would replace the node.
  */
 export function reconcile<T extends object>(target: T, next: T): void {
   if (Array.isArray(target)) reconcileArray(target, next as unknown[]);
@@ -64,4 +67,25 @@ export function put<T extends { id: string }>(rows: Record<string, T>, row: T): 
   const held = rows[row.id];
   if (held === undefined) rows[row.id] = row;
   else reconcile(held, row);
+}
+
+export function* putEntity<T extends { id: string }>(
+  rows: Record<string, IWithId<T>>,
+  row: T,
+): IActionGenerator {
+  const held = rows[row.id];
+  if (held === undefined) rows[row.id] = (yield* entity(row as object)) as IWithId<T>;
+  else reconcile<object>(held, row);
+}
+
+/** `reconcile` over a record of entities by wire id: a held row keeps its node, a new one is minted. */
+export function* reconcileEntities<T extends { id: string }>(
+  rows: Record<string, IWithId<T>>,
+  next: ReadonlyArray<T>,
+): IActionGenerator {
+  const minted: Record<string, IWithId<T>> = {};
+  for (const row of next) {
+    if (rows[row.id] === undefined) minted[row.id] = (yield* entity(row as object)) as IWithId<T>;
+  }
+  reconcile<object>(rows, { ...byId(next), ...minted });
 }
