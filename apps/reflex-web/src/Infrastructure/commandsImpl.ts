@@ -185,6 +185,8 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
       return void (await run(markThreadUnread(common)));
     case "delete":
       return void (await run(deleteThread(common)));
+    default:
+      command satisfies never;
   }
 });
 
@@ -212,6 +214,8 @@ export const projectCommandImpl = implementation(projectCommandEffect, async (in
       return void (await run(updateProject({ ...common, pinned: false })));
     case "rename":
       return void (await run(updateProject({ ...common, title: command.Title })));
+    default:
+      command satisfies never;
   }
 });
 

@@ -283,6 +283,8 @@ export const terminalSession: IResourceImplementation<"terminalSession"> = async
           return;
         case "activity":
           return;
+        default:
+          event satisfies never;
       }
     }),
   );

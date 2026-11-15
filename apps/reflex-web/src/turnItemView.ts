@@ -137,6 +137,7 @@ export function viewOf(
     case "thread_created":
       return quiet(`Started a thread with ${item.targetModel}`);
     default: {
+      item satisfies never;
       const unknown = item as { type: string };
       return {
         Tone: "unknown",

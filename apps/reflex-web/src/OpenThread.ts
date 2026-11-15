@@ -355,6 +355,8 @@ function applyEvent(draft: IOpenThread, event: IWireThreadEvent): void {
     case "context-transfer.updated":
       put(draft.ContextTransfers, event.payload);
       return;
+    default:
+      event satisfies never;
   }
 }
 

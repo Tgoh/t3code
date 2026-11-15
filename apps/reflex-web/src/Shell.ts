@@ -131,6 +131,8 @@ function applyItem(draft: IShell, item: Exclude<IWireShellItem, { kind: "synchro
     case "thread.removed":
       delete draft.Threads[item.threadId];
       break;
+    default:
+      item satisfies never;
   }
 }
 
