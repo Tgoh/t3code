@@ -38,3 +38,21 @@ export function fullTimestamp(iso: string): string {
   const day = date.getDate();
   return `${timeFormatter.format(date)}, ${day}${ordinalSuffix(day)} ${monthFormatter.format(date)} ${date.getFullYear()}`;
 }
+
+export const MINUTE = 60_000;
+
+export function relativeTime(iso: string, now: number): string {
+  const seconds = Math.floor(Math.max(0, now - Date.parse(iso)) / 1000);
+  if (seconds < 60) return "now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
+export function timeUntil(iso: string, now: number): string {
+  const minutes = Math.ceil(Math.max(0, Date.parse(iso) - now) / MINUTE);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.ceil(minutes / 60);
+  return hours < 24 ? `${hours}h` : `${Math.ceil(hours / 24)}d`;
+}
