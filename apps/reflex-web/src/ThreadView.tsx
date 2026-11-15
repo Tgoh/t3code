@@ -45,6 +45,25 @@ const LoadEarlier = HistoryWindow.provider(() => {
   );
 });
 
+const FOCUSABLE =
+  "a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex='-1'])";
+
+function isTabbable(element: Element): boolean {
+  if (!element.matches(FOCUSABLE)) return false;
+  const details = element.parentElement?.closest("details");
+  return details == null || details.open || element.closest("summary") !== null;
+}
+
+function focusableBefore(root: HTMLElement, boundary: Element | null): HTMLElement | null {
+  if (boundary === null || !boundary.isConnected) return null;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  walker.currentNode = boundary;
+  for (let node = walker.previousNode(); node !== null; node = walker.previousNode()) {
+    if (node !== root && isTabbable(node as Element)) return node as HTMLElement;
+  }
+  return null;
+}
+
 function TimelineSentinel(props: { root: HTMLElement; onReach: () => void; onFocus: () => void }) {
   const [sentinel, setSentinel] = createSignal<HTMLButtonElement>();
   onMount(() => {
@@ -112,44 +131,6 @@ const ThreadBody = ThreadSession.provider(() => {
     scroller.scrollTop = scroller.scrollHeight;
   };
 
-  const [timeline, setTimeline] = createSignal({
-    Ids: [] as readonly string[],
-    First: 0,
-    Floor: INITIAL_ROWS,
-  });
-  createComputed(() => {
-    const ids = thread.timelineIds();
-    const held = untrack(timeline);
-    const moved = firstAfterChange(held.Ids, ids, held.First);
-    const first = untrack(stuck) ? trimToTail(ids.length, moved, held.Floor) : moved;
-    setTimeline({ ...held, Ids: ids, First: first });
-    // In this task, so the scroll event the trim causes isn't read as the user scrolling up.
-    if (first !== moved)
-      queueMicrotask(() => {
-        scrollToEnd();
-        lastTop = scroller.scrollTop;
-      });
-  });
-  const windowIds = createMemo(() => {
-    const held = timeline();
-    return held.Ids.slice(held.First);
-  });
-  const reachedTop = () => timeline().First === 0;
-  const growTo = (first: number) =>
-    setTimeline((held) => ({
-      ...held,
-      First: first,
-      Floor: stuck() ? Math.max(held.Floor, held.Ids.length - first) : held.Floor,
-    }));
-  const showAll = () => {
-    growTo(0);
-    scroller.focus({ preventScroll: true });
-  };
-
-  let anchor: Element | null = null;
-  let anchorOffset = 0;
-  const offsetOf = (element: Element) =>
-    element.getBoundingClientRect().top - content.getBoundingClientRect().top;
   const firstVisible = (): Element | null => {
     const children = content.children;
     const top = scroller.getBoundingClientRect().top;
@@ -163,21 +144,56 @@ const ThreadBody = ThreadSession.provider(() => {
     const found = children[low] ?? null;
     return found === head ? head.nextElementSibling : found;
   };
-  const recordAnchor = () => {
-    anchor = firstVisible();
-    anchorOffset = anchor === null ? 0 : offsetOf(anchor);
+  const keepStill = () => {
+    const anchor = firstVisible();
+    if (anchor === null) return;
+    const before = anchor.getBoundingClientRect().top;
+    // Measured after the patch, so native anchoring has applied; the difference is 0 where it did.
+    queueMicrotask(() => {
+      if (anchor.isConnected) scroller.scrollBy(0, anchor.getBoundingClientRect().top - before);
+    });
+  };
+
+  const [timeline, setTimeline] = createSignal({
+    Ids: [] as readonly string[],
+    First: 0,
+    Floor: INITIAL_ROWS,
+  });
+  createComputed(() => {
+    const ids = thread.timelineIds();
+    const held = untrack(timeline);
+    const moved = firstAfterChange(held.Ids, ids, held.First);
+    const isStuck = untrack(stuck);
+    const first = isStuck ? trimToTail(ids.length, moved, held.Floor) : moved;
+    if (!isStuck) keepStill();
+    setTimeline({ ...held, Ids: ids, First: first });
+    // In this task, so the scroll event the trim causes isn't read as the user scrolling up.
+    if (first !== moved)
+      queueMicrotask(() => {
+        lastTop = scroller.scrollTop;
+      });
+  });
+  const windowIds = createMemo(() => {
+    const held = timeline();
+    return held.Ids.slice(held.First);
+  });
+  const reachedTop = () => timeline().First === 0;
+  const growTo = (first: number) => {
+    if (!stuck()) keepStill();
+    setTimeline((held) => ({
+      ...held,
+      First: first,
+      Floor: stuck() ? Math.max(held.Floor, held.Ids.length - first) : held.Floor,
+    }));
+  };
+  const showAll = () => {
+    const boundary = head.nextElementSibling;
+    growTo(0);
+    queueMicrotask(() => (focusableBefore(content, boundary) ?? scroller).focus());
   };
   onMount(() => {
     const observer = new ResizeObserver(() => {
-      if (stuck()) {
-        scrollToEnd();
-        return;
-      }
-      if (anchor?.isConnected) {
-        const shift = offsetOf(anchor) - anchorOffset;
-        if (shift !== 0) scroller.scrollBy(0, shift);
-      }
-      recordAnchor();
+      if (stuck()) scrollToEnd();
     });
     observer.observe(content);
     onCleanup(() => observer.disconnect());
@@ -256,7 +272,6 @@ const ThreadBody = ThreadSession.provider(() => {
             // arrived, which leaves a follow-up scroll looking far from the end.
             else if (top < lastTop) setStuck(false);
             lastTop = top;
-            if (!stuck()) recordAnchor();
           }}
         >
           <div class="timeline-lane" ref={content}>

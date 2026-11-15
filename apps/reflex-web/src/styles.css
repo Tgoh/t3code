@@ -1005,12 +1005,14 @@ main {
   flex: 1;
   mask-image: linear-gradient(to bottom, transparent 0, black 1.5rem);
   min-height: 0;
-  /* ThreadView anchors prepended rows itself; the browser's anchoring would apply it twice. */
-  overflow-anchor: none;
   overflow-x: hidden;
   overflow-y: auto;
   padding: 8px calc(var(--gutter) - var(--scrollbar-width)) 23px;
   scrollbar-gutter: stable both-edges;
+}
+
+.timeline:focus-visible {
+  outline: none;
 }
 
 .timeline-lane {
