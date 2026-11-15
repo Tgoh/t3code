@@ -202,17 +202,18 @@ const ThreadBody = ThreadSession.provider(() => {
     return held.Ids.slice(held.First);
   });
   const reachedTop = () => timeline().First === 0;
-  const growTo = (first: number, keep = stuck()) => {
+  const growTo = (first: number) => {
     if (!stuck()) keepStill();
     setTimeline((held) => ({
       ...held,
       First: first,
-      Floor: keep ? Math.max(held.Floor, held.Ids.length - first) : held.Floor,
+      Floor: stuck() ? Math.max(held.Floor, held.Ids.length - first) : held.Floor,
     }));
   };
   const showAll = (forward: boolean) => {
     const boundary = head.nextElementSibling;
-    growTo(0, true);
+    setStuck(false);
+    growTo(0);
     queueMicrotask(() => {
       const target = forward
         ? tabbableFrom(content, head, true)

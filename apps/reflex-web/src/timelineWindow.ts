@@ -5,7 +5,6 @@ export function initialFirst(length: number): number {
   return Math.max(0, length - INITIAL_ROWS);
 }
 
-// A window that reaches the top keeps reaching it, so a history page lands mounted.
 export function firstAfterChange(
   previous: readonly string[],
   next: readonly string[],

@@ -93,6 +93,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - History pages load older rows only, with no `throughEntryId` jump.
 - History responses are held unchecked, so a turn item type this client doesn't know reaches the tree.
 - `encodeThreadItem`'s unknown-event pass-through has no test: the app has no `@effect/vitest`, and lint bars running effects by hand in tests.
+- The timeline window follows its top row when that row moves, so a top row moved far down (`placeRow` on an ordinal change) would collapse the window to the tail until the sentinel grows it back. No known server path moves an old row.
 - The address uses `replaceState`, so selecting threads adds no back-button history.
 - Tool output isn't fetched: the wire omits it, the row says so, and `getTurnItem` would fill it in.
 - A command row doesn't check the server's `commandOutputStreaming` capability, so an older server shows the subscription's error.
