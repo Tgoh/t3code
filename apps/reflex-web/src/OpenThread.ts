@@ -21,6 +21,7 @@ import {
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
+import { $TRACK, untrack } from "solid-js";
 
 import type { IHistoryWindow } from "./HistoryWindow";
 import type {
@@ -581,6 +582,13 @@ export function timelineEntries(draft: IOpenThread): ITimelineEntry[] {
   });
 }
 
+export function* timelineIds(draft: IOpenThread): ISelectorGenerator<string[]> {
+  const timeline = draft.Timeline;
+  // $TRACK subscribes to every write into the array, so the copy can skip tracking each index.
+  void (timeline as unknown as Record<symbol, unknown>)[$TRACK];
+  return untrack(() => [...timeline]);
+}
+
 const ACTIVE_RUN = new Set(["preparing", "starting", "running", "waiting"]);
 
 // A cancelled queued run keeps its later ordinal, so the active run has to be looked for first.
@@ -596,20 +604,16 @@ export function* latestRun(draft: IOpenThread): ISelectorGenerator<IWireRun | nu
   return active ?? latest;
 }
 
-export interface IQueuedRun {
-  RunId: string;
-  Text: string;
-}
-
-export function* queuedRuns(draft: IOpenThread): ISelectorGenerator<IQueuedRun[]> {
+export function* queuedRunIds(draft: IOpenThread): ISelectorGenerator<string[]> {
   return Object.values(draft.Runs)
     .filter((run) => run.status === "queued")
     .sort((left, right) => left.ordinal - right.ordinal)
-    .map((run) => ({
-      RunId: run.id,
-      Text:
-        (run.userMessageId === null ? undefined : draft.Messages[run.userMessageId]?.text) ?? "",
-    }));
+    .map((run) => run.id);
+}
+
+export function runText(draft: IOpenThread, runId: string): string {
+  const messageId = draft.Runs[runId]?.userMessageId;
+  return (messageId == null ? undefined : draft.Messages[messageId]?.text) ?? "";
 }
 
 export interface IPendingRequest {
@@ -650,7 +654,8 @@ export default createEntityFeature<IOpenThread>(import.meta.url)(
     latestRun,
     pendingApprovalIds,
     pendingQuestionIds,
-    queuedRuns,
+    queuedRunIds,
     threadSynchronized,
+    timelineIds,
   },
 );

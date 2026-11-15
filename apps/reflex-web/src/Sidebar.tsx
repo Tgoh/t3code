@@ -776,8 +776,16 @@ export const Sidebar = Shell.provider(() => {
     setClosedFolders(next);
     writeStored(CLOSED_FOLDERS_KEY, [...next]);
   };
-  const folders = createMemo(() =>
-    grouped() ? projectFolders(sections().Active, shell.state.Projects) : [],
+  const folders = createMemo(
+    () =>
+      new Map(
+        grouped()
+          ? projectFolders(sections().Active, shell.state.Projects).map((folder) => [
+              folder.ProjectId,
+              folder,
+            ])
+          : [],
+      ),
   );
   const [addingProject, setAddingProject] = createSignal(false);
   const [renamingProject, setRenamingProject] = createSignal<string | null>(null);
@@ -909,7 +917,7 @@ export const Sidebar = Shell.provider(() => {
         )}
       </Show>
       <Show
-        when={shell.sidebarThreads().length > 0 || folders().length > 0}
+        when={shell.sidebarThreads().length > 0 || folders().size > 0}
         fallback={
           <p class="empty">{shell.shellSynchronized() ? "No threads yet." : "Loading threads…"}</p>
         }
@@ -919,7 +927,7 @@ export const Sidebar = Shell.provider(() => {
           <Show
             when={
               sections().Pinned.length > 0 &&
-              (grouped() ? folders().length > 0 : sections().Active.length > 0)
+              (grouped() ? folders().size > 0 : sections().Active.length > 0)
             }
           >
             <li class="section-divider" />
@@ -928,37 +936,40 @@ export const Sidebar = Shell.provider(() => {
             when={grouped()}
             fallback={<For each={sections().Active}>{(thread) => card(thread, "active")}</For>}
           >
-            <For each={folders()}>
-              {(folder) => (
-                <>
-                  <FolderHeader
-                    folder={folder}
-                    open={!closedFolders().has(folder.ProjectId)}
-                    renaming={renamingProject() === folder.ProjectId}
-                    onToggle={() => toggleFolder(folder.ProjectId)}
-                    onMenu={(x, y) => setProjectMenu({ Id: folder.ProjectId, X: x, Y: y })}
-                    onRenamed={(title) => {
-                      setRenamingProject(null);
-                      const trimmed = title?.trim();
-                      if (trimmed && trimmed !== folder.Project?.title) {
-                        environment.projectCommand(folder.ProjectId, {
-                          Kind: "rename",
-                          Title: trimmed,
-                        });
+            <For each={[...folders().keys()]}>
+              {(projectId) => {
+                const folder = () => folders().get(projectId)!;
+                return (
+                  <>
+                    <FolderHeader
+                      folder={folder()}
+                      open={!closedFolders().has(projectId)}
+                      renaming={renamingProject() === projectId}
+                      onToggle={() => toggleFolder(projectId)}
+                      onMenu={(x, y) => setProjectMenu({ Id: projectId, X: x, Y: y })}
+                      onRenamed={(title) => {
+                        setRenamingProject(null);
+                        const trimmed = title?.trim();
+                        if (trimmed && trimmed !== folder().Project?.title) {
+                          environment.projectCommand(projectId, {
+                            Kind: "rename",
+                            Title: trimmed,
+                          });
+                        }
+                      }}
+                    />
+                    <For
+                      each={
+                        closedFolders().has(projectId)
+                          ? folder().Threads.filter((thread) => thread.id === selected())
+                          : folder().Threads
                       }
-                    }}
-                  />
-                  <For
-                    each={
-                      closedFolders().has(folder.ProjectId)
-                        ? folder.Threads.filter((thread) => thread.id === selected())
-                        : folder.Threads
-                    }
-                  >
-                    {(thread) => card(thread, "active")}
-                  </For>
-                </>
-              )}
+                    >
+                      {(thread) => card(thread, "active")}
+                    </For>
+                  </>
+                );
+              }}
             </For>
           </Show>
           <Show when={sections().Pinned.length === 0 && sections().Active.length === 0}>

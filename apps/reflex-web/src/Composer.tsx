@@ -7,10 +7,7 @@ import Environment from "./Environment";
 import { ArrowUp, Lock, Paperclip, PenLine, ShieldOff, Sparkles, X } from "./icons";
 import type { IWireModelSelection, IWireRuntimeMode } from "./Infrastructure/commandEffects";
 import { StageArt } from "./StageArt";
-import ThreadSession from "./ThreadSession";
-
-const encode = (selection: IWireModelSelection | null): string =>
-  selection === null ? "" : `${selection.instanceId}\n${selection.model}`;
+import ThreadSession, { modelKey } from "./ThreadSession";
 
 // Labels and icons copy apps/web/src/components/chat/runtimeModeConfig.ts.
 const RUNTIME_MODES: Record<string, { Label: string; Icon: Component }> = {
@@ -26,7 +23,7 @@ export function Composer(props: { active?: boolean }) {
   const held = () => session.state;
   const files = useResource(held, "Composer/Files");
   const isDraft = () => held().NewThreadProjectId != null;
-  const selection = () => encode(session.effectiveModel());
+  const selection = () => session.effectiveModelKey();
   const mode = () => RUNTIME_MODES[session.effectiveRuntimeMode()];
   const stopping = () => session.stopRequested() || session.stopping();
   const canSend = () =>
@@ -113,8 +110,8 @@ export function Composer(props: { active?: boolean }) {
         </label>
         <span class="composer-spacer" />
         <label class="composer-control picker-overlay">
-          <ProviderIcon driver={session.effectiveModelDisplay()?.Driver} />
-          <span class="control-label">{session.effectiveModelDisplay()?.Name ?? "No model"}</span>
+          <ProviderIcon driver={session.effectiveModelDriver()} />
+          <span class="control-label">{session.effectiveModelName() ?? "No model"}</span>
           <select
             aria-label="Model"
             value={selection()}
@@ -126,8 +123,8 @@ export function Composer(props: { active?: boolean }) {
                   <For each={provider.Models}>
                     {(model) => (
                       <option
-                        value={`${provider.InstanceId}\n${model.Slug}`}
-                        selected={selection() === `${provider.InstanceId}\n${model.Slug}`}
+                        value={modelKey(provider.InstanceId, model.Slug)}
+                        selected={selection() === modelKey(provider.InstanceId, model.Slug)}
                       >
                         {model.Name}
                       </option>

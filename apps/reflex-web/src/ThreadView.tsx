@@ -55,6 +55,7 @@ import OpenThread, {
   isRowVisible,
   latestDiffTurn,
   pendingRequest,
+  runText,
   timelineItem,
 } from "./OpenThread";
 import RuntimeRequest from "./RuntimeRequest";
@@ -499,14 +500,14 @@ const RequestBanner = RuntimeRequest.provider(() => {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
   const request = RuntimeRequest.use();
-  const pending = createMemo(() => pendingRequest(thread.state, request.state.id));
+  const item = createMemo(() => pendingRequest(thread.state, request.state.id)?.Item ?? null);
   const view = () => {
-    const item = pending()?.Item;
-    return item == null ? null : viewOf(item);
+    const held = item();
+    return held === null ? null : viewOf(held);
   };
   const questions = () => {
-    const item = pending()?.Item;
-    return item?.type === "user_input_request" ? item.questions : null;
+    const held = item();
+    return held?.type === "user_input_request" ? held.questions : null;
   };
   const answers = () => {
     const asked = questions();
@@ -716,7 +717,7 @@ const ThreadBody = ThreadSession.provider(() => {
             <Show when={thread.state.History} keyed>
               {(history) => <LoadEarlier state={history} />}
             </Show>
-            <For each={thread.state.Timeline}>{(id) => <TimelineRow id={id} />}</For>
+            <For each={thread.timelineIds()}>{(id) => <TimelineRow id={id} />}</For>
             <For each={thread.pendingApprovalIds()}>
               {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
             </For>
@@ -735,7 +736,7 @@ const ThreadBody = ThreadSession.provider(() => {
           <For each={thread.pendingQuestionIds()}>
             {(id) => <RequestBanner state={thread.state.RuntimeRequests[id]!} />}
           </For>
-          <Show when={thread.queuedRuns().length > 0}>
+          <Show when={thread.queuedRunIds().length > 0}>
             <div class="composer-banner">
               <div class="banner-title">
                 <strong>Queued</strong>
@@ -745,13 +746,13 @@ const ThreadBody = ThreadSession.provider(() => {
                   </button>
                 </Show>
               </div>
-              <For each={thread.queuedRuns()}>
-                {(run) => (
+              <For each={thread.queuedRunIds()}>
+                {(runId) => (
                   <p class="queued">
-                    <button class="button" onClick={() => session.queueAction(run.RunId)}>
+                    <button class="button" onClick={() => session.queueAction(runId)}>
                       Cancel
                     </button>
-                    <span>{run.Text}</span>
+                    <span>{runText(thread.state, runId)}</span>
                   </p>
                 )}
               </For>

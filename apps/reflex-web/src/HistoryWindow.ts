@@ -24,7 +24,7 @@ export interface IHistoryWindow extends IEntity {
   Error?: string;
 }
 
-export const loadEarlier = leading(function* loadHistory(draft: IHistoryWindow): IActionGenerator {
+export function* loadEarlier(draft: IHistoryWindow): IActionGenerator {
   if (draft.Cursor === null || !draft.HasMore) return;
   delete draft.Error;
   let cursor = draft.Cursor;
@@ -44,7 +44,8 @@ export const loadEarlier = leading(function* loadHistory(draft: IHistoryWindow):
   } catch (error) {
     draft.Error = error instanceof Error ? error.message : String(error);
   }
-});
+}
+leading(loadEarlier);
 
 export function* loadingEarlier(draft: IHistoryWindow): ISelectorGenerator<boolean> {
   return yield* inFlight(loadEarlier, draft);

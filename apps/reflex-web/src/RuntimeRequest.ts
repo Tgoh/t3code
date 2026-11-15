@@ -21,7 +21,7 @@ export type IRuntimeRequest = IWithId<IWireProjection["runtimeRequests"][number]
 const outcome = (draft: IRuntimeRequest) =>
   transient(draft, "Request/Answer", { Error: null as string | null });
 
-export const answerRequest = leading(function* answer(
+export function* answerRequest(
   draft: IRuntimeRequest,
   environmentId: string,
   threadId: string,
@@ -46,7 +46,8 @@ export const answerRequest = leading(function* answer(
   } catch (error) {
     (yield* outcome(draft)).Error = error instanceof Error ? error.message : String(error);
   }
-});
+}
+leading(answerRequest);
 
 export function* answering(draft: IRuntimeRequest): ISelectorGenerator<boolean> {
   return yield* inFlight(answerRequest, draft);

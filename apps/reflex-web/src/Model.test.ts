@@ -1,6 +1,6 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
 import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
-import { createEffect, createRoot } from "solid-js";
+import { createEffect, createMemo, createRoot } from "solid-js";
 import { createTestRuntime, EntityReplacedError, type IActionGenerator, settled } from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -45,6 +45,7 @@ import {
   ThreadReceiver,
   threadSynchronized,
   timelineEntries,
+  timelineIds,
 } from "./OpenThread";
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
 import { answering, answerRequest, type IRuntimeRequest } from "./RuntimeRequest";
@@ -395,11 +396,15 @@ describe("thread events", () => {
     await server.open();
     await server.sendThread(snapshotOf(longThread(9), 1));
     const thread = server.thread();
-    const runs = { changed: 0, other: 0, selector: 0 };
+    const runs = { changed: 0, other: 0, selector: 0, ids: 0 };
     const dispose = createRoot((disposeRoot) => {
       createEffect(() => {
         runs.selector += 1;
         timelineEntries(thread);
+      });
+      createEffect(() => {
+        runs.ids += 1;
+        server.runtime.processSelector(timelineIds, () => thread);
       });
       createEffect(() => {
         runs.changed += 1;
@@ -411,7 +416,7 @@ describe("thread events", () => {
       });
       return disposeRoot;
     });
-    expect(runs).toEqual({ changed: 1, other: 1, selector: 1 });
+    expect(runs).toEqual({ changed: 1, other: 1, selector: 1, ids: 1 });
     await server.sendThread({
       kind: "event",
       sequence: 2,
@@ -421,7 +426,7 @@ describe("thread events", () => {
       ),
     } as IWireThreadItem);
     await Promise.resolve();
-    expect(runs).toEqual({ changed: 2, other: 1, selector: 1 });
+    expect(runs).toEqual({ changed: 2, other: 1, selector: 1, ids: 1 });
     dispose();
   });
 });
@@ -523,6 +528,10 @@ describe("random event traces", () => {
       ...(partial ? { historyCursor: "c0", hasMoreHistory: true, latestLocalTurnOrdinal: 20 } : {}),
     });
     let expected = copy(start) as unknown as OrchestrationV2ThreadProjection;
+    const { ids, dispose } = createRoot((disposeRoot) => ({
+      ids: createMemo(() => server.runtime.processSelector(timelineIds, () => server.thread())),
+      dispose: disposeRoot,
+    }));
     let watermark: number | null = 20;
     const ended = new Set<string>();
     const superseded = new Set<string>();
@@ -546,7 +555,29 @@ describe("random event traces", () => {
       expect(copy(timelineEntries(server.thread()).map(rowOf)), context).toEqual(
         copy((expected.visibleTurnItems as unknown as Parameters<typeof rowOf>[0][]).map(rowOf)),
       );
+      expect(ids(), context).toEqual([...server.thread().Timeline]);
     }
+    const orders = [
+      ["a", "b", "c"],
+      ["c", "a", "b"],
+      ["c", "a", "d"],
+    ];
+    for (const [index, order] of orders.entries()) {
+      const items = order.map((id, ordinal) => commandItem(id, "r1", ordinal));
+      await server.sendThread(
+        snapshotOf(
+          copy({
+            ...start,
+            turnItems: items,
+            visibleTurnItems: items.map((item, position) => localRow(item, position)),
+          }),
+          100 + index,
+        ),
+      );
+      expect(server.thread().Timeline).toEqual(order);
+      expect(ids(), `seed ${seed}, partial ${partial}, snapshot ${order}`).toEqual(order);
+    }
+    dispose();
   }
 
   it("match the immutable reducer", async () => {
@@ -1842,9 +1873,9 @@ describe("the replica's writers", () => {
       "EnvironmentReceiver",
       "ShellReceiver",
       "ThreadReceiver",
-      "answer",
+      "answerRequest",
       "closeThread",
-      "loadHistory",
+      "loadEarlier",
       "loadProviders",
       "openThread",
     ]);

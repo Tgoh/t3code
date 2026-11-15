@@ -4,7 +4,7 @@ import {
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { createEffect, createRoot } from "solid-js";
+import { createEffect, createMemo, createRoot, mapArray } from "solid-js";
 import { createTestRuntime, guids, settled } from "treflex";
 import { expect, it } from "vite-plus/test";
 
@@ -14,7 +14,7 @@ import type {
   IWireThreadEvent,
   IWireThreadItem,
 } from "../src/Infrastructure/wire";
-import { type IOpenThread, ThreadReceiver, timelineEntries } from "../src/OpenThread";
+import { type IOpenThread, ThreadReceiver, timelineEntries, timelineIds } from "../src/OpenThread";
 import { getDefaultRoot, type IRoot, load, RootReceiver } from "../src/Root";
 import {
   assistantItem,
@@ -177,6 +177,42 @@ it("a delta that adds a row", async () => {
     });
   }
   console.log("(a2) time per row-adding delta, ms\n" + JSON.stringify(rows, null, 1));
+});
+
+it("a row-adding delta through <For>'s mapping", async () => {
+  const measure = async (size: number, plainIds: boolean) => {
+    const { runtime, send, thread } = await connected(longThread(size));
+    const dispose = createRoot((disposeRoot) => {
+      const ids = plainIds
+        ? createMemo(() => runtime.processSelector(timelineIds, thread))
+        : () => thread().Timeline;
+      const rows = mapArray(ids, (id) => id);
+      createEffect(() => void rows());
+      return disposeRoot;
+    });
+    await Promise.resolve();
+    const samples: number[] = [];
+    for (let index = 0; index < 50; index += 1) {
+      const item = assistantItem(`new-${index}`, "run-0", size + index, "new");
+      const next = {
+        kind: "event",
+        sequence: index + 2,
+        event: event("turn-item.updated", item),
+      } as IWireThreadItem;
+      samples.push(await timed(() => send(next)));
+    }
+    dispose();
+    return summary(samples);
+  };
+  const rows = [];
+  for (const size of SIZES) {
+    rows.push({
+      items: size,
+      storeArray: await measure(size, false),
+      selectorIds: await measure(size, true),
+    });
+  }
+  console.log("(a3) time per row-adding delta through <For>, ms\n" + JSON.stringify(rows, null, 1));
 });
 
 it("reconnect snapshot over a populated thread", async () => {
