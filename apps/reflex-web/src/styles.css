@@ -802,7 +802,7 @@ main {
 
 /* A guide line under the folder's chevron; top reaches into the rows' 5px gap so it reads as one line. */
 .folder-rows > li + li {
-  padding-left: 18px;
+  padding-left: 14px;
   position: relative;
 }
 
@@ -819,9 +819,8 @@ main {
 .folder-rows > li:has(> .thread-card.main)::before {
   background: var(--success);
   border-radius: 2px;
-  bottom: 4px;
   left: 11px;
-  top: 4px;
+  top: 0;
   width: 3px;
 }
 
