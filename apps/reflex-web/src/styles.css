@@ -322,8 +322,13 @@ code {
   position: fixed;
 }
 
-.layout.sidebar-sheet {
+.layout.sidebar-sheet,
+.layout.sidebar-collapsed {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.layout.sidebar-collapsed > .sidebar {
+  display: none;
 }
 
 .layout.sidebar-sheet > .sidebar {
@@ -574,6 +579,106 @@ main {
 
 .sidebar-tools .icon-button svg {
   opacity: 1;
+}
+
+/* Follows SidebarThreadHeader's search field in apps/web/src/components/sidebar/SidebarThreadHeader.tsx. */
+.sidebar-search {
+  align-items: center;
+  border-radius: 6px;
+  color: var(--sidebar-muted-foreground);
+  display: flex;
+  flex: none;
+  gap: 8px;
+  height: 32px;
+  margin: 4px 8px 0;
+  padding: 0 4px 0 8px;
+  position: relative;
+}
+
+.sidebar-search:hover,
+.sidebar-search:focus-within {
+  background: var(--sidebar-row-hover);
+  color: var(--sidebar-foreground);
+}
+
+.sidebar-search:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 70%, transparent);
+}
+
+.sidebar-search > svg {
+  flex: none;
+  height: 16px;
+  width: 16px;
+}
+
+.sidebar-search input {
+  background: none;
+  border: 0;
+  color: var(--sidebar-foreground);
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 0;
+  outline: none;
+}
+
+.sidebar-search input::placeholder {
+  color: var(--sidebar-muted-foreground);
+}
+
+.sidebar-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.sidebar-search .icon-button {
+  color: color-mix(in srgb, var(--sidebar-muted-foreground) 85%, var(--sidebar));
+}
+
+.sidebar-search .icon-button:hover,
+.sidebar-search .icon-button.pressed {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
+}
+
+.search-folder {
+  align-items: center;
+  color: var(--sidebar-foreground);
+  display: flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+}
+
+.thread-card.highlighted:not(.selected) {
+  background: var(--sidebar-row-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 50%, transparent);
+}
+
+.card-snippet {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--sidebar-secondary-label);
+  display: -webkit-box;
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.card-title mark,
+.card-snippet mark,
+.palette-row mark {
+  background: none;
+  color: inherit;
+  font-weight: 700;
+}
+
+.menu-check {
+  flex: none;
+  height: 14px;
+  width: 14px;
 }
 
 .picker-overlay.narrow {
@@ -1030,6 +1135,7 @@ main {
 
 .palette-row-text {
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
 }
@@ -1041,9 +1147,19 @@ main {
   white-space: nowrap;
 }
 
+.palette-row-time {
+  color: var(--muted-foreground);
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .palette-row-detail {
   color: var(--muted-foreground);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .palette-summary {

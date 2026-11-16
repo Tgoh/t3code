@@ -1,4 +1,5 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- View-only ticks for relative times, outside any Effect runtime.
+import type { ShownOrder } from "@t3tools/client-runtime/state/thread-search";
 import { useResource } from "treflex-solid";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 
@@ -7,18 +8,32 @@ import Environment from "./Environment";
 import { ProjectBadge } from "./brand";
 import {
   ArrowUpDown,
+  Check,
   ChevronDown,
   ChevronRight,
   Eye,
   EyeOff,
   FolderPlus,
   Folders,
+  ListFilter,
   PanelLeft,
+  Search,
   SquarePen,
   X,
 } from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
-import { AddProjectPalette } from "./AddProject";
+import { withShortcut } from "./keybindings";
+import { useMessageSearch } from "./messageSearch";
+import { useNavigation } from "./navigation";
+import { readStored, readStoredIds, writeStored } from "./storage";
+import {
+  groupResults,
+  type ISearchResult,
+  liveScope,
+  rankMessages,
+  scopeThreads,
+  searchThreads,
+} from "./threadSearch";
 import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder";
 import { createProjectDrag } from "./projectDrag";
 import {
@@ -59,28 +74,8 @@ const CLOSED_FOLDERS_KEY = "reflex-web:closed-folders";
 const PROJECT_SORT_KEY = "reflex-web:project-sort";
 const PROJECT_ORDER_KEY = "reflex-web:project-order";
 const HIDDEN_PROJECTS_KEY = "reflex-web:hidden-projects";
-
-function readStoredIds(key: string): string[] {
-  const held = readStored<unknown>(key, []);
-  return Array.isArray(held) ? held.filter((id) => typeof id === "string") : [];
-}
-
-function readStored<T>(key: string, fallback: T): T {
-  try {
-    const held = localStorage.getItem(key);
-    return held === null ? fallback : (JSON.parse(held) as T);
-  } catch {
-    return fallback;
-  }
-}
-
-function writeStored(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Private windows and blocked storage just forget the choice.
-  }
-}
+const PROJECT_SCOPE_KEY = "reflex-web:project-scope";
+const searchResultId = (threadId: string) => `sidebar-search-result-${threadId}`;
 
 function SectionHeader(props: {
   label: string;
@@ -104,15 +99,22 @@ function SectionHeader(props: {
   );
 }
 
-export function SidebarToggle() {
+/**
+ * In the sidebar it closes the sheet or collapses the column; in a page header it brings the
+ * sidebar back, so it shows there only while the sidebar is away.
+ */
+export function SidebarToggle(props: { inSidebar?: boolean }) {
   const sidebar = useSidebarSheet();
+  const navigation = useNavigation();
+  const shown = () => (props.inSidebar === true ? true : sidebar.sheet() || sidebar.collapsed());
   return (
-    <Show when={sidebar.sheet()}>
+    <Show when={shown()}>
       <button
         class="icon-button sidebar-toggle"
         aria-label="Toggle main sidebar"
-        aria-expanded={sidebar.open()}
-        onClick={() => sidebar.setOpen(!sidebar.open())}
+        data-tip={withShortcut("Toggle sidebar", navigation.shortcut("sidebar.toggle"))}
+        aria-expanded={sidebar.sheet() ? sidebar.open() : !sidebar.collapsed()}
+        onClick={() => sidebar.toggle()}
       >
         <PanelLeft />
       </button>
@@ -124,6 +126,7 @@ export const Sidebar = Shell.provider(() => {
   const root = Root.use();
   const environment = Environment.use();
   const shell = Shell.use();
+  const navigation = useNavigation();
   const selected = () => environment.state.Local.SelectedThreadId;
   const providers = () => environment.state.Replica.Providers;
   const providerName = (instanceId: string) =>
@@ -158,8 +161,33 @@ export const Sidebar = Shell.provider(() => {
       .filter((project) => hiddenProjects().has(project.id))
       .sort((left, right) => left.title.localeCompare(right.title));
   const [hiddenMenu, setHiddenMenu] = createSignal<{ X: number; Y: number } | null>(null);
+  const projects = () =>
+    Object.values(shell.state.Projects).filter(
+      (project) => project.archivedAt == null && !hiddenProjects().has(project.id),
+    );
+  const [storedScope, setStoredScope] = createSignal(
+    new Set(readStoredIds(PROJECT_SCOPE_KEY)) as ReadonlySet<string>,
+  );
+  const scope = createMemo(() =>
+    liveScope(storedScope(), new Set(projects().map((project) => project.id))),
+  );
+  const setScope = (next: ReadonlySet<string>) => {
+    setStoredScope(next);
+    writeStored(PROJECT_SCOPE_KEY, [...next]);
+  };
+  const [scopeMenu, setScopeMenu] = createSignal<{ X: number; Y: number } | null>(null);
+  const scopeLabel = () => {
+    const held = [...scope()];
+    if (held.length === 0) return "All projects";
+    if (held.length === 1) return shell.state.Projects[held[0]!]?.title ?? "1 project";
+    return `${held.length} projects`;
+  };
   const visibleThreads = createMemo(() =>
-    unhiddenThreads(shell.sidebarThreads(), hiddenProjects(), selected()),
+    scopeThreads(
+      unhiddenThreads(shell.sidebarThreads(), hiddenProjects(), selected()),
+      scope(),
+      selected(),
+    ),
   );
   const anyWorking = createMemo(() =>
     visibleThreads().some((thread) =>
@@ -204,7 +232,10 @@ export const Sidebar = Shell.provider(() => {
       new Map(
         grouped()
           ? orderFolders(
-              projectFolders(sections().Active, shell.state.Projects, hiddenProjects()),
+              projectFolders(sections().Active, shell.state.Projects, hiddenProjects()).filter(
+                (folder) =>
+                  scope().size === 0 || scope().has(folder.ProjectId) || folder.Threads.length > 0,
+              ),
               projectSort(),
               projectOrder(),
               visibleThreads(),
@@ -222,7 +253,6 @@ export const Sidebar = Shell.provider(() => {
     },
   });
   const [removingProject, setRemovingProject] = createSignal<string | null>(null);
-  const [addingProject, setAddingProject] = createSignal(false);
   const [renamingProject, setRenamingProject] = createSignal<string | null>(null);
   const [projectMenu, setProjectMenu] = createSignal<{ Id: string; X: number; Y: number } | null>(
     null,
@@ -234,11 +264,99 @@ export const Sidebar = Shell.provider(() => {
   // A collapsed shelf still shows the open thread, so its row doesn't vanish on settling it.
   const shelf = (threads: IWireThreadShell[], open: boolean, limit = Infinity) =>
     open ? threads.slice(0, limit) : threads.filter((thread) => thread.id === selected());
-  const projects = () =>
-    Object.values(shell.state.Projects).filter(
-      (project) => project.archivedAt == null && !hiddenProjects().has(project.id),
-    );
   const targetProject = () => environment.currentProjectId() ?? projects()[0]?.id ?? null;
+  const folderThreads = (projectId: string) => {
+    const threads = folders().get(projectId)?.Threads ?? [];
+    return closedFolders().has(projectId)
+      ? threads.filter((thread) => thread.id === selected())
+      : threads;
+  };
+  const threadOrder = createMemo(() =>
+    [
+      ...sections().Pinned,
+      ...(grouped() ? [...folders().keys()].flatMap(folderThreads) : sections().Active),
+      ...shelf(sections().Snoozed, snoozedOpen()),
+      ...shelf(sections().Settled, settledOpen(), settledShown()),
+    ].map((thread) => thread.id),
+  );
+  navigation.setThreadOrder(threadOrder);
+
+  const [query, setQuery] = createSignal("");
+  const searching = () => query().trim().length > 0;
+  const messageSearch = useMessageSearch(query);
+  let shownMessages: ShownOrder | null = null;
+  const messageOrder = createMemo(() => {
+    if (messageSearch.matches().length === 0) return [];
+    shownMessages = rankMessages({
+      threads: visibleThreads(),
+      environmentId: environment.state.EnvironmentId,
+      query: messageSearch.query(),
+      matches: messageSearch.matches(),
+      shown: shownMessages,
+      now: now(),
+    });
+    return shownMessages.keys;
+  });
+  const resultGroups = createMemo(() =>
+    searching()
+      ? groupResults(
+          searchThreads({
+            threads: visibleThreads(),
+            environmentId: environment.state.EnvironmentId,
+            query: query(),
+            messages: messageSearch.matches(),
+            messageOrder: messageOrder(),
+            now: now(),
+          }),
+          grouped() ? [...folders().keys()] : null,
+        )
+      : [],
+  );
+  const results = createMemo(() => resultGroups().flatMap((group) => group.Results));
+  const [highlightId, setHighlightId] = createSignal<string | null>(null);
+  // The highlight follows its thread, so rows that arrive late don't move it under Enter.
+  const highlightIndex = () =>
+    Math.max(
+      0,
+      results().findIndex((result) => result.Thread.id === highlightId()),
+    );
+  const sectionOf = (thread: IWireThreadShell): ICardSection => {
+    const held = sections();
+    if (held.Snoozed.includes(thread)) return "snoozed";
+    if (held.Settled.includes(thread)) return "settled";
+    if (held.Pinned.includes(thread)) return "pinned";
+    return "active";
+  };
+  const clearSearch = () => {
+    setQuery("");
+    setHighlightId(null);
+  };
+  const chooseResult = (threadId: string) => {
+    clearSearch();
+    navigation.goToThread(threadId);
+  };
+  const onSearchKey = (event: KeyboardEvent) => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === "Escape" && searching()) {
+      event.preventDefault();
+      event.stopPropagation();
+      clearSearch();
+      return;
+    }
+    const count = results().length;
+    if (count === 0) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      const next = results()[(highlightIndex() + step + count) % count]!;
+      setHighlightId(next.Thread.id);
+      document.getElementById(searchResultId(next.Thread.id))?.scrollIntoView({ block: "nearest" });
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const result = results()[highlightIndex()];
+      if (result !== undefined) chooseResult(result.Thread.id);
+    }
+  };
   // A provider icon only tells threads apart once more than one provider is in use.
   const mixedProviders = createMemo(
     () =>
@@ -246,8 +364,24 @@ export const Sidebar = Shell.provider(() => {
         visibleThreads().map((thread) => modelDisplay(providers(), thread.modelSelection).Driver),
       ).size > 1,
   );
-  const card = (thread: IWireThreadShell, section: ICardSection, compact = false) => (
+  const card = (
+    thread: IWireThreadShell,
+    section: ICardSection,
+    compact = false,
+    search?: ISearchResult,
+  ) => (
     <ThreadCard
+      search={
+        search && {
+          ranges: search.Ranges,
+          snippet: search.Match?.snippet ?? null,
+          query: messageSearch.query(),
+          highlighted: results()[highlightIndex()]?.Thread.id === thread.id,
+          id: searchResultId(thread.id),
+          onSelect: () => chooseResult(thread.id),
+          onHover: () => setHighlightId(thread.id),
+        }
+      }
       thread={thread}
       section={section}
       compact={compact}
@@ -277,12 +411,92 @@ export const Sidebar = Shell.provider(() => {
         <div class="sidebar-stage">
           <StageArt />
         </div>
-        <SidebarToggle />
+        <SidebarToggle inSidebar />
         <span class="brand-mark">
           <T3Mark />
           <span>Code</span>
         </span>
       </header>
+      <div class="sidebar-search">
+        <Search />
+        <input
+          type="search"
+          placeholder="Search"
+          aria-label="Search threads"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={searching() && results().length > 0}
+          aria-controls={searching() ? "sidebar-search-results" : undefined}
+          aria-activedescendant={
+            searching() && results().length > 0
+              ? searchResultId(results()[highlightIndex()]!.Thread.id)
+              : undefined
+          }
+          spellcheck={false}
+          autocomplete="off"
+          value={query()}
+          onInput={(event) => {
+            setQuery(event.currentTarget.value);
+            setHighlightId(null);
+          }}
+          onKeyDown={onSearchKey}
+        />
+        <Show when={searching()}>
+          <button
+            type="button"
+            class="icon-button small"
+            aria-label="Clear thread search"
+            data-tip="Clear search"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={clearSearch}
+          >
+            <X />
+          </button>
+        </Show>
+        <button
+          type="button"
+          class="icon-button small"
+          classList={{ pressed: scope().size > 0 }}
+          aria-label="Filter projects"
+          data-tip={`Projects: ${scopeLabel()}`}
+          aria-expanded={scopeMenu() !== null}
+          onClick={(event) => {
+            const box = event.currentTarget.getBoundingClientRect();
+            setScopeMenu({ X: box.left, Y: box.bottom + 4 });
+          }}
+        >
+          <ListFilter />
+        </button>
+      </div>
+      <Show when={scopeMenu()}>
+        {(at) => (
+          <Popup x={at().X} y={at().Y} label="Filter projects" onClose={() => setScopeMenu(null)}>
+            <MenuItem
+              icon={scope().size === 0 ? <Check /> : <span class="menu-check" />}
+              label="All projects"
+              onSelect={() => {
+                setScope(new Set());
+                setScopeMenu(null);
+              }}
+            />
+            <For
+              each={[...projects()].sort((left, right) => left.title.localeCompare(right.title))}
+            >
+              {(project) => (
+                <MenuItem
+                  icon={scope().has(project.id) ? <Check /> : <span class="menu-check" />}
+                  label={project.title}
+                  onSelect={() => {
+                    const next = new Set(scope());
+                    if (!next.delete(project.id)) next.add(project.id);
+                    setScope(next);
+                  }}
+                />
+              )}
+            </For>
+          </Popup>
+        )}
+      </Show>
       <div class="sidebar-tools">
         <span class="connection">
           <Show when={connection() !== "connected"}>{connection()}</Show>
@@ -292,7 +506,7 @@ export const Sidebar = Shell.provider(() => {
             <button
               class="icon-button"
               aria-label="New thread"
-              data-tip="New thread"
+              data-tip={withShortcut("New thread", navigation.shortcut("chat.new"))}
               onClick={() => environment.newThread(projectId())}
             >
               <SquarePen />
@@ -323,8 +537,8 @@ export const Sidebar = Shell.provider(() => {
           class="icon-button"
           aria-label="Add project"
           data-tip="Add project"
-          aria-pressed={addingProject()}
-          onClick={() => setAddingProject((held) => !held)}
+          aria-pressed={navigation.palette() === "add-project"}
+          onClick={() => navigation.setPalette("add-project")}
         >
           <FolderPlus />
         </button>
@@ -397,9 +611,6 @@ export const Sidebar = Shell.provider(() => {
           </For>
         </Popup>
       </Show>
-      <Show when={addingProject()}>
-        <AddProjectPalette onClose={() => setAddingProject(false)} />
-      </Show>
       <Show when={endedReason()}>
         {(reason) => <p class="sidebar-error">The shell stream ended: {reason()}</p>}
       </Show>
@@ -418,10 +629,65 @@ export const Sidebar = Shell.provider(() => {
           </p>
         )}
       </Show>
+      <Show when={searching()}>
+        <Show
+          when={results().length > 0}
+          fallback={
+            <p class="empty" role="status">
+              {messageSearch.pending() ? "Searching thread messages…" : "No threads found"}
+            </p>
+          }
+        >
+          <ul
+            class="thread-list"
+            id="sidebar-search-results"
+            role="listbox"
+            aria-label="Thread search results"
+          >
+            <For each={resultGroups()}>
+              {(group) => (
+                <Show
+                  when={group.ProjectId}
+                  fallback={
+                    <For each={group.Results}>
+                      {(result) => card(result.Thread, sectionOf(result.Thread), false, result)}
+                    </For>
+                  }
+                >
+                  {(projectId) => (
+                    <li class="folder-group" role="presentation">
+                      <ul class="folder-rows" role="presentation">
+                        <li class="search-folder" role="presentation">
+                          <ProjectBadge project={shell.state.Projects[projectId()]} size={12} />
+                          <span class="folder-title">
+                            {shell.state.Projects[projectId()]?.title ?? "Unknown project"}
+                          </span>
+                          <span class="section-count">{group.Results.length}</span>
+                        </li>
+                        <For each={group.Results}>
+                          {(result) => card(result.Thread, sectionOf(result.Thread), true, result)}
+                        </For>
+                      </ul>
+                    </li>
+                  )}
+                </Show>
+              )}
+            </For>
+          </ul>
+        </Show>
+      </Show>
       <Show
-        when={visibleThreads().length > 0 || folders().size > 0}
+        when={!searching() && (visibleThreads().length > 0 || folders().size > 0)}
         fallback={
-          <p class="empty">{shell.shellSynchronized() ? "No threads yet." : "Loading threads…"}</p>
+          <Show when={!searching()}>
+            <p class="empty">
+              {!shell.shellSynchronized()
+                ? "Loading threads…"
+                : scope().size > 0
+                  ? "No threads in these projects."
+                  : "No threads yet."}
+            </p>
+          </Show>
         }
       >
         <ul class="thread-list" ref={setList}>

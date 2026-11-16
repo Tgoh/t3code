@@ -4,6 +4,7 @@ import type {
   ServerProviderSkill,
   ServerProviderSlashCommand,
 } from "@t3tools/contracts";
+import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
 import type { IWireProjection, IWireTurnItem } from "./wire";
@@ -225,6 +226,17 @@ export const searchEntriesEffect = defineEffect<ISearchEntriesEffect, IProjectEn
 export const browseFoldersEffect = defineEffect<IBrowseFoldersEffect, IFolderListing>(
   "browseFolders",
 );
+
+interface ISearchThreadsEffect extends IEffect {
+  Type: "searchThreads";
+  EnvironmentId: string;
+  Query: string;
+}
+
+export const searchThreadsEffect = defineEffect<
+  ISearchThreadsEffect,
+  { Matches: EnvironmentThreadSearchMatch[] }
+>("searchThreads");
 
 export interface IStartClone {
   EnvironmentId: string;
