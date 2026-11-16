@@ -99,10 +99,9 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Tool output isn't fetched: the wire omits it, the row says so, and `getTurnItem` would fill it in.
 - A command row doesn't check the server's `commandOutputStreaming` capability, so an older server shows the subscription's error.
 - Secret and link requests are shown but can only be answered in the stock client.
-- Drafts and attached files don't survive a reload.
-- The queue offers resume and cancel, with no edit, reorder or promote to steer.
-- A send during a run uses the server's `auto` delivery, with no steer or queue choice.
-- The composer doesn't offer interaction mode (Plan).
+- Drafts live in this port's `localStorage`, not stock's draft store, so the two clients keep separate drafts. A file whose upload hadn't finished when the page closed is dropped, where stock keeps it as a row to attach again. Images are kept as data URLs, as stock keeps them, so a few large ones can fill the store, and the write is then dropped.
+- Steer or queue during a run always defaults to steer: there's no settings page for stock's follow-up behaviour. A send during a compaction that can't take a steer isn't forced to queue, and Enter on an empty composer doesn't resume a held queue.
+- The queue popover has no keyboard shortcuts for send now or edit, and an edit changes only the text, not attachments. Stock has no reorder either.
 - The provider list and the hidden-model and model-order settings are read once at startup, not followed. Model favorites are read at startup and after this client's own toggle, so one changed in stock shows after a reload.
 - A sent message appears when the stream delivers it, with no pending row in Local; the gap wasn't noticeable.
 - A new thread starts on the model and options last picked in this browser, else the project's default, else the first provider's default, which can be a paid one. The last pick and each model's options are kept in this port's `localStorage`, not stock's draft store, so the two clients remember picks separately.
@@ -167,7 +166,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Markdown images: no copy, download or open-file actions, and no "pair again" hint when the connection can't read host files. Video and audio embeds show their alt text. An `<img>` in raw HTML still loads only web and data sources, so a file path there shows nothing.
 - Markdown: no syntax highlighting, language icons, run-in-terminal button, file link chips, math or diagrams. A relative link is plain text with its path in a tooltip, not a link that opens the file. A code block's wrap choice resets when its message re-renders during streaming.
 - Changed files card: flat list, not a tree, and its rows don't open a single file's diff.
-- Composer: no `@ files`, `$ skills` or `/ commands` menus and no voice input, so the placeholder leaves out their hints. No prompt history, stash, multi-model send or keyboard shortcuts.
+- Composer: no voice input, stash, multi-model send or keyboard shortcuts. The `@` menu lists files only, not threads, machines or models, and inserts a plain markdown link rather than a chip. The `/` menu has no built-in `/model`, `/side`, `/btw` or `/clear`, and skills show no source badge. Commands and skills come from the provider list read at startup, without a project's workspace snapshot, so project-only skills are missing. Prompt history moves at the first or last line of the text, not the wrapped visual line.
 - Model menu: no number-key jumps, provider setup or update notices, unavailable-provider state, custom models from settings, instance badges or New badges, and a fixed height rather than stock's fit to the tallest tab. Providers other than Claude and Codex show a letter, not their icon. A favorite toggle doesn't migrate favorites a stock browser kept locally before the server held them. A non-reasoning option such as an agent's mode opens its choices below its row, not in a side menu.
 - Model menu: a typed `ultrathink` doesn't take over the effort label or lock the levels, the effort shows as a word with no bars setting, and the provider's reported selection isn't shown.
 - Permissions: no overflow menu at narrow widths, and modes a managed policy forbids aren't disabled. A new thread's strip under the composer holds only the permissions chip, with no workspace or branch pickers.

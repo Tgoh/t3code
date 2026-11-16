@@ -1,5 +1,6 @@
 // @effect-diagnostics globalTimers:off -- A view-only debounce for the file search, outside any Effect runtime.
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { Dynamic } from "solid-js/web";
 
 import {
   fileItems,
@@ -11,12 +12,12 @@ import {
   slashItems,
   stepHighlight,
 } from "./composerMenu";
-import { File as FileIcon, Folder, Sparkles, Terminal } from "./icons";
+import { File as FileIcon, Folder } from "./icons";
 import ThreadSession from "./ThreadSession";
 
 const FILE_SEARCH_DEBOUNCE_MS = 120;
 
-const ICONS = { file: FileIcon, directory: Folder, command: Terminal, skill: Sparkles };
+const ICONS = { file: FileIcon, directory: Folder, command: null, skill: null };
 
 /** The `@`, `/` and `$` menu state for one composer, driven by its text and caret. */
 export function useComposerMenu(text: () => string, cursor: () => number) {
@@ -107,7 +108,7 @@ export function ComposerCommandMenu(props: {
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => props.onPick(item)}
               >
-                <Icon />
+                <Show when={Icon}>{(Shown) => <Dynamic component={Shown()} />}</Show>
                 <span class="composer-menu-label">{item.Label}</span>
                 <Show when={item.Description}>
                   <span class="composer-menu-detail">{item.Description}</span>
