@@ -37,6 +37,7 @@ export { default as Mail } from "lucide-solid/icons/mail";
 export { default as MessageCircleQuestion } from "lucide-solid/icons/message-circle-question";
 export { default as MessagesSquare } from "lucide-solid/icons/messages-square";
 export { default as PanelBottom } from "lucide-solid/icons/panel-bottom";
+export { default as PanelLeft } from "lucide-solid/icons/panel-left";
 export { default as PanelRight } from "lucide-solid/icons/panel-right";
 export { default as Paperclip } from "lucide-solid/icons/paperclip";
 export { default as PenLine } from "lucide-solid/icons/pen-line";

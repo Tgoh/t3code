@@ -20,6 +20,7 @@ import { ChevronDown, PanelBottom, PanelRight } from "./icons";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, RequestBanner } from "./RequestViews";
 import { needsVisit, runStatus } from "./Shell";
+import { SidebarToggle } from "./Sidebar";
 import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
@@ -259,6 +260,7 @@ const ThreadBody = ThreadSession.provider(() => {
     <div class="thread-layout">
       <FileDropSection>
         <header class="thread-header">
+          <SidebarToggle />
           <div class="breadcrumb">
             <Show when={session.projectName()}>
               {(name) => (
