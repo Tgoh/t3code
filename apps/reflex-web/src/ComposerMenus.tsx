@@ -836,7 +836,7 @@ function OptionSwitchRow(props: { descriptor: IBooleanDescriptor; traits: ITrait
         <span class="option-name">{props.descriptor.label}</span>
         <span>{checked() ? "On" : "Off"}</span>
       </span>
-      <span class="switch" classList={{ on: checked() }} />
+      <span class="menu-switch" classList={{ on: checked() }} />
     </button>
   );
 }

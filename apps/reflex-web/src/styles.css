@@ -3776,7 +3776,7 @@ button.composer-control.open {
   transform: rotate(90deg);
 }
 
-.switch {
+.menu-switch {
   background: var(--input);
   border-radius: 9999px;
   flex: none;
@@ -3785,7 +3785,7 @@ button.composer-control.open {
   width: 28px;
 }
 
-.switch::after {
+.menu-switch::after {
   background: #fff;
   border-radius: 9999px;
   content: "";
@@ -3796,11 +3796,11 @@ button.composer-control.open {
   width: 12px;
 }
 
-.switch.on {
+.menu-switch.on {
   background: var(--primary);
 }
 
-.switch.on::after {
+.menu-switch.on::after {
   left: 14px;
 }
 
