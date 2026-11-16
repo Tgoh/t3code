@@ -115,6 +115,8 @@ function applyItem(draft: IShell, item: Exclude<IWireShellItem, { kind: "synchro
     else applySnapshot(draft, item.snapshot);
     return;
   }
+  // Sent only to subscribers that pass httpSnapshotFallback, which shellStream.ts doesn't.
+  if (item.kind === "snapshot-required") return;
   if (item.sequence <= draft.LastSequence) return;
   draft.LastSequence = item.sequence;
   switch (item.kind) {
