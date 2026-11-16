@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off -- A view-only long-press delay, outside any Effect runtime.
 import {
   type Accessor,
   createComputed,
@@ -63,6 +64,47 @@ export function composerCollapses(input: {
   HasAttachments: boolean;
 }): boolean {
   return input.Phone && !input.Focused && !input.Draft.includes("\n") && !input.HasAttachments;
+}
+
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_SLOP = 10;
+
+/**
+ * Opens a context menu on a touch long-press, since iOS Safari fires no `contextmenu`. The row's
+ * click handler checks `swallowsClick` so the release doesn't also activate it.
+ */
+export function longPress(onPress: (x: number, y: number) => void) {
+  const held = { timer: undefined as ReturnType<typeof setTimeout> | undefined, x: 0, y: 0 };
+  const pressed = { fired: false };
+  const cancel = () => {
+    clearTimeout(held.timer);
+    held.timer = undefined;
+  };
+  return {
+    onPointerDown: (event: PointerEvent) => {
+      cancel();
+      pressed.fired = false;
+      if (event.pointerType !== "touch") return;
+      held.x = event.clientX;
+      held.y = event.clientY;
+      held.timer = setTimeout(() => {
+        held.timer = undefined;
+        pressed.fired = true;
+        onPress(held.x, held.y);
+      }, LONG_PRESS_MS);
+    },
+    onPointerMove: (event: PointerEvent) => {
+      if (Math.hypot(event.clientX - held.x, event.clientY - held.y) > LONG_PRESS_SLOP) cancel();
+    },
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+    /** True once for the click that ends a long-press. */
+    swallowsClick: () => {
+      const fired = pressed.fired;
+      pressed.fired = false;
+      return fired;
+    },
+  };
 }
 
 export interface ISidebarSheet {
