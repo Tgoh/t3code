@@ -49,11 +49,6 @@ export function ProjectMenu(props: {
         label="Copy path"
         onSelect={() => choose(() => void copyText(props.project.workspaceRoot))}
       />
-      <MenuItem
-        icon={<FolderOpen />}
-        label="Open in file manager"
-        onSelect={() => choose(() => environment.openInFileManager(props.project.workspaceRoot))}
-      />
       <Show
         when={props.project.pinnedAt != null}
         fallback={
@@ -71,6 +66,11 @@ export function ProjectMenu(props: {
         />
       </Show>
       <MenuItem icon={<PenLine />} label="Rename" onSelect={() => choose(props.onRename)} />
+      <MenuItem
+        icon={<FolderOpen />}
+        label="Open in file manager"
+        onSelect={() => choose(() => environment.openInFileManager(props.project.workspaceRoot))}
+      />
       <div class="menu-separator" />
       <MenuItem
         icon={<Trash2 />}
@@ -125,11 +125,13 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
       ref={(dialog) => queueMicrotask(() => dialog.showModal())}
       onClose={props.onClose}
     >
-      <h2 id="remove-project-title" class="confirm-title">
-        {copy().Title}
-      </h2>
-      <p class="confirm-description">{copy().Description}</p>
-      <Show when={failure()}>{(text) => <p class="confirm-error">{text()}</p>}</Show>
+      <div class="confirm-header">
+        <h2 id="remove-project-title" class="confirm-title">
+          {copy().Title}
+        </h2>
+        <p class="confirm-description">{copy().Description}</p>
+        <Show when={failure()}>{(text) => <p class="confirm-error">{text()}</p>}</Show>
+      </div>
       <div class="confirm-actions">
         <button class="button" autofocus onClick={props.onClose}>
           Cancel
