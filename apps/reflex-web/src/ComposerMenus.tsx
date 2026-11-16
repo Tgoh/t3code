@@ -356,7 +356,7 @@ function PickerContent(props: { traits: ITraits | null }) {
     ),
   );
   const [query, setQuery] = createSignal("");
-  const [highlight, setHighlight] = createSignal(0);
+  const [highlight, setHighlight] = createSignal(-1);
   const list = createMemo(() =>
     pickerList({
       Providers: providers(),
@@ -383,6 +383,8 @@ function PickerContent(props: { traits: ITraits | null }) {
   const [search, setSearch] = createSignal<HTMLInputElement>();
   const [column, setColumn] = createSignal<HTMLDivElement>();
   const [listElement, setListElement] = createSignal<HTMLUListElement>();
+  const [rail, setRail] = createSignal<HTMLDivElement>();
+  const searching = () => query().trim() !== "";
 
   const focusEffort = () => {
     const held = column();
@@ -410,27 +412,65 @@ function PickerContent(props: { traits: ITraits | null }) {
   const moveHighlight = (step: number) => {
     const count = rowCount();
     if (count === 0) return;
-    const next = Math.max(0, Math.min(count - 1, highlight() + step));
+    const selected = models().findIndex(isSelected);
+    const next =
+      highlight() < 0
+        ? selected >= 0
+          ? selected
+          : step > 0
+            ? 0
+            : count - 1
+        : Math.max(0, Math.min(count - 1, highlight() + step));
     setHighlight(next);
     showRow(next);
   };
   const pickTab = (next: string) => {
     setTab(next);
     setQuery("");
-    setHighlight(0);
+    setHighlight(-1);
     search()?.focus();
+  };
+  const railButtons = () =>
+    Array.from(rail()?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+  const focusRail = () => {
+    const buttons = railButtons();
+    (
+      buttons.find((button) => button.getAttribute("aria-pressed") === "true") ?? buttons[0]
+    )?.focus();
   };
 
   onMount(() => {
-    const index = Math.max(0, models().findIndex(isSelected));
-    setHighlight(index);
     search()?.focus();
-    showRow(index);
+    showRow(Math.max(0, models().findIndex(isSelected)));
   });
 
   return (
-    <div class="model-picker">
-      <div class="picker-providers" role="toolbar" aria-label="Providers">
+    <div class="model-picker" classList={{ searching: searching() }}>
+      <div
+        class="picker-providers"
+        role="toolbar"
+        aria-label="Providers"
+        aria-orientation="vertical"
+        ref={setRail}
+        onKeyDown={(event) => {
+          if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            search()?.focus();
+            return;
+          }
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          const buttons = railButtons();
+          const index = buttons.findIndex((button) => button === document.activeElement);
+          const next =
+            buttons[
+              (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length
+            ];
+          if (next === undefined) return;
+          event.preventDefault();
+          next.focus();
+        }}
+      >
         <button
           type="button"
           class="provider-tab favorites-tab"
@@ -475,11 +515,21 @@ function PickerContent(props: { traits: ITraits | null }) {
             value={query()}
             onInput={(event) => {
               setQuery(event.currentTarget.value);
-              setHighlight(0);
+              setHighlight(searching() && rowCount() > 0 ? 0 : -1);
             }}
             onKeyDown={(event) => {
               if (event.isComposing) return;
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              if (
+                !event.altKey &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                !searching() &&
+                ((event.key === "ArrowLeft" && !event.shiftKey && query() === "") ||
+                  (event.key === "Tab" && event.shiftKey))
+              ) {
+                event.preventDefault();
+                focusRail();
+              } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
                 moveHighlight(event.key === "ArrowDown" ? 1 : -1);
               } else if (event.key === "Enter") {
