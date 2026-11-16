@@ -31,6 +31,7 @@ import Shell, {
   activityAt,
   canSnooze,
   isBusy,
+  isMainThread,
   type ISidebarStatus,
   isSnoozed,
   sidebarStatus,
@@ -219,6 +220,7 @@ export function ThreadCard(props: {
         ref={hoverCard(ThreadHoverCard, props)}
         classList={{
           compact: props.compact,
+          main: isMainThread(props.thread),
           selected: props.selected,
           receded:
             !props.selected &&

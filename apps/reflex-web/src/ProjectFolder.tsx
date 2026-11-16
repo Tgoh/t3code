@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Copy,
   Ellipsis,
+  EyeOff,
   FolderOpen,
   PenLine,
   Pin,
@@ -28,6 +29,7 @@ export function ProjectMenu(props: {
   y: number;
   onRename: () => void;
   onRemove: () => void;
+  onHide: () => void;
   onClose: () => void;
 }) {
   const environment = Environment.use();
@@ -71,6 +73,7 @@ export function ProjectMenu(props: {
         label="Open in file manager"
         onSelect={() => choose(() => environment.openInFileManager(props.project.workspaceRoot))}
       />
+      <MenuItem icon={<EyeOff />} label="Hide project" onSelect={() => choose(props.onHide)} />
       <div class="menu-separator" />
       <MenuItem
         icon={<Trash2 />}

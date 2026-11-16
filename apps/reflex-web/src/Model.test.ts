@@ -69,6 +69,7 @@ import {
   sidebarStatus,
   sidebarThreads,
   subagentRequests,
+  unhiddenThreads,
   workingStartedAt,
 } from "./Shell";
 import {
@@ -1278,6 +1279,61 @@ describe("the sidebar", () => {
       ["mango", ["m1", "m2"]],
       ["old", ["o1"]],
     ]);
+  });
+
+  it("puts a folder's Main threads first, in their own order", () => {
+    const at = "2026-01-01T00:00:00.000Z";
+    const titled = (id: string, title: string) => row(id, "p", at, { title });
+    const projects = { p: { id: "p", title: "P", workspaceRoot: "/p" } };
+    const active = [
+      titled("a", "Fix the build"),
+      titled("m1", " main "),
+      titled("b", "Main branch"),
+      titled("m2", "MAIN"),
+    ];
+    const [folder] = projectFolders(active as never, projects as never);
+    expect(folder!.Threads.map((thread) => thread.id)).toEqual(["m1", "m2", "a", "b"]);
+  });
+
+  it("leaves a hidden project out of every section and its folder, except the selected thread", () => {
+    const at = "2026-01-01T00:00:00.000Z";
+    const later = "2099-01-01T00:00:00.000Z";
+    const threads = [
+      row("shown", "kept", at),
+      row("pinned", "gone", at, { pinnedAt: at }),
+      row("active", "gone", at),
+      row("snoozed", "gone", at, { snoozedUntil: later, snoozedAt: at }),
+      row("settled", "gone", at, { settledOverride: "settled", settledAt: at }),
+      row("open", "gone", at),
+    ];
+    const projects = {
+      kept: { id: "kept", title: "Kept", workspaceRoot: "/kept" },
+      gone: { id: "gone", title: "Gone", workspaceRoot: "/gone" },
+      quiet: { id: "quiet", title: "Quiet", workspaceRoot: "/quiet" },
+    };
+    const hidden = new Set(["gone", "quiet"]);
+    const ids = (list: { id: string }[]) => list.map((thread) => thread.id);
+    const sections = (selected: string | null) =>
+      sidebarSections(unhiddenThreads(threads as never, hidden, selected), Date.parse(at), {});
+    const none = sections(null);
+    expect([none.Pinned, none.Active, none.Snoozed, none.Settled].map(ids)).toEqual([
+      [],
+      ["shown"],
+      [],
+      [],
+    ]);
+    const folders = (selected: string | null) =>
+      projectFolders(sections(selected).Active, projects as never, hidden).map((folder) => [
+        folder.ProjectId,
+        ids(folder.Threads),
+      ]);
+    expect(folders(null)).toEqual([["kept", ["shown"]]]);
+    expect(folders("open")).toEqual([
+      ["kept", ["shown"]],
+      ["gone", ["open"]],
+    ]);
+    expect(ids(sections("settled").Settled)).toEqual(["settled"]);
+    expect(unhiddenThreads(threads as never, new Set(), null)).toBe(threads);
   });
 
   it("derives a row's status and how long it has been working", () => {

@@ -421,9 +421,25 @@ export interface IProjectFolder {
   Threads: IWireThreadShell[];
 }
 
+/** A thread titled "Main", trimmed and in any case, leads its project folder. */
+export function isMainThread(thread: IWireThreadShell): boolean {
+  return thread.title.trim().toLowerCase() === "main";
+}
+
+/** Leaves out threads of projects hidden on this client, except the selected one. */
+export function unhiddenThreads(
+  threads: IWireThreadShell[],
+  hidden: ReadonlySet<string>,
+  selectedId: string | null,
+): IWireThreadShell[] {
+  if (hidden.size === 0) return threads;
+  return threads.filter((thread) => !hidden.has(thread.projectId) || thread.id === selectedId);
+}
+
 export function projectFolders(
   active: IWireThreadShell[],
   projects: Record<string, IWireProject>,
+  hidden: ReadonlySet<string> = new Set(),
 ): IProjectFolder[] {
   const folders = new Map<string, IProjectFolder>();
   const folderOf = (projectId: string) => {
@@ -435,9 +451,12 @@ export function projectFolders(
     return folder;
   };
   for (const project of Object.values(projects)) {
-    if (project.archivedAt == null) folderOf(project.id);
+    if (project.archivedAt == null && !hidden.has(project.id)) folderOf(project.id);
   }
   for (const thread of active) folderOf(thread.projectId).Threads.push(thread);
+  for (const folder of folders.values()) {
+    folder.Threads.sort((left, right) => Number(isMainThread(right)) - Number(isMainThread(left)));
+  }
   return [...folders.values()];
 }
 

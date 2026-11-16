@@ -19,6 +19,8 @@ export { default as Copy } from "lucide-solid/icons/copy";
 export { default as CornerLeftUp } from "lucide-solid/icons/corner-left-up";
 export { default as Download } from "lucide-solid/icons/download";
 export { default as Ellipsis } from "lucide-solid/icons/ellipsis";
+export { default as Eye } from "lucide-solid/icons/eye";
+export { default as EyeOff } from "lucide-solid/icons/eye-off";
 export { default as File } from "lucide-solid/icons/file";
 export { default as FileDiff } from "lucide-solid/icons/file-diff";
 export { default as FileSearch } from "lucide-solid/icons/file-search";

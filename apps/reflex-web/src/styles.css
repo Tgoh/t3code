@@ -73,6 +73,9 @@
   --sidebar-border: var(--zinc-200);
   --sidebar-row-hover: var(--zinc-25);
   --sidebar-row-active: #fff;
+  --main-thread-row: color-mix(in srgb, var(--success) 12%, transparent);
+  --main-thread-row-hover: color-mix(in srgb, var(--success) 18%, var(--sidebar-row-hover));
+  --main-thread-row-active: color-mix(in srgb, var(--success) 24%, var(--sidebar-row-active));
   --sidebar-secondary-label: var(--zinc-500);
   --sidebar-accent: var(--zinc-100);
 
@@ -629,6 +632,18 @@ main {
 .thread-card.selected {
   background: var(--sidebar-row-active);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-border) 70%, transparent);
+}
+
+.thread-card.main {
+  background: var(--main-thread-row);
+}
+
+.thread-card.main:hover {
+  background: var(--main-thread-row-hover);
+}
+
+.thread-card.main.selected {
+  background: var(--main-thread-row-active);
 }
 
 .thread-card.dimmed {

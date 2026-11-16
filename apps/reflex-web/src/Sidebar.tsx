@@ -9,6 +9,8 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronRight,
+  Eye,
+  EyeOff,
   FolderPlus,
   Folders,
   PanelLeft,
@@ -26,7 +28,14 @@ import {
   PROJECT_SORT_LABELS,
 } from "./projectOrder";
 import Root from "./Root";
-import Shell, { isBusy, projectFolders, sidebarSections, sidebarStatus } from "./Shell";
+import { MenuItem, Popup } from "./Menu";
+import Shell, {
+  isBusy,
+  projectFolders,
+  sidebarSections,
+  sidebarStatus,
+  unhiddenThreads,
+} from "./Shell";
 import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
@@ -49,6 +58,12 @@ const GROUP_KEY = "reflex-web:group-by-project";
 const CLOSED_FOLDERS_KEY = "reflex-web:closed-folders";
 const PROJECT_SORT_KEY = "reflex-web:project-sort";
 const PROJECT_ORDER_KEY = "reflex-web:project-order";
+const HIDDEN_PROJECTS_KEY = "reflex-web:hidden-projects";
+
+function readStoredIds(key: string): string[] {
+  const held = readStored<unknown>(key, []);
+  return Array.isArray(held) ? held.filter((id) => typeof id === "string") : [];
+}
 
 function readStored<T>(key: string, fallback: T): T {
   try {
@@ -128,10 +143,28 @@ export const Sidebar = Shell.provider(() => {
   const tick = setInterval(() => setNow(Date.now()), MINUTE);
   onCleanup(() => clearInterval(tick));
   const [second, setSecond] = createSignal(Date.now());
+  const [hiddenProjects, setHiddenProjects] = createSignal(
+    new Set(readStoredIds(HIDDEN_PROJECTS_KEY)),
+  );
+  const setProjectHidden = (projectId: string, hide: boolean) => {
+    const next = new Set(hiddenProjects());
+    if (hide) next.add(projectId);
+    else next.delete(projectId);
+    setHiddenProjects(next);
+    writeStored(HIDDEN_PROJECTS_KEY, [...next]);
+  };
+  const hiddenList = () =>
+    Object.values(shell.state.Projects)
+      .filter((project) => hiddenProjects().has(project.id))
+      .sort((left, right) => left.title.localeCompare(right.title));
+  const [hiddenMenu, setHiddenMenu] = createSignal<{ X: number; Y: number } | null>(null);
+  const visibleThreads = createMemo(() =>
+    unhiddenThreads(shell.sidebarThreads(), hiddenProjects(), selected()),
+  );
   const anyWorking = createMemo(() =>
-    shell
-      .sidebarThreads()
-      .some((thread) => isBusy(sidebarStatus(thread, shell.subagentRequests()[thread.id]))),
+    visibleThreads().some((thread) =>
+      isBusy(sidebarStatus(thread, shell.subagentRequests()[thread.id])),
+    ),
   );
   createEffect(() => {
     if (!anyWorking()) return;
@@ -140,7 +173,7 @@ export const Sidebar = Shell.provider(() => {
     onCleanup(() => clearInterval(ticking));
   });
   const sections = createMemo(() =>
-    sidebarSections(shell.sidebarThreads(), now(), shell.subagentRequests()),
+    sidebarSections(visibleThreads(), now(), shell.subagentRequests()),
   );
   const [snoozedOpen, setSnoozedOpen] = createSignal(false);
   const [settledOpen, setSettledOpen] = createSignal(false);
@@ -165,19 +198,16 @@ export const Sidebar = Shell.provider(() => {
   const [projectSort, setProjectSort] = createSignal<IProjectSort>(
     isProjectSort(storedSort) ? storedSort : "manual",
   );
-  const storedOrder = readStored<unknown>(PROJECT_ORDER_KEY, []);
-  const [projectOrder, setProjectOrder] = createSignal<string[]>(
-    Array.isArray(storedOrder) ? storedOrder.filter((id) => typeof id === "string") : [],
-  );
+  const [projectOrder, setProjectOrder] = createSignal(readStoredIds(PROJECT_ORDER_KEY));
   const folders = createMemo(
     () =>
       new Map(
         grouped()
           ? orderFolders(
-              projectFolders(sections().Active, shell.state.Projects),
+              projectFolders(sections().Active, shell.state.Projects, hiddenProjects()),
               projectSort(),
               projectOrder(),
-              shell.sidebarThreads(),
+              visibleThreads(),
             ).map((folder) => [folder.ProjectId, folder])
           : [],
       ),
@@ -205,15 +235,15 @@ export const Sidebar = Shell.provider(() => {
   const shelf = (threads: IWireThreadShell[], open: boolean, limit = Infinity) =>
     open ? threads.slice(0, limit) : threads.filter((thread) => thread.id === selected());
   const projects = () =>
-    Object.values(shell.state.Projects).filter((project) => project.archivedAt == null);
+    Object.values(shell.state.Projects).filter(
+      (project) => project.archivedAt == null && !hiddenProjects().has(project.id),
+    );
   const targetProject = () => environment.currentProjectId() ?? projects()[0]?.id ?? null;
   // A provider icon only tells threads apart once more than one provider is in use.
   const mixedProviders = createMemo(
     () =>
       new Set(
-        shell
-          .sidebarThreads()
-          .map((thread) => modelDisplay(providers(), thread.modelSelection).Driver),
+        visibleThreads().map((thread) => modelDisplay(providers(), thread.modelSelection).Driver),
       ).size > 1,
   );
   const card = (thread: IWireThreadShell, section: ICardSection, compact = false) => (
@@ -333,7 +363,40 @@ export const Sidebar = Shell.provider(() => {
             </select>
           </label>
         </Show>
+        <Show when={hiddenList().length > 0}>
+          <button
+            class="icon-button"
+            aria-label="Hidden projects"
+            data-tip="Hidden projects"
+            aria-expanded={hiddenMenu() !== null}
+            onClick={(event) => {
+              const box = event.currentTarget.getBoundingClientRect();
+              setHiddenMenu({ X: box.left, Y: box.bottom + 4 });
+            }}
+          >
+            <EyeOff />
+          </button>
+        </Show>
       </div>
+      <Show when={hiddenMenu() !== null && hiddenList().length > 0}>
+        <Popup
+          x={hiddenMenu()?.X ?? 0}
+          y={hiddenMenu()?.Y ?? 0}
+          label="Hidden projects"
+          onClose={() => setHiddenMenu(null)}
+        >
+          <For each={hiddenList()}>
+            {(project) => (
+              <MenuItem
+                icon={<Eye />}
+                label={project.title}
+                detail="Show"
+                onSelect={() => setProjectHidden(project.id, false)}
+              />
+            )}
+          </For>
+        </Popup>
+      </Show>
       <Show when={addingProject()}>
         <AddProjectPalette onClose={() => setAddingProject(false)} />
       </Show>
@@ -356,7 +419,7 @@ export const Sidebar = Shell.provider(() => {
         )}
       </Show>
       <Show
-        when={shell.sidebarThreads().length > 0 || folders().size > 0}
+        when={visibleThreads().length > 0 || folders().size > 0}
         fallback={
           <p class="empty">{shell.shellSynchronized() ? "No threads yet." : "Loading threads…"}</p>
         }
@@ -484,6 +547,7 @@ export const Sidebar = Shell.provider(() => {
             y={projectMenu()?.Y ?? 0}
             onRename={() => setRenamingProject(project.id)}
             onRemove={() => setRemovingProject(project.id)}
+            onHide={() => setProjectHidden(project.id, true)}
             onClose={() => setProjectMenu(null)}
           />
         )}
