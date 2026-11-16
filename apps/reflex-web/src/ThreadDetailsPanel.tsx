@@ -1,9 +1,20 @@
 import { changeRequestTerminologyFor } from "@t3tools/client-runtime/state/vcs";
 import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
 import { useResource } from "treflex-solid";
-import { Portal } from "solid-js/web";
-import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { Dynamic, Portal } from "solid-js/web";
+import {
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  Match,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+} from "solid-js";
 
+import { editorIcon } from "./editorIcons";
 import Environment from "./Environment";
 import {
   buildMenuItems,
@@ -15,17 +26,16 @@ import {
   resolveQuickAction,
 } from "./gitActions";
 import {
-  ArrowDownToLine,
   ChevronDown,
+  CloudDownload,
   CloudUpload,
-  Code,
   ExternalLink,
   FileDiff,
   Folder,
   GitBranch,
   GitBranchPlus,
   GitCommitHorizontal,
-  GitPullRequest,
+  Info,
   Play,
   Plus,
   Server,
@@ -39,6 +49,7 @@ import ThreadDetails, {
   type IActionContext,
   type ICheckout,
 } from "./ThreadDetails";
+import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession from "./ThreadSession";
 
 const COMMIT_DIALOG_TITLE = "Commit changes";
@@ -65,46 +76,62 @@ interface IMenuAnchor {
   Width: number;
 }
 
-function QuickActionIcon(props: { action: IGitQuickAction }) {
+// Follows GitQuickActionIcon and GitActionItemIcon in apps/web/src/components/GitActionsControl.tsx.
+function QuickActionIcon(props: { action: IGitQuickAction; status: VcsStatusResult | null }) {
+  const kind = () => {
+    const action = props.action;
+    if (action.kind === "open_publish") return "push";
+    if (action.kind === "run_pull") return "pull";
+    if (action.kind === "run_action") {
+      if (action.action === "commit") return "commit";
+      if (action.action === "push" || action.action === "commit_push") return "push";
+      return "forge";
+    }
+    if (action.label === "Commit") return "commit";
+    if (action.label === "Push") return "push";
+    return "info";
+  };
   return (
-    <Show
-      when={props.action.kind === "run_pull"}
-      fallback={
-        <Show
-          when={props.action.action === "create_pr" || props.action.action === "commit_push_pr"}
-          fallback={
-            <Show
-              when={
-                props.action.kind === "open_publish" ||
-                props.action.action === "push" ||
-                props.action.action === "commit_push"
-              }
-              fallback={<GitCommitHorizontal />}
-            >
-              <CloudUpload />
-            </Show>
-          }
-        >
-          <GitPullRequest />
-        </Show>
-      }
-    >
-      <ArrowDownToLine />
-    </Show>
+    <Switch>
+      <Match when={kind() === "commit"}>
+        <GitCommitHorizontal />
+      </Match>
+      <Match when={kind() === "push"}>
+        <CloudUpload />
+      </Match>
+      <Match when={kind() === "pull"}>
+        <CloudDownload />
+      </Match>
+      <Match when={kind() === "forge"}>
+        <SourceControlIcon status={props.status} />
+      </Match>
+      <Match when={kind() === "info"}>
+        <Info />
+      </Match>
+    </Switch>
   );
 }
 
-function MenuIcon(props: { item: IGitMenuItem }) {
+function MenuIcon(props: { item: IGitMenuItem; status: VcsStatusResult | null }) {
   return (
-    <Show
-      when={props.item.icon === "commit"}
-      fallback={
-        <Show when={props.item.icon === "push"} fallback={<GitPullRequest />}>
-          <CloudUpload />
-        </Show>
-      }
-    >
-      <GitCommitHorizontal />
+    <Switch>
+      <Match when={props.item.icon === "commit"}>
+        <GitCommitHorizontal />
+      </Match>
+      <Match when={props.item.icon === "push"}>
+        <CloudUpload />
+      </Match>
+      <Match when={props.item.icon === "pr"}>
+        <SourceControlIcon status={props.status} />
+      </Match>
+    </Switch>
+  );
+}
+
+function EditorIcon(props: { editor: string }) {
+  return (
+    <Show when={editorIcon(props.editor, navigator.platform)} fallback={<Folder />}>
+      {(icon) => <Dynamic component={icon()} class="brand-icon" />}
     </Show>
   );
 }
@@ -204,7 +231,7 @@ function CommitDialog(props: {
                     />
                     <span class="commit-file-path">{file.path}</span>
                     <span class="diff-counts">
-                      <span class="added-text">+{formatCount(file.insertions)}</span>{" "}
+                      <span class="added-text">+{formatCount(file.insertions)}</span> /{" "}
                       <span class="removed-text">-{formatCount(file.deletions)}</span>
                     </span>
                   </label>
@@ -212,6 +239,15 @@ function CommitDialog(props: {
               )}
             </For>
           </ul>
+          <span class="commit-total diff-counts">
+            <span class="added-text">
+              +{formatCount(selected().reduce((sum, file) => sum + file.insertions, 0))}
+            </span>
+            /
+            <span class="removed-text">
+              -{formatCount(selected().reduce((sum, file) => sum + file.deletions, 0))}
+            </span>
+          </span>
         </div>
         <label class="commit-message-label" for="commit-message">
           Commit message (optional)
@@ -441,7 +477,7 @@ const Body = (props: {
         <Show when={(details.state.Editors?.Available.length ?? 0) > 0}>
           <SplitRow
             label={editorLabel()}
-            icon={<Code />}
+            icon={<EditorIcon editor={details.state.Editors?.Preferred ?? ""} />}
             menuLabel="Choose editor"
             onRun={() => void details.openEditor(null)}
             onMenu={(anchor) => setMenu({ Kind: "editor", Anchor: anchor })}
@@ -494,7 +530,7 @@ const Body = (props: {
             when={!busy() && noticeLabel() === null}
             fallback={
               <div class="details-row static progress" role="status">
-                <QuickActionIcon action={quick()} />
+                <QuickActionIcon action={quick()} status={git()} />
                 <span class="details-label">{busy() ? "Working…" : noticeLabel()}</span>
                 <Show when={!busy() && details.state.Notice?.Url}>
                   {(url) => (
@@ -514,7 +550,7 @@ const Body = (props: {
           >
             <SplitRow
               label={quick().label}
-              icon={<QuickActionIcon action={quick()} />}
+              icon={<QuickActionIcon action={quick()} status={git()} />}
               disabled={quick().disabled || quick().kind === "open_publish"}
               tip={
                 quick().kind === "open_publish"
@@ -603,7 +639,7 @@ const Body = (props: {
                           void details.openEditor(editor.Id);
                         }}
                       >
-                        <Code />
+                        <EditorIcon editor={editor.Id} />
                         <span class="menu-label">{editor.Label}</span>
                       </button>
                     )}
@@ -655,7 +691,7 @@ const Body = (props: {
                           data-tip-side="right"
                           onClick={() => runMenuItem(item)}
                         >
-                          <MenuIcon item={item} />
+                          <MenuIcon item={item} status={git()} />
                           <span class="menu-label">{item.label}</span>
                         </button>
                       );

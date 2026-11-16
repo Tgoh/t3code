@@ -4635,6 +4635,26 @@ a.attachment-file-open:hover .attachment-file-name {
   width: 16px;
 }
 
+.details-row > svg.brand-icon,
+.details-menu .menu-item > svg.brand-icon {
+  color: var(--foreground);
+}
+
+.cursor-icon {
+  fill: #26251e;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cursor-icon {
+    fill: #edecec;
+  }
+}
+
+.commit-total {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
 .details-row:not(.static, :disabled, [aria-disabled="true"]):hover {
   background: color-mix(in srgb, var(--foreground) 3.5%, transparent);
 }

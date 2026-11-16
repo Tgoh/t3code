@@ -4,6 +4,7 @@ import {
   createVcsEnvironmentAtoms,
 } from "@t3tools/client-runtime/state/vcs";
 import { EDITORS, type EditorId, EnvironmentId, ThreadId, WS_METHODS } from "@t3tools/contracts";
+import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import * as Effect from "effect/Effect";
@@ -47,6 +48,13 @@ const configOnceReady = (environmentId: string) =>
     ),
   );
 
+// Follows getLocalFileManagerName in apps/web/src/lib/utils.ts.
+function fileManagerName(platform: string): string {
+  if (isMacPlatform(platform)) return "Finder";
+  if (/^win(dows)?/i.test(platform)) return "File Explorer";
+  return "Files";
+}
+
 // The installed editors change only with a server restart, so each card mount needn't ask again.
 const editorsByEnvironment = new Map<string, Promise<ReadonlyArray<EditorId>>>();
 
@@ -61,7 +69,7 @@ export const editorsImpl = implementation(editorsEffect, async (input) => {
   return {
     Available: EDITORS.filter((editor) => ids.includes(editor.id)).map((editor) => ({
       Id: editor.id,
-      Label: editor.label,
+      Label: editor.id === "file-manager" ? fileManagerName(navigator.platform) : editor.label,
     })),
     Preferred: preferredEditor(ids),
   };
