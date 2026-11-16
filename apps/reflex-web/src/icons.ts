@@ -1,4 +1,5 @@
 export { default as AlarmClockOff } from "lucide-solid/icons/alarm-clock-off";
+export { default as ArrowLeft } from "lucide-solid/icons/arrow-left";
 export { default as ArrowRightLeft } from "lucide-solid/icons/arrow-right-left";
 export { default as ArrowUp } from "lucide-solid/icons/arrow-up";
 export { default as Bot } from "lucide-solid/icons/bot";
@@ -19,6 +20,7 @@ export { default as File } from "lucide-solid/icons/file";
 export { default as FileDiff } from "lucide-solid/icons/file-diff";
 export { default as FileSearch } from "lucide-solid/icons/file-search";
 export { default as Folder } from "lucide-solid/icons/folder";
+export { default as FolderGit2 } from "lucide-solid/icons/folder-git-2";
 export { default as FolderPlus } from "lucide-solid/icons/folder-plus";
 export { default as Folders } from "lucide-solid/icons/folders";
 export { default as GitBranch } from "lucide-solid/icons/git-branch";
