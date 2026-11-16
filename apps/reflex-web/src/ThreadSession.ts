@@ -20,6 +20,7 @@ import {
   receiver,
   resource,
   select,
+  start,
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
@@ -41,6 +42,12 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
+import {
+  storeDraftEffect,
+  storedDraftEffect,
+  storedDraftFilesEffect,
+  storeDraftFilesEffect,
+} from "./Infrastructure/draftMemory";
 import {
   rememberedModelKey,
   rememberedModelsEffect,
@@ -309,8 +316,59 @@ function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
   return selection?.SelectedThreadId === draft.ThreadId;
 }
 
+function* storeDraft(draft: IThreadSession): IActionGenerator {
+  const kept = draft.Draft !== "" || draft.ModelSelection !== null || draft.RuntimeMode !== null;
+  yield* storeDraftEffect({
+    ThreadId: draft.ThreadId,
+    Draft: kept
+      ? {
+          Text: draft.Draft,
+          NewThreadProjectId: draft.NewThreadProjectId,
+          ModelSelection: draft.ModelSelection,
+          RuntimeMode: draft.RuntimeMode,
+        }
+      : null,
+  });
+}
+
+export function* storeFiles(draft: IThreadSession): IOpenGenerator {
+  const ids = draft.Attachments.map((file) => file.Id);
+  const threadId = draft.ThreadId;
+  const files = resource(draft, "Composer/Files");
+  const stored = ids.length === 0 ? [] : yield* open(files.stored(ids));
+  if (stored === undefined) return;
+  yield* storeDraftFilesEffect({ ThreadId: threadId, Files: stored });
+}
+latest(storeFiles);
+
+/** Fills a fresh session from what this browser kept, before anything is typed into it. */
+export function* restoreDraft(draft: IThreadSession): IActionGenerator {
+  const stored = yield* storedDraftEffect({ ThreadId: draft.ThreadId });
+  if (stored !== null) {
+    draft.Draft = stored.Text;
+    draft.ModelSelection = stored.ModelSelection;
+    draft.RuntimeMode = stored.RuntimeMode;
+  }
+  yield* start(restoreFiles, draft);
+}
+
+export function* restoreFiles(draft: IThreadSession): IOpenGenerator {
+  const stored = yield* storedDraftFilesEffect({ ThreadId: draft.ThreadId });
+  if (stored.length === 0) return;
+  const files = resource(draft, "Composer/Files");
+  const restored = yield* open(files.restore(stored));
+  if (restored === undefined) return;
+  draft.Attachments.unshift(...restored);
+  if (restored.length < stored.length) {
+    draft.AttachmentNotice =
+      "Some attachments didn't finish uploading before the page closed. Attach them again.";
+  }
+  yield* start(storeFiles, draft);
+}
+
 export function* setDraft(draft: IThreadSession, text: string): IActionGenerator {
   draft.Draft = text;
+  yield* storeDraft(draft);
 }
 
 /** Holds the pick for the next turn, and on a started thread's own provider saves it at once. */
@@ -320,6 +378,7 @@ export function* setModelSelection(
 ): IOpenGenerator {
   draft.ModelSelection = selection;
   delete draft.ModelError;
+  yield* storeDraft(draft);
   yield* rememberModelEffect({ Selection: selection });
   const thread = yield* select(threadModelSelection);
   if (draft.NewThreadProjectId !== null || thread?.instanceId !== selection.instanceId) return;
@@ -378,6 +437,7 @@ export function* chooseModel(
 
 export function* setRuntimeMode(draft: IThreadSession, mode: IWireRuntimeMode): IActionGenerator {
   draft.RuntimeMode = mode;
+  yield* storeDraft(draft);
 }
 
 export function* addAttachments(
@@ -391,12 +451,14 @@ export function* addAttachments(
   else draft.AttachmentError = error;
   if (notice !== null) draft.AttachmentNotice = notice;
   draft.Attachments.push(...picked);
+  if (picked.length > 0) yield* start(storeFiles, draft);
 }
 
 export function* removeAttachment(draft: IThreadSession, id: string): IActionGenerator {
   const index = draft.Attachments.findIndex((held) => held.Id === id);
   if (index >= 0) draft.Attachments.splice(index, 1);
   yield* resource(draft, "Composer/Files").remove(id);
+  yield* start(storeFiles, draft);
 }
 
 function* uploadAndStart(
@@ -467,9 +529,13 @@ export function* send(draft: IThreadSession): IOpenGenerator {
   draft.Attachments = draft.Attachments.filter((file) => !fileIds.includes(file.Id));
   delete draft.AttachmentNotice;
   delete draft.AttachmentError;
-  if (fileIds.length > 0) yield* resource(draft, "Composer/Files").forget(fileIds);
+  if (fileIds.length > 0) {
+    yield* resource(draft, "Composer/Files").forget(fileIds);
+    yield* start(storeFiles, draft);
+  }
+  if (projectId !== null) draft.NewThreadProjectId = null;
+  yield* storeDraft(draft);
   if (projectId !== null) {
-    draft.NewThreadProjectId = null;
     yield* publishToNearest(draft, "Thread/Started", { ThreadId: draft.ThreadId });
   }
 }

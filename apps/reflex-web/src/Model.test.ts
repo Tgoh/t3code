@@ -1,7 +1,13 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
 import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 import { createEffect, createMemo, createRoot } from "solid-js";
-import { createTestRuntime, EntityReplacedError, type IActionGenerator, settled } from "treflex";
+import {
+  createTestRuntime,
+  EntityReplacedError,
+  type IActionGenerator,
+  type ITestRuntimeOptions,
+  settled,
+} from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -42,6 +48,8 @@ import type {
   IThreadDiff,
   IWireModelSelection,
 } from "./Infrastructure/commandEffects";
+import type { IPickedFile } from "./Infrastructure/composerFiles";
+import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import {
   diffTurnOf,
@@ -73,6 +81,7 @@ import {
   workingStartedAt,
 } from "./Shell";
 import {
+  addAttachments,
   chooseModel,
   closeDiff,
   diffLoading,
@@ -115,10 +124,17 @@ import { reconcile } from "./rows";
 
 const ENV = "env-1";
 
+interface IStoredDrafts {
+  Drafts: Map<string, IStoredDraft>;
+  Files: Map<string, IStoredAttachment[]>;
+}
+
 async function connect(
   historyPage?: (cursor: string) => Promise<IWireHistoryPage>,
   initialAddress: string | null = null,
   commands: Record<string, (effect: never) => unknown> = {},
+  stored: IStoredDrafts = { Drafts: new Map(), Files: new Map() },
+  resources?: ITestRuntimeOptions["resources"],
 ) {
   const address = { thread: initialAddress };
   const terminals = new Map<string, ITerminalLaunch>();
@@ -152,13 +168,26 @@ async function connect(
       setAddressThread: (effect: { ThreadId: string | null }) => {
         address.thread = effect.ThreadId;
       },
+      storedDraft: (effect: { ThreadId: string }) => stored.Drafts.get(effect.ThreadId) ?? null,
+      storedNewThread: (effect: { ProjectId: string }) =>
+        [...stored.Drafts].find(([, held]) => held.NewThreadProjectId === effect.ProjectId)?.[0] ??
+        null,
+      storeDraft: (effect: { ThreadId: string; Draft: IStoredDraft | null }) => {
+        if (effect.Draft === null) stored.Drafts.delete(effect.ThreadId);
+        else stored.Drafts.set(effect.ThreadId, effect.Draft);
+      },
+      storedDraftFiles: (effect: { ThreadId: string }) => stored.Files.get(effect.ThreadId) ?? [],
+      storeDraftFiles: (effect: { ThreadId: string; Files: IStoredAttachment[] }) => {
+        if (effect.Files.length === 0) stored.Files.delete(effect.ThreadId);
+        else stored.Files.set(effect.ThreadId, effect.Files);
+      },
       rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
       rememberTerminal: (effect: { ThreadId: string; Launch: ITerminalLaunch | null }) => {
         if (effect.Launch === null) terminals.delete(effect.ThreadId);
         else terminals.set(effect.ThreadId, effect.Launch);
       },
     },
-    { onError: (error) => console.error("action failed:", error) },
+    { onError: (error) => console.error("action failed:", error), resources },
   );
   runtime.registerReceiver(RootReceiver);
   runtime.registerReceiver(EnvironmentReceiver);
@@ -182,6 +211,7 @@ async function connect(
     address,
     terminals,
     models,
+    stored,
     environment,
     session,
     thread,
@@ -2178,6 +2208,96 @@ describe("writing to the server", () => {
       event: event("turn-item.updated", commandItem("other", "run-1", 2)),
     } as IWireThreadItem);
     expect(pendingOf(server)).toEqual(["r-1"]);
+  });
+});
+
+describe("drafts", () => {
+  const picked = (id: string, name: string): IPickedFile => ({
+    Id: id,
+    Kind: "image",
+    Name: name,
+    MimeType: "image/png",
+    SizeBytes: 4,
+    PastedText: false,
+    PreviewUrl: null,
+  });
+  const storedOf = (name: string): IStoredAttachment => ({
+    Kind: "image",
+    Name: name,
+    MimeType: "image/png",
+    SizeBytes: 4,
+    PastedText: false,
+    DataUrl: `data:image/png;base64,${name}`,
+  });
+  const fileStubs = (restored: string[][]) => ({
+    methods: {
+      "Composer/Files": {
+        stored: (_ctx: unknown, ids: string[]) => ids.map((id) => storedOf(id)),
+        restore: (_ctx: unknown, files: IStoredAttachment[]) => {
+          restored.push(files.map((file) => file.Name));
+          return files.map((file, index) => picked(`restored-${index}`, file.Name));
+        },
+        forget: () => undefined,
+        remove: () => undefined,
+        upload: (_ctx: unknown, id: string) => ({ type: "image", id: `upload-${id}` }),
+      },
+    },
+  });
+
+  it("a thread's text and files come back in a fresh client, and a send clears them", async () => {
+    const restored: string[][] = [];
+    const first = await connect(undefined, null, {}, undefined, fileStubs(restored));
+    await first.open();
+    await first.runtime.dispatch(setDraft, first.sessionId(), "half written");
+    await first.runtime.dispatch(addAttachments, first.sessionId(), [picked("file-1", "a")], null);
+    await settled();
+    expect(first.stored.Files.get(THREAD_ID)?.map((file) => file.Name)).toEqual(["file-1"]);
+
+    const sent: IStartTurn[] = [];
+    const second = await connect(
+      undefined,
+      null,
+      { startTurn: (effect: IStartTurn) => void sent.push(effect) },
+      first.stored,
+      fileStubs(restored),
+    );
+    await second.open();
+    await settled();
+    expect(second.session().Draft).toBe("half written");
+    expect(restored).toEqual([["file-1"]]);
+    expect(second.session().Attachments.map((file) => file.Name)).toEqual(["file-1"]);
+
+    await second.runtime.dispatch(send, second.sessionId());
+    await settled();
+    expect(sent[0]!.Attachments.map((file) => file.id)).toEqual(["upload-restored-0"]);
+    expect(second.stored.Files.has(THREAD_ID)).toBe(false);
+    expect(second.stored.Drafts.has(THREAD_ID)).toBe(false);
+  });
+
+  it("a new-thread draft comes back under its project with the same thread id", async () => {
+    const first = await connect();
+    await first.runtime.dispatch(newThread, first.envId(), "project-1");
+    const threadId = first.environment().Local.SelectedThreadId!;
+    await first.runtime.dispatch(setDraft, first.sessionId(threadId), "an idea");
+
+    const second = await connect(undefined, null, {}, first.stored);
+    await second.runtime.dispatch(newThread, second.envId(), "project-1");
+    expect(second.environment().Local.SelectedThreadId).toBe(threadId);
+    expect(second.session(threadId).Draft).toBe("an idea");
+    expect(second.session(threadId).NewThreadProjectId).toBe("project-1");
+  });
+
+  it("an emptied draft leaves nothing behind, and deleting a thread forgets its draft", async () => {
+    const server = await connect(undefined, null, { threadCommand: () => undefined });
+    await server.open();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "x");
+    await server.runtime.dispatch(setDraft, server.sessionId(), "");
+    expect(server.stored.Drafts.has(THREAD_ID)).toBe(false);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "kept");
+    server.stored.Files.set(THREAD_ID, [storedOf("a")]);
+    await server.runtime.dispatch(threadCommand, server.envId(), THREAD_ID, { Kind: "delete" });
+    expect(server.stored.Drafts.has(THREAD_ID)).toBe(false);
+    expect(server.stored.Files.has(THREAD_ID)).toBe(false);
   });
 });
 

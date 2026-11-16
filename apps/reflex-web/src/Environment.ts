@@ -38,6 +38,11 @@ import {
   threadCommandEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
+import {
+  storeDraftEffect,
+  storedNewThreadEffect,
+  storeDraftFilesEffect,
+} from "./Infrastructure/draftMemory";
 import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
 import type { IProjectFaviconTarget } from "./projectIcon";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
@@ -55,6 +60,7 @@ import {
   type IReplica,
   type ISelection,
   type IThreadSession,
+  restoreDraft,
   restoreTerminal,
 } from "./ThreadSession";
 
@@ -166,6 +172,7 @@ function* sessionOf(
     Type: "composerFiles",
     EnvironmentId: draft.EnvironmentId,
   });
+  yield* restoreDraft(session);
   return session;
 }
 
@@ -212,9 +219,12 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
   const existing = Object.values(draft.Local.ThreadSessions).find(
     (session) => session.NewThreadProjectId === projectId,
   );
-  const threadId = existing?.ThreadId ?? (yield* generateGuid());
+  const threadId =
+    existing?.ThreadId ??
+    (yield* storedNewThreadEffect({ ProjectId: projectId })) ??
+    (yield* generateGuid());
   const session = yield* sessionOf(draft, threadId, projectId);
-  if (existing === undefined) {
+  if (existing === undefined && session.ModelSelection === null) {
     const last = (yield* rememberedModelsEffect()).Last;
     const offered = draft.Replica.Providers.some(
       (provider) =>
@@ -227,6 +237,8 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
 }
 
 function* forgetThread(draft: IEnvironment, threadId: string): IActionGenerator {
+  yield* storeDraftEffect({ ThreadId: threadId, Draft: null });
+  yield* storeDraftFilesEffect({ ThreadId: threadId, Files: [] });
   delete draft.Replica.OpenThreads[threadId];
   delete draft.Local.ThreadSessions[threadId];
   yield* start(dropThreadRow, draft.Replica.Shell, threadId);

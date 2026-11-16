@@ -14,6 +14,7 @@ import type { IResourceImplementation } from "treflex";
 
 import type { IAdmittedFile, IAttachmentKind } from "../attachmentIntake";
 import type { IWireAttachment } from "./commandEffects";
+import type { IStoredAttachment } from "./draftMemory";
 import { connectionRuntime } from "./connection";
 
 export interface IPickedFile {
@@ -34,6 +35,8 @@ declare module "treflex" {
         upload(id: string): IWireAttachment;
         remove(id: string): void;
         forget(ids: string[]): void;
+        stored(ids: string[]): IStoredAttachment[];
+        restore(files: IStoredAttachment[]): IPickedFile[];
       };
       Supply: ReadonlyArray<IAdmittedFile>;
       SupplyResponse: IPickedFile[];
@@ -41,14 +44,34 @@ declare module "treflex" {
   }
 }
 
-interface IHeldFile extends IAdmittedFile {
+interface IHeldFile {
+  Kind: IAttachmentKind;
+  File: File | null;
+  PastedText: boolean;
+  Name: string;
+  MimeType: string;
+  SizeBytes: number;
   PreviewUrl: string | null;
+  DataUrl: string | null;
   Abort: AbortController;
   Minted: string | null;
   Upload: Promise<string>;
 }
 
 const MAX_UPLOADS = 3;
+
+const readDataUrl = (file: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("Couldn't read the image."));
+    reader.readAsDataURL(file);
+  });
+
+async function fileOfDataUrl(dataUrl: string, name: string, mimeType: string) {
+  const blob = await (await fetch(dataUrl)).blob();
+  return new File([blob], name, { type: mimeType });
+}
 
 export const composerFiles: IResourceImplementation<"composerFiles"> = (params, r) => {
   const environmentId = EnvironmentId.make(params.EnvironmentId);
@@ -65,13 +88,12 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   const deleteUpload = (attachmentId: string) =>
     void rpc(request(WS_METHODS.attachmentsDelete, { attachmentId })).catch(() => undefined);
 
-  const transfer = async (entry: IHeldFile): Promise<string> => {
+  const transfer = async (entry: IHeldFile, file: File): Promise<string> => {
     if (active >= MAX_UPLOADS) await new Promise<void>((resolve) => waiting.push(resolve));
     active += 1;
     try {
       entry.Abort.signal.throwIfAborted();
-      const file = entry.File;
-      const name = file.name || entry.Kind;
+      const name = entry.Name;
       const input: AttachmentCreateUploadUrlInput =
         entry.Kind === "file"
           ? { type: "file", name, mimeType: file.type, sizeBytes: file.size }
@@ -101,10 +123,78 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   };
 
   const startUpload = (entry: IHeldFile) => {
+    const file = entry.File;
+    if (file === null) throw new Error(`Attach ${entry.Name} again.`);
     if (entry.Minted !== null) deleteUpload(entry.Minted);
     entry.Minted = null;
-    entry.Upload = transfer(entry);
+    entry.Upload = transfer(entry, file);
     entry.Upload.catch(() => undefined);
+  };
+
+  const hold = (entry: IHeldFile): IPickedFile => {
+    const id = `file-${(nextId += 1)}`;
+    held.set(id, entry);
+    return {
+      Id: id,
+      Kind: entry.Kind,
+      Name: entry.Name,
+      MimeType: entry.MimeType,
+      SizeBytes: entry.SizeBytes,
+      PastedText: entry.PastedText,
+      PreviewUrl: entry.PreviewUrl,
+    };
+  };
+
+  const heldFile = (
+    kind: IAttachmentKind,
+    file: File | null,
+    described: Pick<IHeldFile, "Name" | "MimeType" | "SizeBytes" | "PastedText">,
+  ): IHeldFile => ({
+    ...described,
+    Kind: kind,
+    File: file,
+    PreviewUrl: kind === "image" && file !== null ? URL.createObjectURL(file) : null,
+    DataUrl: null,
+    Abort: new AbortController(),
+    Minted: null,
+    Upload: Promise.resolve(""),
+  });
+
+  const storedOf = async (entry: IHeldFile): Promise<IStoredAttachment | null> => {
+    const described = {
+      Kind: entry.Kind,
+      Name: entry.Name,
+      MimeType: entry.MimeType,
+      SizeBytes: entry.SizeBytes,
+      PastedText: entry.PastedText,
+    };
+    try {
+      if (entry.Kind === "image" && entry.File !== null) {
+        entry.DataUrl ??= await readDataUrl(entry.File);
+        return { ...described, DataUrl: entry.DataUrl };
+      }
+      return { ...described, AttachmentId: await entry.Upload };
+    } catch {
+      return null;
+    }
+  };
+
+  const restoreOne = async (stored: IStoredAttachment): Promise<IHeldFile | null> => {
+    if (stored.DataUrl !== undefined) {
+      const file = await fileOfDataUrl(stored.DataUrl, stored.Name, stored.MimeType).catch(
+        () => null,
+      );
+      if (file === null) return null;
+      const entry = heldFile(stored.Kind, file, stored);
+      entry.DataUrl = stored.DataUrl;
+      startUpload(entry);
+      return entry;
+    }
+    if (stored.AttachmentId === undefined) return null;
+    const entry = heldFile(stored.Kind, null, stored);
+    entry.Minted = stored.AttachmentId;
+    entry.Upload = Promise.resolve(stored.AttachmentId);
+    return entry;
   };
 
   const release = (id: string, discard: boolean) => {
@@ -122,28 +212,15 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   });
 
   r.onSupply((admitted) =>
-    admitted.map((admittedFile): IPickedFile => {
-      const id = `file-${(nextId += 1)}`;
-      const previewUrl =
-        admittedFile.Kind === "image" ? URL.createObjectURL(admittedFile.File) : null;
-      const entry: IHeldFile = {
-        ...admittedFile,
-        PreviewUrl: previewUrl,
-        Abort: new AbortController(),
-        Minted: null,
-        Upload: Promise.resolve(""),
-      };
-      held.set(id, entry);
+    admitted.map(({ Kind, File: file, PastedText }) => {
+      const entry = heldFile(Kind, file, {
+        Name: file.name || Kind,
+        MimeType: file.type,
+        SizeBytes: file.size,
+        PastedText,
+      });
       startUpload(entry);
-      return {
-        Id: id,
-        Kind: admittedFile.Kind,
-        Name: admittedFile.File.name || admittedFile.Kind,
-        MimeType: admittedFile.File.type,
-        SizeBytes: admittedFile.File.size,
-        PastedText: admittedFile.PastedText,
-        PreviewUrl: previewUrl,
-      };
+      return hold(entry);
     }),
   );
 
@@ -162,15 +239,24 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
       return {
         type: entry.Kind,
         id: attachmentId,
-        name: entry.File.name || entry.Kind,
-        mimeType: entry.File.type,
-        sizeBytes: entry.File.size,
+        name: entry.Name,
+        mimeType: entry.MimeType,
+        sizeBytes: entry.SizeBytes,
         ...(entry.PastedText ? { source: { _tag: "pasted-text" } } : {}),
       } as IWireAttachment;
     },
     remove: (_ctx, id) => release(id, true),
     forget: (_ctx, ids) => {
       for (const id of ids) release(id, false);
+    },
+    stored: async (_ctx, ids) => {
+      const entries = ids.flatMap((id) => held.get(id) ?? []);
+      const stored = await Promise.all(entries.map(storedOf));
+      return stored.filter((file) => file !== null);
+    },
+    restore: async (_ctx, files) => {
+      const entries = await Promise.all(files.map(restoreOne));
+      return entries.filter((entry) => entry !== null).map(hold);
     },
   });
 };

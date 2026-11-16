@@ -31,6 +31,13 @@ import {
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
 import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
+import {
+  storeDraftFilesImpl,
+  storeDraftImpl,
+  storedDraftFilesImpl,
+  storedDraftImpl,
+  storedNewThreadImpl,
+} from "./Infrastructure/draftMemory";
 import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelMemory";
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
@@ -78,6 +85,11 @@ runtime.registerImplementation(rememberedTerminalImpl);
 runtime.registerImplementation(rememberTerminalImpl);
 runtime.registerImplementation(rememberedModelsImpl);
 runtime.registerImplementation(rememberModelImpl);
+runtime.registerImplementation(storedDraftImpl);
+runtime.registerImplementation(storedNewThreadImpl);
+runtime.registerImplementation(storeDraftImpl);
+runtime.registerImplementation(storedDraftFilesImpl);
+runtime.registerImplementation(storeDraftFilesImpl);
 runtime.registerResourceType("composerFiles", composerFiles);
 runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);
