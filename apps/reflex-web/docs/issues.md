@@ -110,6 +110,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - A new thread asks the server to generate its title, which uses the server's title provider. On this machine that's Codex, which fails to spawn, so titles fall back to the text.
 - Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
 - A multi-select question takes its options as comma-separated text, with no checkboxes.
+- A question whose options carry descriptions and previews (Claude's AskUserQuestion) shows only a text box per question, so its choices and previews never appear.
 - A thread that doesn't exist retries its subscription with backoff rather than reporting missing.
 - One terminal per thread, `term-1`, with no tabs or splits.
 - A new-thread draft has no terminal until its thread exists.
