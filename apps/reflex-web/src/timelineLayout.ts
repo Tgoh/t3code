@@ -1,5 +1,6 @@
 import { workEntryDisplayIndicatesToolFailure } from "@t3tools/client-runtime/work-log/presentation";
-import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
+import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/turn-item-presentation";
+import { isOrchestrationV2WorkActive, type OrchestrationV2TurnItem } from "@t3tools/contracts";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 
@@ -83,6 +84,11 @@ const NO_WORK = {
 
 /** A row's facts, or null for a row the timeline doesn't show (a waiting approval, an empty checkpoint). */
 export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
+  if (
+    turnItemIsWorkspacePreparation(item as unknown as OrchestrationV2TurnItem) &&
+    !("deferredWork" in item && item.deferredWork !== undefined)
+  )
+    return null;
   const at = item.startedAt ?? item.updatedAt;
   const base = {
     Id: item.id,

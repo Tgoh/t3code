@@ -1337,6 +1337,155 @@ main {
   border-top-right-radius: 6px;
 }
 
+.bubble.folded {
+  padding: 0;
+}
+
+.bubble.folded.expanded {
+  width: 80%;
+}
+
+.fold-header {
+  align-items: center;
+  display: flex;
+  font-size: 14px;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 12px;
+}
+
+.fold-header > svg {
+  color: var(--muted-foreground);
+  flex: none;
+  height: 16px;
+  width: 16px;
+}
+
+.fold-label {
+  color: var(--muted-foreground);
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.fold-label {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+button.fold-label:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+.fold-toggle {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  font: inherit;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.fold-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fold-chevron {
+  color: var(--muted-foreground);
+  flex: none;
+  height: 14px;
+  transition: transform 0.15s;
+  width: 14px;
+}
+
+.fold-chevron.open {
+  transform: rotate(180deg);
+}
+
+.fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 24rem;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+
+.message-note {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: flex;
+  font-size: 12px;
+  gap: 4px;
+  margin: 0 4px 0 0;
+}
+
+.message-note svg {
+  height: 12px;
+  width: 12px;
+}
+
+.thread-link {
+  align-items: center;
+  background: color-mix(in srgb, var(--info-foreground) 10%, transparent);
+  border: 0;
+  border-radius: 6px;
+  color: var(--info-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 4px;
+  padding: 0 4px;
+  vertical-align: baseline;
+}
+
+.thread-link svg {
+  flex: none;
+  height: 12px;
+  width: 12px;
+}
+
+.thread-link:hover {
+  background: color-mix(in srgb, var(--info-foreground) 18%, transparent);
+}
+
+.thread-link.unavailable {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  cursor: default;
+}
+
+.queued-fold {
+  border: 1px dashed var(--input);
+  border-radius: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.queued-fold .queued-text {
+  display: block;
+  max-height: 24rem;
+  overflow: auto;
+  padding: 0 12px 8px;
+  white-space: pre-wrap;
+}
+
 .attachment-open {
   background: none;
   border: 0;

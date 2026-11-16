@@ -647,9 +647,12 @@ export function* queuedRunIds(draft: IOpenThread): ISelectorGenerator<string[]> 
     .map((run) => run.id);
 }
 
-export function runText(draft: IOpenThread, runId: string): string {
+export function runMessage(
+  draft: IOpenThread,
+  runId: string,
+): IWireProjection["messages"][number] | undefined {
   const messageId = draft.Runs[runId]?.userMessageId;
-  return (messageId == null ? undefined : draft.Messages[messageId]?.text) ?? "";
+  return messageId == null ? undefined : draft.Messages[messageId];
 }
 
 export interface IPendingRequest {

@@ -1,3 +1,4 @@
+import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import DOMPurify from "dompurify";
 
 // Follows the tag list rehype-sanitize's default schema gives stock's assistant messages.
@@ -18,7 +19,11 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   if (node.nodeName !== "A") return;
   const href = node.getAttribute("href");
   if (href === null) return;
-  if (EXTERNAL_LINK.test(href)) {
+  if (parseThreadLinkHref(href) !== null) {
+    node.removeAttribute("href");
+    node.setAttribute("data-thread-href", href);
+    node.setAttribute("class", "thread-link");
+  } else if (EXTERNAL_LINK.test(href)) {
     node.setAttribute("target", "_blank");
     node.setAttribute("rel", "noopener noreferrer");
   } else {

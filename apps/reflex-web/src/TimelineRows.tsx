@@ -14,6 +14,8 @@ import { CopyButton } from "./CopyButton";
 import {
   Bot,
   Brain,
+  CalendarClock,
+  ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleHelp,
@@ -25,6 +27,8 @@ import {
   Link,
   ListTodo,
   MessageCircleQuestion,
+  MessagesSquare,
+  Redo2,
   ShieldQuestion,
   SquarePen,
   Terminal,
@@ -35,10 +39,25 @@ import Environment from "./Environment";
 import { attachmentUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { Markdown } from "./Markdown";
-import OpenThread, { diffTurnOf, fileChangeCounts, isRowVisible, timelineItem } from "./OpenThread";
+import OpenThread, {
+  diffTurnOf,
+  fileChangeCounts,
+  isRowVisible,
+  runMessage,
+  timelineItem,
+} from "./OpenThread";
 import ThreadSession from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
 import { viewOf } from "./turnItemView";
+import {
+  attribution,
+  displayText,
+  fromItem,
+  fromMessage,
+  type IMessageFold,
+  messageFold,
+  steerLabel,
+} from "./userMessage";
 import { singleToolCallLabel, workEntryDisplayLabel, workLogEntry } from "./workLog";
 
 function Body(props: { text: string; format: "markdown" | "text" | "code"; fromUser?: boolean }) {
@@ -292,41 +311,170 @@ function useRow(props: IRowProps) {
   };
 }
 
+export function FoldHeader(props: { fold: IMessageFold; expanded: boolean; onToggle: () => void }) {
+  const environment = Environment.use();
+  return (
+    <div class="fold-header">
+      <Dynamic component={props.fold.Kind === "agent" ? MessagesSquare : CalendarClock} />
+      <Show
+        when={props.fold.Sender?.Openable ? props.fold.Sender : null}
+        fallback={<span class="fold-label">{props.fold.Label}</span>}
+      >
+        {(sender) => (
+          <button
+            type="button"
+            class="fold-label link"
+            data-tip="Open thread"
+            onClick={() => environment.selectThread(sender().Ref.threadId)}
+          >
+            {props.fold.Label}
+          </button>
+        )}
+      </Show>
+      <button
+        type="button"
+        class="fold-toggle"
+        aria-expanded={props.expanded}
+        onClick={() => props.onToggle()}
+      >
+        <span class="fold-summary">{props.fold.Summary}</span>
+        <ChevronDown class="fold-chevron" classList={{ open: props.expanded }} />
+      </button>
+    </div>
+  );
+}
+
+// Follows QueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx.
+export function QueuedMessage(props: { runId: string }) {
+  const thread = OpenThread.use();
+  const environment = Environment.use();
+  const sent = createMemo(() => {
+    const held = runMessage(thread.state, props.runId);
+    return held === undefined ? null : fromMessage(held);
+  });
+  const fold = createMemo(() => {
+    const held = sent();
+    return held === null
+      ? null
+      : messageFold(
+          held,
+          thread.state.EnvironmentId,
+          (threadId) => environment.state.Replica.Shell.Threads[threadId]?.title,
+        );
+  });
+  const text = () => {
+    const held = sent();
+    return held === null ? "" : displayText(held);
+  };
+  const [expanded, setExpanded] = createSignal(false);
+  return (
+    <Show when={fold()} fallback={<span class="queued-text">{text()}</span>}>
+      {(held) => (
+        <div class="queued-fold">
+          <FoldHeader
+            fold={held()}
+            expanded={expanded()}
+            onToggle={() => setExpanded((open) => !open)}
+          />
+          <Show when={expanded()}>
+            <span class="queued-text">{text()}</span>
+          </Show>
+        </div>
+      )}
+    </Show>
+  );
+}
+
 function UserRow(props: IRowProps) {
   const { thread, item, inherited } = useRow(props);
+  const environment = Environment.use();
   const message = () => {
     const held = item();
     return held?.type === "user_message" ? held : null;
   };
+  const sent = createMemo(() => {
+    const held = message();
+    return held === null ? null : fromItem(held);
+  });
+  const text = () => {
+    const held = sent();
+    return held === null ? "" : displayText(held);
+  };
+  const fold = createMemo(() => {
+    const held = sent();
+    return held === null
+      ? null
+      : messageFold(
+          held,
+          thread.state.EnvironmentId,
+          (threadId) => environment.state.Replica.Shell.Threads[threadId]?.title,
+        );
+  });
+  const steer = () => steerLabel(message()?.inputIntent, message()?.status);
+  const [expanded, setExpanded] = createSignal(false);
   const attachments = () => message()?.attachments ?? [];
   const createdAt = () => {
     const held = message();
     return held === null ? undefined : (held.startedAt ?? held.updatedAt);
   };
-  return (
-    <article class="row user" classList={{ inherited: inherited() }}>
+  const content = (folded: boolean) => (
+    <>
       <For each={attachments()}>
         {(file) => (
           <UserAttachment
             environmentId={thread.state.EnvironmentId}
             file={file}
-            grouped={Boolean(message()?.text)}
+            grouped={folded || Boolean(text())}
           />
         )}
       </For>
-      <Show when={message()?.text}>
-        {(text) => (
-          <div class="bubble" classList={{ grouped: attachments().length > 0 }}>
-            <Body text={text()} format="markdown" fromUser />
+      <Show when={text()}>
+        {(body) => (
+          <Show
+            when={!folded}
+            fallback={<Markdown text={body()} fromUser message={sent() ?? undefined} />}
+          >
+            <div class="bubble" classList={{ grouped: attachments().length > 0 }}>
+              <Markdown text={body()} fromUser message={sent() ?? undefined} />
+            </div>
+          </Show>
+        )}
+      </Show>
+    </>
+  );
+  return (
+    <article class="row user" classList={{ inherited: inherited() }}>
+      <Show when={sent() !== null && attribution(sent()!) === "t3code"}>
+        <p class="message-note">Sent by T3 Code</p>
+      </Show>
+      <Show when={steer()}>
+        {(label) => (
+          <p class="message-note" data-tip={label().Tip}>
+            <Redo2 />
+            {label().Text}
+          </p>
+        )}
+      </Show>
+      <Show when={fold()} fallback={content(false)}>
+        {(held) => (
+          <div class="bubble folded" classList={{ expanded: expanded() }}>
+            <FoldHeader
+              fold={held()}
+              expanded={expanded()}
+              onToggle={() => setExpanded((open) => !open)}
+            />
+            <Show when={expanded()}>
+              <div class="fold-body">{content(true)}</div>
+            </Show>
           </div>
         )}
       </Show>
-      <div class="message-actions">
-        <Show when={createdAt()}>{(at) => <MessageTime at={at()} />}</Show>
-        <Show when={message()?.text}>
-          {(text) => <CopyButton text={text()} label="Copy message" />}
-        </Show>
-      </div>
+      <Show when={fold() === null || expanded()}>
+        <div class="message-actions">
+          <Show when={createdAt()}>{(at) => <MessageTime at={at()} />}</Show>
+          <Show when={text()}>{(body) => <CopyButton text={body()} label="Copy message" />}</Show>
+        </div>
+      </Show>
     </article>
   );
 }

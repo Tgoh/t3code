@@ -131,6 +131,8 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Visits: a visit that fails isn't retried after a reconnect, so Done can stay until the next completion.
 - Questions: answers typed into a question that Stop cancels or that expires are lost; stock moves them into the composer. Option previews don't render, and an `initialAnswer` isn't filled in.
 - Markdown: `vscode://`, `cursor://` and other editor links are dropped instead of opening the file.
+- Thread links: a link to a thread the shell doesn't hold shows its written label, or "Thread", and still opens, where stock asks the server for its title and shows "Thread no longer available" when it's gone. A thread on another machine is named but never opens, since this client connects to one environment. The chip has no project badge or hover card, `t3code://` deep links and prompt links aren't recognised, and a raw-HTML block's thread link keeps its written text rather than the thread's title.
+- Messages from other threads and automations: the automation fold shows the prompt's first line, not its scheduled task's title, and has no Open automation link. Consecutive steers each show their Steer label, where stock shows it once, because a row doesn't know its neighbours. Guest messages show the guest's words without the guest name or styling.
 - Sidebar: no "Setting up" state for a thread launched from a draft before its first run lands, and no Regenerate title action.
 
 - Sidebar: no Search box, thread filter, sidebar toggle, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.

@@ -1,11 +1,28 @@
+import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import type { Token, Tokens } from "marked";
-import { type Component, createMemo, createSignal, Index, Show } from "solid-js";
+import {
+  type Component,
+  createContext,
+  createMemo,
+  createSignal,
+  Index,
+  Show,
+  useContext,
+} from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import { CopyButton } from "./CopyButton";
-import { WrapText } from "./icons";
+import Environment from "./Environment";
+import { MessagesSquare, WrapText } from "./icons";
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import { EXTERNAL_LINK, sanitizeHtml } from "./sanitize";
+import {
+  contextThreadTarget,
+  type ILinkTarget,
+  type ISentMessage,
+  type IThreadTitle,
+  threadLinkTarget,
+} from "./userMessage";
 
 interface ITokenProps {
   token: Token;
@@ -77,20 +94,78 @@ function BrToken() {
   return <br />;
 }
 
-function LinkToken(props: ITokenProps) {
-  const link = () => of<Tokens.Link>(props);
+// The message whose context records name the thread chips in its text.
+const MessageContext = createContext<ISentMessage | null>(null);
+
+function useThreadTitle(): IThreadTitle {
+  const environment = Environment.use();
+  return (threadId) => environment.state.Replica.Shell.Threads[threadId]?.title;
+}
+
+function ThreadChip(props: { target: ILinkTarget }) {
+  const environment = Environment.use();
   return (
     <Show
-      when={EXTERNAL_LINK.test(link().href)}
+      when={"Ref" in props.target && props.target.Openable ? props.target : null}
       fallback={
-        <a data-tip={link().href}>
-          <Inline tokens={link().tokens} />
-        </a>
+        <span
+          class="thread-link unavailable"
+          data-tip={"Unknown" in props.target ? props.target.Unknown : "Thread on another machine"}
+        >
+          <MessagesSquare />
+          {"Unknown" in props.target ? props.target.Unknown : props.target.Title}
+        </span>
       }
     >
-      <a href={link().href} target="_blank" rel="noopener noreferrer">
-        <Inline tokens={link().tokens} />
-      </a>
+      {(target) => (
+        <button
+          type="button"
+          class="thread-link"
+          data-tip="Open thread"
+          onClick={() => environment.selectThread(target().Ref.threadId)}
+        >
+          <MessagesSquare />
+          {target().Title}
+        </button>
+      )}
+    </Show>
+  );
+}
+
+function LinkToken(props: ITokenProps) {
+  const link = () => of<Tokens.Link>(props);
+  const environment = Environment.use();
+  const message = useContext(MessageContext);
+  const title = useThreadTitle();
+  const thread = createMemo((): ILinkTarget | null => {
+    const { href, text } = link();
+    // An autolink's text is its own URL, which is no label.
+    const label = text.trim() && parseThreadLinkHref(text) === null ? text : null;
+    const environmentId = environment.state.EnvironmentId;
+    return (
+      contextThreadTarget(href, message, environmentId, title) ??
+      threadLinkTarget(href, label, environmentId, title)
+    );
+  });
+  return (
+    <Show
+      when={thread()}
+      fallback={
+        <Show
+          when={EXTERNAL_LINK.test(link().href)}
+          fallback={
+            <a data-tip={link().href}>
+              <Inline tokens={link().tokens} />
+            </a>
+          }
+        >
+          <a href={link().href} target="_blank" rel="noopener noreferrer">
+            <Inline tokens={link().tokens} />
+          </a>
+        </Show>
+      }
+    >
+      {(target) => <ThreadChip target={target()} />}
     </Show>
   );
 }
@@ -270,21 +345,41 @@ function TopBlock(props: { token: Token; fromUser: boolean }) {
   );
 }
 
-export function Markdown(props: { text: string; fromUser: boolean }) {
+export function Markdown(props: { text: string; fromUser: boolean; message?: ISentMessage }) {
   const lex = createMarkdownLexer(props.fromUser);
   const lexed = createMemo(() => lex(props.text));
+  const environment = Environment.use();
+  const title = useThreadTitle();
+  // Raw HTML can't hold a component, so sanitize marks its thread links and a click here opens them.
+  const openHtmlThreadLink = (event: MouseEvent) => {
+    const href = (event.target as Element)
+      .closest("[data-thread-href]")
+      ?.getAttribute("data-thread-href");
+    if (href == null) return;
+    const target = threadLinkTarget(href, null, environment.state.EnvironmentId, title);
+    if (target !== null && "Ref" in target && target.Openable)
+      environment.selectThread(target.Ref.threadId);
+  };
   return (
-    <Show
-      when={lexed().WholeHtml}
-      fallback={
-        <div class="chat-markdown">
-          <Index each={lexed().Blocks}>
-            {(token) => <TopBlock token={token()} fromUser={props.fromUser} />}
-          </Index>
-        </div>
-      }
-    >
-      {(tokens) => <div class="chat-markdown" innerHTML={sanitizeHtml(assistantHtml(tokens()))} />}
-    </Show>
+    <MessageContext.Provider value={props.message ?? null}>
+      <Show
+        when={lexed().WholeHtml}
+        fallback={
+          <div class="chat-markdown" onClick={openHtmlThreadLink}>
+            <Index each={lexed().Blocks}>
+              {(token) => <TopBlock token={token()} fromUser={props.fromUser} />}
+            </Index>
+          </div>
+        }
+      >
+        {(tokens) => (
+          <div
+            class="chat-markdown"
+            onClick={openHtmlThreadLink}
+            innerHTML={sanitizeHtml(assistantHtml(tokens()))}
+          />
+        )}
+      </Show>
+    </MessageContext.Provider>
   );
 }

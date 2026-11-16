@@ -126,6 +126,20 @@ describe("the timeline's turn folds", () => {
     expect(shape(layout(turn))).toEqual(["u", "fold Worked for 15s", "a2", "cp", "meta a2"]);
   });
 
+  it("leaves out workspace preparation, so a reply after only that gets no fold", () => {
+    const preparation = command("prep", 1, { input: "Preparing workspace" });
+    expect(shape(layout([user("u", 0), preparation, reply("a", 9)]))).toEqual(["u", "a +meta"]);
+    const deferred = {
+      ...preparation,
+      deferredWork: { cursor: "c", itemCount: 1, lastOrdinal: 1 },
+    };
+    expect(shape(layout([user("u", 0), deferred as IWireTurnItem, reply("a", 9)]))).toEqual([
+      "u",
+      "fold Worked for 15s",
+      "a +meta",
+    ]);
+  });
+
   it("times a turn that isn't the latest run from its rows", () => {
     expect(shape(layout(turn, { run: null }))[1]).toBe("fold Worked for 6s");
   });

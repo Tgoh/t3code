@@ -17,13 +17,14 @@ import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
 import { ChevronDown, PanelBottom, PanelRight } from "./icons";
-import OpenThread, { latestDiffTurn, runText, timelineItem } from "./OpenThread";
+import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, RequestBanner } from "./RequestViews";
 import { needsVisit, runStatus } from "./Shell";
 import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
 import { TimelineResponse } from "./TimelineResponse";
+import { QueuedMessage } from "./TimelineRows";
 import { firstAfterChange, grow, INITIAL_ROWS, keepsWindow, trimToTail } from "./timelineWindow";
 
 const LoadEarlier = HistoryWindow.provider(() => {
@@ -386,7 +387,7 @@ const ThreadBody = ThreadSession.provider(() => {
                     >
                       Cancel
                     </button>
-                    <span>{runText(thread.state, runId)}</span>
+                    <QueuedMessage runId={runId} />
                   </p>
                 )}
               </For>
