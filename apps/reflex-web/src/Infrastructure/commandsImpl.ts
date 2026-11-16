@@ -36,6 +36,7 @@ import {
   ProviderInstanceId,
   RunId,
   RuntimeRequestId,
+  THREAD_SEARCH_QUERY_MAX_LENGTH,
   ThreadId,
   WS_METHODS,
 } from "@t3tools/contracts";
@@ -51,6 +52,7 @@ import {
   assetUrlEffect,
   browseFoldersEffect,
   searchEntriesEffect,
+  searchThreadsEffect,
   cloneControlEffect,
   closeTerminalEffect,
   type IProviderOption,
@@ -307,6 +309,18 @@ export const searchEntriesImpl = implementation(searchEntriesEffect, async (inpu
     action?.signal,
   );
   return { Entries: result.entries.map((entry) => ({ path: entry.path, kind: entry.kind })) };
+});
+
+export const searchThreadsImpl = implementation(searchThreadsEffect, async (input, action) => {
+  const result = await inEnvironment(
+    input.EnvironmentId,
+    request(ORCHESTRATION_V2_WS_METHODS.searchThreads, {
+      query: input.Query.trim().slice(0, THREAD_SEARCH_QUERY_MAX_LENGTH).trim(),
+    }),
+    action?.signal,
+  );
+  const environmentId = EnvironmentId.make(input.EnvironmentId);
+  return { Matches: result.matches.map((match) => ({ ...match, environmentId })) };
 });
 
 export const browseFoldersImpl = implementation(browseFoldersEffect, async (input, action) => {

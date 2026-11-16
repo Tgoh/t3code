@@ -59,6 +59,32 @@ describe("createSidebarSheet", () => {
       dispose();
     });
   });
+
+  it("toggles the sheet on a narrow layout and the column's collapse on a wide one", () => {
+    createRoot((dispose) => {
+      const [sheet, setSheet] = createSignal(false);
+      const saved: boolean[] = [];
+      const sidebar = createSidebarSheet(sheet, () => null, {
+        initial: true,
+        onChange: (collapsed) => saved.push(collapsed),
+      });
+      expect(sidebar.collapsed()).toBe(true);
+
+      sidebar.toggle();
+      expect(sidebar.collapsed()).toBe(false);
+      sidebar.toggle();
+      expect(saved).toEqual([false, true]);
+
+      setSheet(true);
+      expect(sidebar.collapsed()).toBe(false);
+      sidebar.toggle();
+      expect(sidebar.open()).toBe(true);
+      expect(saved).toEqual([false, true]);
+      setSheet(false);
+      expect(sidebar.collapsed()).toBe(true);
+      dispose();
+    });
+  });
 });
 
 describe("longPress", () => {

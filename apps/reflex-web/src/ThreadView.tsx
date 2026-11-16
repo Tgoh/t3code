@@ -5,6 +5,7 @@ import {
   createMemo,
   createSignal,
   For,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -40,7 +41,7 @@ import {
   trimToTail,
 } from "./timelineWindow";
 
-import { TurnStatus } from "./TurnStatus";
+import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
 import { createMediaQuery, PANEL_SHEET_QUERY } from "./viewport";
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
@@ -149,6 +150,7 @@ const ThreadBody = ThreadSession.provider(() => {
     const status = run === null ? null : runStatus(run.status);
     return status === "running" || status === "waiting" ? status : null;
   };
+  const checklist = useChecklist(() => turnState() !== null);
   // Once per completion, so a thread marked unread while open stays unread until the next one.
   let visitedCompletion: string | null | undefined;
   createEffect(() => {
@@ -240,6 +242,17 @@ const ThreadBody = ThreadSession.provider(() => {
   const scrollToEnd = () => {
     scroller.scrollTop = scroller.scrollHeight;
   };
+  const statusRows = createMemo(() => checklistRows(checklist()));
+  // The status band sits outside the lane's box, so the lane's observer misses its resize.
+  createEffect(
+    on(
+      statusRows,
+      () => {
+        if (untrack(stuck)) scrollToEnd();
+      },
+      { defer: true },
+    ),
+  );
   const onComposerSend = () => {
     setStuck(true);
     scrollToEnd();
@@ -434,9 +447,10 @@ const ThreadBody = ThreadSession.provider(() => {
         </Show>
         <div
           class="chat-stage"
-          classList={{ "with-details": detailsInline() }}
+          classList={{ "has-checklist": checklist() !== null, "with-details": detailsInline() }}
           ref={stage}
           style={{
+            "--checklist-rows": statusRows(),
             "--details-shift": `${layout().Shift}px`,
             "--details-lane": layout().LaneWidth === null ? undefined : `${layout().LaneWidth}px`,
           }}
@@ -525,7 +539,7 @@ const ThreadBody = ThreadSession.provider(() => {
                 Scroll to end
               </button>
             </Show>
-            <TurnStatus state={turnState()} />
+            <TurnStatus state={turnState()} checklist={checklist()} />
             <For each={thread.pendingOtherIds()}>
               {(id) => <UnansweredRequest state={thread.state.RuntimeRequests[id]!} />}
             </For>

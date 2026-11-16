@@ -1,10 +1,28 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for the working timer, outside any Effect runtime.
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
-import { type Accessor, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import {
+  type Accessor,
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 
+import {
+  activeStepIndex,
+  CHECKLIST_ROWS,
+  checklistWindow,
+  currentTodoSteps,
+  earlierCompletedSteps,
+  type IChecklistStep,
+  liveSteps,
+} from "./checklist";
 import Environment from "./Environment";
-import { ChevronUp, CornerUpRight, PenLine, X } from "./icons";
+import { ChevronUp, CornerUpRight, PenLine, Square, SquareCheck, X } from "./icons";
 import OpenThread, { isRowVisible, runMessage, timelineItem } from "./OpenThread";
 import { workingStartedAt } from "./Shell";
 import ThreadSession from "./ThreadSession";
@@ -73,6 +91,147 @@ function WorkingText(props: { waiting: boolean }) {
   const activity = useActivity();
   return (
     <span class="turn-status-text">{props.waiting ? "Waiting" : (activity() ?? "Thinking")}</span>
+  );
+}
+
+export interface IChecklist {
+  Steps: readonly IChecklistStep[];
+  Active: number;
+  Done: number;
+}
+
+/** The running turn's to-do list, or null before it has one and once the turn ends. */
+export function useChecklist(running: Accessor<boolean>): Accessor<IChecklist | null> {
+  const thread = OpenThread.use();
+  return createMemo(() => {
+    const run = thread.latestRun();
+    if (!running() || run === null) return null;
+    const ids = thread.timelineIds();
+    function* newestFirst() {
+      for (let index = ids.length - 1; index >= 0; index -= 1)
+        yield timelineItem(thread.state, ids[index]!);
+    }
+    const runOrdinal = (runId: string) => thread.state.Runs[runId]?.ordinal;
+    const current = currentTodoSteps(newestFirst(), run, runOrdinal);
+    if (current === null) return null;
+    const earlier = earlierCompletedSteps(
+      Object.values(thread.state.Plans).flatMap((plan) =>
+        plan.kind === "todo_list" &&
+        plan.runId !== null &&
+        (runOrdinal(plan.runId) ?? Infinity) < run.ordinal
+          ? [plan.steps]
+          : [],
+      ),
+    );
+    const steps = liveSteps(current, earlier);
+    if (steps.length === 0) return null;
+    return {
+      Steps: steps,
+      Active: activeStepIndex(steps),
+      Done: steps.filter((step) => step.status === "completed").length,
+    };
+  });
+}
+
+export const checklistRows = (checklist: IChecklist | null): number =>
+  checklist === null ? 0 : Math.min(checklist.Steps.length, CHECKLIST_ROWS);
+
+function closeOnOutside(
+  popover: HTMLElement | undefined,
+  toggle: HTMLElement,
+  onClose: () => void,
+): void {
+  if (popover === undefined) return;
+  const onPointerDown = (event: PointerEvent) => {
+    const target = event.target as Node;
+    if (!popover.contains(target) && !toggle.contains(target)) onClose();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && !event.defaultPrevented) onClose();
+  };
+  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener("keydown", onKeyDown);
+  onCleanup(() => {
+    document.removeEventListener("pointerdown", onPointerDown, true);
+    document.removeEventListener("keydown", onKeyDown);
+    // An emptied list unmounts the popover, and the next one shouldn't reopen it.
+    onClose();
+  });
+}
+
+function ChecklistStep(props: { step: IChecklistStep; active: boolean }) {
+  return (
+    <li
+      class="checklist-step"
+      classList={{ active: props.active, done: props.step.status === "completed" }}
+    >
+      <Show when={props.step.status === "completed"} fallback={<Square />}>
+        <SquareCheck />
+      </Show>
+      <span>{props.step.text}</span>
+    </li>
+  );
+}
+
+function ChecklistSteps(props: { checklist: IChecklist; start: number; end: number }) {
+  const steps = () => props.checklist.Steps.slice(props.start, props.end);
+  return (
+    <ol class="checklist-steps">
+      <Index each={steps()}>
+        {(step, index) => (
+          <ChecklistStep step={step()} active={props.start + index === props.checklist.Active} />
+        )}
+      </Index>
+    </ol>
+  );
+}
+
+function ChecklistPopover(props: {
+  checklist: IChecklist;
+  toggle: HTMLButtonElement;
+  onClose: () => void;
+}) {
+  const [popover, setPopover] = createSignal<HTMLDivElement>();
+  onMount(() => closeOnOutside(popover(), props.toggle, props.onClose));
+  return (
+    <div class="queued-popover" role="dialog" aria-label="To-do list" ref={setPopover}>
+      <ChecklistSteps checklist={props.checklist} start={0} end={props.checklist.Steps.length} />
+    </div>
+  );
+}
+
+// Every row's height is fixed, so a step changing status never changes the list's height.
+function Checklist(props: { checklist: IChecklist }) {
+  const [open, setOpen] = createSignal(false);
+  const [toggle, setToggle] = createSignal<HTMLButtonElement>();
+  const shown = () => checklistWindow(props.checklist.Steps.length, props.checklist.Active);
+  const hidden = () => props.checklist.Steps.length > CHECKLIST_ROWS;
+  const count = () => `${props.checklist.Done}/${props.checklist.Steps.length}`;
+  return (
+    <>
+      <ChecklistSteps checklist={props.checklist} start={shown().start} end={shown().end} />
+      <Show when={hidden()} fallback={<span class="checklist-count">{count()}</span>}>
+        <button
+          ref={setToggle}
+          class="turn-status-queued checklist-count"
+          aria-expanded={open()}
+          aria-label={`${count()} done, show all steps`}
+          onClick={() => setOpen((held) => !held)}
+        >
+          {count()}
+          <ChevronUp classList={{ open: open() }} />
+        </button>
+        <Show when={open() && toggle()}>
+          {(held) => (
+            <ChecklistPopover
+              checklist={props.checklist}
+              toggle={held()}
+              onClose={() => setOpen(false)}
+            />
+          )}
+        </Show>
+      </Show>
+    </>
   );
 }
 
@@ -171,28 +330,10 @@ function QueuedPopover(props: {
 }) {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
-  const [popoverElement, setPopoverElement] = createSignal<HTMLDivElement>();
-  onMount(() => {
-    const popover = popoverElement();
-    if (popover === undefined) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!popover.contains(target) && !props.toggle.contains(target)) props.onClose();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) props.onClose();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    onCleanup(() => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-      // An emptied queue unmounts the popover, and the next queued message shouldn't reopen it.
-      props.onClose();
-    });
-  });
+  const [popover, setPopover] = createSignal<HTMLDivElement>();
+  onMount(() => closeOnOutside(popover(), props.toggle, props.onClose));
   return (
-    <div class="queued-popover" role="dialog" aria-label="Queued messages" ref={setPopoverElement}>
+    <div class="queued-popover" role="dialog" aria-label="Queued messages" ref={setPopover}>
       <div class="banner-title">
         <strong>Queued</strong>
         <Show when={!props.working}>
@@ -211,17 +352,36 @@ function QueuedPopover(props: {
 }
 
 /**
- * One line above the composer for the running turn and the queue. It keeps its height whether or
- * not it has anything to say, so showing it never moves the timeline.
+ * One line above the composer for the running turn and the queue, or the turn's to-do list once it
+ * has one. The line keeps its height whether or not it has anything to say, so showing it never
+ * moves the timeline.
  */
-export function TurnStatus(props: { state: "running" | "waiting" | null }) {
+export function TurnStatus(props: {
+  state: "running" | "waiting" | null;
+  checklist: IChecklist | null;
+}) {
   const thread = OpenThread.use();
   const [open, setOpen] = createSignal(false);
   const [toggle, setToggle] = createSignal<HTMLButtonElement>();
   const queued = () => thread.queuedRunIds().length;
   return (
-    <div class="turn-status" classList={{ idle: props.state === null && queued() === 0 }}>
-      <Show when={props.state}>{(state) => <WorkingText waiting={state() === "waiting"} />}</Show>
+    <div
+      class="turn-status"
+      classList={{
+        idle: props.state === null && queued() === 0,
+        checklist: props.checklist !== null,
+      }}
+    >
+      <Show
+        when={props.checklist}
+        fallback={
+          <Show when={props.state}>
+            {(state) => <WorkingText waiting={state() === "waiting"} />}
+          </Show>
+        }
+      >
+        {(checklist) => <Checklist checklist={checklist()} />}
+      </Show>
       <Show when={queued() > 0}>
         <button
           ref={setToggle}

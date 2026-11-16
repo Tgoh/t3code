@@ -70,6 +70,7 @@ declare module "treflex" {
   interface IResourceRegistry {
     "Project/Clones": { Type: "projectClones" };
     "Project/Favicons": { Type: "projectFavicons" };
+    "Server/Keybindings": { Type: "serverKeybindings" };
   }
 }
 
@@ -119,6 +120,10 @@ export function* init(draft: IEnvironment): IActionGenerator {
   });
   yield* openResource(draft, "Project/Favicons", {
     Type: "projectFavicons",
+    EnvironmentId: draft.EnvironmentId,
+  });
+  yield* openResource(draft, "Server/Keybindings", {
+    Type: "serverKeybindings",
     EnvironmentId: draft.EnvironmentId,
   });
   yield* start(loadProviders, draft);

@@ -21,6 +21,7 @@ import {
   queueCommandImpl,
   respondRequestImpl,
   searchEntriesImpl,
+  searchThreadsImpl,
   modelFavoritesImpl,
   serverProvidersImpl,
   setModelFavoriteImpl,
@@ -44,6 +45,7 @@ import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelM
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
 import { projectFavicons } from "./Infrastructure/projectFavicons";
+import { serverKeybindings } from "./Infrastructure/serverKeybindings";
 import { shellStream } from "./Infrastructure/shellStream";
 import { rememberedTerminalImpl, rememberTerminalImpl } from "./Infrastructure/terminalMemory";
 import { sourceControlImplementations } from "./Infrastructure/sourceControlImpl";
@@ -79,6 +81,7 @@ runtime.registerImplementation(projectCommandImpl);
 runtime.registerImplementation(addProjectSettingsImpl);
 runtime.registerImplementation(browseFoldersImpl);
 runtime.registerImplementation(searchEntriesImpl);
+runtime.registerImplementation(searchThreadsImpl);
 runtime.registerImplementation(startCloneImpl);
 runtime.registerImplementation(cloneControlImpl);
 runtime.registerImplementation(newProjectImpl);
@@ -105,6 +108,7 @@ runtime.registerResourceType("vcsStatus", vcsStatus);
 runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);
 runtime.registerResourceType("projectFavicons", projectFavicons);
+runtime.registerResourceType("serverKeybindings", serverKeybindings);
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);

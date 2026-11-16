@@ -1,10 +1,12 @@
 // @effect-diagnostics globalDate:off -- View-only snooze presets from the sidebar's tick, outside any Effect runtime.
 import { formatWorkingDurationLabel } from "@t3tools/client-runtime/state/models";
 import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
+import { findSearchTokenRanges, type SearchRange } from "@t3tools/shared/paletteSearch";
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 
 import { ProjectBadge, ProviderIcon } from "./brand";
 import Environment from "./Environment";
+import { Highlighted } from "./Highlighted";
 import {
   AlarmClockOff,
   ArrowRightLeft,
@@ -41,7 +43,7 @@ import { relativeTime, timeUntil } from "./timestamps";
 import { hoverCard } from "./tooltip";
 import { longPress } from "./viewport";
 
-const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
+export const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "Setting up",
   working: "Working",
   waiting: "Waiting",
@@ -181,10 +183,21 @@ export function ThreadCard(props: {
   second: number;
   onMenu: (x: number, y: number) => void;
   onRenamed: (title: string | null) => void;
+  /** As a search result: where the title matches, the matching message, and the keyboard's row. */
+  search?: {
+    ranges: ReadonlyArray<SearchRange>;
+    snippet: string | null;
+    query: string;
+    highlighted: boolean;
+    id: string;
+    onSelect: () => void;
+    onHover: () => void;
+  };
 }) {
   const environment = Environment.use();
   const shell = Shell.use();
-  const select = () => environment.selectThread(props.thread.id);
+  const select = () =>
+    props.search ? props.search.onSelect() : environment.selectThread(props.thread.id);
   const status = () => {
     const held = sidebarStatus(props.thread, shell.subagentRequests()[props.thread.id]);
     return held === "done" && props.selected ? null : held;
@@ -199,7 +212,16 @@ export function ThreadCard(props: {
   };
   const press = longPress((x, y) => props.onMenu(x, y));
   const title = () => (
-    <Show when={props.renaming} fallback={<span class="card-title">{props.thread.title}</span>}>
+    <Show
+      when={props.renaming}
+      fallback={
+        <span class="card-title">
+          <Show when={props.search} fallback={props.thread.title}>
+            {(search) => <Highlighted text={props.thread.title} ranges={search().ranges} />}
+          </Show>
+        </span>
+      }
+    >
       <RenameInput title={props.thread.title} onDone={props.onRenamed} />
     </Show>
   );
@@ -209,7 +231,11 @@ export function ThreadCard(props: {
     </Show>
   );
   return (
-    <li>
+    <li
+      id={props.search?.id}
+      role={props.search ? "option" : undefined}
+      aria-selected={props.search ? props.search.highlighted : undefined}
+    >
       <div
         class="thread-card"
         role="button"
@@ -222,6 +248,7 @@ export function ThreadCard(props: {
           compact: props.compact,
           main: isMainThread(props.thread),
           selected: props.selected,
+          highlighted: props.search?.highlighted === true,
           receded:
             !props.selected &&
             (status() === null ||
@@ -244,7 +271,10 @@ export function ThreadCard(props: {
           props.onMenu(event.clientX, event.clientY);
         }}
         onPointerDown={press.onPointerDown}
-        onPointerMove={press.onPointerMove}
+        onPointerMove={(event) => {
+          press.onPointerMove(event);
+          if (props.search && !props.search.highlighted) props.search.onHover();
+        }}
         onPointerUp={press.onPointerUp}
         onPointerCancel={press.onPointerCancel}
       >
@@ -341,6 +371,16 @@ export function ThreadCard(props: {
             {title()}
             {provider()}
           </span>
+        </Show>
+        <Show when={props.search?.snippet}>
+          {(snippet) => (
+            <span class="card-snippet">
+              <Highlighted
+                text={snippet()}
+                ranges={findSearchTokenRanges(snippet(), props.search?.query ?? "")}
+              />
+            </span>
+          )}
         </Show>
       </div>
     </li>

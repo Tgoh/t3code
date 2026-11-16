@@ -322,8 +322,13 @@ code {
   position: fixed;
 }
 
-.layout.sidebar-sheet {
+.layout.sidebar-sheet,
+.layout.sidebar-collapsed {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.layout.sidebar-collapsed > .sidebar {
+  display: none;
 }
 
 .layout.sidebar-sheet > .sidebar {
@@ -554,26 +559,133 @@ main {
   width: auto;
 }
 
-.sidebar-tools {
+/* Follows SidebarThreadHeader in apps/web/src/components/sidebar/SidebarThreadHeader.tsx: the
+   search field shrinks to leave the toolbar on the same row. */
+.sidebar-header-row {
   align-items: center;
   display: flex;
   flex: none;
   gap: 2px;
-  height: 48px;
-  padding: 0 10px;
+  padding: 4px 8px 8px;
   position: relative;
 }
 
-.sidebar-tools .icon-button {
+.sidebar-header-row > .icon-button {
   color: color-mix(in srgb, var(--sidebar-muted-foreground) 85%, var(--sidebar));
 }
 
-.sidebar-tools .icon-button:hover {
+.sidebar-header-row > .icon-button:hover,
+.sidebar-header-row > .icon-button.pressed {
   background: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
 }
 
-.sidebar-tools .icon-button svg {
+.sidebar-header-row > .icon-button svg {
   opacity: 1;
+}
+
+.sidebar-header-row > .icon-button.narrow {
+  width: 20px;
+}
+
+.sidebar-search {
+  align-items: center;
+  border-radius: 6px;
+  color: var(--sidebar-muted-foreground);
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  height: 32px;
+  margin-right: 2px;
+  min-width: 0;
+  padding: 0 4px 0 8px;
+  position: relative;
+}
+
+.sidebar-search:hover,
+.sidebar-search:focus-within {
+  background: var(--sidebar-row-hover);
+  color: var(--sidebar-foreground);
+}
+
+.sidebar-search:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 70%, transparent);
+}
+
+.sidebar-search > svg {
+  flex: none;
+  height: 16px;
+  width: 16px;
+}
+
+.sidebar-search input {
+  background: none;
+  border: 0;
+  color: var(--sidebar-foreground);
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 0;
+  outline: none;
+}
+
+.sidebar-search input::placeholder {
+  color: var(--sidebar-muted-foreground);
+}
+
+.sidebar-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.sidebar-search .icon-button {
+  color: color-mix(in srgb, var(--sidebar-muted-foreground) 85%, var(--sidebar));
+}
+
+.sidebar-search .icon-button:hover,
+.sidebar-search .icon-button.pressed {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
+}
+
+.search-folder {
+  align-items: center;
+  color: var(--sidebar-foreground);
+  display: flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+}
+
+.thread-card.highlighted:not(.selected) {
+  background: var(--sidebar-row-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 50%, transparent);
+}
+
+.card-snippet {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--sidebar-secondary-label);
+  display: -webkit-box;
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.card-title mark,
+.card-snippet mark,
+.palette-row mark {
+  background: none;
+  color: inherit;
+  font-weight: 700;
+}
+
+.menu-check {
+  flex: none;
+  height: 14px;
+  width: 14px;
 }
 
 .picker-overlay.narrow {
@@ -586,11 +698,28 @@ main {
 }
 
 .connection {
-  color: var(--warning-foreground);
-  flex: 1;
+  color: #fff;
   font-size: 12px;
   font-weight: 500;
-  min-width: 0;
+  margin-left: auto;
+  position: relative;
+}
+
+.menu-heading {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  display: flex;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 8px 8px 4px;
+}
+
+.menu-heading svg {
+  height: 14px;
+  width: 14px;
 }
 
 .sidebar-error {
@@ -1030,6 +1159,7 @@ main {
 
 .palette-row-text {
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
 }
@@ -1041,9 +1171,63 @@ main {
   white-space: nowrap;
 }
 
+/* Follows ThreadRowLeadingStatus and ThreadCommandSubtitle in apps/web. */
+.palette-status {
+  align-items: center;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 500;
+  gap: 4px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+
+.palette-status-dot {
+  background: currentColor;
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+}
+
+.palette-meta {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.palette-meta svg,
+.palette-meta img {
+  flex: none;
+  height: 12px;
+  width: 12px;
+}
+
+.palette-meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-meta-dot {
+  flex: none;
+  opacity: 0.5;
+}
+
+.palette-row-time {
+  color: var(--muted-foreground);
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .palette-row-detail {
   color: var(--muted-foreground);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .palette-summary {
@@ -2810,6 +2994,69 @@ details[open] > summary .work-chevron {
 
 .turn-status.idle {
   visibility: hidden;
+}
+
+.chat-stage.has-checklist {
+  --checklist-row-height: 22px;
+  --turn-status-height: calc(var(--checklist-rows) * var(--checklist-row-height) + 8px);
+}
+
+.turn-status.checklist {
+  align-items: flex-start;
+  padding-block: 4px;
+}
+
+.checklist-steps {
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.checklist-step {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  height: var(--checklist-row-height, 22px);
+}
+
+.checklist-step svg {
+  flex: none;
+  height: 14px;
+  width: 14px;
+}
+
+.checklist-step span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checklist-step.active {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.checklist-step.done span {
+  text-decoration: line-through;
+}
+
+.checklist-count,
+.turn-status.checklist .turn-status-queued {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  height: var(--checklist-row-height);
+}
+
+.checklist-count {
+  margin-left: auto;
+}
+
+.queued-popover .checklist-steps {
+  color: var(--muted-foreground);
 }
 
 .turn-status-text {
