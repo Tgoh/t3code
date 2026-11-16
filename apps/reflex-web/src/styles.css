@@ -67,7 +67,7 @@
   --composer-shadow: 0 1px 2px rgb(0 0 0 / 5%);
   --media-ring: rgb(0 0 0 / 9%);
 
-  --sidebar: var(--zinc-50);
+  --sidebar: oklch(96% 0.001 286.375);
   --sidebar-foreground: var(--zinc-900);
   --sidebar-muted-foreground: var(--zinc-500);
   --sidebar-border: var(--zinc-200);
