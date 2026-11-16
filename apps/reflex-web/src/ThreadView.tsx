@@ -24,8 +24,8 @@ import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
 import { TimelineResponse } from "./TimelineResponse";
-import { QueuedMessage } from "./TimelineRows";
 import { firstAfterChange, grow, INITIAL_ROWS, keepsWindow, trimToTail } from "./timelineWindow";
+import { TurnStatus } from "./TurnStatus";
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
@@ -126,9 +126,10 @@ const ThreadBody = ThreadSession.provider(() => {
     const status = stream.status();
     return status.State === "ended" ? status.Reason : null;
   };
-  const runState = () => {
+  const turnState = () => {
     const run = thread.latestRun();
-    return run === null ? null : runStatus(run.status);
+    const status = run === null ? null : runStatus(run.status);
+    return status === "running" || status === "waiting" ? status : null;
   };
   // Once per completion, so a thread marked unread while open stays unread until the next one.
   let visitedCompletion: string | null | undefined;
@@ -372,40 +373,11 @@ const ThreadBody = ThreadSession.provider(() => {
                 Scroll to end
               </button>
             </Show>
+            <TurnStatus state={turnState()} />
             <For each={thread.pendingQuestionIds()}>
               {(id) => <RequestBanner state={thread.state.RuntimeRequests[id]!} />}
             </For>
-            <Show when={thread.queuedRunIds().length > 0}>
-              <div class="composer-banner">
-                <div class="banner-title">
-                  <strong>Queued</strong>
-                  <Show when={runState() !== "running" && runState() !== "waiting"}>
-                    <button
-                      class="button"
-                      disabled={session.queueing()}
-                      onClick={() => session.queueAction(null)}
-                    >
-                      Resume
-                    </button>
-                  </Show>
-                </div>
-                <For each={thread.queuedRunIds()}>
-                  {(runId) => (
-                    <p class="queued">
-                      <button
-                        class="button"
-                        disabled={session.queueing()}
-                        onClick={() => session.queueAction(runId)}
-                      >
-                        Cancel
-                      </button>
-                      <QueuedMessage runId={runId} />
-                    </p>
-                  )}
-                </For>
-              </div>
-            </Show>
-            <Composer active={runState() === "running" || runState() === "waiting"} />
+            <Composer active={turnState() !== null} />
           </div>
         </div>
         <Show when={terminalOpen()}>

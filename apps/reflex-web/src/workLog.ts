@@ -286,7 +286,7 @@ export function workLogEntryIsToolLike(entry: IWorkLogEntry): boolean {
   );
 }
 
-export function workEntryIndicatesToolSuccess(entry: IWorkLogEntry): boolean {
+function workEntryIndicatesToolSuccess(entry: IWorkLogEntry): boolean {
   if (
     !workLogEntryIsToolLike(entry) ||
     workEntryIndicatesToolFailure(entry) ||

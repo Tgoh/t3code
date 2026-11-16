@@ -85,7 +85,6 @@ function layout(
     Latest: options.latest ?? true,
     LatestRun: options.run === undefined ? settled : options.run,
     Working: options.working ?? false,
-    PendingApproval: false,
     Expanded: (key) => options.expanded?.includes(key) === true,
   });
 }
@@ -100,13 +99,9 @@ const shape = (rows: ILayoutRow[]) =>
       case "group":
         return `group ${row.Ids.join(",")}`;
       case "fold":
-        return `fold ${row.Label}`;
-      case "live":
-        return `live ${row.Id} of ${row.Ids.join(",")}${row.Active ? "" : " settled"}`;
+        return row.Running ? "fold running" : `fold ${row.Label}`;
       case "meta":
         return `meta ${row.Id}${row.Files === null ? "" : ` with ${row.Files}`}`;
-      default:
-        return row.Kind;
     }
   });
 
@@ -201,52 +196,71 @@ describe("the timeline's turn folds", () => {
       "a +meta",
     ]);
   });
+
+  it("keeps the reply before a steer, running or settled, so the steer doesn't move", () => {
+    const steered = [
+      user("u", 0),
+      command("c1", 1),
+      reply("a1", 2),
+      user("s", 3, { runId: "run-1", inputIntent: "steer" }),
+      command("c2", 4),
+      reply("a2", 9),
+    ];
+    const settledShape = ["u", "fold Worked for 15s", "a1", "s", "fold Continued for 6s", "a2"];
+    expect(shape(layout(steered))).toEqual([...settledShape.slice(0, -1), "a2 +meta"]);
+    expect(shape(layout(steered, { run: running, working: true }))).toEqual([
+      "u",
+      "fold running",
+      ...settledShape.slice(2),
+    ]);
+  });
 });
 
 describe("a running turn", () => {
-  it("shows how long it has worked, and its trailing tools as one live row", () => {
-    const rows = layout(
-      [
-        user("u", 0),
-        command("c1", 1),
-        command("c2", 2, { status: "running", exitCode: undefined }),
-      ],
-      { run: running, working: true },
-    );
-    expect(shape(rows)).toEqual(["u", "working", "live c2 of c1,c2"]);
-  });
+  const live = { run: running, working: true };
+  const runningCommand = (id: string, second: number) =>
+    command(id, second, { status: "running", exitCode: undefined });
 
-  it("thinks once no tool is running and keeps finished tools in the live row", () => {
-    expect(shape(layout([user("u", 0)], { run: running, working: true }))).toEqual([
+  it("shows its fold from the start, before it has any work to hide", () => {
+    expect(shape(layout([user("u", 0)], live))).toEqual(["u", "fold running"]);
+    expect(shape(layout([user("u", 0), reply("a", 1, { streaming: true })], live))).toEqual([
       "u",
-      "working",
-      "thinking",
+      "fold running",
+      "a",
     ]);
-    const rows = layout([user("u", 0), reply("a", 1), command("c1", 2)], {
-      run: running,
-      working: true,
-    });
-    expect(shape(rows)).toEqual(["u", "working", "a", "live c1 of c1"]);
   });
 
-  it("gives a reply no actions until its run settles", () => {
-    const rows = layout([user("u", 0), command("c1", 1), reply("a", 2)], {
-      run: running,
-      working: true,
-    });
-    expect(shape(rows)).toEqual(["u", "working", "single c1", "a", "thinking"]);
+  it("hides its work behind the fold, running or failed, and shows only its latest reply", () => {
+    const failing = command("c2", 3, { status: "failed", exitCode: 1 });
+    expect(shape(layout([user("u", 0), command("c1", 1), runningCommand("c3", 2)], live))).toEqual([
+      "u",
+      "fold running",
+    ]);
+    const rows = layout(
+      [user("u", 0), command("c1", 1), reply("a1", 2), failing, reply("a2", 4)],
+      live,
+    );
+    expect(shape(rows)).toEqual(["u", "fold running", "a2"]);
+    const after = layout([user("u", 0), command("c1", 1), reply("a1", 2), failing], live);
+    expect(shape(after)).toEqual(["u", "fold running", "a1"]);
   });
 
-  it("ends a reasoning row that something followed", () => {
+  it("changes only the fold's label and the reply's actions when it settles", () => {
+    const turn = [user("u", 0), command("c1", 1), reply("a", 2)];
+    expect(shape(layout(turn, live))).toEqual(["u", "fold running", "a"]);
+    expect(shape(layout(turn))).toEqual(["u", "fold Worked for 15s", "a +meta"]);
+  });
+
+  it("opens mid-turn to show its work, with a reasoning row that something followed ended", () => {
     const rows = layout(
       [
         user("u", 0),
         item("reasoning", "t", 1, { text: "Hmm", status: "running" }),
-        command("c1", 2, { status: "running", exitCode: undefined }),
+        runningCommand("c1", 2),
       ],
-      { run: running, working: true },
+      { ...live, expanded: ["fold:run-1"] },
     );
-    expect(shape(rows)).toEqual(["u", "working", "live c1 of t,c1"]);
+    expect(shape(rows)).toEqual(["u", "fold running", "group t,c1"]);
   });
 });
 

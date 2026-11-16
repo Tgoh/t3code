@@ -5,13 +5,7 @@ import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 
 import type { IWireTurnItem } from "./Infrastructure/wire";
-import {
-  workEntryIndicatesToolSuccess,
-  workEntryIsActiveTurnActivity,
-  workEntryIsVisibleInGroup,
-  workLogEntryIsToolLike,
-  workLogEntry,
-} from "./workLog";
+import { workEntryIsVisibleInGroup, workLogEntryIsToolLike, workLogEntry } from "./workLog";
 
 /**
  * What the layout needs to know about one row, kept to fields that settle, so a streaming text
@@ -28,14 +22,11 @@ export interface IEntryFacts {
   InProgress: boolean;
   ToolLike: boolean;
   Failed: boolean;
-  Success: boolean;
-  Activity: boolean;
   Visible: boolean;
   VisibleLive: boolean;
   Standalone: boolean;
   Compaction: boolean;
   QuestionAnswer: boolean;
-  Thought: boolean;
   FailedRun: "usage_limit" | "other" | null;
   Persistent: boolean;
   LiveSubagent: boolean;
@@ -71,14 +62,11 @@ const NO_WORK = {
   InProgress: false,
   ToolLike: false,
   Failed: false,
-  Success: false,
-  Activity: false,
   Visible: false,
   VisibleLive: false,
   Standalone: false,
   Compaction: false,
   QuestionAnswer: false,
-  Thought: false,
   FailedRun: null,
 } as const;
 
@@ -135,8 +123,6 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
     InProgress: entry.toolLifecycleStatus === "inProgress",
     ToolLike: workLogEntryIsToolLike(entry),
     Failed: workEntryDisplayIndicatesToolFailure(entry),
-    Success: workEntryIndicatesToolSuccess(entry),
-    Activity: workEntryIsActiveTurnActivity(entry),
     Visible: workEntryIsVisibleInGroup(entry, false),
     VisibleLive: workEntryIsVisibleInGroup(entry, true),
     Standalone:
@@ -148,7 +134,6 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
       entry.questionAnswer !== undefined,
     Compaction: entry.sourceActivityKind === "context-compaction",
     QuestionAnswer: entry.questionAnswer !== undefined,
-    Thought: item.type === "reasoning" && item.text.trim() !== "",
     FailedRun:
       failedError && item.parentItemId === null
         ? item.failure.class === "usage_limit"
@@ -180,7 +165,6 @@ export interface IResponseInput {
   Latest: boolean;
   LatestRun: ILatestRun | null;
   Working: boolean;
-  PendingApproval: boolean;
   Expanded: (key: string) => boolean;
 }
 
@@ -188,19 +172,15 @@ export type ILayoutRow =
   | { Kind: "item"; Key: string; Id: string; Meta: boolean }
   | { Kind: "single"; Key: string; Id: string }
   | { Kind: "group"; Key: string; Ids: string[]; Expanded: boolean; At: string }
-  | { Kind: "fold"; Key: string; Label: string; Expanded: boolean; At: string }
   | {
-      Kind: "live";
+      Kind: "fold";
       Key: string;
-      GroupKey: string;
-      Id: string;
-      Ids: string[];
+      Label: string;
       Expanded: boolean;
-      Active: boolean;
-      ThoughtId: string | null;
+      At: string;
+      /** The run is still working, so the view times it live. */
+      Running: boolean;
     }
-  | { Kind: "working"; Key: string }
-  | { Kind: "thinking"; Key: string; GroupKey: string | null; Ids: string[]; Expanded: boolean }
   | { Kind: "meta"; Key: string; Id: string; Files: string | null };
 
 export const groupKey = (anchorId: string) => `group:${anchorId}`;
@@ -230,8 +210,11 @@ interface IFold {
   Key: string;
   Label: string;
   At: string;
+  Running: boolean;
   Hidden: Set<string>;
 }
+
+const foldKey = (runId: string) => `fold:${runId}`;
 
 interface ITurnGroup {
   Entries: IEntryFacts[];
@@ -271,11 +254,13 @@ function liveSubagentIds(entries: ReadonlyArray<IEntryFacts>): Set<string> {
   return visible;
 }
 
-// Follows deriveTurnFolds in apps/web/src/components/chat/MessagesTimeline.logic.ts.
+// Follows deriveTurnFolds in apps/web/src/components/chat/MessagesTimeline.logic.ts, except that a
+// running run folds as it will once settled, so settling changes only the fold's label.
 function turnFolds(
   input: IResponseInput,
   entries: ReadonlyArray<IEntryFacts>,
   unfolded: ReadonlySet<string>,
+  running: ReadonlySet<string>,
 ): Map<string, IFold> {
   const interrupted = new Set<string>();
   for (const entry of entries) {
@@ -343,16 +328,26 @@ function turnFolds(
   const folds = new Map<string, IFold>();
   for (const [runId, group] of groups) {
     if (unfolded.has(runId) || interrupted.has(runId) || runlessFailed.has(runId)) continue;
-    if (group.Streaming) continue;
+    const isRunning = running.has(runId);
+    if (group.Streaming && !isRunning) continue;
     const hidden = new Set<string>();
     const terminalIndex = group.Terminal
       ? group.Entries.indexOf(group.Terminal)
       : group.Entries.length;
     // Folded dividers lose their place in the turn, so only the latest stays visible.
     const visibleCompaction = group.Entries.findLast((entry) => entry.Compaction)?.Id;
+    // Unlike stock, each steer's segment keeps its last reply, so a reply after a steer doesn't
+    // hide the one above the steer and pull the steer up.
+    const segmentReplies = new Set<IEntryFacts>();
+    for (const [index, { Index }] of group.Steers.entries()) {
+      const before = group.Entries.slice(group.Steers[index - 1]?.Index ?? 0, Index);
+      const reply = before.findLast((entry) => entry.Kind === "assistant");
+      if (reply !== undefined) segmentReplies.add(reply);
+    }
     for (const [index, entry] of group.Entries.entries()) {
-      if (entry === group.Terminal) continue;
-      const foldableTrailing = entry.Kind === "work" && !entry.InProgress && !entry.Failed;
+      if (entry === group.Terminal || segmentReplies.has(entry)) continue;
+      const foldableTrailing =
+        entry.Kind === "work" && (isRunning || (!entry.InProgress && !entry.Failed));
       if (!entry.Compaction && index > terminalIndex && !foldableTrailing) continue;
       if (entry.Id === visibleCompaction || entry.Persistent || live.has(entry.Id)) continue;
       if (entry.Type === "notification" || entry.QuestionAnswer) continue;
@@ -360,7 +355,7 @@ function turnFolds(
     }
     const hidesWork = (segment: ReadonlyArray<IEntryFacts>) =>
       segment.some((entry) => hidden.has(entry.Id) && !entry.Compaction);
-    if (!hidesWork(group.Entries)) continue;
+    if (!isRunning && !hidesWork(group.Entries)) continue;
     const first = group.Entries[0]!;
     const last = group.Entries.at(-1)!;
     const run = input.LatestRun?.Id === runId ? input.LatestRun : null;
@@ -382,9 +377,10 @@ function turnFolds(
     const firstSegment = group.Entries.slice(0, group.Steers[0]?.Index);
     folds.set(group.AnchorId, {
       RunId: runId,
-      Key: `fold:${runId}`,
-      Label: label,
+      Key: foldKey(runId),
+      Label: isRunning ? "Working" : label,
       At: group.Start ?? first.At,
+      Running: isRunning,
       Hidden: segmentHidden(firstSegment),
     });
     for (const [index, { Index, Steer }] of group.Steers.entries()) {
@@ -400,6 +396,7 @@ function turnFolds(
         Key: `fold:${runId}:steer:${Steer.Id}`,
         Label: ms === null ? "Continued" : `Continued for ${formatDuration(ms)}`,
         At: Steer.At,
+        Running: false,
         Hidden: segmentHidden(segment),
       });
     }
@@ -416,7 +413,7 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
   // A reasoning row that something followed has ended, whatever its status says.
   const entries = input.Entries.map((entry, index) =>
     entry.Type === "reasoning" && entry.InProgress && index !== latestIndex
-      ? { ...entry, InProgress: false, Activity: false, Success: true }
+      ? { ...entry, InProgress: false }
       : entry,
   );
   const working = input.Working && input.Latest;
@@ -436,58 +433,24 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
   const active = new Set<string>();
   if (unsettled !== null) active.add(unsettled);
   if (working) for (const entry of entries) if (entry.RunId !== null) active.add(entry.RunId);
-  const folds = turnFolds(input, entries, new Set([...active, ...failed]));
+  const running = new Set(
+    working && unsettled !== null && !failed.has(unsettled) ? [unsettled] : [],
+  );
+  const unfolded = new Set([...active, ...failed].filter((runId) => !running.has(runId)));
+  const folds = turnFolds(input, entries, unfolded, running);
   const collapsed = new Set<string>();
   for (const fold of folds.values()) {
     if (!input.Expanded(fold.Key)) for (const id of fold.Hidden) collapsed.add(id);
   }
   const inActiveRun = (entry: IEntryFacts) =>
-    working && entry.InProgress && entry.RunId !== null && entry.RunId === unsettled;
+    entry.InProgress && entry.RunId !== null && running.has(entry.RunId);
   const first = entries[0];
   const headerIndex =
     first !== undefined && (first.Kind === "user" || first.Type === "notification") ? 1 : 0;
-
-  const tail: IEntryFacts[] = [];
-  if (working && unsettled !== null) {
-    for (let index = entries.length - 1; index >= headerIndex; index -= 1) {
-      const entry = entries[index]!;
-      if (
-        entry.Kind !== "work" ||
-        entry.Standalone ||
-        entry.Compaction ||
-        entry.RunId === null ||
-        !active.has(entry.RunId) ||
-        collapsed.has(entry.Id) ||
-        folds.has(entry.Id)
-      )
-        break;
-      tail.push(entry);
-    }
-  }
-  tail.reverse();
-  const visibleTail = tail.filter((entry) => entry.VisibleLive);
-  const latestVisible = visibleTail.at(-1);
-  const latestRunning = visibleTail.findLast((entry) => entry.Activity);
-  const keepsLive =
-    latestRunning !== undefined ||
-    (latestVisible !== undefined && latestVisible.Success && !input.PendingApproval);
-  const latestFailed =
-    latestRunning === undefined && latestVisible !== undefined && latestVisible.Failed;
-  const tailAnchor = tail[0];
-  const liveRow: Extract<ILayoutRow, { Kind: "live" }> | null =
-    tailAnchor !== undefined && latestVisible !== undefined && !latestFailed
-      ? {
-          Kind: "live",
-          Key: keepsLive ? "live" : `live:${tailAnchor.Id}`,
-          GroupKey: groupKey(tailAnchor.Id),
-          Id: (latestRunning ?? latestVisible).Id,
-          Ids: visibleTail.map((entry) => entry.Id),
-          Expanded: input.Expanded(groupKey(tailAnchor.Id)),
-          Active: keepsLive,
-          ThoughtId: visibleTail.findLast((entry) => entry.Thought)?.Id ?? null,
-        }
-      : null;
-  const tailIds = new Set(liveRow !== null || latestFailed ? tail.map((entry) => entry.Id) : []);
+  // A running run's fold shows from its start, before it has any rows to hide.
+  const pendingFold = [...running].find(
+    (runId) => ![...folds.values()].some((fold) => fold.RunId === runId),
+  );
 
   const rows: ILayoutRow[] = [];
   const rowRuns: IRowRun[] = [];
@@ -495,20 +458,22 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
     rows.push(row);
     rowRuns.push({ RunId: runId, Trail: trail });
   };
-  let hasWorking = false;
-  let hasActivity = false;
-  const pushWorking = () => {
-    hasWorking = true;
-    push({ Kind: "working", Key: "working" });
+  const pushPendingFold = () => {
+    if (pendingFold === undefined) return;
+    const key = foldKey(pendingFold);
+    push({
+      Kind: "fold",
+      Key: key,
+      Label: "Working",
+      Expanded: input.Expanded(key),
+      At: first?.At ?? "",
+      Running: true,
+    });
   };
 
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
-    if (working && index === headerIndex) pushWorking();
-    if (liveRow !== null && entry.Id === latestVisible?.Id) {
-      push(liveRow);
-      hasActivity ||= liveRow.Active;
-    }
+    if (index === headerIndex) pushPendingFold();
     if (entry.Type === "run_interrupt_request") continue;
     const fold = folds.get(entry.Id);
     if (fold !== undefined) {
@@ -518,9 +483,10 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
         Label: fold.Label,
         Expanded: input.Expanded(fold.Key),
         At: fold.At,
+        Running: fold.Running,
       });
     }
-    if (collapsed.has(entry.Id) || tailIds.has(entry.Id)) continue;
+    if (collapsed.has(entry.Id)) continue;
 
     if (entry.Kind !== "work") {
       const meta =
@@ -556,7 +522,6 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
       if (
         next.Kind !== "work" ||
         breaksGroup(next) ||
-        tailIds.has(next.Id) ||
         collapsed.has(next.Id) ||
         folds.has(next.Id) ||
         next.RunId !== entry.RunId
@@ -568,21 +533,8 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
     index = cursor - 1;
     const visible = grouped.filter((held) => (inActiveRun(held) ? held.VisibleLive : held.Visible));
     if (visible.length === 0) continue;
-    const running = visible.filter(inActiveRun);
     const key = groupKey(entry.Id);
-    if (running.length > 0) {
-      push({
-        Kind: "live",
-        Key: `live:${entry.Id}`,
-        GroupKey: key,
-        Id: running.at(-1)!.Id,
-        Ids: visible.map((held) => held.Id),
-        Expanded: input.Expanded(key),
-        Active: true,
-        ThoughtId: null,
-      });
-      hasActivity = true;
-    } else if (visible.length === 1 && visible[0]!.ToolLike) {
+    if (visible.length === 1 && visible[0]!.ToolLike) {
       push({ Kind: "single", Key: entry.Id, Id: visible[0]!.Id }, entry.RunId, "tool");
     } else {
       push(
@@ -599,17 +551,7 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
     }
   }
 
-  if (working && !hasWorking && headerIndex >= entries.length) pushWorking();
-  if (working && (latestFailed || (!hasActivity && !input.PendingApproval))) {
-    const failedKey = latestFailed && tailAnchor !== undefined ? groupKey(tailAnchor.Id) : null;
-    push({
-      Kind: "thinking",
-      Key: "thinking",
-      GroupKey: failedKey,
-      Ids: failedKey === null ? [] : visibleTail.map((entry) => entry.Id),
-      Expanded: failedKey !== null && input.Expanded(failedKey),
-    });
-  }
+  if (headerIndex >= entries.length) pushPendingFold();
   return placeMeta(rows, rowRuns);
 }
 
