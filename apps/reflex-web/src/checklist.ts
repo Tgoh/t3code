@@ -25,6 +25,44 @@ export function currentTodoSteps(
   return null;
 }
 
+export interface IEarlierSteps {
+  Ids: Set<string>;
+  Texts: Set<string>;
+}
+
+// Claude's TodoWrite numbers its steps `todo-<i>` and Codex `step-<i+1>`, by position, so a new
+// list reuses the ids. Claude's task tools keep a task's id across turns. See claudeTodoSteps and
+// the plan steps in CodexAdapterV2.ts.
+const isPositional = (steps: readonly IChecklistStep[]): boolean =>
+  steps.every((step, index) => step.id === `todo-${index}` || step.id === `step-${index + 1}`);
+
+/** What earlier runs' to-do lists had finished, by id where ids last across lists, else by text. */
+export function earlierCompletedSteps(lists: Iterable<readonly IChecklistStep[]>): IEarlierSteps {
+  const earlier: IEarlierSteps = { Ids: new Set(), Texts: new Set() };
+  for (const steps of lists) {
+    const positional = isPositional(steps);
+    for (const step of steps) {
+      if (step.status !== "completed") continue;
+      earlier.Texts.add(step.text);
+      if (!positional) earlier.Ids.add(step.id);
+    }
+  }
+  return earlier;
+}
+
+/**
+ * The run's steps less those an earlier run finished, which an agent's list carries across turns.
+ * Where ids are positional, a step is matched by its text and has to be finished in both runs.
+ */
+export function liveSteps(
+  steps: readonly IChecklistStep[],
+  earlier: IEarlierSteps,
+): readonly IChecklistStep[] {
+  if (isPositional(steps))
+    return steps.filter((step) => step.status !== "completed" || !earlier.Texts.has(step.text));
+  return steps.filter((step) => !earlier.Ids.has(step.id));
+}
+
 /** The step being worked on: the running one, else the first not done, else -1. */
 export function activeStepIndex(steps: readonly IChecklistStep[]): number {
   const running = steps.findIndex((step) => step.status === "running");

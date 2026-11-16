@@ -17,7 +17,9 @@ import {
   CHECKLIST_ROWS,
   checklistWindow,
   currentTodoSteps,
+  earlierCompletedSteps,
   type IChecklistStep,
+  liveSteps,
 } from "./checklist";
 import Environment from "./Environment";
 import { ChevronUp, CornerUpRight, PenLine, Square, SquareCheck, X } from "./icons";
@@ -109,12 +111,20 @@ export function useChecklist(running: Accessor<boolean>): Accessor<IChecklist | 
       for (let index = ids.length - 1; index >= 0; index -= 1)
         yield timelineItem(thread.state, ids[index]!);
     }
-    const steps = currentTodoSteps(
-      newestFirst(),
-      run,
-      (runId) => thread.state.Runs[runId]?.ordinal,
+    const runOrdinal = (runId: string) => thread.state.Runs[runId]?.ordinal;
+    const current = currentTodoSteps(newestFirst(), run, runOrdinal);
+    if (current === null) return null;
+    const earlier = earlierCompletedSteps(
+      Object.values(thread.state.Plans).flatMap((plan) =>
+        plan.kind === "todo_list" &&
+        plan.runId !== null &&
+        (runOrdinal(plan.runId) ?? Infinity) < run.ordinal
+          ? [plan.steps]
+          : [],
+      ),
     );
-    if (steps === null) return null;
+    const steps = liveSteps(current, earlier);
+    if (steps.length === 0) return null;
     return {
       Steps: steps,
       Active: activeStepIndex(steps),

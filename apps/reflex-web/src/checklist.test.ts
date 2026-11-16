@@ -4,7 +4,9 @@ import {
   activeStepIndex,
   checklistWindow,
   currentTodoSteps,
+  earlierCompletedSteps,
   type IChecklistStep,
+  liveSteps,
 } from "./checklist";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 
@@ -41,6 +43,44 @@ describe("currentTodoSteps", () => {
 
   it("treats an empty list as none", () => {
     expect(currentTodoSteps([todo("run-2")], run2, runOrdinal)).toBeNull();
+  });
+});
+
+describe("liveSteps", () => {
+  const texts = (steps: readonly IChecklistStep[]) => steps.map((held) => held.text);
+  const named = (id: string, text: string, status: IChecklistStep["status"]) =>
+    ({ id, text, status }) as IChecklistStep;
+
+  it("leaves out steps an earlier run finished, by id, and keeps unfinished carried steps", () => {
+    const earlier = earlierCompletedSteps([
+      [named("task-1", "One", "completed"), named("task-2", "Two", "pending")],
+      [named("task-3", "Three", "completed")],
+    ]);
+    const current = [
+      named("task-1", "One", "completed"),
+      named("task-2", "Two", "completed"),
+      named("task-3", "Three", "completed"),
+      named("task-4", "One", "running"),
+    ];
+    expect(texts(liveSteps(current, earlier))).toEqual(["Two", "One"]);
+  });
+
+  it("matches positional ids by text and finished status", () => {
+    const earlier = earlierCompletedSteps([
+      [named("todo-0", "One", "completed"), named("todo-1", "Two", "pending")],
+    ]);
+    const current = [
+      named("todo-0", "Zero", "completed"),
+      named("todo-1", "One", "completed"),
+      named("todo-2", "Two", "completed"),
+      named("todo-3", "One", "pending"),
+    ];
+    expect(texts(liveSteps(current, earlier))).toEqual(["Zero", "Two", "One"]);
+  });
+
+  it("keeps a whole new list when nothing came before", () => {
+    const current = [named("step-1", "One", "completed")];
+    expect(liveSteps(current, earlierCompletedSteps([]))).toEqual(current);
   });
 });
 
