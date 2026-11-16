@@ -4885,6 +4885,13 @@ a.attachment-file-open:hover .attachment-file-name {
   transform: translateX(14px);
 }
 
+a.button {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  text-decoration: none;
+}
+
 .icon-button.outline {
   border-color: var(--input);
 }

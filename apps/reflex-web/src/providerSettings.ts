@@ -36,7 +36,13 @@ export interface IProviderRow {
 export function providerRows(config: IWireServerConfig): IProviderRow[] {
   const settings = config.settings;
   const favorites = settings.favorites ?? [];
-  return config.providers.map((provider: IWireProvider) => {
+  // Stock's other drivers wait behind Add provider until configured or enabled.
+  const listed = (provider: IWireProvider) =>
+    provider.driver === "codex" ||
+    provider.driver === "claudeAgent" ||
+    provider.enabled ||
+    settings.providerInstances?.[provider.instanceId] !== undefined;
+  return config.providers.filter(listed).map((provider: IWireProvider) => {
     const preferences = settings.providerModelPreferences?.[provider.instanceId];
     const hidden = new Set(preferences?.hiddenModels ?? []);
     const order = new Map((preferences?.modelOrder ?? []).map((slug, index) => [slug, index]));

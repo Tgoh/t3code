@@ -169,6 +169,28 @@ const config = (settings: Record<string, unknown> = {}): IWireServerConfig =>
   }) as unknown as IWireServerConfig;
 
 describe("provider settings", () => {
+  it("list Codex, Claude, and any other provider only once it's configured or enabled", () => {
+    const provider = (driver: string, enabled: boolean) => ({
+      instanceId: driver,
+      driver,
+      enabled,
+      status: "ready",
+      version: null,
+      models: [],
+    });
+    const listed = providerRows({
+      ...config({ providerInstances: { kiro: { driver: "kiro", enabled: false } } }),
+      providers: [
+        provider("codex", false),
+        provider("claudeAgent", true),
+        provider("cursor", false),
+        provider("grok", true),
+        provider("kiro", false),
+      ],
+    } as unknown as IWireServerConfig).map((row) => row.InstanceId);
+    expect(listed).toEqual(["codex", "claudeAgent", "grok", "kiro"]);
+  });
+
   it("list every model in the stored order, marking hidden ones and favorites", () => {
     const [claude] = providerRows(
       config({
