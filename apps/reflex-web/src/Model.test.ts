@@ -230,6 +230,11 @@ describe("thread events", () => {
       event("provider-turn.updated", providerTurn),
       event("provider-turn.updated", { id: "pt-1", status: "completed" }),
       event("thread.visited", { ...start.thread, title: "Visited" }, "2026-06-20T09:00:00.000Z"),
+      event("thread.visit-recorded", { lastVisitedAt: "2026-06-20T09:30:00.000Z" }),
+      event("thread.visit-recorded", {
+        lastVisitedAt: "2026-06-20T09:45:00.000Z",
+        opens: { openedAt: 1, score: 2, picks: [{ query: "vis", at: 1 }] },
+      }),
       event("run.updated", run("run-2", 2, "rolled_back")),
       event("turn-item.updated", commandItem("c-3", "run-2", 10)),
       event("turn-item.updated", commandItem("c-4", "run-1", 2)),

@@ -297,6 +297,12 @@ function applyEvent(
     case "thread.marked-unread":
       setThread(draft, event.payload);
       return;
+    // Follows applyOrchestrationV2ThreadVisit in packages/contracts/src/orchestrationV2.ts.
+    case "thread.visit-recorded":
+      if (draft.Thread === null) return;
+      draft.Thread.lastVisitedAt = event.payload.lastVisitedAt;
+      if (event.payload.opens !== undefined) draft.Thread.opens = event.payload.opens;
+      return;
     case "turn-item.updated":
       applyTurnItem(draft, event.payload);
       return;
