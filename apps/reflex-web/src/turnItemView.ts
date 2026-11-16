@@ -1,3 +1,5 @@
+import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
+
 import type { IWireTurnItem } from "./Infrastructure/wire";
 
 export interface ITurnItemView {
@@ -95,13 +97,17 @@ export function viewOf(
         `Web search: ${(item.patterns ?? []).join(", ")}`,
         (item.results ?? []).map((r) => lines(r.title, r.url)).join("\n"),
       );
-    case "dynamic_tool":
+    case "dynamic_tool": {
+      const sent = item.status === "completed" ? sentMessageFromToolItem(item) : undefined;
+      if (sent !== undefined)
+        return { Tone: "assistant", Label: "Assistant", Body: sent, Format: "markdown" };
       return tool(
         `Tool: ${item.toolName ?? "unnamed"}`,
         item.outputOmitted === true
           ? lines(json(item.input), "Output not sent with the thread.")
           : lines(json(item.input), json(item.output)),
       );
+    }
     case "subagent":
       return tool(`Subagent (${item.driver})`, lines(item.prompt, item.progress, item.result));
     case "approval_request":
