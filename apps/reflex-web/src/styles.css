@@ -651,6 +651,10 @@ main {
   margin-top: 4px;
 }
 
+.thread-card.compact {
+  padding-block: 6px;
+}
+
 .card-project {
   color: var(--sidebar-secondary-label);
   flex: 1;
@@ -2708,10 +2712,6 @@ details[open] > summary .work-chevron {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.turn-status-time {
-  color: var(--foreground);
 }
 
 .turn-status-queued {

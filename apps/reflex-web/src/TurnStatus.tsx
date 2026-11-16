@@ -68,15 +68,11 @@ function useActivity(): Accessor<string | null> {
   });
 }
 
+// The fold above carries the timer, so this line says only what the turn is doing now.
 function WorkingText(props: { waiting: boolean }) {
-  const timer = useWorkingTimer();
   const activity = useActivity();
   return (
-    <span class="turn-status-text">
-      {props.waiting ? "Waiting" : "Working"}
-      <Show when={timer()}>{(time) => <span class="turn-status-time"> {time()}</span>}</Show>
-      <Show when={activity()}>{(line) => <> · {line()}</>}</Show>
-    </span>
+    <span class="turn-status-text">{props.waiting ? "Waiting" : (activity() ?? "Thinking")}</span>
   );
 }
 

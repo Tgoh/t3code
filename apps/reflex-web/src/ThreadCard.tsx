@@ -171,6 +171,9 @@ export function ThreadCard(props: {
   projectName: string;
   model: IModelDisplay;
   previousProviders: string[];
+  /** Inside a project folder: one line, without the project. */
+  compact: boolean;
+  showProvider: boolean;
   selected: boolean;
   renaming: boolean;
   now: number;
@@ -194,6 +197,16 @@ export function ThreadCard(props: {
     environment.threadCommand(props.thread.id, command);
   };
   const press = longPress((x, y) => props.onMenu(x, y));
+  const title = () => (
+    <Show when={props.renaming} fallback={<span class="card-title">{props.thread.title}</span>}>
+      <RenameInput title={props.thread.title} onDone={props.onRenamed} />
+    </Show>
+  );
+  const provider = () => (
+    <Show when={props.showProvider}>
+      <ProviderIcon driver={props.model.Driver} size={14} />
+    </Show>
+  );
   return (
     <li>
       <div
@@ -205,6 +218,7 @@ export function ThreadCard(props: {
         data-tip-delay="150"
         ref={hoverCard(ThreadHoverCard, props)}
         classList={{
+          compact: props.compact,
           selected: props.selected,
           receded:
             !props.selected &&
@@ -233,10 +247,20 @@ export function ThreadCard(props: {
         onPointerCancel={press.onPointerCancel}
       >
         <span class="card-line">
-          <ProjectBadge
-            project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
-          />
-          <span class="card-project">{props.projectName}</span>
+          <Show
+            when={props.compact}
+            fallback={
+              <>
+                <ProjectBadge
+                  project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
+                />
+                <span class="card-project">{props.projectName}</span>
+              </>
+            }
+          >
+            {title()}
+            {provider()}
+          </Show>
           <span class="card-slot">
             <Show
               when={status()}
@@ -310,15 +334,12 @@ export function ThreadCard(props: {
             </button>
           </span>
         </span>
-        <span class="card-line title-line">
-          <Show
-            when={props.renaming}
-            fallback={<span class="card-title">{props.thread.title}</span>}
-          >
-            <RenameInput title={props.thread.title} onDone={props.onRenamed} />
-          </Show>
-          <ProviderIcon driver={props.model.Driver} size={14} />
-        </span>
+        <Show when={!props.compact}>
+          <span class="card-line title-line">
+            {title()}
+            {provider()}
+          </span>
+        </Show>
       </div>
     </li>
   );

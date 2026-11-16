@@ -151,7 +151,7 @@ export const Sidebar = Shell.provider(() => {
     const held = menu();
     return held === null ? undefined : shell.state.Threads[held.Id];
   };
-  const [grouped, setGrouped] = createSignal(readStored(GROUP_KEY, false));
+  const [grouped, setGrouped] = createSignal(readStored(GROUP_KEY, true));
   const [closedFolders, setClosedFolders] = createSignal(
     new Set(readStored<string[]>(CLOSED_FOLDERS_KEY, [])),
   );
@@ -207,10 +207,21 @@ export const Sidebar = Shell.provider(() => {
   const projects = () =>
     Object.values(shell.state.Projects).filter((project) => project.archivedAt == null);
   const targetProject = () => environment.currentProjectId() ?? projects()[0]?.id ?? null;
-  const card = (thread: IWireThreadShell, section: ICardSection) => (
+  // A provider icon only tells threads apart once more than one provider is in use.
+  const mixedProviders = createMemo(
+    () =>
+      new Set(
+        shell
+          .sidebarThreads()
+          .map((thread) => modelDisplay(providers(), thread.modelSelection).Driver),
+      ).size > 1,
+  );
+  const card = (thread: IWireThreadShell, section: ICardSection, compact = false) => (
     <ThreadCard
       thread={thread}
       section={section}
+      compact={compact}
+      showProvider={mixedProviders()}
       projectName={shell.state.Projects[thread.projectId]?.title ?? "Unknown project"}
       model={modelDisplay(providers(), thread.modelSelection)}
       previousProviders={(thread.providerInstanceHistory ?? [])
@@ -400,7 +411,7 @@ export const Sidebar = Shell.provider(() => {
                             : folder().Threads
                         }
                       >
-                        {(thread) => card(thread, "active")}
+                        {(thread) => card(thread, "active", true)}
                       </For>
                     </ul>
                   </li>
