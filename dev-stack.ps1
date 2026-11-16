@@ -4,6 +4,7 @@
 #   ./dev-stack.ps1 -Status   show what's running
 #   ./dev-stack.ps1 -Stop     stop what this script started
 #   ./dev-stack.ps1 -Restart  stop, then start
+#   ./dev-stack.ps1 -Restart -Only reflex   restart one service (server, reflex or stock)
 #
 # Starting and stopping run elevated: an unelevated run reopens itself as administrator.
 [CmdletBinding()]
@@ -11,6 +12,8 @@ param(
   [switch]$Status,
   [switch]$Stop,
   [switch]$Restart,
+  [ValidateSet("server", "reflex", "stock")]
+  [string]$Only,
   [switch]$Pause
 )
 
@@ -21,6 +24,7 @@ if (-not $Status -and -not $identity.IsInRole([Security.Principal.WindowsBuiltIn
   $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Pause")
   if ($Stop) { $arguments += "-Stop" }
   if ($Restart) { $arguments += "-Restart" }
+  if ($Only) { $arguments += @("-Only", $Only) }
   Start-Process (Get-Process -Id $PID).Path -Verb RunAs -ArgumentList $arguments
   "Continuing in an administrator window."
   return
@@ -56,6 +60,7 @@ $services = @(
     Directory = $root
   }
 )
+if ($Only) { $services = @($services | Where-Object { $_.Name -eq $Only }) }
 
 # Each address on its own: Windows retries a refused ::1 for about two seconds before trying IPv4 for
 # "localhost", and the server listens on IPv4 only while Vite can listen on either.
@@ -118,7 +123,8 @@ function Stop-Stack {
     & taskkill.exe /PID $process.Id /T /F | Out-Null
     "{0}: stopped" -f $service.Name
   }
-  if (Test-Path $statePath) { Remove-Item $statePath }
+  foreach ($service in $services) { $state.Remove($service.Name) }
+  $state | ConvertTo-Json | Set-Content $statePath
 }
 
 if ($Stop) {
