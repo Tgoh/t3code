@@ -553,10 +553,12 @@ function ListItem(props: { item: Tokens.ListItem }) {
 
 function ListToken(props: ITokenProps) {
   const list = () => of<Tokens.List>(props);
+  const lastNumber = () => Number(list().start || 1) + list().items.length - 1;
   return (
     <Dynamic
       component={list().ordered ? "ol" : "ul"}
       start={list().ordered && list().start !== 1 ? list().start : undefined}
+      classList={{ "wide-markers": list().ordered && lastNumber() >= 10 }}
     >
       <Index each={list().items}>{(item) => <ListItem item={item()} />}</Index>
     </Dynamic>

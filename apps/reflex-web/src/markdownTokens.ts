@@ -15,6 +15,37 @@ const assistantParser = new Marked({
 });
 const userParser = new Marked({ breaks: true });
 
+const FENCE = /^ {0,3}(```|~~~)/;
+const ORDERED_ITEM = /^ {0,3}\d{1,9}[.)][ \t]+\S/;
+const LIST_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+
+/**
+ * CommonMark only lets a list that starts at 1 interrupt a paragraph, so a one-line label followed
+ * by `2. …` lexes as one run-on paragraph. Agents write sections that way, continuing the count.
+ */
+function separateListsFromLabels(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let fenced = false;
+  for (const [index, line] of lines.entries()) {
+    if (FENCE.test(line)) fenced = !fenced;
+    const label = lines[index - 1];
+    const beforeLabel = lines[index - 2];
+    if (
+      !fenced &&
+      label !== undefined &&
+      ORDERED_ITEM.test(line) &&
+      label.trim() !== "" &&
+      !LIST_ITEM.test(label) &&
+      (beforeLabel === undefined || beforeLabel.trim() === "")
+    ) {
+      out.push("");
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
 export function containsHtml(token: Token): boolean {
   if (token.type === "html") return true;
   const held = token as {
@@ -46,7 +77,7 @@ export function createMarkdownLexer(fromUser: boolean): (text: string) => ILexed
   return (text) => {
     const next = new Map<string, Token>();
     const blocks = (fromUser ? userParser : assistantParser)
-      .lexer(text)
+      .lexer(separateListsFromLabels(text))
       .filter((token) => token.type !== "space" && token.type !== "def")
       .map((token) => {
         const reused = held.get(token.raw) ?? token;

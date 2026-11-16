@@ -45,6 +45,8 @@ import type {
   IWireTurnItem,
 } from "./Infrastructure/wire";
 import { parseDiff } from "./diffView";
+import type { Tokens } from "marked";
+
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import type {
   IQueueCommand,
@@ -804,6 +806,24 @@ describe("markdown", () => {
   it("escapes a raw-text tag in an assistant's HTML, so it can't swallow what follows", () => {
     const { Blocks } = createMarkdownLexer(false)("Mention of <style> in prose");
     expect(assistantHtml(Blocks)).toContain("&lt;style&gt;");
+  });
+
+  it("starts a numbered list that follows a one-line label directly, whatever its first number", () => {
+    const shape = (text: string) =>
+      createMarkdownLexer(false)(text).Blocks.map((token) =>
+        token.type === "list" ? `list@${(token as Tokens.List).start}` : token.type,
+      );
+    expect(shape("Intro.\n\n**Today**\n2. Ceiling\n3. Roof tile")).toEqual([
+      "paragraph",
+      "paragraph",
+      "list@2",
+    ]);
+    expect(shape("**Calls**\n4. Skin check")).toEqual(["paragraph", "list@4"]);
+    expect(shape("A sentence that wraps onto\nanother line before\n2024. Not a list")).toEqual([
+      "paragraph",
+    ]);
+    expect(shape("1. One\n2. Two")).toEqual(["list@1"]);
+    expect(shape("```\n**Label**\n2. code\n```")).toEqual(["code"]);
   });
 });
 

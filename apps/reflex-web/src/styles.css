@@ -2595,6 +2595,10 @@ details[open] > summary .work-chevron {
   padding-inline-start: 1.25rem;
 }
 
+.chat-markdown ol.wide-markers {
+  padding-inline-start: 1.75rem;
+}
+
 .chat-markdown ol > li::marker {
   font-variant-numeric: tabular-nums;
 }
