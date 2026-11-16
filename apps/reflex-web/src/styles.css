@@ -2019,10 +2019,10 @@ details[open] > summary .work-chevron {
 
 .work-thought {
   color: var(--foreground);
-  display: -webkit-box;
+  min-width: 0;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .live-label {
