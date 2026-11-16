@@ -12,12 +12,15 @@ import {
   untrack,
 } from "solid-js";
 
+import type { KeybindingCommand } from "@t3tools/contracts";
+
 import { ProjectBadge } from "./brand";
 import { Composer, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
 import { ChevronDown, PanelBottom, PanelRight, SquareMenu } from "./icons";
+import { THREAD_SHORTCUT_EVENT } from "./keybindings";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
 import { needsVisit, runStatus } from "./Shell";
@@ -188,6 +191,26 @@ const ThreadBody = ThreadSession.provider(() => {
     if (layout().Inline) session.toggleDetails();
     else setDetailsPopover((open) => !open);
   };
+  const toggleTerminal = () => (terminalOpen() ? session.closeTerminal() : session.openTerminal());
+  const onShortcut = (event: Event) => {
+    const command = (event as CustomEvent<KeybindingCommand>).detail;
+    if (command === "threadPanel.toggle") {
+      if (checkout() === null) return;
+      toggleDetails();
+    } else if (command === "terminal.toggle") {
+      if (thread.state.Thread === null) return;
+      void toggleTerminal();
+    } else if (command === "rightPanel.toggle") {
+      void session.toggleRightPanel();
+    } else if (command === "diff.toggle") {
+      if (diffOpen()) void session.closeDiff();
+      else if (latestDiffTurn(thread.state) !== null) void session.openDiff("thread", null);
+      else return;
+    } else return;
+    event.preventDefault();
+  };
+  window.addEventListener(THREAD_SHORTCUT_EVENT, onShortcut);
+  onCleanup(() => window.removeEventListener(THREAD_SHORTCUT_EVENT, onShortcut));
   const checkout = createMemo<ICheckout | null>((previous) => {
     const held = thread.state.Thread;
     const project =
@@ -422,7 +445,7 @@ const ThreadBody = ThreadSession.provider(() => {
                 aria-label="Toggle terminal drawer"
                 data-tip="Toggle terminal drawer"
                 aria-pressed={terminalOpen()}
-                onClick={() => (terminalOpen() ? session.closeTerminal() : session.openTerminal())}
+                onClick={toggleTerminal}
               >
                 <PanelBottom />
               </button>

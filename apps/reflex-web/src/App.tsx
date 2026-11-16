@@ -17,7 +17,13 @@ import { ProjectBadge } from "./brand";
 import { CommandPalette } from "./CommandPalette";
 import { Composer, FileDropSection } from "./Composer";
 import Environment from "./Environment";
-import { adjacentThread, isEditable, resolveShortcutCommand, shortcutLabel } from "./keybindings";
+import {
+  adjacentThread,
+  isEditable,
+  resolveShortcutCommand,
+  shortcutLabel,
+  THREAD_SHORTCUT_EVENT,
+} from "./keybindings";
 import {
   COMPOSER_SELECTOR,
   type INavigation,
@@ -148,6 +154,16 @@ const EnvironmentView = Environment.provider(() => {
       case "usage.open":
         void environment.openView({ Kind: "usage" });
         return true;
+      case "threadPanel.toggle":
+      case "terminal.toggle":
+      case "rightPanel.toggle":
+      case "diff.toggle": {
+        const handed = new CustomEvent<KeybindingCommand>(THREAD_SHORTCUT_EVENT, {
+          detail: command,
+          cancelable: true,
+        });
+        return !window.dispatchEvent(handed);
+      }
       default:
         return false;
     }

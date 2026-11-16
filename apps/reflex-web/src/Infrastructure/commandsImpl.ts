@@ -42,6 +42,7 @@ import {
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
@@ -349,7 +350,7 @@ export const startCloneImpl = implementation(startCloneEffect, async (input) => 
     input: {
       projectId: ProjectId.make(input.ProjectId),
       title: input.Title,
-      createdAt: new Date().toISOString(),
+      createdAt: DateTime.formatIso(DateTime.nowUnsafe()),
       remoteUrl: input.RemoteUrl,
       destinationPath: input.DestinationPath,
     },
