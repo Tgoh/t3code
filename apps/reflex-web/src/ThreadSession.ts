@@ -1,5 +1,8 @@
 import { buildPendingUserInputAnswers } from "@t3tools/client-runtime/state/pending-user-input";
-import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
+import {
+  deriveThreadQueueWorkflowState,
+  threadSupportsProviderHandoff,
+} from "@t3tools/client-runtime/state/thread-workflows";
 import { DEFAULT_TERMINAL_ID } from "@t3tools/contracts";
 import {
   closeResource,
@@ -27,8 +30,10 @@ import { createEntityFeature } from "treflex-solid";
 
 import {
   closeTerminalEffect,
+  type IDispatchMode,
   type IModelFavorite,
   type IProviderOption,
+  type IQueueOperation,
   type IStartTurn,
   type IWireAttachment,
   type IWireInteractionMode,
@@ -233,6 +238,33 @@ export function* modelSwitch(draft: IThreadSession): ISelectorGenerator<IModelSw
     Started: runs.length > 0,
     SupportsHandoff: threadSupportsProviderHandoff(projection as never),
     CurrentInstanceId: open.Thread.modelSelection.instanceId,
+  };
+}
+
+export interface IQueueWorkflow {
+  CanSendNow: boolean;
+  CanSteer: boolean;
+  ActiveRunId: string | null;
+}
+
+export function* queueWorkflow(draft: IThreadSession): ISelectorGenerator<IQueueWorkflow> {
+  const replica = yield* getData(draft, "Replica");
+  const open = replica?.OpenThreads[draft.ThreadId];
+  if (open?.Thread == null) return { CanSendNow: false, CanSteer: false, ActiveRunId: null };
+  const byOrdinal = <T extends { ordinal: number }>(rows: T[]) =>
+    rows.sort((left, right) => left.ordinal - right.ordinal);
+  const state = deriveThreadQueueWorkflowState({
+    thread: open.Thread,
+    runs: byOrdinal(Object.values(open.Runs)),
+    messages: Object.values(open.Messages),
+    providerTurns: Object.values(open.ProviderTurns),
+    providerThreads: Object.values(open.ProviderThreads),
+    providerSessions: Object.values(open.ProviderSessions),
+  } as never);
+  return {
+    CanSendNow: state.canSendNow,
+    CanSteer: state.canPromoteToSteer,
+    ActiveRunId: state.activeRun?.id ?? null,
   };
 }
 
@@ -493,7 +525,8 @@ function* uploadAndStart(
   });
 }
 
-export function* send(draft: IThreadSession): IOpenGenerator {
+/** `auto` lets the server choose; during a run the composer asks for `steer` or `queue`. */
+export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpenGenerator {
   const text = draft.Draft.trim();
   const fileIds = draft.Attachments.map((file) => file.Id);
   if (text === "" && fileIds.length === 0) return;
@@ -511,6 +544,7 @@ export function* send(draft: IThreadSession): IOpenGenerator {
     ModelSelection: model === null ? null : dispatchSelection(provider, model),
     RuntimeMode: runtimeMode,
     InteractionMode: interaction,
+    DispatchMode: mode,
     NewThread:
       projectId === null
         ? null
@@ -561,8 +595,22 @@ export function* stopRun(draft: IThreadSession): IOpenGenerator {
 }
 leading(stopRun);
 
-export function* queueAction(draft: IThreadSession, runId: string | null): IOpenGenerator {
+export type IQueuePress =
+  | Exclude<IQueueOperation, { Kind: "start" | "steer" }>
+  | { Kind: "sendNow"; RunId: string };
+
+// Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx.
+export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGenerator {
   delete draft.StopError;
+  let operation: IQueueOperation;
+  if (press.Kind !== "sendNow") operation = press;
+  else {
+    const workflow = yield* select(queueWorkflow);
+    if (workflow.CanSendNow) operation = { Kind: "start", RunId: press.RunId };
+    else if (workflow.ActiveRunId !== null && workflow.CanSteer) {
+      operation = { Kind: "steer", RunId: press.RunId, TargetRunId: workflow.ActiveRunId };
+    } else return;
+  }
   const environmentId = draft.EnvironmentId;
   const threadId = draft.ThreadId;
   try {
@@ -572,7 +620,7 @@ export function* queueAction(draft: IThreadSession, runId: string | null): IOpen
           EnvironmentId: environmentId,
           ThreadId: threadId,
           CommandId: commandId,
-          RunId: runId,
+          Operation: operation,
         }),
       ),
     );
@@ -800,6 +848,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     runtimeModes,
     projectId,
     projectName,
+    queueWorkflow,
     stopRequested,
     sending,
     stopping,

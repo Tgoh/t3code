@@ -3890,6 +3890,47 @@ a.attachment-file-open:hover .attachment-file-name {
   overflow-wrap: anywhere;
 }
 
+.queued > .queued-text,
+.queued > .queued-fold {
+  flex: 1;
+  min-width: 0;
+}
+
+.queued-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.queued-actions svg {
+  height: 14px;
+  width: 14px;
+}
+
+.queued-edit {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.queued-edit textarea {
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  padding: 6px 10px;
+  resize: vertical;
+}
+
+.queued-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .right-panel {
   background: var(--background);
   border-left: 1px solid var(--border);

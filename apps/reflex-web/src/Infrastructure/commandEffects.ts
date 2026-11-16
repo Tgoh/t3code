@@ -17,6 +17,8 @@ export type IApprovalDecision =
   | "decline"
   | "cancel";
 
+export type IDispatchMode = "auto" | "queue" | "steer" | "restart";
+
 export interface IStartTurn {
   EnvironmentId: string;
   ThreadId: string;
@@ -27,6 +29,7 @@ export interface IStartTurn {
   ModelSelection: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode;
   InteractionMode: IWireInteractionMode;
+  DispatchMode: IDispatchMode;
   NewThread: { ProjectId: string; Title: string } | null;
 }
 
@@ -45,11 +48,18 @@ export interface IRespondRequest {
   Answers: Record<string, string | ReadonlyArray<string>> | null;
 }
 
+export type IQueueOperation =
+  | { Kind: "resume" }
+  | { Kind: "cancel"; RunId: string }
+  | { Kind: "start"; RunId: string }
+  | { Kind: "steer"; RunId: string; TargetRunId: string }
+  | { Kind: "edit"; RunId: string; Text: string };
+
 export interface IQueueCommand {
   EnvironmentId: string;
   ThreadId: string;
   CommandId: string;
-  RunId: string | null;
+  Operation: IQueueOperation;
 }
 
 export interface IProviderOption {

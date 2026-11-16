@@ -4,8 +4,8 @@ import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { type Accessor, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 
 import Environment from "./Environment";
-import { ChevronUp } from "./icons";
-import OpenThread, { isRowVisible, timelineItem } from "./OpenThread";
+import { ChevronUp, CornerUpRight, PenLine, X } from "./icons";
+import OpenThread, { isRowVisible, runMessage, timelineItem } from "./OpenThread";
 import { workingStartedAt } from "./Shell";
 import ThreadSession from "./ThreadSession";
 import { QueuedMessage } from "./TimelineRows";
@@ -76,6 +76,94 @@ function WorkingText(props: { waiting: boolean }) {
   );
 }
 
+// Follows QueuedMessage's actions in apps/web/src/components/chat/QueuedRunsControl.tsx.
+function QueuedRow(props: { runId: string }) {
+  const thread = OpenThread.use();
+  const session = ThreadSession.use();
+  const [editing, setEditing] = createSignal<string | null>(null);
+  const message = () => runMessage(thread.state, props.runId);
+  const editable = () => message()?.context?.guest === undefined;
+  const workflow = () => session.queueWorkflow();
+  const canSendNow = () => workflow().CanSendNow || workflow().CanSteer;
+  const save = () => {
+    const text = editing()?.trim() ?? "";
+    if (text === "") return;
+    session.queueAction({ Kind: "edit", RunId: props.runId, Text: text });
+    setEditing(null);
+  };
+  return (
+    <div class="queued">
+      <Show when={editing() !== null} fallback={<QueuedMessage runId={props.runId} />}>
+        <form
+          class="queued-edit"
+          onSubmit={(event) => {
+            event.preventDefault();
+            save();
+          }}
+        >
+          <textarea
+            aria-label="Edit queued message"
+            rows={3}
+            value={editing() ?? ""}
+            ref={(element) => queueMicrotask(() => element.focus())}
+            onInput={(event) => setEditing(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setEditing(null);
+              } else if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+                event.preventDefault();
+                save();
+              }
+            }}
+          />
+          <div class="queued-edit-actions">
+            <button type="button" class="button" onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+            <button type="submit" class="button primary" disabled={session.queueing()}>
+              Save
+            </button>
+          </div>
+        </form>
+      </Show>
+      <Show when={editing() === null}>
+        <div class="queued-actions">
+          <button
+            class="icon-button"
+            aria-label="Send now"
+            data-tip="Send now"
+            disabled={session.queueing() || !canSendNow()}
+            onClick={() => session.queueAction({ Kind: "sendNow", RunId: props.runId })}
+          >
+            <CornerUpRight />
+          </button>
+          <Show when={editable()}>
+            <button
+              class="icon-button"
+              aria-label="Edit queued message"
+              data-tip="Edit"
+              disabled={session.queueing()}
+              onClick={() => setEditing(message()?.text ?? "")}
+            >
+              <PenLine />
+            </button>
+          </Show>
+          <button
+            class="icon-button"
+            aria-label="Remove queued message"
+            data-tip="Remove"
+            disabled={session.queueing()}
+            onClick={() => session.queueAction({ Kind: "cancel", RunId: props.runId })}
+          >
+            <X />
+          </button>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
 function QueuedPopover(props: {
   working: boolean;
   toggle: HTMLButtonElement;
@@ -92,7 +180,7 @@ function QueuedPopover(props: {
       if (!popover.contains(target) && !props.toggle.contains(target)) props.onClose();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
+      if (event.key === "Escape" && !event.defaultPrevented) props.onClose();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
@@ -111,26 +199,13 @@ function QueuedPopover(props: {
           <button
             class="button"
             disabled={session.queueing()}
-            onClick={() => session.queueAction(null)}
+            onClick={() => session.queueAction({ Kind: "resume" })}
           >
             Resume
           </button>
         </Show>
       </div>
-      <For each={thread.queuedRunIds()}>
-        {(runId) => (
-          <div class="queued">
-            <button
-              class="button"
-              disabled={session.queueing()}
-              onClick={() => session.queueAction(runId)}
-            >
-              Cancel
-            </button>
-            <QueuedMessage runId={runId} />
-          </div>
-        )}
-      </For>
+      <For each={thread.queuedRunIds()}>{(runId) => <QueuedRow runId={runId} />}</For>
     </div>
   );
 }

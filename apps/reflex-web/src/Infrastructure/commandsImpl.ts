@@ -103,6 +103,7 @@ export const startTurnImpl = implementation(startTurnEffect, async (input) => {
     ...(input.ModelSelection === null ? {} : { modelSelection }),
     runtimeMode: input.RuntimeMode,
     interactionMode: input.InteractionMode,
+    dispatchMode: input.DispatchMode,
     ...(input.NewThread === null
       ? {}
       : {
@@ -153,14 +154,38 @@ export const queueCommandImpl = implementation(queueCommandEffect, async (input)
     commandId: CommandId.make(input.CommandId),
     threadId: ThreadId.make(input.ThreadId),
   };
+  const operation = input.Operation;
+  const command = (() => {
+    switch (operation.Kind) {
+      case "resume":
+        return { type: "queue.resume" as const, ...common };
+      case "cancel":
+        return {
+          type: "queued-run.cancel" as const,
+          ...common,
+          runId: RunId.make(operation.RunId),
+        };
+      case "start":
+        return { type: "queued-run.start" as const, ...common, runId: RunId.make(operation.RunId) };
+      case "steer":
+        return {
+          type: "queued-message.promote-to-steer" as const,
+          ...common,
+          queuedRunId: RunId.make(operation.RunId),
+          targetRunId: RunId.make(operation.TargetRunId),
+        };
+      case "edit":
+        return {
+          type: "queued-run.edit" as const,
+          ...common,
+          runId: RunId.make(operation.RunId),
+          text: operation.Text,
+        };
+    }
+  })();
   await inEnvironment(
     input.EnvironmentId,
-    request(
-      ORCHESTRATION_V2_WS_METHODS.dispatchCommand,
-      input.RunId === null
-        ? { type: "queue.resume", ...common }
-        : { type: "queued-run.cancel", ...common, runId: RunId.make(input.RunId) },
-    ),
+    request(ORCHESTRATION_V2_WS_METHODS.dispatchCommand, command),
   );
 });
 

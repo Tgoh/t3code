@@ -1,4 +1,5 @@
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
+import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useResource } from "treflex-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
@@ -12,13 +13,83 @@ import {
 } from "./attachmentIntake";
 import { ModelPicker, PermissionsChip } from "./ComposerMenus";
 import Environment from "./Environment";
-import { ArrowUp, File as FileIcon, Paperclip, X } from "./icons";
+import { ArrowUp, CornerUpRight, File as FileIcon, ListPlus, Paperclip, X } from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { StageArt } from "./StageArt";
 import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
 import { composerCollapses, createMediaQuery, PHONE_QUERY } from "./viewport";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
+
+const isAlternate = (event: MouseEvent | KeyboardEvent) => (IS_MAC ? event.metaKey : event.ctrlKey);
+
+/** Holds whether ⌘ or Ctrl is down, so the send button can show what a click would do. */
+function useAlternateHeld() {
+  const [held, setHeld] = createSignal(false);
+  onMount(() => {
+    const update = (event: KeyboardEvent) => setHeld(isAlternate(event));
+    const clear = () => setHeld(false);
+    window.addEventListener("keydown", update);
+    window.addEventListener("keyup", update);
+    window.addEventListener("blur", clear);
+    onCleanup(() => {
+      window.removeEventListener("keydown", update);
+      window.removeEventListener("keyup", update);
+      window.removeEventListener("blur", clear);
+    });
+  });
+  return held;
+}
+
+// Follows submitLabel and submitTooltip in apps/web/src/components/chat/ComposerPrimaryActions.tsx.
+function SendButton(props: {
+  running: boolean;
+  alternate: boolean;
+  sending: boolean;
+  disabled: boolean;
+  blocked: string | null;
+  onSend: (alternate: boolean) => void;
+}) {
+  const mode = () =>
+    resolveComposerDispatchMode({ running: props.running, alternateModifier: props.alternate });
+  const label = () =>
+    props.sending
+      ? "Sending"
+      : mode() === "queue"
+        ? "Queue message"
+        : mode() === "steer"
+          ? "Steer message"
+          : "Submit message";
+  const tip = () =>
+    props.blocked ??
+    (props.running
+      ? `Click to steer, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to queue`
+      : undefined);
+  return (
+    <button
+      type="submit"
+      class="round-button send"
+      aria-label={label()}
+      data-tip={tip()}
+      disabled={props.disabled}
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault();
+        props.onSend(isAlternate(event));
+      }}
+    >
+      <span class="send-art">
+        <StageArt compact />
+      </span>
+      <Show when={mode() !== "auto"} fallback={<ArrowUp />}>
+        <Show when={mode() === "queue"} fallback={<CornerUpRight />}>
+          <ListPlus />
+        </Show>
+      </Show>
+    </button>
+  );
+}
 
 function useAttachmentIntake() {
   const environment = Environment.use();
@@ -176,10 +247,12 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
   const keepPromptFocus = (event: PointerEvent) => {
     if (phone() && event.target !== textarea) event.preventDefault();
   };
-  const send = () => {
+  const alternateHeld = useAlternateHeld();
+  const running = () => props.active === true;
+  const send = (alternate = false) => {
     if (blocked() !== null) return;
     if (canSend()) props.onSend?.();
-    session.send();
+    session.send(resolveComposerDispatchMode({ running: running(), alternateModifier: alternate }));
     if (phone()) textarea.blur();
   };
 
@@ -252,18 +325,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
             <Show
               when={props.active && !canSend()}
               fallback={
-                <button
-                  type="submit"
-                  class="round-button send"
-                  aria-label={session.sending() ? "Sending" : "Submit message"}
+                <SendButton
+                  running={running()}
+                  alternate={alternateHeld()}
+                  sending={session.sending()}
                   disabled={!canSend()}
-                  onPointerDown={(event) => event.preventDefault()}
-                >
-                  <span class="send-art">
-                    <StageArt compact />
-                  </span>
-                  <ArrowUp />
-                </button>
+                  blocked={null}
+                  onSend={send}
+                />
               }
             >
               <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
@@ -331,7 +400,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
             if (isPasteAsTextShortcut(event, IS_MAC)) setPasteAsTextUntil(event.timeStamp + 1_000);
             if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
             event.preventDefault();
-            send();
+            send(isAlternate(event));
           }}
         />
         <Show when={held().SendError}>
@@ -366,18 +435,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
             <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
           </Show>
           <Show when={!props.active || canSend()}>
-            <button
-              type="submit"
-              class="round-button send"
-              aria-label={session.sending() ? "Sending" : "Submit message"}
-              data-tip={blocked() ?? undefined}
+            <SendButton
+              running={running()}
+              alternate={alternateHeld()}
+              sending={session.sending()}
               disabled={!canSend()}
-            >
-              <span class="send-art">
-                <StageArt compact />
-              </span>
-              <ArrowUp />
-            </button>
+              blocked={blocked()}
+              onSend={send}
+            />
           </Show>
         </div>
       </form>

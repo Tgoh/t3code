@@ -1821,12 +1821,18 @@ describe("writing to the server", () => {
     await server.open();
     const busy = () => server.runtime.processSelector(queueing, () => server.session());
     const press = (runId: string | null) =>
-      server.runtime.dispatch(queueAction, server.sessionId(), runId);
+      server.runtime.dispatch(
+        queueAction,
+        server.sessionId(),
+        runId === null ? { Kind: "resume" } : { Kind: "cancel", RunId: runId },
+      );
+    const runIds = () =>
+      commands.map((command) => ("RunId" in command.Operation ? command.Operation.RunId : null));
     const first = press("run-a");
     await settled();
     const dropped = [press("run-a"), press("run-b"), press(null)];
     await settled();
-    expect(commands.map((command) => command.RunId)).toEqual(["run-a"]);
+    expect(runIds()).toEqual(["run-a"]);
     expect(busy()).toBe(true);
     releases.forEach((release) => release());
     await Promise.all([first, ...dropped]);
@@ -1835,7 +1841,52 @@ describe("writing to the server", () => {
     await settled();
     releases.forEach((release) => release());
     await second;
-    expect(commands.map((command) => command.RunId)).toEqual(["run-a", "run-b"]);
+    expect(runIds()).toEqual(["run-a", "run-b"]);
+  });
+
+  it("send now starts a queued run when idle and steers it into the active run otherwise", async () => {
+    const commands: IQueueCommand[] = [];
+    const server = await connect(undefined, null, {
+      queueCommand: (effect: IQueueCommand) => void commands.push(effect),
+    });
+    await server.open();
+    const sendNow = () =>
+      server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "sendNow", RunId: "run-2" });
+    await server.sendThread(
+      snapshotOf({ ...emptyProjection(), runs: [run("run-2", 2, "queued")] }, 1),
+    );
+    await sendNow();
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1, "starting"), run("run-2", 2, "queued")],
+        },
+        2,
+      ),
+    );
+    await sendNow();
+    expect(commands.map((command) => command.Operation)).toEqual([
+      { Kind: "start", RunId: "run-2" },
+      { Kind: "steer", RunId: "run-2", TargetRunId: "run-1" },
+    ]);
+  });
+
+  it("a send carries the delivery the composer chose", async () => {
+    const sent: IStartTurn[] = [];
+    const server = await connect(undefined, null, {
+      startTurn: (effect: IStartTurn) => void sent.push(effect),
+    });
+    await server.open();
+    for (const mode of ["auto", "steer", "queue"] as const) {
+      await server.runtime.dispatch(setDraft, server.sessionId(), mode);
+      await server.runtime.dispatch(send, server.sessionId(), mode);
+    }
+    expect(sent.map((turn) => [turn.Text, turn.DispatchMode])).toEqual([
+      ["auto", "auto"],
+      ["steer", "steer"],
+      ["queue", "queue"],
+    ]);
   });
 
   it("answering marks only its own request, and the stream or another device clears it", async () => {
