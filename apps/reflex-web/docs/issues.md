@@ -109,8 +109,6 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - A new thread's permission mode defaults to Full access, not the project's `defaultRuntimeMode` setting.
 - A new thread asks the server to generate its title, which uses the server's title provider. On this machine that's Codex, which fails to spawn, so titles fall back to the text.
 - Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
-- A multi-select question takes its options as comma-separated text, with no checkboxes.
-- A question whose options carry descriptions and previews (Claude's AskUserQuestion) shows only a text box per question, so its choices and previews never appear.
 - A thread that doesn't exist retries its subscription with backoff rather than reporting missing.
 - One terminal per thread, `term-1`, with no tabs or splits.
 - A new-thread draft has no terminal until its thread exists.
@@ -131,7 +129,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 ## Unmatched against the stock UI
 
 - Visits: a visit that fails isn't retried after a reconnect, so Done can stay until the next completion.
-- Questions: answers typed into a question that Stop cancels or that expires are lost; stock moves them into the composer. Option previews don't render, and an `initialAnswer` isn't filled in.
+- Questions: an answer can't carry attachments or thread chips, so the attach button hides while a question holds the composer. Text set aside when an option replaces it shows as a line in the card, not a toast, and undo doesn't take it back out of the draft. Question drafts don't survive a reload.
 - Markdown: `vscode://`, `cursor://` and other editor links are dropped instead of opening the file.
 - Thread links: a link to a thread the shell doesn't hold shows its written label, or "Thread", and still opens, where stock asks the server for its title and shows "Thread no longer available" when it's gone. A thread on another machine is named but never opens, since this client connects to one environment. The chip has no hover card; `t3code://` deep links and prompt links aren't recognised, and a raw-HTML block's thread link keeps its written text rather than the thread's title.
 - Messages from other threads and automations: the automation fold shows the prompt's first line, not its scheduled task's title, and has no Open automation link. Consecutive steers each show their Steer label, where stock shows it once, because a row doesn't know its neighbours. Guest messages show the guest's words without the guest name or styling.

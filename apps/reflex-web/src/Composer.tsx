@@ -14,6 +14,7 @@ import { ModelPicker, PermissionsChip } from "./ComposerMenus";
 import Environment from "./Environment";
 import { ArrowUp, File as FileIcon, Paperclip, X } from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
+import { advanceLabel, answerPlaceholder, type IAnswering } from "./questions";
 import { StageArt } from "./StageArt";
 import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
 import { composerCollapses, createMediaQuery, PHONE_QUERY } from "./viewport";
@@ -135,18 +136,68 @@ function StopButton(props: { stopping: boolean; onStop: () => void }) {
   );
 }
 
-export function Composer(props: { active?: boolean; onSend?: () => void }) {
+// Follows the pending-question branch of ComposerPrimaryActions in apps/web/src/components/chat.
+function AnswerActions(props: { question: IAnswering }) {
+  const progress = () => props.question.progress();
+  const responding = () => props.question.responding();
+  return (
+    <>
+      <Show when={progress().QuestionIndex > 0}>
+        <button
+          type="button"
+          class="button answer-previous"
+          disabled={responding()}
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => props.question.previous()}
+        >
+          Previous
+        </button>
+      </Show>
+      <button
+        type="submit"
+        class="answer-submit"
+        onPointerDown={(event) => event.preventDefault()}
+        disabled={
+          !props.question.canRespond() ||
+          responding() ||
+          (progress().IsLastQuestion ? progress().Answers === null : !progress().CanAdvance)
+        }
+      >
+        {advanceLabel(progress(), responding())}
+      </button>
+    </>
+  );
+}
+
+export function Composer(props: { active?: boolean; onSend?: () => void; question?: IAnswering }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
   const held = () => session.state;
   const intake = useAttachmentIntake();
   const files = intake.files;
-  const images = () => held().Attachments.filter((file) => file.Kind === "image");
-  const otherFiles = () => held().Attachments.filter((file) => file.Kind === "file");
+  const asked = () => {
+    const question = props.question?.progress().Question;
+    return question == null ? null : question;
+  };
+  const answering = () => (asked() === null ? undefined : props.question);
+  const images = () =>
+    answering() ? [] : held().Attachments.filter((file) => file.Kind === "image");
+  const otherFiles = () =>
+    answering() ? [] : held().Attachments.filter((file) => file.Kind === "file");
   const [pasteAsTextUntil, setPasteAsTextUntil] = createSignal(0);
   const noProvider = () => environment.state.Replica.Providers.length === 0;
-  const placeholder = () =>
-    noProvider() ? "Enable a provider in Settings to send a message" : "Ask anything.";
+  const placeholder = () => {
+    const question = asked();
+    if (question !== null) return answerPlaceholder(question);
+    return noProvider() ? "Enable a provider in Settings to send a message" : "Ask anything.";
+  };
+  const text = () => answering()?.progress().CustomAnswer ?? held().Draft;
+  const answerLocked = () => {
+    const question = asked();
+    return (
+      question !== null && (question.allowCustomAnswer === false || !props.question!.canRespond())
+    );
+  };
   const isDraft = () => held().NewThreadProjectId !== null;
   const stopping = () => session.stopRequested() || session.stopping();
   const clone = useProjectClone(() => session.projectId());
@@ -158,6 +209,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
   const phone = createMediaQuery(PHONE_QUERY);
   const [focused, setFocused] = createSignal(false);
   const collapsed = () =>
+    !answering() &&
     composerCollapses({
       Phone: phone(),
       Focused: focused(),
@@ -177,6 +229,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
     if (phone() && event.target !== textarea) event.preventDefault();
   };
   const send = () => {
+    const question = answering();
+    if (question !== undefined) {
+      question.advance();
+      return;
+    }
     if (blocked() !== null) return;
     if (canSend()) props.onSend?.();
     session.send();
@@ -185,7 +242,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
 
   const onPaste = (event: ClipboardEvent & { currentTarget: HTMLTextAreaElement }) => {
     const data = event.clipboardData;
-    if (data === null) return;
+    if (data === null || answering()) return;
     const bypass = event.timeStamp <= pasteAsTextUntil();
     setPasteAsTextUntil(0);
     const { files: pasted, folders } = splitTransferredFiles(data);
@@ -324,8 +381,13 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
           ref={textarea}
           rows={2}
           placeholder={placeholder()}
-          value={held().Draft}
-          onInput={(event) => session.setDraft(event.currentTarget.value)}
+          value={text()}
+          disabled={answerLocked()}
+          onInput={(event) => {
+            const question = answering();
+            if (question === undefined) session.setDraft(event.currentTarget.value);
+            else question.setCustomAnswer(event.currentTarget.value);
+          }}
           onPaste={onPaste}
           onKeyDown={(event) => {
             if (isPasteAsTextShortcut(event, IS_MAC)) setPasteAsTextUntil(event.timeStamp + 1_000);
@@ -344,28 +406,31 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
           <p class="composer-error">{held().ModelError}</p>
         </Show>
         <div class="composer-bar" onPointerDown={keepPromptFocus}>
-          <label class="icon-button attach" data-tip="Attach files">
-            <Paperclip />
-            <input
-              type="file"
-              aria-label="Attach files"
-              multiple
-              disabled={files.status().State !== "live"}
-              onChange={(event) => {
-                void intake.addFiles(Array.from(event.currentTarget.files ?? []));
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+          <Show when={!answering()}>
+            <label class="icon-button attach" data-tip="Attach files">
+              <Paperclip />
+              <input
+                type="file"
+                aria-label="Attach files"
+                multiple
+                disabled={files.status().State !== "live"}
+                onChange={(event) => {
+                  void intake.addFiles(Array.from(event.currentTarget.files ?? []));
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+          </Show>
           <span class="composer-spacer" />
           <ModelPicker />
           <Show when={!isDraft() && session.effectiveRuntimeMode() !== DEFAULT_RUNTIME_MODE}>
             <PermissionsChip />
           </Show>
+          <Show when={answering()}>{(question) => <AnswerActions question={question()} />}</Show>
           <Show when={props.active}>
             <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
           </Show>
-          <Show when={!props.active || canSend()}>
+          <Show when={!answering() && (!props.active || canSend())}>
             <button
               type="submit"
               class="round-button send"

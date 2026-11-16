@@ -1,4 +1,7 @@
-import { buildPendingUserInputAnswers } from "@t3tools/client-runtime/state/pending-user-input";
+import {
+  setPendingUserInputCustomAnswer,
+  togglePendingUserInputOptionSelection,
+} from "@t3tools/client-runtime/state/pending-user-input";
 import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
 import { DEFAULT_TERMINAL_ID } from "@t3tools/contracts";
 import {
@@ -60,6 +63,7 @@ import {
   providerOf,
 } from "./modelOptions";
 import { type IOpenThread, latestDiffTurn } from "./OpenThread";
+import { carryIntoPrompt, type IQuestion, type IQuestionDraft, seededDrafts } from "./questions";
 import type { IShell } from "./Shell";
 
 declare module "treflex" {
@@ -128,7 +132,9 @@ export interface IThreadSession extends IEntity {
   ModelError?: string;
   SendError?: string;
   StopError?: string;
-  QuestionAnswers: Record<string, Record<string, string>>;
+  QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
+  QuestionIndex: Record<string, number>;
+  QuestionNotice?: string;
   Panels: { Diff: IDiffPanel };
   Terminal: ITerminalPanel;
 }
@@ -147,6 +153,7 @@ export function getDefaultThreadSession(
     ModelSelection: null,
     RuntimeMode: null,
     QuestionAnswers: {},
+    QuestionIndex: {},
     Panels: {
       Diff: { Open: false, Scope: "turn", ToTurnCount: null, Text: null },
     },
@@ -516,49 +523,95 @@ export function* queueAction(draft: IThreadSession, runId: string | null): IOpen
 }
 leading(queueAction);
 
-export function* setQuestionAnswer(
+function heldDrafts(draft: IThreadSession, requestId: string): Record<string, IQuestionDraft> {
+  const held = draft.QuestionAnswers[requestId];
+  if (held !== undefined) return held;
+  draft.QuestionAnswers[requestId] = {};
+  return draft.QuestionAnswers[requestId]!;
+}
+
+const plainDraft = (answer: {
+  readonly selectedOptionValues?: ReadonlyArray<string>;
+  readonly customAnswer?: string;
+}): IQuestionDraft => ({
+  ...(answer.customAnswer === undefined ? {} : { customAnswer: answer.customAnswer }),
+  ...(answer.selectedOptionValues === undefined
+    ? {}
+    : { selectedOptionValues: [...answer.selectedOptionValues] }),
+});
+
+export function* setQuestionCustomAnswer(
   draft: IThreadSession,
   requestId: string,
-  questionId: string,
+  question: IQuestion,
   text: string,
 ): IActionGenerator {
-  const held = draft.QuestionAnswers[requestId];
-  if (held === undefined) draft.QuestionAnswers[requestId] = { [questionId]: text };
-  else held[questionId] = text;
+  if (question.allowCustomAnswer === false) return;
+  const held = heldDrafts(draft, requestId);
+  held[question.id] = plainDraft(
+    setPendingUserInputCustomAnswer(question, held[question.id], text),
+  );
+}
+
+// Follows onSelectActivePendingUserInputOption in apps/web/src/components/chat/usePendingThreadRequests.ts.
+export function* toggleQuestionOption(
+  draft: IThreadSession,
+  requestId: string,
+  questions: ReadonlyArray<IQuestion>,
+  questionId: string,
+  optionValue: string,
+): IActionGenerator {
+  const question = questions.find((entry) => entry.id === questionId);
+  if (question === undefined) return;
+  const current = seededDrafts(questions, draft.QuestionAnswers[requestId])[questionId];
+  const prompt = carryIntoPrompt(draft.Draft, current?.customAnswer);
+  if (prompt !== draft.Draft) {
+    draft.Draft = prompt;
+    draft.QuestionNotice =
+      "Your typed text was set aside. It will be back in the composer once the question is answered.";
+  }
+  heldDrafts(draft, requestId)[questionId] = plainDraft(
+    togglePendingUserInputOptionSelection(question, current, optionValue),
+  );
+}
+
+export function* setQuestionIndex(
+  draft: IThreadSession,
+  requestId: string,
+  index: number,
+): IActionGenerator {
+  draft.QuestionIndex[requestId] = index;
+}
+
+// Follows returnUnsentAnswersToThreadDraft in apps/web/src/questionAttachments.ts.
+/**
+ * Drops drafts for requests no longer pending. Stop cancels a question and a provider timeout
+ * expires it; neither sent the typed answers, so they move into the thread's draft.
+ */
+export function* settleQuestions(
+  draft: IThreadSession,
+  pendingIds: ReadonlyArray<string>,
+  unansweredIds: ReadonlyArray<string>,
+): IActionGenerator {
+  for (const [requestId, drafts] of Object.entries(draft.QuestionAnswers)) {
+    if (pendingIds.includes(requestId)) continue;
+    if (unansweredIds.includes(requestId)) {
+      for (const answer of Object.values(drafts)) {
+        draft.Draft = carryIntoPrompt(draft.Draft, answer.customAnswer);
+      }
+    }
+    delete draft.QuestionAnswers[requestId];
+  }
+  for (const requestId of Object.keys(draft.QuestionIndex)) {
+    if (!pendingIds.includes(requestId)) delete draft.QuestionIndex[requestId];
+  }
+  if (pendingIds.length === 0) delete draft.QuestionNotice;
 }
 
 export function* toggleRowExpanded(draft: IThreadSession, rowId: string): IActionGenerator {
   const expanded = yield* expandedRows(draft);
   if (expanded.Rows[rowId]) delete expanded.Rows[rowId];
   else expanded.Rows[rowId] = true;
-}
-
-interface IAskedQuestion {
-  id: string;
-  options: ReadonlyArray<{ label: string }>;
-  multiSelect?: boolean | undefined;
-}
-
-export function questionAnswers(
-  draft: IThreadSession,
-  requestId: string,
-  questions: ReadonlyArray<IAskedQuestion>,
-) {
-  const typed = draft.QuestionAnswers[requestId] ?? {};
-  const drafts = Object.fromEntries(
-    questions.map((question) => {
-      const text = typed[question.id] ?? "";
-      const parts = text.split(",").map((part) => part.trim());
-      const isOption = (part: string) => question.options.some(({ label }) => label === part);
-      return [
-        question.id,
-        question.multiSelect && parts.every(isOption)
-          ? { selectedOptionValues: parts }
-          : { customAnswer: text, selectedOptionValues: [text] },
-      ];
-    }),
-  );
-  return buildPendingUserInputAnswers(questions, drafts);
 }
 
 export function* openDiff(
@@ -717,7 +770,9 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     send,
     stopRun,
     queueAction,
-    setQuestionAnswer,
+    setQuestionCustomAnswer,
+    toggleQuestionOption,
+    setQuestionIndex,
     toggleRowExpanded,
     openDiff,
     closeDiff,

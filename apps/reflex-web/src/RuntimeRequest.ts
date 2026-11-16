@@ -57,8 +57,36 @@ export function* answerRequest(
 }
 leading(answerRequest);
 
+/** Closes a message-mode question without answering it. */
+export function* dismissRequest(
+  draft: IRuntimeRequest,
+  environmentId: string,
+  threadId: string,
+): IOpenGenerator {
+  (yield* outcome(draft)).Error = null;
+  const requestId = draft.id;
+  try {
+    yield* open(
+      withCommandId((commandId) =>
+        respondRequestEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+          RequestId: requestId,
+          Decision: null,
+          Answers: null,
+          Dismiss: true,
+        }),
+      ),
+    );
+  } catch (error) {
+    (yield* outcome(draft)).Error = error instanceof Error ? error.message : String(error);
+  }
+}
+leading(dismissRequest);
+
 export function* answering(draft: IRuntimeRequest): ISelectorGenerator<boolean> {
-  return yield* inFlight(answerRequest, draft);
+  return (yield* inFlight(answerRequest, draft)) || (yield* inFlight(dismissRequest, draft));
 }
 
 export function* answerError(draft: IRuntimeRequest): ISelectorGenerator<string | null> {
@@ -66,6 +94,6 @@ export function* answerError(draft: IRuntimeRequest): ISelectorGenerator<string 
 }
 
 export default createEntityFeature<IRuntimeRequest>(import.meta.url)(
-  { answerRequest },
+  { answerRequest, dismissRequest },
   { answering, answerError },
 );

@@ -18,7 +18,7 @@ import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
 import { ChevronDown, PanelBottom, PanelRight } from "./icons";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
-import { PendingApproval, RequestBanner } from "./RequestViews";
+import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
 import { needsVisit, runStatus } from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { TerminalPanel } from "./TerminalPanel";
@@ -179,6 +179,10 @@ const ThreadBody = ThreadSession.provider(() => {
   let dragging = false;
   const scrollToEnd = () => {
     scroller.scrollTop = scroller.scrollHeight;
+  };
+  const onComposerSend = () => {
+    setStuck(true);
+    scrollToEnd();
   };
 
   const firstVisible = (): Element | null => {
@@ -420,16 +424,27 @@ const ThreadBody = ThreadSession.provider(() => {
               </button>
             </Show>
             <TurnStatus state={turnState()} />
-            <For each={thread.pendingQuestionIds()}>
-              {(id) => <RequestBanner state={thread.state.RuntimeRequests[id]!} />}
+            <For each={thread.pendingOtherIds()}>
+              {(id) => <UnansweredRequest state={thread.state.RuntimeRequests[id]!} />}
             </For>
-            <Composer
-              active={turnState() !== null}
-              onSend={() => {
-                setStuck(true);
-                scrollToEnd();
-              }}
-            />
+            <Show
+              when={thread.pendingQuestionIds()[0]}
+              keyed
+              fallback={<Composer active={turnState() !== null} onSend={onComposerSend} />}
+            >
+              {(id) => (
+                <PendingQuestion
+                  state={thread.state.RuntimeRequests[id]!}
+                  composer={(answering) => (
+                    <Composer
+                      active={turnState() !== null}
+                      onSend={onComposerSend}
+                      question={answering}
+                    />
+                  )}
+                />
+              )}
+            </Show>
           </div>
         </div>
         <Show when={terminalOpen()}>

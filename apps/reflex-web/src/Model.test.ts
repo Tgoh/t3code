@@ -59,7 +59,14 @@ import {
   timelineIds,
 } from "./OpenThread";
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
-import { answering, answerRequest, canAnswer, type IRuntimeRequest } from "./RuntimeRequest";
+import { type IQuestion, questionProgress } from "./questions";
+import {
+  answering,
+  answerRequest,
+  canAnswer,
+  dismissRequest,
+  type IRuntimeRequest,
+} from "./RuntimeRequest";
 import {
   activityAt,
   canSnooze,
@@ -86,17 +93,18 @@ import {
   openTerminal,
   queueAction,
   queueing,
-  questionAnswers,
   send,
   sending,
   setDraft,
   setModelSelection,
-  setQuestionAnswer,
+  setQuestionCustomAnswer,
+  setQuestionIndex,
   setRuntimeMode,
   stopping,
   stopRun,
   terminalAttachment,
   TerminalReceiver,
+  toggleQuestionOption,
 } from "./ThreadSession";
 import {
   assistantItem,
@@ -1933,21 +1941,139 @@ describe("writing to the server", () => {
       null,
     );
     expect(answers).toEqual([]);
+    const option = (label: string, extra: object = {}) => ({
+      label,
+      description: `${label} described`,
+      ...extra,
+    });
     const questions = [
-      { id: "one", options: [] },
-      { id: "many", options: [{ label: "a" }, { label: "b" }], multiSelect: true },
-    ];
-    const built = (requestId = "r-1") => questionAnswers(server.session(), requestId, questions);
-    const type = (questionId: string, text: string) =>
-      server.runtime.dispatch(setQuestionAnswer, server.sessionId(), "r-1", questionId, text);
-    expect(built()).toBeNull();
-    await type("one", "typed");
-    expect(built()).toBeNull();
-    await type("many", "a, b");
-    expect(built()).toEqual({ one: "typed", many: ["a", "b"] });
-    expect(built("r-2")).toBeNull();
-    await server.runtime.dispatch(answerRequest, node("r-1").$Id, ENV, THREAD_ID, null, built());
-    expect(answers.map((answer) => answer.Answers)).toEqual([{ one: "typed", many: ["a", "b"] }]);
+      {
+        id: "pick",
+        header: "Pick",
+        question: "Which?",
+        options: [option("a", { preview: "```\na\n```" }), option("b", { value: "B-value" })],
+      },
+      {
+        id: "many",
+        header: "Many",
+        question: "Which ones?",
+        options: [option("x"), option("y"), option("z")],
+        multiSelect: true,
+      },
+      { id: "free", header: "Free", question: "Say?", options: [option("no")] },
+      {
+        id: "edit",
+        header: "Edit",
+        question: "Edit?",
+        options: [],
+        initialAnswer: "suggested",
+      },
+    ] as unknown as IQuestion[];
+    const progress = (index = 0, requestId = "r-1") =>
+      questionProgress(questions, server.session().QuestionAnswers[requestId], index);
+    const toggle = (questionId: string, value: string) =>
+      server.runtime.dispatch(
+        toggleQuestionOption,
+        server.sessionId(),
+        "r-1",
+        questions,
+        questionId,
+        value,
+      );
+    const type = (questionIndex: number, text: string) =>
+      server.runtime.dispatch(
+        setQuestionCustomAnswer,
+        server.sessionId(),
+        "r-1",
+        questions[questionIndex]!,
+        text,
+      );
+    expect(progress(3).CustomAnswer).toBe("suggested");
+    expect(progress().CanAdvance).toBe(false);
+    await toggle("pick", "a");
+    await toggle("pick", "B-value");
+    expect(progress().SelectedOptionValues).toEqual(["B-value"]);
+    await toggle("many", "x");
+    await toggle("many", "z");
+    await toggle("many", "x");
+    await toggle("many", "y");
+    expect(progress(1).SelectedOptionValues).toEqual(["z", "y"]);
+    expect(progress().Answers).toBeNull();
+    await type(2, "my own words");
+    expect(progress(3).IsLastQuestion).toBe(true);
+    expect(progress().Answers).toEqual({
+      pick: "B-value",
+      many: ["z", "y"],
+      free: "my own words",
+      edit: "suggested",
+    });
+
+    await server.runtime.dispatch(setDraft, server.sessionId(), "half a message");
+    await toggle("free", "no");
+    expect(server.session().Draft).toBe("half a message\n\nmy own words");
+    expect(progress().Answers?.free).toBe("no");
+    expect(questionProgress(questions, undefined, 0).Answers).toBeNull();
+
+    await server.runtime.dispatch(
+      answerRequest,
+      node("r-1").$Id,
+      ENV,
+      THREAD_ID,
+      null,
+      progress().Answers,
+    );
+    expect(answers.map((answer) => answer.Answers)).toEqual([
+      { pick: "B-value", many: ["z", "y"], free: "no", edit: "suggested" },
+    ]);
+    await server.runtime.dispatch(dismissRequest, node("r-1").$Id, ENV, THREAD_ID);
+    expect(answers[1]).toMatchObject({ RequestId: "r-1", Dismiss: true, Answers: null });
+  });
+
+  it("puts typed answers in the draft when Stop cancels a question or it expires, and drops the rest", async () => {
+    const server = await connect();
+    await server.open();
+    const request = (id: string, status = "pending") => ({
+      id,
+      kind: "user_input",
+      status,
+      responseCapability: { type: "live" },
+    });
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runtimeRequests: ["cancelled", "expired", "resolved", "open"].map((id) => request(id)),
+        } as never,
+        1,
+      ),
+    );
+    const question = { id: "q", header: "Q", question: "Q?", options: [] } as unknown as IQuestion;
+    for (const id of ["cancelled", "expired", "resolved", "open"])
+      await server.runtime.dispatch(
+        setQuestionCustomAnswer,
+        server.sessionId(),
+        id,
+        question,
+        `typed for ${id}`,
+      );
+    await server.runtime.dispatch(setQuestionIndex, server.sessionId(), "cancelled", 1);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "draft");
+    const settle = (sequence: number, id: string) =>
+      server.sendThread({
+        kind: "event",
+        sequence,
+        event: event("runtime-request.updated", request(id, id)),
+      } as IWireThreadItem);
+    await settle(2, "cancelled");
+    await settle(3, "expired");
+    await settle(4, "resolved");
+    expect(server.session().Draft).toBe("draft\n\ntyped for cancelled\n\ntyped for expired");
+    expect(Object.keys(server.session().QuestionAnswers)).toEqual(["open"]);
+    expect(server.session().QuestionIndex).toEqual({});
+
+    await server.sendThread(snapshotOf(emptyProjection() as never, 5));
+    expect(server.session().QuestionAnswers).toEqual({});
+    expect(server.session().Draft).toBe("draft\n\ntyped for cancelled\n\ntyped for expired");
   });
 
   it("sends a thread command and leaves the row to the stream, showing a failure", async () => {

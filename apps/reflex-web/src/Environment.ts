@@ -56,6 +56,7 @@ import {
   type ISelection,
   type IThreadSession,
   restoreTerminal,
+  settleQuestions,
 } from "./ThreadSession";
 
 declare module "treflex" {
@@ -469,6 +470,10 @@ export function* currentProjectRoot(draft: IEnvironment): ISelectorGenerator<str
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
   *"Thread/Deleted"(draft, { ThreadId }) {
     yield* forgetThread(draft, ThreadId);
+  },
+  *"Thread/RequestsSettled"(draft, { ThreadId, PendingIds, UnansweredIds }) {
+    const session = draft.Local.ThreadSessions[ThreadId];
+    if (session !== undefined) yield* start(settleQuestions, session, PendingIds, UnansweredIds);
   },
   *"Thread/Expired"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);

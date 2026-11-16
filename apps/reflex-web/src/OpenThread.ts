@@ -45,6 +45,11 @@ declare module "treflex" {
   interface IMessageRegistry {
     "Thread/Deleted": { ThreadId: string };
     "Thread/Expired": { ThreadId: string };
+    "Thread/RequestsSettled": {
+      ThreadId: string;
+      PendingIds: string[];
+      UnansweredIds: string[];
+    };
   }
   interface ITimerRegistry {
     "Thread/Reopen": {};
@@ -497,6 +502,7 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     const history = yield* windowOf(draft, item);
     yield* reconcileEntities(draft.RuntimeRequests, item.projection.runtimeRequests);
     applySnapshot(draft, item, history);
+    yield* announceSettled(draft);
     return;
   }
   if (item.sequence <= draft.LastSequence) return;
@@ -509,9 +515,22 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     return;
   }
   if (draft.Thread === null) return;
-  if (item.event.type === "runtime-request.updated")
+  if (item.event.type === "runtime-request.updated") {
     yield* putEntity(draft.RuntimeRequests, item.event.payload);
-  else applyEvent(draft, item.event);
+    if (item.event.payload.status !== "pending") yield* announceSettled(draft);
+  } else applyEvent(draft, item.event);
+}
+
+// Follows makeThreadRequestsResolvedAnnouncer in packages/client-runtime/src/state/threadRequests.ts.
+function* announceSettled(draft: IOpenThread): IActionGenerator {
+  const requests = Object.values(draft.RuntimeRequests);
+  yield* publishToNearest(draft, "Thread/RequestsSettled", {
+    ThreadId: draft.ThreadId,
+    PendingIds: pendingIds(draft),
+    UnansweredIds: requests
+      .filter((request) => request.status === "cancelled" || request.status === "expired")
+      .map((request) => request.id),
+  });
 }
 
 function* reopenLater(draft: IOpenThread): IActionGenerator {
@@ -705,8 +724,16 @@ export function* pendingApprovalIds(draft: IOpenThread): ISelectorGenerator<stri
   return pendingIds(draft).filter((id) => isApproval(draft, id));
 }
 
+const isQuestion = (draft: IOpenThread, id: string): boolean =>
+  pendingRequest(draft, id)?.Item?.type === "user_input_request";
+
 export function* pendingQuestionIds(draft: IOpenThread): ISelectorGenerator<string[]> {
-  return pendingIds(draft).filter((id) => !isApproval(draft, id));
+  return pendingIds(draft).filter((id) => isQuestion(draft, id));
+}
+
+/** Secret, link and other requests this client can show but not answer. */
+export function* pendingOtherIds(draft: IOpenThread): ISelectorGenerator<string[]> {
+  return pendingIds(draft).filter((id) => !isApproval(draft, id) && !isQuestion(draft, id));
 }
 
 export default createEntityFeature<IOpenThread>(import.meta.url)(
@@ -715,6 +742,7 @@ export default createEntityFeature<IOpenThread>(import.meta.url)(
     latestRun,
     pendingApprovalIds,
     pendingQuestionIds,
+    pendingOtherIds,
     queuedRunIds,
     threadSynchronized,
     timelineIds,

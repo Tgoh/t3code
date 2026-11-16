@@ -6,6 +6,7 @@ import {
   createProject,
   deleteProject,
   deleteThread,
+  dismissThreadUserInput,
   interruptThreadTurn,
   markThreadUnread,
   pinThread,
@@ -142,9 +143,11 @@ export const respondRequestImpl = implementation(respondRequestEffect, async (in
   };
   await inEnvironment(
     input.EnvironmentId,
-    input.Decision !== null
-      ? respondToThreadApproval({ ...common, decision: input.Decision })
-      : respondToThreadUserInput({ ...common, answers: input.Answers ?? {} }),
+    input.Dismiss
+      ? dismissThreadUserInput(common)
+      : input.Decision !== null
+        ? respondToThreadApproval({ ...common, decision: input.Decision })
+        : respondToThreadUserInput({ ...common, answers: input.Answers ?? {} }),
   );
 });
 

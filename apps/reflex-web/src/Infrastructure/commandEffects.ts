@@ -43,6 +43,7 @@ export interface IRespondRequest {
   RequestId: string;
   Decision: IApprovalDecision | null;
   Answers: Record<string, string | ReadonlyArray<string>> | null;
+  Dismiss?: true;
 }
 
 export interface IQueueCommand {
