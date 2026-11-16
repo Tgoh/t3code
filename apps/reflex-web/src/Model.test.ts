@@ -122,7 +122,12 @@ async function connect(
   const runtime = createTestRuntime<IRoot>(
     getDefaultRoot("Root"),
     {
-      environmentInfo: () => ({ Authenticated: true, EnvironmentId: ENV, Label: "Test" }),
+      environmentInfo: () => ({
+        Authenticated: true,
+        EnvironmentId: ENV,
+        Label: "Test",
+        FileAttachmentLimit: null,
+      }),
       serverProviders: () => [
         {
           InstanceId: "devReplay",

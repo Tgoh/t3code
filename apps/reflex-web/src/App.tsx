@@ -1,7 +1,7 @@
 import { For, Match, Switch } from "solid-js";
 
 import { ProjectBadge } from "./brand";
-import { Composer } from "./Composer";
+import { Composer, FileDropSection } from "./Composer";
 import Environment from "./Environment";
 import Root from "./Root";
 import { Sidebar } from "./Sidebar";
@@ -13,7 +13,7 @@ const NewThreadView = ThreadSession.provider(() => {
   const session = ThreadSession.use();
   const projectName = () => session.projectName() ?? "Unknown project";
   return (
-    <section class="thread">
+    <FileDropSection>
       <header class="thread-header">
         <div class="breadcrumb">
           <ProjectBadge name={projectName()} size={14} />
@@ -28,7 +28,7 @@ const NewThreadView = ThreadSession.provider(() => {
           <Composer />
         </div>
       </div>
-    </section>
+    </FileDropSection>
   );
 });
 

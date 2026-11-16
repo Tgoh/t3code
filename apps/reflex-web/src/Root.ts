@@ -36,7 +36,11 @@ export function* load(draft: IRoot): IActionGenerator {
     draft.Phase = "unpaired";
     return;
   }
-  const environment = yield* newEnvironment(info.EnvironmentId, info.Label);
+  const environment = yield* newEnvironment(
+    info.EnvironmentId,
+    info.Label,
+    info.FileAttachmentLimit,
+  );
   draft.Phase = "connected";
   draft.Environments.push(environment);
   yield* start(init, environment.$Id);

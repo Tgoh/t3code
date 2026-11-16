@@ -12,17 +12,18 @@ import {
 } from "solid-js";
 
 import { ProjectBadge } from "./brand";
-import { Composer } from "./Composer";
+import { Composer, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
 import { ChevronDown, PanelBottom, PanelRight } from "./icons";
-import OpenThread, { latestDiffTurn, runText } from "./OpenThread";
+import OpenThread, { latestDiffTurn, runText, timelineItem } from "./OpenThread";
 import { PendingApproval, RequestBanner } from "./RequestViews";
 import { needsVisit, runStatus } from "./Shell";
 import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession from "./ThreadSession";
-import { TimelineRow } from "./TimelineRows";
+import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
+import { TimelineResponse } from "./TimelineResponse";
 import { firstAfterChange, grow, INITIAL_ROWS, keepsWindow, trimToTail } from "./timelineWindow";
 
 const LoadEarlier = HistoryWindow.provider(() => {
@@ -177,6 +178,16 @@ const ThreadBody = ThreadSession.provider(() => {
     });
   };
 
+  const startsAt = (id: string) => {
+    const item = untrack(() => timelineItem(thread.state, id));
+    return item !== undefined && startsResponse(item);
+  };
+  // A response lays out as a whole, so the window starts at a prompt.
+  const snap = (ids: readonly string[], first: number) => {
+    let at = first;
+    while (at > 0 && !startsAt(ids[at]!)) at -= 1;
+    return at;
+  };
   const [timeline, setTimeline] = createSignal({
     Ids: [] as readonly string[],
     First: 0,
@@ -187,7 +198,7 @@ const ThreadBody = ThreadSession.provider(() => {
     const held = untrack(timeline);
     const moved = firstAfterChange(held.Ids, ids, held.First);
     const isStuck = untrack(stuck);
-    const first = isStuck ? trimToTail(ids.length, moved, held.Floor) : moved;
+    const first = snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved);
     if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
     const trimmed = first !== moved;
     const before = trimmed ? scroller.scrollTop : 0;
@@ -203,13 +214,17 @@ const ThreadBody = ThreadSession.provider(() => {
     const held = timeline();
     return held.Ids.slice(held.First);
   });
+  const responses = createMemo<IResponseSegments | undefined>((previous) =>
+    segmentResponses(previous, windowIds(), startsAt),
+  );
+  const lastStart = () => responses()?.Starts.at(-1);
   const reachedTop = () => timeline().First === 0;
-  const growTo = (first: number) => {
+  const growTo = (target: number) => {
     if (!stuck()) keepStill();
     setTimeline((held) => ({
       ...held,
-      First: first,
-      Floor: stuck() ? Math.max(held.Floor, held.Ids.length - first) : held.Floor,
+      First: snap(held.Ids, target),
+      Floor: stuck() ? Math.max(held.Floor, held.Ids.length - target) : held.Floor,
     }));
   };
   const showAll = (forward: boolean) => {
@@ -240,7 +255,7 @@ const ThreadBody = ThreadSession.provider(() => {
   });
   return (
     <div class="thread-layout">
-      <section class="thread">
+      <FileDropSection>
         <header class="thread-header">
           <div class="breadcrumb">
             <Show when={session.projectName()}>
@@ -332,7 +347,14 @@ const ThreadBody = ThreadSession.provider(() => {
                   </Show>
                 </Show>
               </div>
-              <For each={windowIds()}>{(id) => <TimelineRow id={id} />}</For>
+              <For each={responses()?.Starts}>
+                {(start) => (
+                  <TimelineResponse
+                    ids={responses()?.Segments[start] ?? []}
+                    latest={start === lastStart()}
+                  />
+                )}
+              </For>
               <For each={thread.pendingApprovalIds()}>
                 {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
               </For>
@@ -387,7 +409,7 @@ const ThreadBody = ThreadSession.provider(() => {
         <Show when={terminalOpen()}>
           <TerminalPanel />
         </Show>
-      </section>
+      </FileDropSection>
       <Show when={diffOpen()}>
         <DiffPanel />
       </Show>
