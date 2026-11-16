@@ -130,6 +130,11 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 
 ## Unmatched against the stock UI
 
+- Visits: a visit that fails isn't retried after a reconnect, so Done can stay until the next completion.
+- Questions: answers typed into a question that Stop cancels or that expires are lost; stock moves them into the composer. Option previews don't render, and an `initialAnswer` isn't filled in.
+- Markdown: `vscode://`, `cursor://` and other editor links are dropped instead of opening the file.
+- Sidebar: no "Setting up" state for a thread launched from a draft before its first run lands, and no Regenerate title action.
+
 - Sidebar: no Search box, thread filter, sidebar toggle, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
 - Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
 - Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, drag reorder, auto-settle toggle or search.
