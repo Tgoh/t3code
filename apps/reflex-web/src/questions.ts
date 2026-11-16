@@ -83,9 +83,8 @@ export function answerPlaceholder(question: IQuestion): string {
     : "Type your own answer, or leave this blank to use the selected option";
 }
 
-// Follows formatPendingPrimaryActionLabel in apps/web/src/components/chat/ComposerPrimaryActions.tsx.
+// Follows the compact labels of formatPendingPrimaryActionLabel in apps/web/src/components/chat/ComposerPrimaryActions.tsx.
 export function advanceLabel(progress: IQuestionProgress, responding: boolean): string {
   if (responding) return "Submitting...";
-  if (!progress.IsLastQuestion) return "Next question";
-  return progress.QuestionIndex > 0 ? "Submit answers" : "Submit answer";
+  return progress.IsLastQuestion ? "Submit" : "Next";
 }

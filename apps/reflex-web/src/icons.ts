@@ -8,6 +8,7 @@ export { default as Brain } from "lucide-solid/icons/brain";
 export { default as CalendarClock } from "lucide-solid/icons/calendar-clock";
 export { default as Check } from "lucide-solid/icons/check";
 export { default as ChevronDown } from "lucide-solid/icons/chevron-down";
+export { default as ChevronLeft } from "lucide-solid/icons/chevron-left";
 export { default as ChevronRight } from "lucide-solid/icons/chevron-right";
 export { default as ChevronUp } from "lucide-solid/icons/chevron-up";
 export { default as CircleAlert } from "lucide-solid/icons/circle-alert";

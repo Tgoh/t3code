@@ -12,7 +12,7 @@ import {
 } from "./attachmentIntake";
 import { ModelPicker, PermissionsChip } from "./ComposerMenus";
 import Environment from "./Environment";
-import { ArrowUp, File as FileIcon, Paperclip, X } from "./icons";
+import { ArrowUp, ChevronLeft, File as FileIcon, Paperclip, X } from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { advanceLabel, answerPlaceholder, type IAnswering } from "./questions";
 import { StageArt } from "./StageArt";
@@ -146,11 +146,13 @@ function AnswerActions(props: { question: IAnswering }) {
         <button
           type="button"
           class="button answer-previous"
+          aria-label="Previous question"
+          data-tip="Previous question"
           disabled={responding()}
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => props.question.previous()}
         >
-          Previous
+          <ChevronLeft />
         </button>
       </Show>
       <button

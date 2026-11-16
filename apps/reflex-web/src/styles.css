@@ -4105,7 +4105,17 @@ a.attachment-file-open:hover .attachment-file-name {
 }
 
 .answer-previous {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
   margin-left: 5px;
+  padding: 0;
+  width: 28px;
+}
+
+.answer-previous svg {
+  height: 14px;
+  width: 14px;
 }
 
 .answer-submit {
@@ -4120,7 +4130,7 @@ a.attachment-file-open:hover .attachment-file-name {
   font-weight: 500;
   height: 28px;
   margin-left: 8px;
-  padding: 0 16px;
+  padding: 0 12px;
   white-space: nowrap;
 }
 
