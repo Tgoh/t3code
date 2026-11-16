@@ -5966,9 +5966,11 @@ a.button {
 
 @media (max-width: 767px) {
   .settings-nav {
+    overflow-x: hidden;
     width: 3.5rem;
   }
 
+  .settings-search,
   .settings-nav-item span,
   .settings-nav-heading {
     display: none;
