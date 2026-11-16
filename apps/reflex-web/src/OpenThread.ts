@@ -1,5 +1,8 @@
 import { applyThreadPullRequestLinkUpdate } from "@t3tools/client-runtime/thread-pull-requests";
-import type { OrchestrationV2AppThread } from "@t3tools/contracts";
+import {
+  isQueuedProviderThreadPlaceholder,
+  type OrchestrationV2AppThread,
+} from "@t3tools/contracts";
 import { restoreLocalVisibleTurnItems } from "@t3tools/shared/orchestrationV2BoundedSnapshot";
 import {
   restoreSubagentBodies,
@@ -239,6 +242,16 @@ function placeRow(draft: IOpenThread, item: IWireTurnItem, heldOrdinal: number |
   draft.Rows[item.id] = { visibility: "local", sourceThreadId: item.threadId };
 }
 
+// Follows restoreQueuedUserItems in packages/client-runtime/src/state/orchestrationV2Projection.ts:
+// a snapshot leaves a queued run's user item without a row, and it skips the window check.
+function restoreQueuedUserRows(draft: IOpenThread, runId: string): void {
+  for (const item of Object.values(draft.TurnItems)) {
+    if (item.runId !== runId || item.type !== "user_message" || item.inputIntent !== "queued_turn")
+      continue;
+    if (draft.Rows[item.id] === undefined) placeRow(draft, item, undefined);
+  }
+}
+
 function applyTurnItem(draft: IOpenThread, wire: IWireTurnItem): void {
   const held = draft.TurnItems[wire.id];
   const payload = restoreBodies(wire, draft);
@@ -307,9 +320,13 @@ function applyEvent(
       applyTurnItem(draft, event.payload);
       return;
     case "run.created":
-    case "run.updated":
+    case "run.updated": {
+      const wasQueued = draft.Runs[event.payload.id]?.status === "queued";
       put(draft.Runs, event.payload);
+      if (wasQueued && event.payload.status !== "queued")
+        restoreQueuedUserRows(draft, event.payload.id);
       return;
+    }
     case "run.background-work-cancelled": {
       const run = draft.Runs[event.payload.runId];
       if (run !== undefined)
@@ -334,6 +351,12 @@ function applyEvent(
       delete draft.ProviderSessions[event.payload.providerSessionId];
       return;
     case "provider-thread.updated":
+      if (
+        draft.Thread !== null &&
+        event.payload.appThreadId === draft.Thread.id &&
+        !isQueuedProviderThreadPlaceholder(event.payload)
+      )
+        draft.Thread.activeProviderThreadId = event.payload.id;
       put(draft.ProviderThreads, event.payload);
       return;
     case "provider-turn.updated": {

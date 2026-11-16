@@ -20,6 +20,7 @@ import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type {
   IWireHistoryPage,
+  IWireProjection,
   IWireShellItem,
   IWireThreadItem,
   IWireTurnItem,
@@ -309,6 +310,54 @@ describe("thread events", () => {
             }),
           ),
         }),
+      );
+    }
+  });
+
+  it("matches the immutable reducer when a queued run starts and a provider thread takes over", async () => {
+    const server = await connect();
+    await server.open();
+    const queued = {
+      ...commandItem("queued", "run-1", 1),
+      type: "user_message",
+      inputIntent: "queued_turn",
+      text: "later",
+      attachments: [],
+    } as IWireTurnItem;
+    const start = {
+      ...emptyProjection(),
+      runs: [run("run-1", 1, "queued")],
+      turnItems: [queued],
+    };
+    await server.sendThread(snapshotOf(copy(start), 1));
+    const providerThread = {
+      id: "pt-1",
+      appThreadId: start.thread.id,
+      status: "loaded",
+      firstRunOrdinal: 1,
+      nativeThreadRef: null,
+      providerSessionId: null,
+    };
+    const events = [
+      event("provider-thread.updated", {
+        ...providerThread,
+        id: "pt-0",
+        status: "not_loaded",
+        firstRunOrdinal: null,
+      }),
+      event("provider-thread.updated", providerThread),
+      event("run.updated", run("run-1", 1, "starting")),
+    ];
+    let expected = copy(start) as unknown as OrchestrationV2ThreadProjection;
+    let sequence = 1;
+    for (const next of events) {
+      expected = applyOrchestrationV2ProjectionEvent(expected, copy(next) as never)!;
+      sequence += 1;
+      await server.sendThread({ kind: "event", sequence, event: copy(next) } as IWireThreadItem);
+      const wire = expected as unknown as IWireProjection;
+      expect(copy(server.thread().Thread)).toEqual(copy(wire.thread));
+      expect(timelineEntries(server.thread()).map((row) => row.item.id)).toEqual(
+        wire.visibleTurnItems.map((row) => row.item.id),
       );
     }
   });
