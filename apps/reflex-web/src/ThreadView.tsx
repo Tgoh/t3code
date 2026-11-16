@@ -12,7 +12,7 @@ import {
 } from "solid-js";
 
 import { ProjectBadge } from "./brand";
-import { Composer } from "./Composer";
+import { Composer, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
@@ -245,7 +245,7 @@ const ThreadBody = ThreadSession.provider(() => {
   });
   return (
     <div class="thread-layout">
-      <section class="thread">
+      <FileDropSection>
         <header class="thread-header">
           <div class="breadcrumb">
             <Show when={session.projectName()}>
@@ -397,7 +397,7 @@ const ThreadBody = ThreadSession.provider(() => {
         <Show when={terminalOpen()}>
           <TerminalPanel />
         </Show>
-      </section>
+      </FileDropSection>
       <Show when={diffOpen()}>
         <DiffPanel />
       </Show>

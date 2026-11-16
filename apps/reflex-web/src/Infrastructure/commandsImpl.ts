@@ -336,7 +336,13 @@ export const attachmentUrlImpl = implementation(attachmentUrlEffect, async (inpu
   const { relativeUrl } = await inEnvironment(
     input.EnvironmentId,
     request(WS_METHODS.assetsCreateUrl, {
-      resource: { _tag: "attachment", attachmentId: input.AttachmentId },
+      resource: {
+        _tag: "attachment",
+        attachmentId: input.AttachmentId,
+        ...(input.File === undefined
+          ? {}
+          : { fileName: input.File.Name, mimeType: input.File.MimeType, disposition: "inline" }),
+      },
     }),
     action?.signal,
   );

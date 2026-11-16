@@ -8,6 +8,7 @@ import { useComponentState } from "treflex-solid";
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
+import { attachmentDetail } from "./attachmentIntake";
 import { CommandOutput } from "./CommandOutput";
 import { CopyButton } from "./CopyButton";
 import {
@@ -16,6 +17,7 @@ import {
   ChevronRight,
   CircleAlert,
   CircleHelp,
+  Download,
   File,
   FileDiff,
   FileSearch,
@@ -92,32 +94,99 @@ interface IAttachmentImage extends IEntity {
 function* loadAttachmentUrl(
   draft: IAttachmentImage,
   environmentId: string,
-  attachmentId: string,
+  file: IWireAttachment,
 ): IActionGenerator {
   try {
     draft.Url = yield* attachmentUrlEffect({
       EnvironmentId: environmentId,
-      AttachmentId: attachmentId,
+      AttachmentId: file.id,
+      ...(file.type === "image" ? {} : { File: { Name: file.name, MimeType: file.mimeType } }),
     });
   } catch {
     draft.Failed = true;
   }
 }
 
-function AttachmentImage(props: {
-  environmentId: string;
-  file: IWireAttachment;
-  grouped: boolean;
-}) {
+function UserAttachment(props: { environmentId: string; file: IWireAttachment; grouped: boolean }) {
   const local = useComponentState<IAttachmentImage>(() => ({ Url: null, Failed: false }));
-  onMount(() => local.dispatch(loadAttachmentUrl, props.environmentId, props.file.id));
-  const [expanded, setExpanded] = createSignal(false);
+  onMount(() => local.dispatch(loadAttachmentUrl, props.environmentId, props.file));
   return (
     <Show
-      when={props.file.mimeType.startsWith("image/") && !local.state.Failed}
-      fallback={<span class="attachment-chip">{props.file.name}</span>}
+      when={props.file.type === "image"}
+      fallback={<AttachmentFile file={props.file} url={local.state.Url} />}
     >
-      <Show when={local.state.Url} fallback={<span class="attachment-image placeholder" />}>
+      <AttachmentImage
+        file={props.file}
+        grouped={props.grouped}
+        url={local.state.Url}
+        failed={local.state.Failed}
+        onError={() => local.dispatch(markFailed)}
+      />
+    </Show>
+  );
+}
+
+function AttachmentFile(props: { file: IWireAttachment; url: string | null }) {
+  const pastedText = () =>
+    "source" in props.file &&
+    props.file.source !== undefined &&
+    "_tag" in props.file.source &&
+    props.file.source._tag === "pasted-text";
+  const label = () => (pastedText() ? "Pasted text" : props.file.name);
+  const identity = () => (
+    <>
+      <span class="attachment-file-icon">
+        <File />
+      </span>
+      <span class="attachment-file-text">
+        <span class="attachment-file-name">{label()}</span>
+        <span class="attachment-file-detail">
+          {attachmentDetail(props.file.name, props.file.sizeBytes, pastedText())}
+        </span>
+      </span>
+    </>
+  );
+  return (
+    <div class="attachment-file-card">
+      <Show when={props.url} fallback={<span class="attachment-file-open">{identity()}</span>}>
+        {(url) => (
+          <>
+            <a
+              class="attachment-file-open"
+              href={url()}
+              target="_blank"
+              rel="noopener"
+              aria-label={`Preview ${label()}`}
+            >
+              {identity()}
+            </a>
+            <a
+              class="icon-button"
+              href={url()}
+              download={props.file.name}
+              aria-label={`Download ${label()}`}
+              data-tip={`Download ${label()}`}
+            >
+              <Download />
+            </a>
+          </>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+function AttachmentImage(props: {
+  file: IWireAttachment;
+  grouped: boolean;
+  url: string | null;
+  failed: boolean;
+  onError: () => void;
+}) {
+  const [expanded, setExpanded] = createSignal(false);
+  return (
+    <Show when={!props.failed} fallback={<span class="attachment-chip">{props.file.name}</span>}>
+      <Show when={props.url} fallback={<span class="attachment-image placeholder" />}>
         {(url) => (
           <>
             <button
@@ -130,7 +199,7 @@ function AttachmentImage(props: {
                 classList={{ grouped: props.grouped }}
                 src={url()}
                 alt={props.file.name}
-                onError={() => local.dispatch(markFailed)}
+                onError={() => props.onError()}
               />
             </button>
             <Show when={expanded()}>
@@ -238,7 +307,7 @@ function UserRow(props: IRowProps) {
     <article class="row user" classList={{ inherited: inherited() }}>
       <For each={attachments()}>
         {(file) => (
-          <AttachmentImage
+          <UserAttachment
             environmentId={thread.state.EnvironmentId}
             file={file}
             grouped={Boolean(message()?.text)}

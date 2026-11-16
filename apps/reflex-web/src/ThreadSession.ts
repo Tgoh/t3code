@@ -69,7 +69,7 @@ export interface IReplica extends IEntity {
   OpenThreads: Record<string, IOpenThread>;
 }
 
-export type IAttachmentDraft = Extract<IPickedFile, { Id: string }>;
+export type IAttachmentDraft = IPickedFile;
 
 export interface IDiffPanel {
   Open: boolean;
@@ -101,6 +101,7 @@ export interface IThreadSession extends IEntity {
   Draft: string;
   Attachments: IAttachmentDraft[];
   AttachmentError?: string;
+  AttachmentNotice?: string;
   ModelSelection: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode;
   SendError?: string;
@@ -253,12 +254,17 @@ export function* setRuntimeMode(draft: IThreadSession, mode: IWireRuntimeMode): 
   draft.RuntimeMode = mode;
 }
 
-export function* addAttachments(draft: IThreadSession, picked: IPickedFile[]): IActionGenerator {
-  delete draft.AttachmentError;
-  for (const file of picked) {
-    if (file.Id === null) draft.AttachmentError = `${file.Name}: ${file.Error}`;
-    else draft.Attachments.push(file);
-  }
+export function* addAttachments(
+  draft: IThreadSession,
+  picked: IPickedFile[],
+  error: string | null,
+  notice: string | null = null,
+): IActionGenerator {
+  delete draft.AttachmentNotice;
+  if (error === null) delete draft.AttachmentError;
+  else draft.AttachmentError = error;
+  if (notice !== null) draft.AttachmentNotice = notice;
+  draft.Attachments.push(...picked);
 }
 
 export function* removeAttachment(draft: IThreadSession, id: string): IActionGenerator {
@@ -275,7 +281,7 @@ function* uploadAndStart(
   const attachments: IWireAttachment[] = [];
   for (const id of fileIds) {
     const uploaded = yield* files.upload(id);
-    if (uploaded === undefined) throw new Error("An image couldn't be uploaded.");
+    if (uploaded === undefined) throw new Error("An attachment couldn't be uploaded.");
     attachments.push(uploaded);
   }
   const commandId = yield* generateGuid();
@@ -320,6 +326,8 @@ export function* send(draft: IThreadSession): IOpenGenerator {
   }
   if (draft.Draft.trim() === text) draft.Draft = "";
   draft.Attachments = draft.Attachments.filter((file) => !fileIds.includes(file.Id));
+  delete draft.AttachmentNotice;
+  delete draft.AttachmentError;
   if (fileIds.length > 0) yield* resource(draft, "Composer/Files").forget(fileIds);
   if (projectId !== null) {
     draft.NewThreadProjectId = null;

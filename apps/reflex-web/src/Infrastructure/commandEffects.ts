@@ -199,6 +199,7 @@ interface IAttachmentUrlEffect extends IEffect {
   Type: "attachmentUrl";
   EnvironmentId: string;
   AttachmentId: string;
+  File?: { Name: string; MimeType: string };
 }
 
 export const attachmentUrlEffect = defineEffect<IAttachmentUrlEffect, string>("attachmentUrl");
