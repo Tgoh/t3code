@@ -75,7 +75,8 @@
   --sidebar-row-active: #fff;
   --main-thread-row: color-mix(in srgb, var(--success) 12%, transparent);
   --main-thread-row-hover: color-mix(in srgb, var(--success) 18%, var(--sidebar-row-hover));
-  --main-thread-row-active: color-mix(in srgb, var(--success) 24%, var(--sidebar-row-active));
+  --main-thread-row-active: color-mix(in srgb, var(--success) 30%, var(--sidebar-row-active));
+  --main-thread-row-ring: color-mix(in srgb, var(--success) 55%, transparent);
   --sidebar-secondary-label: var(--zinc-500);
   --sidebar-accent: var(--zinc-100);
 
@@ -644,6 +645,7 @@ main {
 
 .thread-card.main.selected {
   background: var(--main-thread-row-active);
+  box-shadow: inset 0 0 0 1px var(--main-thread-row-ring);
 }
 
 .thread-card.dimmed {
