@@ -3,13 +3,28 @@
 #   ./dev-stack.ps1           start whatever isn't already running
 #   ./dev-stack.ps1 -Status   show what's running
 #   ./dev-stack.ps1 -Stop     stop what this script started
+#   ./dev-stack.ps1 -Restart  stop, then start
+#
+# Starting and stopping run elevated: an unelevated run reopens itself as administrator.
 [CmdletBinding()]
 param(
   [switch]$Status,
-  [switch]$Stop
+  [switch]$Stop,
+  [switch]$Restart,
+  [switch]$Pause
 )
 
 $ErrorActionPreference = "Stop"
+
+$identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $Status -and -not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Pause")
+  if ($Stop) { $arguments += "-Stop" }
+  if ($Restart) { $arguments += "-Restart" }
+  Start-Process (Get-Process -Id $PID).Path -Verb RunAs -ArgumentList $arguments
+  "Continuing in an administrator window."
+  return
+}
 
 $root = $PSScriptRoot
 $homeDir = Join-Path (Split-Path $root -Parent) "t3code-dev-home"
@@ -92,7 +107,7 @@ if ($Status) {
   return
 }
 
-if ($Stop) {
+function Stop-Stack {
   $state = Read-State
   foreach ($service in $services) {
     $process = Get-StartedProcess $state[$service.Name]
@@ -104,7 +119,20 @@ if ($Stop) {
     "{0}: stopped" -f $service.Name
   }
   if (Test-Path $statePath) { Remove-Item $statePath }
+}
+
+if ($Stop) {
+  Stop-Stack
+  if ($Pause) { Read-Host "Press Enter to close" | Out-Null }
   return
+}
+
+if ($Restart) {
+  Stop-Stack
+  foreach ($service in $services) {
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Test-Port $service.Port) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+  }
 }
 
 New-Item -ItemType Directory -Force $stateDir | Out-Null
@@ -150,3 +178,4 @@ foreach ($service in $started) {
     Write-Warning ("{0} didn't answer in time. See {1}" -f $service.Name, (Join-Path $stateDir "$($service.Name).err.log"))
   }
 }
+if ($Pause) { Read-Host "Press Enter to close" | Out-Null }
