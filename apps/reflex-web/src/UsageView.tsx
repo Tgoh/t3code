@@ -27,7 +27,13 @@ import {
   type LimitPace,
   type LimitPool,
 } from "@t3tools/shared/usageLimits";
-import { isModelCostUnknown, type MergedUsage, mergeUsage } from "@t3tools/shared/usageMerge";
+import {
+  type DailyTotals,
+  type HourlyTotals,
+  isModelCostUnknown,
+  type MergedUsage,
+  mergeUsage,
+} from "@t3tools/shared/usageMerge";
 import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 
 import { ProviderIcon } from "./brand";
@@ -36,6 +42,14 @@ import { ChartNoAxesColumn, RefreshCw, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
+import {
+  costTypeSegments,
+  type IShareSegment,
+  niceScale,
+  smoothPath,
+  speedCostSegments,
+  tokenTypeSegments,
+} from "./usageChart";
 
 // Follows apps/web/src/components/usage/usageShortcuts.ts and usageProviders.ts.
 type IMetric = "cost" | "tokens" | "limits";
@@ -259,11 +273,18 @@ function UsageOverview(props: {
     return providers().toSorted((left, right) => value(right) - value(left));
   });
   const models = createMemo(() =>
-    props.usage.models.toSorted(
-      (left, right) => right.totalTokens - left.totalTokens || right.costUsd - left.costUsd,
-    ),
+    props.metric === "tokens"
+      ? props.usage.models.toSorted(
+          (left, right) => right.totalTokens - left.totalTokens || right.costUsd - left.costUsd,
+        )
+      : props.usage.models,
   );
   const peak = () => Math.max(0, ...models().map((model) => model[field()]));
+  const hourly = () => props.input.resolution === "hour";
+  const [breakdown, setBreakdown] = createSignal<"model" | "time">("model");
+  const periods = createMemo((): ReadonlyArray<DailyTotals | HourlyTotals> =>
+    (hourly() ? props.usage.hourly : props.usage.daily).toReversed(),
+  );
   return (
     <div class="usage-overview" classList={{ stale: props.stale }}>
       <For each={props.messages}>{(message) => <p class="usage-message">{message}</p>}</For>
@@ -350,83 +371,219 @@ function UsageOverview(props: {
           </div>
         </dl>
       </section>
-      <section class="usage-breakdown">
-        <h2 class="usage-heading">Breakdown</h2>
-        <table>
-          <thead>
-            <tr>
-              <th class="left">#</th>
-              <th class="left wide">Model</th>
-              <th>Cost</th>
-              <th class="share">Share</th>
-              <th>Tokens</th>
-            </tr>
-          </thead>
-          <tbody>
-            <Show
-              when={models().length > 0}
-              fallback={
-                <tr>
-                  <td colSpan={5} class="usage-empty">
-                    No activity in this window.
-                  </td>
-                </tr>
-              }
-            >
-              <For each={models()}>
-                {(model, index) => {
-                  const value = () => model[field()];
-                  const share = () =>
-                    props.metric === "tokens"
-                      ? model.tokenShare
-                      : isModelCostUnknown(model)
-                        ? null
-                        : model.costShare;
-                  return (
-                    <tr>
-                      <td class="left index">{index() + 1}</td>
-                      <td class="left wide">
-                        <span class="usage-model">
-                          <ProviderIcon driver={PROVIDERS[model.provider].Driver} size={14} />
-                          {model.model}
-                        </span>
-                        <Show when={value() > 0 && peak() > 0}>
-                          <span class="usage-bar">
-                            <span
-                              style={{
-                                width: `max(0.5rem, ${(value() / peak()) * 100}%)`,
-                                "background-color": PROVIDERS[model.provider].Color,
-                              }}
-                            />
-                          </span>
-                        </Show>
-                      </td>
-                      <td class="strong">
-                        {isModelCostUnknown(model) ? (
-                          <span class="muted">Unpriced</span>
-                        ) : (
-                          formatUsd(model.costUsd)
-                        )}
-                      </td>
-                      <td class="share">{share() === null ? "" : formatPercent(share()!)}</td>
-                      <td>{formatTokens(model.totalTokens)}</td>
-                    </tr>
-                  );
-                }}
-              </For>
+      <Show when={props.usage.totalTokens > 0}>
+        <section class="usage-shares">
+          <Show
+            when={props.metric === "cost"}
+            fallback={
+              <ShareBar
+                label="Tokens by type"
+                segments={tokenTypeSegments(props.usage)}
+                format={formatTokens}
+              />
+            }
+          >
+            <ShareBar
+              label="Cost by type"
+              segments={costTypeSegments(props.usage.categoryCost)}
+              format={formatUsd}
+            />
+            <Show when={props.usage.speedCost.fast + props.usage.speedCost.ultrafast > 0}>
+              <ShareBar
+                label="Cost by speed"
+                segments={speedCostSegments(props.usage.speedCost)}
+                format={formatUsd}
+              />
             </Show>
-          </tbody>
-        </table>
+          </Show>
+        </section>
+      </Show>
+      <section class="usage-breakdown">
+        <div class="usage-breakdown-head">
+          <h2 class="usage-heading">Breakdown</h2>
+          <div class="segmented" role="group" aria-label="Usage breakdown">
+            <button
+              classList={{ active: breakdown() === "model" }}
+              aria-pressed={breakdown() === "model"}
+              onClick={() => setBreakdown("model")}
+            >
+              Model
+            </button>
+            <button
+              classList={{ active: breakdown() === "time" }}
+              aria-pressed={breakdown() === "time"}
+              onClick={() => setBreakdown("time")}
+            >
+              {hourly() ? "Hour" : "Day"}
+            </button>
+          </div>
+        </div>
+        <Show when={breakdown() === "time"}>
+          <div
+            class="usage-table-scroll"
+            role="region"
+            aria-label="Usage breakdown by time"
+            tabindex="0"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th class="left first">{hourly() ? "Hour" : "Day"}</th>
+                  <For each={providers()}>{(provider) => <th>{PROVIDERS[provider].Label}</th>}</For>
+                  <th>Total</th>
+                  <th>Tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                <Show
+                  when={periods().length > 0}
+                  fallback={
+                    <tr>
+                      <td colSpan={providers().length + 3} class="usage-empty">
+                        No activity in this window.
+                      </td>
+                    </tr>
+                  }
+                >
+                  <For each={periods()}>
+                    {(period) => (
+                      <tr>
+                        <td class="left first strong">
+                          {"hourStart" in period
+                            ? formatHourShort(period.hourStart, props.input.timeZone)
+                            : formatDayShort(period.day)}
+                        </td>
+                        <For each={providers()}>
+                          {(provider) => (
+                            <td>{formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}</td>
+                          )}
+                        </For>
+                        <td class="strong">{formatUsd(period.costUsd)}</td>
+                        <td>{formatTokens(period.totalTokens)}</td>
+                      </tr>
+                    )}
+                  </For>
+                </Show>
+              </tbody>
+            </table>
+          </div>
+        </Show>
+        <Show when={breakdown() === "model"}>
+          <table>
+            <thead>
+              <tr>
+                <th class="left">#</th>
+                <th class="left wide">Model</th>
+                <th>Cost</th>
+                <th class="share">Share</th>
+                <th>Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              <Show
+                when={models().length > 0}
+                fallback={
+                  <tr>
+                    <td colSpan={5} class="usage-empty">
+                      No activity in this window.
+                    </td>
+                  </tr>
+                }
+              >
+                <For each={models()}>
+                  {(model, index) => {
+                    const value = () => model[field()];
+                    const share = () =>
+                      props.metric === "tokens"
+                        ? model.tokenShare
+                        : isModelCostUnknown(model)
+                          ? null
+                          : model.costShare;
+                    return (
+                      <tr>
+                        <td class="left index">{index() + 1}</td>
+                        <td class="left wide">
+                          <span class="usage-model">
+                            <ProviderIcon driver={PROVIDERS[model.provider].Driver} size={14} />
+                            {model.model}
+                          </span>
+                          <Show when={value() > 0 && peak() > 0}>
+                            <span class="usage-bar">
+                              <span
+                                style={{
+                                  width: `max(0.5rem, ${(value() / peak()) * 100}%)`,
+                                  "background-color": PROVIDERS[model.provider].Color,
+                                }}
+                              />
+                            </span>
+                          </Show>
+                        </td>
+                        <td class="strong">
+                          {isModelCostUnknown(model) ? (
+                            <span class="muted">Unpriced</span>
+                          ) : (
+                            formatUsd(model.costUsd)
+                          )}
+                        </td>
+                        <td class="share">{share() === null ? "" : formatPercent(share()!)}</td>
+                        <td>{formatTokens(model.totalTokens)}</td>
+                      </tr>
+                    );
+                  }}
+                </For>
+              </Show>
+            </tbody>
+          </table>
+        </Show>
       </section>
     </div>
   );
 }
 
+// Follows UsageShareBar in apps/web/src/components/usage/UsageShareBar.tsx.
+function ShareBar(props: {
+  label: string;
+  segments: IShareSegment[];
+  format: (value: number) => string;
+}) {
+  const visible = () => props.segments.filter((segment) => segment.Value > 0);
+  const total = () => visible().reduce((sum, segment) => sum + segment.Value, 0);
+  return (
+    <Show when={total() > 0}>
+      <div class="share-bar">
+        <h3 class="usage-heading">{props.label}</h3>
+        <div class="share-bar-track" aria-hidden="true">
+          <For each={visible()}>
+            {(segment) => (
+              <span
+                style={{ flex: `${segment.Value} 1 0`, "background-color": segment.Color }}
+                data-tip={`${segment.Label} · ${props.format(segment.Value)} · ${formatPercent(segment.Value / total())}`}
+              />
+            )}
+          </For>
+        </div>
+        <ul class="share-bar-legend" aria-label={props.label}>
+          <For each={visible()}>
+            {(segment) => (
+              <li>
+                <span class="share-bar-swatch" style={{ "background-color": segment.Color }} />
+                <span class="muted">{segment.Label}</span>
+                <span>{props.format(segment.Value)}</span>
+              </li>
+            )}
+          </For>
+        </ul>
+      </div>
+    </Show>
+  );
+}
+
 const CHART_WIDTH = 960;
 const CHART_HEIGHT = 260;
-const CHART_PAD = { Top: 12, Right: 8, Bottom: 24, Left: 8 };
+const CHART_TOP = 8;
+const CHART_TICKS = 4;
 
-// A simpler cut of apps/web/src/components/usage/UsageProviderChart.tsx: straight segments, no hover.
+// Follows apps/web/src/components/usage/UsageProviderChart.tsx, without its hover tooltip.
 function UsageChart(props: {
   usage: MergedUsage;
   providers: readonly UsageProviderKind[];
@@ -446,30 +603,32 @@ function UsageChart(props: {
     );
     return slots.map((slot) => ({ Slot: slot, Row: rows.get(slot) }));
   });
-  const peak = createMemo(() =>
-    Math.max(
-      0,
-      ...points().flatMap((point) =>
-        props.providers.map((provider) => point.Row?.byProvider.get(provider)?.[field()] ?? 0),
+  const scale = createMemo(() =>
+    niceScale(
+      Math.max(
+        0,
+        ...points().flatMap((point) =>
+          props.providers.map((provider) => point.Row?.byProvider.get(provider)?.[field()] ?? 0),
+        ),
       ),
+      CHART_TICKS,
     ),
   );
   const x = (index: number) =>
-    CHART_PAD.Left +
-    (points().length <= 1
-      ? 0
-      : (index / (points().length - 1)) * (CHART_WIDTH - CHART_PAD.Left - CHART_PAD.Right));
+    points().length < 2 ? 0 : (index * CHART_WIDTH) / (points().length - 1);
   const y = (value: number) =>
-    CHART_HEIGHT -
-    CHART_PAD.Bottom -
-    (peak() === 0 ? 0 : (value / peak()) * (CHART_HEIGHT - CHART_PAD.Top - CHART_PAD.Bottom));
-  const path = (provider: UsageProviderKind) =>
-    points()
-      .map(
-        (point, index) =>
-          `${index === 0 ? "M" : "L"}${x(index).toFixed(1)},${y(point.Row?.byProvider.get(provider)?.[field()] ?? 0).toFixed(1)}`,
-      )
-      .join(" ");
+    scale().Max === 0
+      ? CHART_HEIGHT
+      : CHART_HEIGHT - (value / scale().Max) * (CHART_HEIGHT - CHART_TOP);
+  const line = (provider: UsageProviderKind) =>
+    smoothPath(
+      points().map((point, index) => ({
+        X: x(index),
+        Y: y(point.Row?.byProvider.get(provider)?.[field()] ?? 0),
+      })),
+    );
+  const format = (value: number) =>
+    props.metric === "tokens" ? formatTokens(value) : formatUsd(value);
   const label = (slot: string) =>
     props.input.resolution === "hour"
       ? formatHourShort(slot, props.input.timeZone)
@@ -477,7 +636,7 @@ function UsageChart(props: {
   const ticks = () => {
     const count = points().length;
     if (count === 0) return [];
-    return [...new Set([0, Math.floor((count - 1) / 2), count - 1])];
+    return [...new Set([0, Math.floor(count / 2), count - 1])];
   };
   return (
     <Show
@@ -489,39 +648,57 @@ function UsageChart(props: {
         </div>
       }
     >
-      <svg
-        class="usage-chart"
-        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="Usage by provider over time"
-      >
-        <line
-          class="usage-chart-axis"
-          x1={CHART_PAD.Left}
-          x2={CHART_WIDTH - CHART_PAD.Right}
-          y1={CHART_HEIGHT - CHART_PAD.Bottom}
-          y2={CHART_HEIGHT - CHART_PAD.Bottom}
-        />
-        <For each={props.providers}>
-          {(provider) => (
-            <>
-              <path
-                d={`${path(provider)} L${x(points().length - 1)},${y(0)} L${x(0)},${y(0)} Z`}
-                fill={PROVIDERS[provider].Color}
-                opacity="0.08"
+      <div class="usage-chart-frame">
+        <div class="usage-chart-axis-labels" aria-hidden="true">
+          <For each={scale().Ticks}>
+            {(tick) => (
+              <span style={{ top: `${(y(tick) / CHART_HEIGHT) * 100}%` }}>
+                {tick === 0 ? "0" : format(tick)}
+              </span>
+            )}
+          </For>
+        </div>
+        <svg
+          class="usage-chart"
+          viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label="Usage by provider over time"
+        >
+          <For each={scale().Ticks}>
+            {(tick) => (
+              <line
+                class="usage-chart-grid"
+                x1={0}
+                x2={CHART_WIDTH}
+                y1={y(tick)}
+                y2={y(tick)}
+                vector-effect="non-scaling-stroke"
               />
+            )}
+          </For>
+          <For each={props.providers}>
+            {(provider) => (
               <path
-                d={path(provider)}
+                d={`${line(provider)} L${CHART_WIDTH},${CHART_HEIGHT} L0,${CHART_HEIGHT} Z`}
+                fill={PROVIDERS[provider].Color}
+                fill-opacity="0.12"
+              />
+            )}
+          </For>
+          <For each={props.providers}>
+            {(provider) => (
+              <path
+                d={line(provider)}
                 fill="none"
                 stroke={PROVIDERS[provider].Color}
                 stroke-width="2"
                 vector-effect="non-scaling-stroke"
               />
-            </>
-          )}
-        </For>
-      </svg>
+            )}
+          </For>
+        </svg>
+      </div>
       <div class="usage-chart-ticks">
         <For each={ticks()}>{(index) => <span>{label(points()[index]?.Slot ?? "")}</span>}</For>
       </div>

@@ -1,7 +1,9 @@
+import { isReasoningControl } from "@t3tools/client-runtime/model-traits";
 import {
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ProviderOptionDescriptor,
 } from "@t3tools/contracts";
 
 import type {
@@ -12,6 +14,7 @@ import type {
 } from "./Infrastructure/settings";
 
 type IWireProvider = IWireServerConfig["providers"][number];
+type IWireProviderModel = IWireProvider["models"][number];
 
 export interface IProviderModelRow {
   Slug: string;
@@ -19,6 +22,7 @@ export interface IProviderModelRow {
   Hidden: boolean;
   Favorite: boolean;
   Custom: boolean;
+  Tags: string[];
 }
 
 export interface IProviderRow {
@@ -28,8 +32,56 @@ export interface IProviderRow {
   Enabled: boolean;
   Status: string;
   Version: string | null;
+  Headline: string;
   Message: string | null;
   Models: IProviderModelRow[];
+}
+
+const ALIAS_SLUGS = new Set(["default", "auto"]);
+
+const hasReasoningControl = (model: IWireProviderModel) =>
+  (model.capabilities?.optionDescriptors ?? []).some((descriptor) =>
+    isReasoningControl(descriptor as ProviderOptionDescriptor),
+  );
+
+// Follows describeModelCapabilities in apps/web/src/components/settings/ProviderModelsSection.tsx.
+function modelTags(model: IWireProviderModel, flagMissingReasoning: boolean): string[] {
+  const descriptors = model.capabilities?.optionDescriptors ?? [];
+  const tags: string[] = [];
+  const fast = descriptors.some(
+    (descriptor) =>
+      descriptor.id === "fastMode" ||
+      (descriptor.id === "serviceTier" &&
+        descriptor.type === "select" &&
+        descriptor.options.some((option) => option.id === "fast" || option.label === "Fast")),
+  );
+  if (fast) tags.push("Fast mode");
+  if (
+    flagMissingReasoning &&
+    model.isCustom !== true &&
+    model.capabilities != null &&
+    !ALIAS_SLUGS.has(model.slug) &&
+    !hasReasoningControl(model)
+  ) {
+    tags.push("No reasoning");
+  }
+  return tags;
+}
+
+// Follows getProviderSummary in apps/web/src/components/settings/providerStatus.ts.
+export function providerHeadline(provider: IWireProvider): string {
+  const authLabel = provider.auth.label ?? provider.auth.type;
+  if (!provider.enabled || provider.status === "disabled") return "Disabled";
+  if (!provider.installed) return "Not found";
+  if (provider.auth.status === "unauthenticated") {
+    return authLabel ? `Not authenticated · ${authLabel}` : "Not authenticated";
+  }
+  if (provider.status === "warning") return "Needs attention";
+  if (provider.status === "error") return "Unavailable";
+  if (provider.auth.status === "authenticated") {
+    return authLabel ? `Authenticated · ${authLabel}` : "Authenticated";
+  }
+  return "Available";
 }
 
 // Follows ProviderModelsSection.tsx: every model, hidden ones too, in the stored order.
@@ -46,6 +98,7 @@ export function providerRows(config: IWireServerConfig): IProviderRow[] {
     const preferences = settings.providerModelPreferences?.[provider.instanceId];
     const hidden = new Set(preferences?.hiddenModels ?? []);
     const order = new Map((preferences?.modelOrder ?? []).map((slug, index) => [slug, index]));
+    const flagMissingReasoning = provider.models.some(hasReasoningControl);
     const models = provider.models
       .map((model, index) => ({ model, index }))
       .sort(
@@ -61,6 +114,7 @@ export function providerRows(config: IWireServerConfig): IProviderRow[] {
           (favorite) => favorite.provider === provider.instanceId && favorite.model === model.slug,
         ),
         Custom: model.isCustom === true,
+        Tags: modelTags(model, flagMissingReasoning),
       }));
     return {
       InstanceId: provider.instanceId,
@@ -69,6 +123,7 @@ export function providerRows(config: IWireServerConfig): IProviderRow[] {
       Enabled: provider.enabled,
       Status: provider.status,
       Version: provider.version,
+      Headline: providerHeadline(provider),
       Message: provider.message ?? null,
       Models: models,
     };
@@ -111,6 +166,40 @@ export const modelFavoritePatch = (
 ): IWireSettingsPatch => ({
   setModelFavorites: [{ provider: ProviderInstanceId.make(instanceId), model: slug, favorite }],
 });
+
+export const allBuiltInHidden = (row: Pick<IProviderRow, "Models">) => {
+  const builtIn = row.Models.filter((model) => !model.Custom);
+  return builtIn.length > 0 && builtIn.every((model) => model.Hidden);
+};
+
+// Follows nextHiddenModelsForBulkToggle in ProviderModelsSection.tsx: hides every built-in model,
+// or shows them all once they're all hidden.
+export function bulkHiddenPatch(
+  row: Pick<IProviderRow, "InstanceId" | "Models">,
+): IWireSettingsPatch | null {
+  const builtIn = row.Models.filter((model) => !model.Custom);
+  if (builtIn.length === 0) return null;
+  const hidden = !allBuiltInHidden(row);
+  return {
+    setModelsHidden: builtIn.map((model) => ({
+      provider: ProviderInstanceId.make(row.InstanceId),
+      model: model.Slug,
+      hidden,
+    })),
+  };
+}
+
+export const MODEL_FILTER_THRESHOLD = 8;
+
+export const filterModels = (models: IProviderModelRow[], filter: string) => {
+  const needle = filter.trim().toLowerCase();
+  return needle === ""
+    ? models
+    : models.filter(
+        (model) =>
+          model.Name.toLowerCase().includes(needle) || model.Slug.toLowerCase().includes(needle),
+      );
+};
 
 /** The whole order with `slug` moved one place; null at either end. */
 export function modelMovePatch(

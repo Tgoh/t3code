@@ -15,6 +15,9 @@ import type {
 } from "./Infrastructure/settings";
 import { keybindingGroups } from "./keybindingRows";
 import {
+  allBuiltInHidden,
+  bulkHiddenPatch,
+  filterModels,
   modelFavoritePatch,
   modelHiddenPatch,
   modelMovePatch,
@@ -25,9 +28,13 @@ import {
   builtSettingsPage,
   type ISettingRow,
   type ISettingsHeld,
+  searchSettings,
   SETTINGS_SECTIONS,
   settingRows,
+  settingsPageOf,
+  settingsSearchItems,
 } from "./settingsPages";
+import { niceScale, smoothPath } from "./usageChart";
 
 const encodeServerSettings = Schema.encodeSync(Schema.toCodecJson(ServerSettings));
 const encodeClientSettings = Schema.encodeSync(Schema.toCodecJson(ClientSettingsSchema));
@@ -138,6 +145,16 @@ describe("settings rows", () => {
     expect(row("ghqCloneLayout").Read({ Server: null, Client: clientSettings() })).toBeNull();
   });
 
+  it("search finds rows on every built page, title matches first", () => {
+    const items = settingsSearchItems();
+    expect(searchSettings(items, "")).toEqual([]);
+    const tool = searchSettings(items, "tool calls");
+    expect(tool[0]).toMatchObject({ Id: "toolCallVisibility", Page: "chat" });
+    expect(searchSettings(items, "theme").map((item) => item.Id)).toContain("colorScheme");
+    expect(searchSettings(items, "xyzzy")).toEqual([]);
+    for (const item of items) expect(settingsPageOf(item.Page)?.Built, item.Id).toBe(true);
+  });
+
   it("fall back to General for pages this client hasn't built", () => {
     expect(builtSettingsPage("providers")).toBe("providers");
     expect(builtSettingsPage("voice")).toBe("general");
@@ -155,12 +172,14 @@ const config = (settings: Record<string, unknown> = {}): IWireServerConfig =>
         driver: "claudeAgent",
         displayName: "Claude",
         enabled: true,
+        installed: true,
         status: "ready",
+        auth: { status: "authenticated", label: "Claude Ultra Subscription" },
         version: "2.1.0",
         models: [
-          { slug: "opus", name: "Opus" },
-          { slug: "sonnet", name: "Sonnet" },
-          { slug: "haiku", name: "Haiku" },
+          { slug: "opus", name: "Opus", capabilities: { optionDescriptors: [effort, fast] } },
+          { slug: "sonnet", name: "Sonnet", capabilities: { optionDescriptors: [effort] } },
+          { slug: "haiku", name: "Haiku", capabilities: { optionDescriptors: [] } },
           { slug: "mine", name: "Mine", isCustom: true },
         ],
       },
@@ -168,13 +187,55 @@ const config = (settings: Record<string, unknown> = {}): IWireServerConfig =>
     keybindings: [],
   }) as unknown as IWireServerConfig;
 
+const effort = { id: "reasoningEffort", type: "select", options: [] };
+const fast = { id: "fastMode", type: "boolean" };
+
 describe("provider settings", () => {
+  it("tag models as stock does and show stock's auth line", () => {
+    const [claude] = providerRows(config());
+    expect(claude!.Models.map((model) => [model.Slug, model.Tags])).toEqual([
+      ["opus", ["Fast mode"]],
+      ["sonnet", []],
+      ["haiku", ["No reasoning"]],
+      ["mine", []],
+    ]);
+    expect(claude!.Headline).toBe("Authenticated · Claude Ultra Subscription");
+    const off = providerRows({
+      ...config(),
+      providers: [{ ...config().providers[0]!, enabled: false }],
+    } as IWireServerConfig);
+    expect(off[0]!.Headline).toBe("Disabled");
+  });
+
+  it("disable every built-in model at once, or enable them all once all are hidden", () => {
+    const [claude] = providerRows(config());
+    const disable = bulkHiddenPatch(claude!)!;
+    expect(disable.setModelsHidden?.map((entry) => [entry.model, entry.hidden])).toEqual([
+      ["opus", true],
+      ["sonnet", true],
+      ["haiku", true],
+    ]);
+    expect(() => decodePatch(disable)).not.toThrow();
+    const [hidden] = providerRows(
+      config({
+        providerModelPreferences: {
+          claudeAgent: { hiddenModels: ["opus", "sonnet", "haiku"], modelOrder: [] },
+        },
+      }),
+    );
+    expect(allBuiltInHidden(hidden!)).toBe(true);
+    expect(bulkHiddenPatch(hidden!)!.setModelsHidden?.every((entry) => !entry.hidden)).toBe(true);
+    expect(filterModels(claude!.Models, "SON").map((model) => model.Slug)).toEqual(["sonnet"]);
+  });
+
   it("list Codex, Claude, and any other provider only once it's configured or enabled", () => {
     const provider = (driver: string, enabled: boolean) => ({
       instanceId: driver,
       driver,
       enabled,
+      installed: true,
       status: "ready",
+      auth: { status: "unknown" },
       version: null,
       models: [],
     });
@@ -291,5 +352,24 @@ describe("keybinding rows", () => {
     const all = groups.flatMap((group) => group.Rows);
     expect(all.find((entry) => entry.Command === "usage.cost")?.Label).toBe("Usage: Cost");
     expect(all.some((entry) => entry.Source === "Default")).toBe(true);
+  });
+});
+
+describe("usage chart", () => {
+  it("rounds the axis up to stock's 1, 2, 5 steps", () => {
+    expect(niceScale(332.42, 4)).toEqual({ Max: 400, Ticks: [0, 100, 200, 300, 400] });
+    expect(niceScale(0, 4)).toEqual({ Max: 0, Ticks: [0] });
+  });
+
+  it("keeps the smoothed line within its points' range, so a zero day doesn't dip below the axis", () => {
+    const path = smoothPath([
+      { X: 0, Y: 100 },
+      { X: 10, Y: 100 },
+      { X: 20, Y: 0 },
+      { X: 30, Y: 100 },
+    ]);
+    const ys = [...path.matchAll(/,(-?[\d.]+)/g)].map((match) => Number(match[1]));
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(100);
   });
 });

@@ -546,6 +546,62 @@ export const SETTINGS_SECTIONS = {
   threads: THREADS,
 } as const satisfies Partial<Record<ISettingsPageId, ISettingsSection[]>>;
 
+export interface ISettingsSearchItem {
+  Id: string;
+  Title: string;
+  Page: ISettingsPageId;
+  Text: string;
+}
+
+// The rows built outside SETTINGS_SECTIONS, so search finds them too.
+const OTHER_SEARCH_ITEMS: Array<Omit<ISettingsSearchItem, "Text"> & { Description: string }> = [
+  {
+    Id: "colorScheme",
+    Title: "Color scheme",
+    Page: "appearance",
+    Description: "System light dark theme",
+  },
+  { Id: "providers", Title: "Providers", Page: "providers", Description: "Enable provider status" },
+  { Id: "models", Title: "Models", Page: "providers", Description: "Hide reorder favorite filter" },
+  { Id: "projectName", Title: "Name", Page: "projects", Description: "Project name" },
+  { Id: "projectPin", Title: "Pin", Page: "projects", Description: "Pinned projects" },
+  { Id: "projectArchive", Title: "Archive", Page: "projects", Description: "Archive project" },
+  { Id: "removeProject", Title: "Remove project", Page: "projects", Description: "Delete" },
+  { Id: "keybindings", Title: "Keybindings", Page: "keybindings", Description: "Shortcuts keys" },
+  { Id: "archivedThreads", Title: "Archived threads", Page: "archived", Description: "Unarchive" },
+  { Id: "version", Title: "Version", Page: "about", Description: "Current version" },
+  { Id: "privacyPolicy", Title: "Privacy policy", Page: "about", Description: "Legal" },
+];
+
+export function settingsSearchItems(): ISettingsSearchItem[] {
+  const rows = Object.entries(SETTINGS_SECTIONS).flatMap(([page, sections]) =>
+    sections.flatMap((section) =>
+      section.Rows.map((row) => ({
+        Id: row.Id,
+        Title: row.Title,
+        Page: page as ISettingsPageId,
+        Description: `${section.Title} ${row.Description}`,
+      })),
+    ),
+  );
+  return [...rows, ...OTHER_SEARCH_ITEMS].map((item) => ({
+    Id: item.Id,
+    Title: item.Title,
+    Page: item.Page,
+    Text: `${item.Title} ${item.Description} ${settingsPageOf(item.Page)?.Label ?? ""}`.toLowerCase(),
+  }));
+}
+
+/** Title matches first, then any word of the row, its section or its page. */
+export function searchSettings(items: ISettingsSearchItem[], query: string): ISettingsSearchItem[] {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const matches = items.filter((item) => words.every((word) => item.Text.includes(word)));
+  const titled = (item: ISettingsSearchItem) =>
+    words.every((word) => item.Title.toLowerCase().includes(word)) ? 0 : 1;
+  return matches.toSorted((left, right) => titled(left) - titled(right));
+}
+
 export const settingRows = (): ISettingRow[] =>
   Object.values(SETTINGS_SECTIONS).flatMap((sections) =>
     sections.flatMap((section) => section.Rows),

@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off -- View-only relative times, outside any Effect runtime.
 import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
-import { createMemo, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
+import { createMemo, createSignal, For, type JSX, Match, onCleanup, Show, Switch } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import { ProjectBadge, ProviderIcon } from "./brand";
@@ -12,6 +12,11 @@ import type { IWireProject } from "./Infrastructure/wire";
 import { keybindingGroups, keyCaps } from "./keybindingRows";
 import { RemoveProjectDialog } from "./ProjectFolder";
 import {
+  allBuiltInHidden,
+  bulkHiddenPatch,
+  filterModels,
+  type IProviderRow,
+  MODEL_FILTER_THRESHOLD,
   modelFavoritePatch,
   modelHiddenPatch,
   modelMovePatch,
@@ -25,8 +30,11 @@ import {
   type ISettingsSection,
   type ISettingValue,
   SETTINGS_NAV,
+  type ISettingsSearchItem,
+  searchSettings,
   SETTINGS_SECTIONS,
   settingsPageOf,
+  settingsSearchItems,
 } from "./settingsPages";
 import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
@@ -97,34 +105,142 @@ export function SettingsView(props: { page: string }) {
   );
 }
 
+const SEARCH_ITEMS = settingsSearchItems();
+
 function SettingsNav(props: { page: string }) {
   const environment = Environment.use();
+  const [query, setQuery] = createSignal("");
+  const [active, setActive] = createSignal(0);
+  const results = createMemo(() => searchSettings(SEARCH_ITEMS, query()));
+  const searching = () => query().trim() !== "";
+  const [searchBox, setSearchBox] = createSignal<HTMLInputElement>();
+  const open = (item: ISettingsSearchItem) => {
+    setQuery("");
+    void environment
+      .openView({ Kind: "settings", Page: item.Page })
+      .then(() =>
+        queueMicrotask(() =>
+          document
+            .querySelector(`[data-setting-id="${item.Id}"]`)
+            ?.scrollIntoView({ block: "center" }),
+        ),
+      );
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    const editing =
+      target !== null &&
+      (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+    if (event.key === "/" && !editing && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      searchBox()?.focus();
+    }
+  };
+  document.addEventListener("keydown", onKeyDown);
+  onCleanup(() => document.removeEventListener("keydown", onKeyDown));
   return (
     <nav class="settings-nav" aria-label="Settings pages">
-      <For each={SETTINGS_NAV}>
-        {(group) => (
-          <div class="settings-nav-group">
-            <Show when={group.Group}>
-              {(title) => <span class="settings-nav-heading">{title()}</span>}
-            </Show>
-            <For each={group.Pages}>
-              {(entry) => (
+      <div class="settings-search">
+        <Icons.Search />
+        <input
+          ref={setSearchBox}
+          type="text"
+          placeholder="Search"
+          aria-label="Search settings"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={searching() && results().length > 0}
+          value={query()}
+          onInput={(event) => {
+            setQuery(event.currentTarget.value);
+            setActive(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setQuery("");
+            if (!searching()) return;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const step = event.key === "ArrowDown" ? 1 : -1;
+              const count = results().length;
+              if (count > 0) setActive((active() + step + count) % count);
+            }
+            if (event.key === "Enter") {
+              const item = results()[active()];
+              if (item !== undefined) open(item);
+            }
+          }}
+        />
+        <Show when={searching()} fallback={<kbd>/</kbd>}>
+          <button
+            class="icon-button small"
+            aria-label="Clear settings search"
+            onClick={() => {
+              setQuery("");
+              searchBox()?.focus();
+            }}
+          >
+            <Icons.X />
+          </button>
+        </Show>
+      </div>
+      <Show when={searching()}>
+        <Show
+          when={results().length > 0}
+          fallback={
+            <p class="settings-search-empty" role="status">
+              No settings found
+            </p>
+          }
+        >
+          <div class="settings-nav-group" role="listbox" aria-label="Settings search results">
+            <For each={results()}>
+              {(item, index) => (
                 <button
-                  class="settings-nav-item"
-                  classList={{ active: props.page === entry.Id }}
-                  aria-current={props.page === entry.Id ? "page" : undefined}
-                  disabled={!entry.Built}
-                  data-tip={entry.Built ? undefined : "Not in this client yet"}
-                  onClick={() => environment.openView({ Kind: "settings", Page: entry.Id })}
+                  class="settings-nav-item result"
+                  classList={{ active: index() === active() }}
+                  role="option"
+                  aria-selected={index() === active()}
+                  tabindex="-1"
+                  onMouseMove={() => setActive(index())}
+                  onClick={() => open(item)}
                 >
-                  <Dynamic component={Icons[entry.Icon]} />
-                  <span>{entry.Label}</span>
+                  <Dynamic component={Icons[settingsPageOf(item.Page)?.Icon ?? "Settings2"]} />
+                  <span class="settings-result-text">
+                    <span class="settings-result-title">{item.Title}</span>
+                    <span class="settings-result-page">{settingsPageOf(item.Page)?.Label}</span>
+                  </span>
                 </button>
               )}
             </For>
           </div>
-        )}
-      </For>
+        </Show>
+      </Show>
+      <Show when={!searching()}>
+        <For each={SETTINGS_NAV}>
+          {(group) => (
+            <div class="settings-nav-group">
+              <Show when={group.Group}>
+                {(title) => <span class="settings-nav-heading">{title()}</span>}
+              </Show>
+              <For each={group.Pages}>
+                {(entry) => (
+                  <button
+                    class="settings-nav-item"
+                    classList={{ active: props.page === entry.Id }}
+                    aria-current={props.page === entry.Id ? "page" : undefined}
+                    disabled={!entry.Built}
+                    data-tip={entry.Built ? undefined : "Not in this client yet"}
+                    onClick={() => environment.openView({ Kind: "settings", Page: entry.Id })}
+                  >
+                    <Dynamic component={Icons[entry.Icon]} />
+                    <span>{entry.Label}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+          )}
+        </For>
+      </Show>
     </nav>
   );
 }
@@ -153,9 +269,14 @@ export function SettingsRowFrame(props: {
   description?: JSX.Element;
   control?: JSX.Element;
   muted?: boolean;
+  settingId?: string;
 }) {
   return (
-    <div class="settings-row" classList={{ muted: props.muted === true }}>
+    <div
+      class="settings-row"
+      classList={{ muted: props.muted === true }}
+      data-setting-id={props.settingId}
+    >
       <div class="settings-row-text">
         <div class="settings-row-title">{props.title}</div>
         <Show when={props.description}>
@@ -299,6 +420,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
         </>
       }
       description={props.row.Description}
+      settingId={props.row.Id}
       control={control()}
     />
   );
@@ -349,6 +471,16 @@ function ProvidersPage() {
   });
   const [selected, setSelected] = createSignal<string | null>(null);
   const current = () => rows().find((row) => row.InstanceId === selected()) ?? rows()[0] ?? null;
+  const [modelFilter, setModelFilter] = createSignal("");
+  const modelCount = (row: IProviderRow) => {
+    const favorites = row.Models.filter((model) => model.Favorite).length;
+    const hidden = row.Models.filter((model) => model.Hidden).length;
+    return [
+      `${row.Models.length} model${row.Models.length === 1 ? "" : "s"}`,
+      ...(favorites > 0 ? [`${favorites} favorite${favorites === 1 ? "" : "s"}`] : []),
+      ...(hidden > 0 ? [`${hidden} hidden`] : []),
+    ].join(" · ");
+  };
   return (
     <Show when={config()} fallback={<p class="settings-loading">Loading providers…</p>}>
       {(held) => (
@@ -364,11 +496,26 @@ function ProvidersPage() {
                     >
                       <button
                         class="provider-list-pick"
-                        onClick={() => setSelected(row.InstanceId)}
+                        onClick={() => {
+                          setSelected(row.InstanceId);
+                          setModelFilter("");
+                        }}
                       >
                         <ProviderIcon driver={row.Driver} size={16} />
-                        <span class="provider-list-name">{row.Name}</span>
-                        <span class={`provider-status ${row.Status}`} data-tip={row.Status} />
+                        <span class="provider-list-text">
+                          <span class="provider-list-name">
+                            {row.Name}
+                            <Show when={row.Version}>
+                              {(version) => <code class="provider-version">v{version()}</code>}
+                            </Show>
+                          </span>
+                          <span class="provider-list-headline">
+                            <span
+                              class={`provider-status ${row.Enabled ? row.Status : "disabled"}`}
+                            />
+                            {row.Headline}
+                          </span>
+                        </span>
                       </button>
                       <Toggle
                         checked={row.Enabled}
@@ -388,12 +535,16 @@ function ProvidersPage() {
                     <SettingsSection title={row.Name}>
                       <SettingsRowFrame
                         title="Status"
-                        description={row.Message ?? undefined}
-                        control={
-                          <span class="settings-value">
-                            {row.Status}
-                            {row.Version === null ? "" : ` · v${row.Version}`}
-                          </span>
+                        description={
+                          <>
+                            <span class="provider-list-headline">
+                              <span
+                                class={`provider-status ${row.Enabled ? row.Status : "disabled"}`}
+                              />
+                              {row.Headline}
+                            </span>
+                            <Show when={row.Message}>{(message) => <> · {message()}</>}</Show>
+                          </>
                         }
                       />
                       <SettingsRowFrame
@@ -406,8 +557,32 @@ function ProvidersPage() {
                         Model preferences and custom models are saved on the selected environment
                         and shared across connected devices.
                       </p>
-                      <For each={row.Models}>
-                        {(model, index) => (
+                      <div class="model-toolbar">
+                        <Show when={row.Models.length > MODEL_FILTER_THRESHOLD}>
+                          <input
+                            class="settings-input model-filter"
+                            placeholder="Filter models"
+                            aria-label="Filter models"
+                            spellcheck={false}
+                            value={modelFilter()}
+                            onInput={(event) => setModelFilter(event.currentTarget.value)}
+                          />
+                        </Show>
+                        <Show when={row.Models.some((model) => !model.Custom)}>
+                          <button
+                            class="button ghost"
+                            onClick={() => {
+                              const patch = bulkHiddenPatch(row);
+                              if (patch !== null) void environment.updateServerSettings(patch);
+                            }}
+                          >
+                            {allBuiltInHidden(row) ? "Enable all" : "Disable all"}
+                          </button>
+                        </Show>
+                        <span class="model-count">{modelCount(row)}</span>
+                      </div>
+                      <For each={filterModels(row.Models, modelFilter())}>
+                        {(model) => (
                           <div class="model-row" classList={{ hidden: model.Hidden }}>
                             <button
                               class="icon-button small"
@@ -425,15 +600,19 @@ function ProvidersPage() {
                             </button>
                             <span class="model-name">
                               {model.Name}
+                              <code class="model-slug">{model.Slug}</code>
                               <Show when={model.Custom}>
                                 <span class="settings-badge">Custom</span>
                               </Show>
                             </span>
+                            <For each={model.Tags}>
+                              {(tag) => <span class="model-tag">{tag}</span>}
+                            </For>
                             <button
                               class="icon-button small"
                               aria-label="Move up"
                               data-tip="Move up"
-                              disabled={index() === 0}
+                              disabled={row.Models.indexOf(model) === 0}
                               onClick={() => {
                                 const patch = modelMovePatch(row, model.Slug, -1);
                                 if (patch !== null) void environment.updateServerSettings(patch);
@@ -445,7 +624,7 @@ function ProvidersPage() {
                               class="icon-button small"
                               aria-label="Move down"
                               data-tip="Move down"
-                              disabled={index() === row.Models.length - 1}
+                              disabled={row.Models.indexOf(model) === row.Models.length - 1}
                               onClick={() => {
                                 const patch = modelMovePatch(row, model.Slug, 1);
                                 if (patch !== null) void environment.updateServerSettings(patch);
