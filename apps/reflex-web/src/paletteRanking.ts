@@ -28,6 +28,8 @@ export interface IPaletteItem {
   Icon: IPaletteIcon;
   /** Thread rows rank by this, with use history, instead of by `SearchTerms`. */
   Thread?: ThreadSearchSubject;
+  /** Shows the thread's status and its project, environment, branch and provider line. */
+  ThreadId?: string;
   Shortcut?: KeybindingCommand;
   /** Listed last in its group, as the open thread is. */
   Secondary?: boolean;

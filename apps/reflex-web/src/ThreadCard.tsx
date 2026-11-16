@@ -43,7 +43,7 @@ import { relativeTime, timeUntil } from "./timestamps";
 import { hoverCard } from "./tooltip";
 import { longPress } from "./viewport";
 
-const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
+export const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "Setting up",
   working: "Working",
   waiting: "Waiting",

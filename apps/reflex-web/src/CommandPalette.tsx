@@ -13,13 +13,17 @@ import {
   rootGroups,
 } from "./paletteRanking";
 import { stepHighlight } from "./addProjectPalette";
+import { ProjectBadge, ProviderIcon } from "./brand";
 import Environment from "./Environment";
 import { Highlighted } from "./Highlighted";
+import { Folder, FolderGit2 } from "./icons";
+import { STATUS_LABEL } from "./ThreadCard";
+import { modelDisplay } from "./ThreadSession";
 import { ArrowLeft, FolderOpen, FolderPlus, MessageSquare, Search, SquarePen } from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { useMessageSearch } from "./messageSearch";
 import { type IPaletteView, useNavigation } from "./navigation";
-import Shell, { activityAt, isSnoozed } from "./Shell";
+import Shell, { activityAt, isSnoozed, sidebarStatus } from "./Shell";
 import { rankMessages, threadSubject } from "./threadSearch";
 import { relativeTime } from "./timestamps";
 
@@ -85,13 +89,9 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
     return {
       Value: value,
       Title: thread.title,
-      Description: [
-        ...(title === null ? [] : [title]),
-        ...(thread.branch ? [`#${thread.branch}`] : []),
-        ...(current ? ["Current thread"] : []),
-      ].join(" · "),
       SearchTerms: [thread.title],
       Thread: threadSubject(thread, environment.state.EnvironmentId, title),
+      ThreadId: thread.id,
       Icon: "thread",
       ...(activity === null ? {} : { Timestamp: relativeTime(activity, now) }),
       ...(current ? { Secondary: true } : {}),
@@ -406,6 +406,78 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   );
 });
 
+// Follows ThreadRowLeadingStatus in apps/web/src/components/ThreadStatusIndicators.tsx, with the
+// sidebar's status.
+function ThreadStatusLabel(props: { threadId: string }) {
+  const shell = Shell.use();
+  const status = () => {
+    const thread = shell.state.Threads[props.threadId];
+    return thread === undefined
+      ? null
+      : sidebarStatus(thread, shell.subagentRequests()[props.threadId]);
+  };
+  return (
+    <Show when={status()}>
+      {(held) => (
+        <span class={`palette-status card-status ${held()}`}>
+          <span class="palette-status-dot" />
+          {STATUS_LABEL[held()]}
+        </span>
+      )}
+    </Show>
+  );
+}
+
+const MetaDot = () => <span class="palette-meta-dot">·</span>;
+
+// Follows ThreadCommandSubtitle in apps/web/src/components/ThreadCommandSubtitle.tsx: project,
+// environment, workspace and the provider that runs the thread.
+function ThreadMeta(props: { threadId: string }) {
+  const environment = Environment.use();
+  const shell = Shell.use();
+  const thread = () => shell.state.Threads[props.threadId];
+  return (
+    <Show when={thread()}>
+      {(held) => {
+        const project = () => shell.state.Projects[held().projectId];
+        const branch = () => held().branch?.trim() || null;
+        return (
+          <span class="palette-meta">
+            <Show when={project()}>
+              {(shown) => (
+                <>
+                  <ProjectBadge project={shown()} size={12} />
+                  <span class="palette-meta-text">{shown().title}</span>
+                  <MetaDot />
+                  <span>Local</span>
+                </>
+              )}
+            </Show>
+            <Show when={branch()}>
+              {(shown) => (
+                <>
+                  <MetaDot />
+                  <Show when={held().worktreePath} fallback={<Folder />}>
+                    <FolderGit2 />
+                  </Show>
+                  <span class="palette-meta-text">{shown()}</span>
+                </>
+              )}
+            </Show>
+            <MetaDot />
+            <ProviderIcon
+              driver={
+                modelDisplay(environment.state.Replica.Providers, held().modelSelection).Driver
+              }
+              size={12}
+            />
+          </span>
+        );
+      }}
+    </Show>
+  );
+}
+
 function PaletteRow(props: {
   item: IPaletteItem;
   index: number;
@@ -443,6 +515,7 @@ function PaletteRow(props: {
           {item.Hint.label}: <Highlighted text={item.Hint.text} ranges={item.Hint.ranges} />
         </>
       );
+    if (item.ThreadId !== undefined) return <ThreadMeta threadId={item.ThreadId} />;
     return item.Description;
   };
   return (
@@ -461,7 +534,12 @@ function PaletteRow(props: {
     >
       {ICONS[props.item.Icon]()}
       <span class="palette-row-text">
-        <span class="palette-row-title">{title()}</span>
+        <span class="palette-row-title">
+          <Show when={props.item.ThreadId}>
+            {(threadId) => <ThreadStatusLabel threadId={threadId()} />}
+          </Show>
+          {title()}
+        </span>
         <Show when={detail()}>
           <span class="palette-row-detail">{detail()}</span>
         </Show>

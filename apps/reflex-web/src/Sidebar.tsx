@@ -11,6 +11,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Ellipsis,
   Eye,
   EyeOff,
   FolderPlus,
@@ -160,7 +161,7 @@ export const Sidebar = Shell.provider(() => {
     Object.values(shell.state.Projects)
       .filter((project) => hiddenProjects().has(project.id))
       .sort((left, right) => left.title.localeCompare(right.title));
-  const [hiddenMenu, setHiddenMenu] = createSignal<{ X: number; Y: number } | null>(null);
+  const [moreMenu, setMoreMenu] = createSignal<{ X: number; Y: number } | null>(null);
   const projects = () =>
     Object.values(shell.state.Projects).filter(
       (project) => project.archivedAt == null && !hiddenProjects().has(project.id),
@@ -416,46 +417,51 @@ export const Sidebar = Shell.provider(() => {
           <T3Mark />
           <span>Code</span>
         </span>
-      </header>
-      <div class="sidebar-search">
-        <Search />
-        <input
-          type="search"
-          placeholder="Search"
-          aria-label="Search threads"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={searching() && results().length > 0}
-          aria-controls={searching() ? "sidebar-search-results" : undefined}
-          aria-activedescendant={
-            searching() && results().length > 0
-              ? searchResultId(results()[highlightIndex()]!.Thread.id)
-              : undefined
-          }
-          spellcheck={false}
-          autocomplete="off"
-          value={query()}
-          onInput={(event) => {
-            setQuery(event.currentTarget.value);
-            setHighlightId(null);
-          }}
-          onKeyDown={onSearchKey}
-        />
-        <Show when={searching()}>
-          <button
-            type="button"
-            class="icon-button small"
-            aria-label="Clear thread search"
-            data-tip="Clear search"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={clearSearch}
-          >
-            <X />
-          </button>
+        <Show when={connection() !== "connected"}>
+          <span class="connection">{connection()}</span>
         </Show>
+      </header>
+      <div class="sidebar-header-row">
+        <div class="sidebar-search">
+          <Search />
+          <input
+            type="search"
+            placeholder="Search"
+            aria-label="Search threads"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={searching() && results().length > 0}
+            aria-controls={searching() ? "sidebar-search-results" : undefined}
+            aria-activedescendant={
+              searching() && results().length > 0
+                ? searchResultId(results()[highlightIndex()]!.Thread.id)
+                : undefined
+            }
+            spellcheck={false}
+            autocomplete="off"
+            value={query()}
+            onInput={(event) => {
+              setQuery(event.currentTarget.value);
+              setHighlightId(null);
+            }}
+            onKeyDown={onSearchKey}
+          />
+          <Show when={searching()}>
+            <button
+              type="button"
+              class="icon-button small"
+              aria-label="Clear thread search"
+              data-tip="Clear search"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={clearSearch}
+            >
+              <X />
+            </button>
+          </Show>
+        </div>
         <button
           type="button"
-          class="icon-button small"
+          class="icon-button"
           classList={{ pressed: scope().size > 0 }}
           aria-label="Filter projects"
           data-tip={`Projects: ${scopeLabel()}`}
@@ -467,40 +473,15 @@ export const Sidebar = Shell.provider(() => {
         >
           <ListFilter />
         </button>
-      </div>
-      <Show when={scopeMenu()}>
-        {(at) => (
-          <Popup x={at().X} y={at().Y} label="Filter projects" onClose={() => setScopeMenu(null)}>
-            <MenuItem
-              icon={scope().size === 0 ? <Check /> : <span class="menu-check" />}
-              label="All projects"
-              onSelect={() => {
-                setScope(new Set());
-                setScopeMenu(null);
-              }}
-            />
-            <For
-              each={[...projects()].sort((left, right) => left.title.localeCompare(right.title))}
-            >
-              {(project) => (
-                <MenuItem
-                  icon={scope().has(project.id) ? <Check /> : <span class="menu-check" />}
-                  label={project.title}
-                  onSelect={() => {
-                    const next = new Set(scope());
-                    if (!next.delete(project.id)) next.add(project.id);
-                    setScope(next);
-                  }}
-                />
-              )}
-            </For>
-          </Popup>
-        )}
-      </Show>
-      <div class="sidebar-tools">
-        <span class="connection">
-          <Show when={connection() !== "connected"}>{connection()}</Show>
-        </span>
+        <button
+          class="icon-button"
+          aria-label="Add project"
+          data-tip="Add project"
+          aria-pressed={navigation.palette() === "add-project"}
+          onClick={() => navigation.setPalette("add-project")}
+        >
+          <FolderPlus />
+        </button>
         <Show when={targetProject()}>
           {(projectId) => (
             <button
@@ -534,82 +515,100 @@ export const Sidebar = Shell.provider(() => {
           </label>
         </Show>
         <button
-          class="icon-button"
-          aria-label="Add project"
-          data-tip="Add project"
-          aria-pressed={navigation.palette() === "add-project"}
-          onClick={() => navigation.setPalette("add-project")}
-        >
-          <FolderPlus />
-        </button>
-        <button
-          class="icon-button"
-          classList={{ pressed: grouped() }}
-          aria-label="Group by project"
-          data-tip={grouped() ? "Stop grouping by project" : "Group by project"}
-          aria-pressed={grouped()}
-          onClick={() => {
-            setGrouped(!grouped());
-            writeStored(GROUP_KEY, grouped());
+          class="icon-button narrow"
+          aria-label="More sidebar options"
+          data-tip="More options"
+          aria-expanded={moreMenu() !== null}
+          onClick={(event) => {
+            const box = event.currentTarget.getBoundingClientRect();
+            setMoreMenu({ X: box.left, Y: box.bottom + 4 });
           }}
         >
-          <Folders />
+          <Ellipsis />
         </button>
-        <Show when={grouped()}>
-          <label
-            class="icon-button picker-overlay"
-            data-tip={`Sort projects: ${PROJECT_SORT_LABELS[projectSort()]}`}
-          >
-            <ArrowUpDown />
-            <select
-              aria-label="Sort projects"
-              value={projectSort()}
-              onChange={(event) => {
-                const next = event.currentTarget.value;
-                if (!isProjectSort(next)) return;
-                setProjectSort(next);
-                writeStored(PROJECT_SORT_KEY, next);
-              }}
-            >
-              <For each={Object.entries(PROJECT_SORT_LABELS)}>
-                {([value, label]) => <option value={value}>{label}</option>}
-              </For>
-            </select>
-          </label>
-        </Show>
-        <Show when={hiddenList().length > 0}>
-          <button
-            class="icon-button"
-            aria-label="Hidden projects"
-            data-tip="Hidden projects"
-            aria-expanded={hiddenMenu() !== null}
-            onClick={(event) => {
-              const box = event.currentTarget.getBoundingClientRect();
-              setHiddenMenu({ X: box.left, Y: box.bottom + 4 });
-            }}
-          >
-            <EyeOff />
-          </button>
-        </Show>
       </div>
-      <Show when={hiddenMenu() !== null && hiddenList().length > 0}>
-        <Popup
-          x={hiddenMenu()?.X ?? 0}
-          y={hiddenMenu()?.Y ?? 0}
-          label="Hidden projects"
-          onClose={() => setHiddenMenu(null)}
-        >
-          <For each={hiddenList()}>
-            {(project) => (
-              <MenuItem
-                icon={<Eye />}
-                label={project.title}
-                detail="Show"
-                onSelect={() => setProjectHidden(project.id, false)}
-              />
-            )}
-          </For>
-        </Popup>
+      <Show when={scopeMenu()}>
+        {(at) => (
+          <Popup x={at().X} y={at().Y} label="Filter projects" onClose={() => setScopeMenu(null)}>
+            <MenuItem
+              icon={scope().size === 0 ? <Check /> : <span class="menu-check" />}
+              label="All projects"
+              onSelect={() => {
+                setScope(new Set());
+                setScopeMenu(null);
+              }}
+            />
+            <For
+              each={[...projects()].sort((left, right) => left.title.localeCompare(right.title))}
+            >
+              {(project) => (
+                <MenuItem
+                  icon={scope().has(project.id) ? <Check /> : <span class="menu-check" />}
+                  label={project.title}
+                  onSelect={() => {
+                    const next = new Set(scope());
+                    if (!next.delete(project.id)) next.add(project.id);
+                    setScope(next);
+                  }}
+                />
+              )}
+            </For>
+          </Popup>
+        )}
+      </Show>
+      <Show when={moreMenu()}>
+        {(at) => (
+          <Popup
+            x={at().X}
+            y={at().Y}
+            label="More sidebar options"
+            onClose={() => setMoreMenu(null)}
+          >
+            <MenuItem
+              icon={grouped() ? <Check /> : <Folders />}
+              label="Group by project"
+              onSelect={() => {
+                setGrouped(!grouped());
+                writeStored(GROUP_KEY, grouped());
+              }}
+            />
+            <Show when={grouped()}>
+              <p class="menu-heading">
+                <ArrowUpDown />
+                Sort projects
+              </p>
+              <For each={Object.entries(PROJECT_SORT_LABELS)}>
+                {([value, label]) => (
+                  <MenuItem
+                    icon={projectSort() === value ? <Check /> : <span class="menu-check" />}
+                    label={label}
+                    onSelect={() => {
+                      if (!isProjectSort(value)) return;
+                      setProjectSort(value);
+                      writeStored(PROJECT_SORT_KEY, value);
+                    }}
+                  />
+                )}
+              </For>
+            </Show>
+            <Show when={hiddenList().length > 0}>
+              <p class="menu-heading">
+                <EyeOff />
+                Hidden projects
+              </p>
+              <For each={hiddenList()}>
+                {(project) => (
+                  <MenuItem
+                    icon={<Eye />}
+                    label={project.title}
+                    detail="Show"
+                    onSelect={() => setProjectHidden(project.id, false)}
+                  />
+                )}
+              </For>
+            </Show>
+          </Popup>
+        )}
       </Show>
       <Show when={endedReason()}>
         {(reason) => <p class="sidebar-error">The shell stream ended: {reason()}</p>}

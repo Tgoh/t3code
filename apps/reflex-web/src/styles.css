@@ -559,38 +559,45 @@ main {
   width: auto;
 }
 
-.sidebar-tools {
+/* Follows SidebarThreadHeader in apps/web/src/components/sidebar/SidebarThreadHeader.tsx: the
+   search field shrinks to leave the toolbar on the same row. */
+.sidebar-header-row {
   align-items: center;
   display: flex;
   flex: none;
   gap: 2px;
-  height: 48px;
-  padding: 0 10px;
+  padding: 4px 8px 8px;
   position: relative;
 }
 
-.sidebar-tools .icon-button {
+.sidebar-header-row > .icon-button {
   color: color-mix(in srgb, var(--sidebar-muted-foreground) 85%, var(--sidebar));
 }
 
-.sidebar-tools .icon-button:hover {
+.sidebar-header-row > .icon-button:hover,
+.sidebar-header-row > .icon-button.pressed {
   background: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
 }
 
-.sidebar-tools .icon-button svg {
+.sidebar-header-row > .icon-button svg {
   opacity: 1;
 }
 
-/* Follows SidebarThreadHeader's search field in apps/web/src/components/sidebar/SidebarThreadHeader.tsx. */
+.sidebar-header-row > .icon-button.narrow {
+  width: 20px;
+}
+
 .sidebar-search {
   align-items: center;
   border-radius: 6px;
   color: var(--sidebar-muted-foreground);
   display: flex;
-  flex: none;
+  flex: 1;
   gap: 8px;
   height: 32px;
-  margin: 4px 8px 0;
+  margin-right: 2px;
+  min-width: 0;
   padding: 0 4px 0 8px;
   position: relative;
 }
@@ -691,11 +698,28 @@ main {
 }
 
 .connection {
-  color: var(--warning-foreground);
-  flex: 1;
+  color: #fff;
   font-size: 12px;
   font-weight: 500;
-  min-width: 0;
+  margin-left: auto;
+  position: relative;
+}
+
+.menu-heading {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  display: flex;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 8px 8px 4px;
+}
+
+.menu-heading svg {
+  height: 14px;
+  width: 14px;
 }
 
 .sidebar-error {
@@ -1145,6 +1169,50 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Follows ThreadRowLeadingStatus and ThreadCommandSubtitle in apps/web. */
+.palette-status {
+  align-items: center;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 500;
+  gap: 4px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+
+.palette-status-dot {
+  background: currentColor;
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+}
+
+.palette-meta {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.palette-meta svg,
+.palette-meta img {
+  flex: none;
+  height: 12px;
+  width: 12px;
+}
+
+.palette-meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-meta-dot {
+  flex: none;
+  opacity: 0.5;
 }
 
 .palette-row-time {
