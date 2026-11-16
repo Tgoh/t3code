@@ -61,13 +61,13 @@ import { ImageDialog } from "./ImageDialog";
 import { singleToolCallLabel, workEntryDisplayLabel, workLogEntry } from "./workLog";
 import { useWorkspaceRoot } from "./workspaceRoot";
 
-function Body(props: { text: string; format: "markdown" | "text" | "code"; fromUser?: boolean }) {
+function Body(props: { id: string; text: string; format: "markdown" | "text" | "code" }) {
   return (
     <Show
       when={props.format === "markdown"}
       fallback={<pre class={props.format === "code" ? "work-code" : "work-text"}>{props.text}</pre>}
     >
-      <Markdown text={props.text} fromUser={props.fromUser === true} />
+      <Markdown text={props.text} fromUser={false} id={props.id} />
     </Show>
   );
 }
@@ -548,7 +548,7 @@ function MessageRow(props: IRowProps & { meta: boolean }) {
         <header class="plan-title">{view()?.Label}</header>
       </Show>
       <Show when={view()?.Body}>
-        {(text) => <Body text={text()} format={view()?.Format ?? "text"} />}
+        {(text) => <Body id={props.id} text={text()} format={view()?.Format ?? "text"} />}
       </Show>
       <Show when={view()?.Tone === "assistant" && props.meta}>
         <MessageMeta id={props.id} />
@@ -630,7 +630,7 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
   );
   const body = () => (
     <Show when={view()?.Body}>
-      {(text) => <Body text={text()} format={view()?.Format ?? "text"} />}
+      {(text) => <Body id={props.id} text={text()} format={view()?.Format ?? "text"} />}
     </Show>
   );
   return (

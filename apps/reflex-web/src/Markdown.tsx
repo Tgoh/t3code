@@ -4,6 +4,7 @@ import type { Token, Tokens } from "marked";
 import {
   type Component,
   createContext,
+  createEffect,
   createMemo,
   createSignal,
   Index,
@@ -15,6 +16,27 @@ import { Dynamic } from "solid-js/web";
 import { useComponentState } from "treflex-solid";
 
 import { ProjectBadge } from "./brand";
+import {
+  cachedHighlight,
+  fenceOf,
+  highlight,
+  type IFence,
+  isPlainLanguage,
+  isSettled,
+  type Scheme,
+} from "./codeHighlight";
+import { ensureFileIconSprite, fileIconFor, hasSpecificIcon, languageFileName } from "./fileIcons";
+import {
+  chipLabel,
+  fileLinkFromCode,
+  fileLinkFromHref,
+  fileLinkPathsKey,
+  type IFileLink,
+  isEditorLinkHref,
+  labelNamesFile,
+  parentSuffixes,
+  prosePathParts,
+} from "./fileLinks";
 import { CopyButton } from "./CopyButton";
 import Environment from "./Environment";
 import { MessagesSquare, TriangleAlert, WrapText } from "./icons";
@@ -44,6 +66,7 @@ interface ITokenProps {
 }
 
 const decoder = document.createElement("textarea");
+ensureFileIconSprite();
 
 // Marked leaves entities in text for its HTML output, and a text node would show them literally.
 function decodeEntities(text: string): string {
@@ -54,6 +77,17 @@ function decodeEntities(text: string): string {
 
 const of = <T,>(props: ITokenProps) => props.token as unknown as T;
 
+const plainText = (tokens: Token[] | undefined): string =>
+  (tokens ?? [])
+    .map((token) =>
+      "tokens" in token && token.tokens
+        ? plainText(token.tokens)
+        : "text" in token
+          ? token.text
+          : "",
+    )
+    .join("");
+
 function Inline(props: { tokens: Token[] | undefined }) {
   return (
     <Index each={props.tokens}>
@@ -62,10 +96,75 @@ function Inline(props: { tokens: Token[] | undefined }) {
   );
 }
 
+interface IFileLinks {
+  cwd: () => string | undefined;
+  suffixes: () => ReadonlyMap<string, string>;
+  // Text inside a link already belongs to it, so its paths don't become chips.
+  inLink: boolean;
+}
+
+const FileLinkContext = createContext<IFileLinks>({
+  cwd: () => undefined,
+  suffixes: () => new Map(),
+  inLink: false,
+});
+
+function FileIcon(props: { path: string }) {
+  const icon = () => fileIconFor(props.path);
+  return (
+    <svg
+      aria-hidden="true"
+      class="file-icon"
+      style={{ color: `light-dark(${icon().Light}, ${icon().Dark})` }}
+      viewBox="0 0 16 16"
+    >
+      <use href={`#${icon().Name}`} />
+    </svg>
+  );
+}
+
+// Follows MarkdownFileLink in apps/web/src/components/chat/MarkdownFileLink.tsx.
+function FileChip(props: { link: IFileLink }) {
+  const environment = Environment.use();
+  const files = useContext(FileLinkContext);
+  return (
+    <button
+      type="button"
+      class="file-link"
+      dir="ltr"
+      data-tip={props.link.TargetPath}
+      onClick={(event) => {
+        event.stopPropagation();
+        environment.openInEditor(props.link.TargetPath, files.cwd() ?? null);
+      }}
+    >
+      <FileIcon path={props.link.FilePath} />
+      <span class="file-link-label">{chipLabel(props.link, files.suffixes())}</span>
+    </button>
+  );
+}
+
+function ProseText(props: { text: string }) {
+  const files = useContext(FileLinkContext);
+  const parts = createMemo(() => (files.inLink ? [props.text] : prosePathParts(props.text)));
+  return (
+    <Show when={parts().length > 1} fallback={props.text}>
+      <Index each={parts()}>
+        {(part) => {
+          const held = part();
+          if (typeof held === "string") return held;
+          const link = fileLinkFromHref(held.Path, files.cwd());
+          return link === null ? held.Path : <FileChip link={link} />;
+        }}
+      </Index>
+    </Show>
+  );
+}
+
 function TextToken(props: ITokenProps) {
   const text = () => of<Tokens.Text>(props);
   return (
-    <Show when={text().tokens} fallback={decodeEntities(text().text)}>
+    <Show when={text().tokens} fallback={<ProseText text={decodeEntities(text().text)} />}>
       {(tokens) => <Inline tokens={tokens()} />}
     </Show>
   );
@@ -76,7 +175,14 @@ function LiteralToken(props: ITokenProps) {
 }
 
 function CodeSpanToken(props: ITokenProps) {
-  return <code>{of<Tokens.Codespan>(props).text}</code>;
+  const files = useContext(FileLinkContext);
+  const text = () => of<Tokens.Codespan>(props).text;
+  const link = createMemo(() => (files.inLink ? null : fileLinkFromCode(text(), files.cwd())));
+  return (
+    <Show when={link()} fallback={<code>{text()}</code>}>
+      {(held) => <FileChip link={held()} />}
+    </Show>
+  );
 }
 
 function StrongToken(props: ITokenProps) {
@@ -170,21 +276,44 @@ function LinkToken(props: ITokenProps) {
       threadLinkTarget(href, label, environmentId, title)
     );
   });
+  const files = useContext(FileLinkContext);
+  const file = createMemo(() => fileLinkFromHref(link().href, files.cwd()));
+  const inner = () => (
+    <FileLinkContext.Provider value={{ ...files, inLink: true }}>
+      <Inline tokens={link().tokens} />
+    </FileLinkContext.Provider>
+  );
   return (
     <Show
       when={thread()}
       fallback={
         <Show
-          when={EXTERNAL_LINK.test(link().href)}
+          when={file()}
           fallback={
-            <a data-tip={link().href}>
-              <Inline tokens={link().tokens} />
-            </a>
+            <Show
+              when={EXTERNAL_LINK.test(link().href) || isEditorLinkHref(link().href)}
+              fallback={<a data-tip={link().href}>{inner()}</a>}
+            >
+              <a
+                href={link().href}
+                {...(EXTERNAL_LINK.test(link().href)
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+              >
+                {inner()}
+              </a>
+            </Show>
           }
         >
-          <a href={link().href} target="_blank" rel="noopener noreferrer">
-            <Inline tokens={link().tokens} />
-          </a>
+          {(held) => (
+            <Show
+              when={!labelNamesFile(plainText(link().tokens), link().href)}
+              fallback={<FileChip link={held()} />}
+            >
+              <span>{inner()} </span>
+              <FileChip link={held()} />
+            </Show>
+          )}
         </Show>
       }
     >
@@ -466,15 +595,102 @@ function TableToken(props: ITokenProps) {
   );
 }
 
+const darkScheme = matchMedia("(prefers-color-scheme: dark)");
+const [scheme, setScheme] = createSignal<Scheme>(darkScheme.matches ? "dark" : "light");
+darkScheme.addEventListener("change", (event) => setScheme(event.matches ? "dark" : "light"));
+
+// A message's blocks remount as its turn settles and as the timeline windows, so each block's
+// wrap choice is held here by message and position rather than in the block.
+const wrapChoices = new Map<string, boolean>();
+
+// Hands each code block in a top-level block the next key in document order.
+const CodeBlockKey = createContext<() => string | null>(() => null);
+
+function CodeTitle(props: { fence: IFence }) {
+  const languageFile = () => languageFileName(props.fence.Language);
+  return (
+    <span class="code-language">
+      <Show
+        when={props.fence.Title}
+        fallback={
+          <Show when={hasSpecificIcon(languageFile())} fallback={props.fence.Language}>
+            <span
+              class="code-language-icon"
+              aria-label={`Language: ${props.fence.Language}`}
+              data-tip={props.fence.Language}
+            >
+              <FileIcon path={languageFile()} />
+            </span>
+          </Show>
+        }
+      >
+        {(title) => (
+          <>
+            <FileIcon path={title()} />
+            <span class="code-title">{title()}</span>
+          </>
+        )}
+      </Show>
+    </span>
+  );
+}
+
+// Follows MarkdownCodeBlock and SuspenseShikiCodeBlock in
+// apps/web/src/components/chat/MarkdownCodeBlock.tsx, highlighting only settled blocks.
 function CodeToken(props: ITokenProps) {
   const code = () => of<Tokens.Code>(props);
-  const [wrapped, setWrapped] = createSignal(true);
+  const fence = createMemo(() => fenceOf(code().lang), undefined, {
+    equals: (a, b) => a.Language === b.Language && a.Title === b.Title,
+  });
+  const key = useContext(CodeBlockKey)();
+  const [wrapped, setWrapped] = createSignal(key === null ? true : (wrapChoices.get(key) ?? true));
+  const toggleWrap = () => {
+    const next = !wrapped();
+    setWrapped(next);
+    if (key !== null) wrapChoices.set(key, next);
+  };
   const wrapLabel = () => (wrapped() ? "Disable line wrap" : "Wrap lines");
+  const wanted = createMemo(
+    () =>
+      isSettled(code()) && !isPlainLanguage(fence().Language)
+        ? { Text: code().text, Language: fence().Language, Scheme: scheme() }
+        : null,
+    undefined,
+    {
+      equals: (a, b) =>
+        a === b ||
+        (a !== null &&
+          b !== null &&
+          a.Text === b.Text &&
+          a.Language === b.Language &&
+          a.Scheme === b.Scheme),
+    },
+  );
+  const [loads, setLoads] = createSignal(0);
+  const html = createMemo(() => {
+    const held = wanted();
+    loads();
+    return held === null ? null : cachedHighlight(held.Text, held.Language, held.Scheme);
+  });
+  createEffect(() => {
+    const held = wanted();
+    if (held === null || html() !== null) return;
+    void highlight(held.Text, held.Language, held.Scheme).then(
+      () => setLoads((count) => count + 1),
+      (error: unknown) => console.warn("Code highlighting failed", error),
+    );
+  });
   return (
-    <div class="code-block" dir="ltr" data-wrap={wrapped()}>
+    <div
+      class="code-block"
+      dir="ltr"
+      data-wrap={wrapped()}
+      data-language={fence().Language}
+      data-highlighted={html() !== null}
+    >
       <div class="code-block-header">
-        <span class="code-language">{code().lang?.split(/\s/)[0] || "text"}</span>
-        <span class="code-actions">
+        <CodeTitle fence={fence()} />
+        <span class="code-actions" role="toolbar" aria-label="Code block actions">
           <button
             type="button"
             class="icon-button small"
@@ -482,16 +698,23 @@ function CodeToken(props: ITokenProps) {
             aria-pressed={wrapped()}
             aria-label={wrapLabel()}
             data-tip={wrapLabel()}
-            onClick={() => setWrapped((held) => !held)}
+            onClick={toggleWrap}
           >
             <WrapText />
           </button>
           <CopyButton text={code().text} label="Copy code" />
         </span>
       </div>
-      <pre>
-        <code>{code().text}</code>
-      </pre>
+      <Show
+        when={html()}
+        fallback={
+          <pre>
+            <code>{code().text}</code>
+          </pre>
+        }
+      >
+        {(markup) => <div class="code-highlight" innerHTML={markup()} />}
+      </Show>
     </div>
   );
 }
@@ -507,27 +730,44 @@ const BLOCK: Record<string, Component<ITokenProps>> = {
   code: CodeToken,
 };
 
-function TopBlock(props: { token: Token; fromUser: boolean }) {
+function TopBlock(props: { token: Token; fromUser: boolean; key: string | null }) {
   const html = createMemo(() =>
     !props.fromUser && containsHtml(props.token)
       ? sanitizeHtml(assistantHtml([props.token]))
       : null,
   );
+  const blockKey = props.key;
+  let codeBlocks = 0;
+  const nextCodeKey = () => (blockKey === null ? null : `${blockKey}:${codeBlocks++}`);
   return (
     <Show
       when={html()}
-      fallback={<Dynamic component={BLOCK[props.token.type] ?? TextToken} token={props.token} />}
+      fallback={
+        <CodeBlockKey.Provider value={nextCodeKey}>
+          <Dynamic component={BLOCK[props.token.type] ?? TextToken} token={props.token} />
+        </CodeBlockKey.Provider>
+      }
     >
       {(markup) => <div class="raw-html-block" innerHTML={markup()} />}
     </Show>
   );
 }
 
-export function Markdown(props: { text: string; fromUser: boolean; message?: ISentMessage }) {
+export function Markdown(props: {
+  text: string;
+  fromUser: boolean;
+  message?: ISentMessage;
+  // The row the text belongs to, which keys state its blocks keep across remounts.
+  id?: string;
+}) {
   const lex = createMarkdownLexer(props.fromUser);
   const lexed = createMemo(() => lex(props.text));
   const environment = Environment.use();
   const title = useThreadTitle();
+  const workspaceRoot = useWorkspaceRoot();
+  const pathsKey = createMemo(() => fileLinkPathsKey(props.text, workspaceRoot()));
+  const suffixes = createMemo(() => parentSuffixes(pathsKey()));
+  const files: IFileLinks = { cwd: workspaceRoot, suffixes, inLink: false };
   // Raw HTML can't hold a component, so sanitize marks its thread links and a click here opens them.
   const openHtmlThreadLink = (event: MouseEvent) => {
     const href = (event.target as Element)
@@ -540,24 +780,32 @@ export function Markdown(props: { text: string; fromUser: boolean; message?: ISe
   };
   return (
     <MessageContext.Provider value={props.message ?? null}>
-      <Show
-        when={lexed().WholeHtml}
-        fallback={
-          <div class="chat-markdown" onClick={openHtmlThreadLink}>
-            <Index each={lexed().Blocks}>
-              {(token) => <TopBlock token={token()} fromUser={props.fromUser} />}
-            </Index>
-          </div>
-        }
-      >
-        {(tokens) => (
-          <div
-            class="chat-markdown"
-            onClick={openHtmlThreadLink}
-            innerHTML={sanitizeHtml(assistantHtml(tokens()))}
-          />
-        )}
-      </Show>
+      <FileLinkContext.Provider value={files}>
+        <Show
+          when={lexed().WholeHtml}
+          fallback={
+            <div class="chat-markdown" onClick={openHtmlThreadLink}>
+              <Index each={lexed().Blocks}>
+                {(token, index) => (
+                  <TopBlock
+                    token={token()}
+                    fromUser={props.fromUser}
+                    key={props.id === undefined ? null : `${props.id}:${index}`}
+                  />
+                )}
+              </Index>
+            </div>
+          }
+        >
+          {(tokens) => (
+            <div
+              class="chat-markdown"
+              onClick={openHtmlThreadLink}
+              innerHTML={sanitizeHtml(assistantHtml(tokens()))}
+            />
+          )}
+        </Show>
+      </FileLinkContext.Provider>
     </MessageContext.Provider>
   );
 }

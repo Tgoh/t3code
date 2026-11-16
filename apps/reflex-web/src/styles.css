@@ -46,6 +46,7 @@
   --input: var(--zinc-300);
   --info-foreground: oklch(48.8% 0.243 264.376);
   --thread-link: #006f6b;
+  --file-link: oklch(0.5 0.11 215);
   --success: oklch(69.6% 0.17 162.48);
   --success-foreground: oklch(50.8% 0.118 165.612);
   --warning: oklch(76.9% 0.188 70.08);
@@ -111,6 +112,7 @@
     --error: color-mix(in srgb, oklch(63.7% 0.237 25.331) 90%, #fff);
     --error-foreground: oklch(70.4% 0.191 22.216);
     --thread-link: oklch(76% 0.12 190);
+    --file-link: oklch(0.76 0.11 215);
     --border: rgb(255 255 255 / 8%);
     --input: rgb(255 255 255 / 11%);
     --info-foreground: oklch(70.7% 0.165 254.624);
@@ -2581,12 +2583,83 @@ details[open] > summary .work-chevron {
 }
 
 .code-language {
+  align-items: center;
+  display: inline-flex;
   font-family: var(--font-mono);
   font-size: 11px;
+  gap: 6px;
   min-width: 0;
+  white-space: nowrap;
+}
+
+.code-language .file-icon {
+  flex-shrink: 0;
+  height: 14px;
+  width: 14px;
+}
+
+.code-language-icon {
+  display: inline-flex;
+}
+
+.code-title {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.code-highlight :is(pre, .shiki, .diffs) {
+  background: transparent !important;
+}
+
+/* Plain-text fences override the highlighter's inline foreground colors. */
+.code-block:is(
+    [data-language="text" i],
+    [data-language="txt" i],
+    [data-language="plain" i],
+    [data-language="plaintext" i]
+  )
+  pre {
+  color: inherit !important;
+}
+
+.file-link {
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--file-link);
+  cursor: pointer;
+  display: inline-block;
+  font: inherit;
+  font-weight: 500;
+  max-width: 100%;
+  overflow-x: clip;
+  padding: 0;
+  text-align: inherit;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
   white-space: nowrap;
+}
+
+.file-link .file-icon {
+  height: 1em;
+  margin-right: 0.2em;
+  vertical-align: -0.125em;
+  width: 1em;
+}
+
+.file-link-label {
+  text-decoration: underline transparent 1px;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color 0.15s;
+}
+
+.file-link:hover .file-link-label {
+  text-decoration-color: currentcolor;
+}
+
+.file-link:focus-visible {
+  outline: 2px solid currentcolor;
+  outline-offset: -2px;
 }
 
 .code-actions {

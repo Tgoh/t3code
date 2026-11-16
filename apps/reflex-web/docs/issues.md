@@ -121,7 +121,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - A thread deleted elsewhere while closed keeps its remembered launch in `localStorage`, for the reason under `thread.removed`.
 - The terminal has no links, search, clear button or font setting.
 - The terminal doesn't pass `providerInstanceId`, as stock's default launch doesn't.
-- Diffs render as a unified list with line numbers, not `@pierre/diffs`, whose non-React entry wasn't evaluated. There's no syntax highlighting.
+- Diffs render as a unified list with line numbers, not `@pierre/diffs`' diff view, with no syntax highlighting. Markdown code blocks use its highlighter.
 - A diff panel holds one fetched string in Local and refetches on each open. It doesn't refresh when a later checkpoint lands.
 - Restoring a checkpoint isn't offered.
 - The benchmark uses a generated fixture: `~/.t3` doesn't exist here and the dev home holds only a few short threads.
@@ -131,17 +131,16 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 
 - Visits: a visit that fails isn't retried after a reconnect, so Done can stay until the next completion.
 - Questions: answers typed into a question that Stop cancels or that expires are lost; stock moves them into the composer. Option previews don't render, and an `initialAnswer` isn't filled in.
-- Markdown: `vscode://`, `cursor://` and other editor links are dropped instead of opening the file.
 - Thread links: a link to a thread the shell doesn't hold shows its written label, or "Thread", and still opens, where stock asks the server for its title and shows "Thread no longer available" when it's gone. A thread on another machine is named but never opens, since this client connects to one environment. The chip has no hover card; `t3code://` deep links and prompt links aren't recognised, and a raw-HTML block's thread link keeps its written text rather than the thread's title.
 - Messages from other threads and automations: the automation fold shows the prompt's first line, not its scheduled task's title, and has no Open automation link. Consecutive steers each show their Steer label, where stock shows it once, because a row doesn't know its neighbours. Guest messages show the guest's words without the guest name or styling.
 - Project icons: a cloned project's icon isn't asked for again when its clone lands, as stock does, so it shows the monogram until the next request after the 30-minute refresh. An icon file changed in place shows on the next refresh, not straight away.
 - Sidebar: no "Setting up" state for a thread launched from a draft before its first run lands, and no Regenerate title action.
 
-- Sidebar: no Search box, thread filter, sidebar toggle, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
+- Sidebar: no Search box, thread filter, sidebar toggle above 767px, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
 - Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
-- Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, drag reorder, auto-settle toggle or search.
+- Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, auto-settle toggle or search.
 - Sidebar: every settled thread is streamed, where stock omits older ones and pages them in.
-- Projects: Add project is stock's palette for its own views only. It clones only from a pasted URL, with no hosting-provider sources (GitHub and the rest, with their Setup Required state) or repository lookup, and a new project can't be published to GitHub from it. There's no environment chooser, no Open in file manager, and no keyboard shortcut to open it. Folders group one per project, as stock's "separate" mode, with no repository grouping, and every open project has a folder, where stock shows an idle one only while pinned. No project archive.
+- Projects: Add project is stock's palette for its own views only. It clones only from a pasted URL, with no hosting-provider sources (GitHub and the rest, with their Setup Required state) or repository lookup, and a new project can't be published to GitHub from it. There's no environment chooser and no keyboard shortcut to open it. Folders group one per project, as stock's "separate" mode, with no repository grouping, and every open project has a folder, where stock shows an idle one only while pinned. No project archive.
 - Projects: the folder menu has no Project settings page (icon, default model, workspace, actions, checkouts); rename is in the menu instead. Open in file manager is offered whatever the server's `availableEditors` says, and its failure shows in the sidebar's error line.
 - Projects: removal counts only threads the shell holds, where stock adds the older settled threads it pages in, so the count can be low. It removes one project, with no grouped checkouts, and a failure stays in the dialog rather than a toast.
 - Projects: the order is per browser and port, as stock's is per browser, and keyed by project id where stock keys by environment and path, so a removed and re-added folder goes to the end. The sort choice is a sidebar picker, not a setting, and defaults to Manual (stock: Last user message), whose unsaved order is the old one: pinned first, then by title. The time orders keep pinned projects on top, which stock's don't.
@@ -164,7 +163,8 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Attachments: a dropped or pasted folder is refused, as on stock web; stock desktop inserts its path.
 - Timeline: an expanded image has no next, previous or zoom, and an attachment or markdown image URL isn't refreshed, so a thread left open past its expiry shows a name chip or "Image unavailable" after a reload of the image. A markdown image of a file the agent rewrites keeps showing the old bytes until the message remounts.
 - Markdown images: no copy, download or open-file actions, and no "pair again" hint when the connection can't read host files. Video and audio embeds show their alt text. An `<img>` in raw HTML still loads only web and data sources, so a file path there shows nothing.
-- Markdown: no syntax highlighting, language icons, run-in-terminal button, file link chips, math or diagrams. A relative link is plain text with its path in a tooltip, not a link that opens the file. A code block's wrap choice resets when its message re-renders during streaming.
+- Markdown: no run-in-terminal button, math or diagrams. A code block is highlighted once its fence closes, where stock highlights it line by line as it streams, and wrap defaults on rather than following a word-wrap setting.
+- File link chips open in the editor on click, where stock opens the in-app file panel and keeps the editor for Ctrl-click. They have no context menu (copy path, reveal, open in browser), no media preview, no lookup of a bare file name across the workspace and other projects, no size in the tooltip and no app-bundle icon, and they're offered whatever the connection's remote-open mode. A failed open shows in the sidebar's error line. Dart, Java, Lua, PHP and R files use Pierre's generic icon, not stock's own.
 - Changed files card: flat list, not a tree, and its rows don't open a single file's diff.
 - Composer: no voice input, stash, multi-model send or keyboard shortcuts. The `@` menu lists files only, with no thread items (nor machines or models), shows a generic file or folder icon where stock shows per-type icons, and inserts a plain markdown link rather than a chip. The `/` menu has no built-in `/model`, `/side`, `/btw` or `/clear`, and skills show no source badge. Commands and skills come from the provider list read at startup, without a project's workspace snapshot, so project-only skills are missing. Prompt history moves at the first or last line of the text, not the wrapped visual line.
 - Model menu: no number-key jumps, provider setup or update notices, unavailable-provider state, custom models from settings, instance badges or New badges, and a fixed height rather than stock's fit to the tallest tab. Providers other than Claude and Codex show a letter, not their icon. A favorite toggle doesn't migrate favorites a stock browser kept locally before the server held them. A non-reasoning option such as an agent's mode opens its choices below its row, not in a side menu.
@@ -172,7 +172,6 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Permissions: no overflow menu at narrow widths, and modes a managed policy forbids aren't disabled. A new thread's strip under the composer holds only the permissions chip, with no workspace or branch pickers.
 - Diff panel: no tabs, split view, wrap, turn picker, file icons or collapsed unchanged-line markers.
 - Terminal drawer: fixed height with no resize, tabs or splits; the emulator is xterm, so glyph rendering differs from stock's.
-- Layout: no narrow-width sidebar collapse; below 640px only the chat gutter shrinks.
 
 ## Open: reading `packages/` restarts the dev server on Windows
 
