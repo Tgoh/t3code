@@ -1,11 +1,17 @@
 import {
+  findProjectByPath,
+  inferProjectTitleFromPath,
+} from "@t3tools/client-runtime/state/projects";
+import {
   bind,
   entity,
   generateGuid,
   type IActionGenerator,
   type IEntity,
+  inFlight,
   type IOpenGenerator,
   type ISelectorGenerator,
+  leading,
   open,
   openResource,
   receiver,
@@ -16,10 +22,14 @@ import { createEntityFeature } from "treflex-solid";
 
 import { addressThread, setAddressThread } from "./Infrastructure/address";
 import {
+  cloneControlEffect,
+  type INewProject,
   type IProjectCommand,
   type IThreadCommand,
+  newProjectEffect,
   projectCommandEffect,
   serverProvidersEffect,
+  startCloneEffect,
   threadCommandEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
@@ -33,6 +43,12 @@ import {
   type IThreadSession,
   restoreTerminal,
 } from "./ThreadSession";
+
+declare module "treflex" {
+  interface IResourceRegistry {
+    "Project/Clones": { Type: "projectClones" };
+  }
+}
 
 export interface IEnvironment extends IEntity {
   EnvironmentId: string;
@@ -66,6 +82,10 @@ export function* init(draft: IEnvironment): IActionGenerator {
   yield* registerDataSource(draft, "Replica", draft.Replica);
   bind(draft, EnvironmentReceiver);
   yield* openShellStream(draft.Replica.Shell);
+  yield* openResource(draft, "Project/Clones", {
+    Type: "projectClones",
+    EnvironmentId: draft.EnvironmentId,
+  });
   yield* start(loadProviders, draft);
   const selected = yield* addressThread();
   if (selected !== null) yield* selectThread(draft, selected);
@@ -170,24 +190,120 @@ export function* threadCommand(
   if (command.Kind === "delete") yield* forgetThread(draft, threadId);
 }
 
-export function* projectCommand(
-  draft: IEnvironment,
-  projectId: string | null,
+function* sendProjectCommand(
+  environmentId: string,
+  projectId: string,
   command: IProjectCommand,
 ): IOpenGenerator {
-  const environmentId = draft.EnvironmentId;
-  const target = projectId ?? (yield* generateGuid());
   yield* open(
     withCommandId((commandId) =>
       projectCommandEffect({
         EnvironmentId: environmentId,
-        ProjectId: target,
+        ProjectId: projectId,
         CommandId: commandId,
         Command: command,
       }),
     ),
   );
-  if (command.Kind === "create") yield* newThread(draft, target);
+}
+
+export function* projectCommand(
+  draft: IEnvironment,
+  projectId: string,
+  command: IProjectCommand,
+): IOpenGenerator {
+  yield* sendProjectCommand(draft.EnvironmentId, projectId, command);
+  if (command.Kind !== "delete") return;
+  const drafts = Object.values(draft.Local.ThreadSessions)
+    .filter((session) => session.NewThreadProjectId === projectId)
+    .map((session) => session.ThreadId);
+  for (const threadId of drafts) yield* forgetThread(draft, threadId);
+}
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+// Follows handleAddProjectForEnvironment in apps/web/src/components/CommandPalette.tsx.
+export function* addFolder(
+  draft: IEnvironment,
+  workspaceRoot: string,
+): IOpenGenerator<string | null> {
+  const environmentId = draft.EnvironmentId;
+  const existing = findProjectByPath(Object.values(draft.Replica.Shell.Projects), workspaceRoot);
+  const projectId = existing?.id ?? (yield* generateGuid());
+  try {
+    if (existing === undefined) {
+      yield* sendProjectCommand(environmentId, projectId, {
+        Kind: "create",
+        Title: inferProjectTitleFromPath(workspaceRoot),
+        WorkspaceRoot: workspaceRoot,
+      });
+    } else if (existing.archivedAt != null) {
+      yield* sendProjectCommand(environmentId, projectId, { Kind: "unarchive" });
+    }
+  } catch (error) {
+    return errorText(error);
+  }
+  yield* newThread(draft, projectId);
+  return null;
+}
+leading(addFolder);
+
+export function* cloneProject(
+  draft: IEnvironment,
+  remoteUrl: string,
+  destinationPath: string,
+): IOpenGenerator<string | null> {
+  const environmentId = draft.EnvironmentId;
+  const projectId = yield* generateGuid();
+  try {
+    yield* open(
+      startCloneEffect({
+        EnvironmentId: environmentId,
+        ProjectId: projectId,
+        Title: inferProjectTitleFromPath(destinationPath),
+        RemoteUrl: remoteUrl,
+        DestinationPath: destinationPath,
+      }),
+    );
+  } catch (error) {
+    return errorText(error);
+  }
+  yield* newThread(draft, projectId);
+  return null;
+}
+leading(cloneProject);
+
+export function* newProject(draft: IEnvironment, name: string): IOpenGenerator<string | null> {
+  const environmentId = draft.EnvironmentId;
+  let created: INewProject;
+  try {
+    created = yield* open(newProjectEffect({ EnvironmentId: environmentId, Name: name }));
+  } catch (error) {
+    return errorText(error);
+  }
+  yield* newThread(draft, created.ProjectId);
+  return null;
+}
+leading(newProject);
+
+export function* cloneControl(
+  draft: IEnvironment,
+  projectId: string,
+  kind: "cancel" | "retry",
+): IOpenGenerator {
+  const environmentId = draft.EnvironmentId;
+  yield* open(
+    cloneControlEffect({ EnvironmentId: environmentId, ProjectId: projectId, Kind: kind }),
+  );
+}
+leading(cloneControl);
+
+export function* addingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return yield* inFlight([addFolder, cloneProject, newProject], draft);
+}
+
+export function* cloneControlling(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return yield* inFlight(cloneControl, draft);
 }
 
 export function* selectedOpenThread(draft: IEnvironment): ISelectorGenerator<IOpenThread | null> {
@@ -225,6 +341,15 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
 });
 
 export default createEntityFeature<IEnvironment>(import.meta.url)(
-  { selectThread, newThread, threadCommand, projectCommand },
-  { selectedOpenThread, selectedDraftSession, currentProjectId },
+  {
+    selectThread,
+    newThread,
+    threadCommand,
+    projectCommand,
+    addFolder,
+    cloneProject,
+    newProject,
+    cloneControl,
+  },
+  { selectedOpenThread, selectedDraftSession, currentProjectId, addingProject, cloneControlling },
 );

@@ -109,7 +109,9 @@ export type IProjectCommand =
   | { Kind: "create"; Title: string; WorkspaceRoot: string }
   | { Kind: "pin" }
   | { Kind: "unpin" }
-  | { Kind: "rename"; Title: string };
+  | { Kind: "unarchive" }
+  | { Kind: "rename"; Title: string }
+  | { Kind: "delete" };
 
 interface IProjectCommandEffect extends IEffect {
   Type: "projectCommand";
@@ -120,6 +122,74 @@ interface IProjectCommandEffect extends IEffect {
 }
 
 export const projectCommandEffect = defineEffect<IProjectCommandEffect, void>("projectCommand");
+
+export interface IAddProjectSettings {
+  BaseDirectory: string;
+  GhqCloneLayout: boolean;
+  NewProjectsRoot: string | null;
+  Os: string;
+}
+
+interface IAddProjectSettingsEffect extends IEffect {
+  Type: "addProjectSettings";
+  EnvironmentId: string;
+}
+
+export const addProjectSettingsEffect = defineEffect<
+  IAddProjectSettingsEffect,
+  IAddProjectSettings
+>("addProjectSettings");
+
+export interface IFolderListing {
+  ParentPath: string;
+  Entries: Array<{ name: string; fullPath: string }>;
+}
+
+interface IBrowseFoldersEffect extends IEffect {
+  Type: "browseFolders";
+  EnvironmentId: string;
+  PartialPath: string;
+}
+
+export const browseFoldersEffect = defineEffect<IBrowseFoldersEffect, IFolderListing>(
+  "browseFolders",
+);
+
+export interface IStartClone {
+  EnvironmentId: string;
+  ProjectId: string;
+  Title: string;
+  RemoteUrl: string;
+  DestinationPath: string;
+}
+
+interface IStartCloneEffect extends IEffect, IStartClone {
+  Type: "startClone";
+}
+
+export const startCloneEffect = defineEffect<IStartCloneEffect, void>("startClone");
+
+interface ICloneControlEffect extends IEffect {
+  Type: "cloneControl";
+  EnvironmentId: string;
+  ProjectId: string;
+  Kind: "cancel" | "retry";
+}
+
+export const cloneControlEffect = defineEffect<ICloneControlEffect, void>("cloneControl");
+
+export interface INewProject {
+  ProjectId: string;
+  WorkspaceRoot: string;
+}
+
+interface INewProjectEffect extends IEffect {
+  Type: "newProject";
+  EnvironmentId: string;
+  Name: string;
+}
+
+export const newProjectEffect = defineEffect<INewProjectEffect, INewProject>("newProject");
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 

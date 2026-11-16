@@ -5,10 +5,13 @@ import { createTestRuntime, EntityReplacedError, type IActionGenerator, settled 
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  addFolder,
+  cloneProject,
   closeThread,
   EnvironmentReceiver,
   type IEnvironment,
   loadProviders,
+  newProject,
   newThread,
   openThread,
   projectCommand,
@@ -30,6 +33,7 @@ import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownToke
 import type {
   IQueueCommand,
   IRespondRequest,
+  IStartClone,
   IStartTurn,
   IStopThread,
   IThreadCommand,
@@ -1702,27 +1706,109 @@ describe("writing to the server", () => {
     expect(server.runtime.state.Failure).toBeUndefined();
   });
 
-  it("adding a project opens a new thread in it, and a refused one opens nothing", async () => {
-    const created: { ProjectId: string; Command: object }[] = [];
+  const draftProjectOf = (server: Awaited<ReturnType<typeof connect>>) => {
+    const selected = server.environment().Local.SelectedThreadId;
+    return selected === null
+      ? null
+      : server.environment().Local.ThreadSessions[selected]?.NewThreadProjectId;
+  };
+
+  it("adding a folder creates its project and opens a new thread there, or returns the refusal", async () => {
+    const sent: { ProjectId: string; Command: object }[] = [];
     let refuse = false;
     const server = await connect(undefined, null, {
       projectCommand: (effect: { ProjectId: string; Command: object }) => {
         if (refuse) throw new Error("no such folder");
-        created.push(effect);
+        sent.push(effect);
       },
     });
-    const add = { Kind: "create", Title: "Code", WorkspaceRoot: "E:\\Tam\\Code" } as const;
-    await server.runtime.dispatch(projectCommand, server.envId(), null, add);
-    const projectId = created[0]!.ProjectId;
-    expect(created).toMatchObject([{ Command: add }]);
-    const selected = server.environment().Local.SelectedThreadId!;
-    expect(server.environment().Local.ThreadSessions[selected]?.NewThreadProjectId).toBe(projectId);
+    const added = await server.runtime.dispatch(addFolder, server.envId(), "E:\\Tam\\Code");
+    expect(added).toBeNull();
+    expect(sent).toMatchObject([
+      { Command: { Kind: "create", Title: "Code", WorkspaceRoot: "E:\\Tam\\Code" } },
+    ]);
+    expect(draftProjectOf(server)).toBe(sent[0]!.ProjectId);
+    const selected = server.environment().Local.SelectedThreadId;
     refuse = true;
-    await expect(
-      server.runtime.dispatch(projectCommand, server.envId(), null, add),
-    ).rejects.toThrow("no such folder");
-    expect(server.runtime.state.Failure).toBe("no such folder");
+    expect(await server.runtime.dispatch(addFolder, server.envId(), "E:\\Elsewhere")).toBe(
+      "no such folder",
+    );
+    expect(server.runtime.state.Failure).toBeUndefined();
     expect(server.environment().Local.SelectedThreadId).toBe(selected);
+  });
+
+  it("adding a folder already a project opens that project, unarchiving it first", async () => {
+    const sent: { ProjectId: string; Command: object }[] = [];
+    const server = await connect(undefined, null, {
+      projectCommand: (effect: { ProjectId: string; Command: object }) => void sent.push(effect),
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [
+          { id: "p-live", title: "Live", workspaceRoot: "/code/live" },
+          {
+            id: "p-old",
+            title: "Old",
+            workspaceRoot: "/code/old",
+            archivedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        threads: [],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.runtime.dispatch(addFolder, server.envId(), "/code/live/");
+    expect(sent).toEqual([]);
+    expect(draftProjectOf(server)).toBe("p-live");
+    await server.runtime.dispatch(addFolder, server.envId(), "/code/old");
+    expect(sent).toMatchObject([{ ProjectId: "p-old", Command: { Kind: "unarchive" } }]);
+    expect(draftProjectOf(server)).toBe("p-old");
+  });
+
+  it("cloning opens the project as soon as the server takes the clone", async () => {
+    const clones: IStartClone[] = [];
+    let refuse = false;
+    const server = await connect(undefined, null, {
+      startClone: (effect: IStartClone) => {
+        if (refuse) throw new Error("destination exists");
+        clones.push(effect);
+      },
+    });
+    const url = "https://github.com/pingdotgg/t3code.git";
+    expect(await server.runtime.dispatch(cloneProject, server.envId(), url, "/code/t3code")).toBe(
+      null,
+    );
+    expect(clones).toMatchObject([
+      { RemoteUrl: url, DestinationPath: "/code/t3code", Title: "t3code" },
+    ]);
+    expect(draftProjectOf(server)).toBe(clones[0]!.ProjectId);
+    refuse = true;
+    expect(await server.runtime.dispatch(cloneProject, server.envId(), url, "/code/t3code")).toBe(
+      "destination exists",
+    );
+    expect(draftProjectOf(server)).toBe(clones[0]!.ProjectId);
+  });
+
+  it("a new project opens a thread in the project the server made", async () => {
+    const server = await connect(undefined, null, {
+      newProject: (effect: { Name: string }) => ({
+        ProjectId: "p-new",
+        WorkspaceRoot: `/projects/${effect.Name}`,
+      }),
+    });
+    expect(await server.runtime.dispatch(newProject, server.envId(), "demo")).toBeNull();
+    expect(draftProjectOf(server)).toBe("p-new");
+  });
+
+  it("removing a project forgets its new-thread draft", async () => {
+    const server = await connect(undefined, null, { projectCommand: () => undefined });
+    await server.runtime.dispatch(newThread, server.envId(), "p-1");
+    const draftId = server.environment().Local.SelectedThreadId!;
+    await server.runtime.dispatch(projectCommand, server.envId(), "p-1", { Kind: "delete" });
+    expect(server.environment().Local.ThreadSessions[draftId]).toBeUndefined();
+    expect(server.environment().Local.SelectedThreadId).toBeNull();
   });
 
   it("deleting forgets the thread even when it isn't open, and clears the selection", async () => {

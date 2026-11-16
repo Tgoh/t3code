@@ -10,11 +10,16 @@ import { EnvironmentReceiver } from "./Environment";
 import { addressThreadImpl, setAddressThreadImpl } from "./Infrastructure/address";
 import { commandOutput } from "./Infrastructure/commandOutput";
 import {
+  addProjectSettingsImpl,
   attachmentUrlImpl,
+  browseFoldersImpl,
+  cloneControlImpl,
   closeTerminalImpl,
+  newProjectImpl,
   queueCommandImpl,
   respondRequestImpl,
   serverProvidersImpl,
+  startCloneImpl,
   startTurnImpl,
   stopThreadImpl,
   projectCommandImpl,
@@ -24,6 +29,7 @@ import {
 import { composerFiles } from "./Infrastructure/composerFiles";
 import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
 import { pairFromUrl } from "./Infrastructure/pairing";
+import { projectClones } from "./Infrastructure/projectClones";
 import { shellStream } from "./Infrastructure/shellStream";
 import { rememberedTerminalImpl, rememberTerminalImpl } from "./Infrastructure/terminalMemory";
 import { terminalSession } from "./Infrastructure/terminalSession";
@@ -51,6 +57,11 @@ runtime.registerImplementation(respondRequestImpl);
 runtime.registerImplementation(serverProvidersImpl);
 runtime.registerImplementation(queueCommandImpl);
 runtime.registerImplementation(projectCommandImpl);
+runtime.registerImplementation(addProjectSettingsImpl);
+runtime.registerImplementation(browseFoldersImpl);
+runtime.registerImplementation(startCloneImpl);
+runtime.registerImplementation(cloneControlImpl);
+runtime.registerImplementation(newProjectImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
 runtime.registerImplementation(attachmentUrlImpl);
@@ -59,6 +70,7 @@ runtime.registerImplementation(rememberedTerminalImpl);
 runtime.registerImplementation(rememberTerminalImpl);
 runtime.registerResourceType("composerFiles", composerFiles);
 runtime.registerResourceType("commandOutput", commandOutput);
+runtime.registerResourceType("projectClones", projectClones);
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);

@@ -4,6 +4,7 @@ import {
 } from "@t3tools/client-runtime/connection";
 import {
   createProject,
+  deleteProject,
   deleteThread,
   interruptThreadTurn,
   markThreadUnread,
@@ -41,19 +42,25 @@ import * as Stream from "effect/Stream";
 import { implementation } from "treflex";
 
 import {
+  addProjectSettingsEffect,
   attachmentUrlEffect,
+  browseFoldersEffect,
+  cloneControlEffect,
   closeTerminalEffect,
   type IProviderOption,
+  newProjectEffect,
   projectCommandEffect,
   queueCommandEffect,
   respondRequestEffect,
   serverProvidersEffect,
+  startCloneEffect,
   startTurnEffect,
   stopThreadEffect,
   threadCommandEffect,
   threadDiffEffect,
 } from "./commandEffects";
 import { connectionRuntime } from "./connection";
+import { runCommand, sourceControl } from "./sourceControl";
 
 const inEnvironment = <A, E>(
   environmentId: string,
@@ -206,17 +213,80 @@ export const projectCommandImpl = implementation(projectCommandEffect, async (in
   switch (command.Kind) {
     case "create":
       return void (await run(
-        createProject({ ...common, title: command.Title, workspaceRoot: command.WorkspaceRoot }),
+        createProject({
+          ...common,
+          title: command.Title,
+          workspaceRoot: command.WorkspaceRoot,
+          createWorkspaceRootIfMissing: true,
+          defaultModelSelection: null,
+        }),
       ));
     case "pin":
       return void (await run(updateProject({ ...common, pinned: true })));
     case "unpin":
       return void (await run(updateProject({ ...common, pinned: false })));
+    case "unarchive":
+      return void (await run(updateProject({ ...common, archived: false })));
     case "rename":
       return void (await run(updateProject({ ...common, title: command.Title })));
+    case "delete":
+      return void (await run(deleteProject(common)));
     default:
       command satisfies never;
   }
+});
+
+export const addProjectSettingsImpl = implementation(addProjectSettingsEffect, async (input) => {
+  const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
+  return {
+    BaseDirectory: config.settings.addProjectBaseDirectory,
+    GhqCloneLayout: config.settings.ghqCloneLayout,
+    NewProjectsRoot: config.newProjectsRoot ?? null,
+    Os: config.environment.platform.os,
+  };
+});
+
+export const browseFoldersImpl = implementation(browseFoldersEffect, async (input, action) => {
+  const listing = await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.filesystemBrowse, { partialPath: input.PartialPath }),
+    action?.signal,
+  );
+  return {
+    ParentPath: listing.parentPath,
+    Entries: listing.entries.map((entry) => ({ name: entry.name, fullPath: entry.fullPath })),
+  };
+});
+
+export const startCloneImpl = implementation(startCloneEffect, async (input) => {
+  await runCommand(sourceControl.startProjectClone, {
+    environmentId: EnvironmentId.make(input.EnvironmentId),
+    input: {
+      projectId: ProjectId.make(input.ProjectId),
+      title: input.Title,
+      createdAt: new Date().toISOString(),
+      remoteUrl: input.RemoteUrl,
+      destinationPath: input.DestinationPath,
+    },
+  });
+});
+
+export const cloneControlImpl = implementation(cloneControlEffect, async (input) => {
+  await runCommand(
+    input.Kind === "cancel" ? sourceControl.cancelProjectClone : sourceControl.retryProjectClone,
+    {
+      environmentId: EnvironmentId.make(input.EnvironmentId),
+      input: { projectId: ProjectId.make(input.ProjectId) },
+    },
+  );
+});
+
+export const newProjectImpl = implementation(newProjectEffect, async (input) => {
+  const created = await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.projectsCreateNew, { name: input.Name }),
+  );
+  return { ProjectId: created.projectId, WorkspaceRoot: created.workspaceRoot };
 });
 
 export const closeTerminalImpl = implementation(closeTerminalEffect, async (input) => {

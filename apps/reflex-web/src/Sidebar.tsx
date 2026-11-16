@@ -6,7 +6,8 @@ import { T3Mark } from "./brand";
 import Environment from "./Environment";
 import { ChevronDown, ChevronRight, FolderPlus, Folders, SquarePen, X } from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
-import { AddProjectForm, FolderHeader, ProjectMenu } from "./ProjectFolder";
+import { AddProjectPanel } from "./AddProject";
+import { FolderHeader, ProjectMenu } from "./ProjectFolder";
 import Root from "./Root";
 import Shell, { isBusy, projectFolders, sidebarSections, sidebarStatus } from "./Shell";
 import { StageArt } from "./StageArt";
@@ -244,7 +245,7 @@ export const Sidebar = Shell.provider(() => {
         </button>
       </div>
       <Show when={addingProject()}>
-        <AddProjectForm onClose={() => setAddingProject(false)} />
+        <AddProjectPanel onClose={() => setAddingProject(false)} />
       </Show>
       <Show when={endedReason()}>
         {(reason) => <p class="sidebar-error">The shell stream ended: {reason()}</p>}

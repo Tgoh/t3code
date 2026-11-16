@@ -199,6 +199,12 @@ function* interactionMode(draft: IThreadSession): ISelectorGenerator<IWireIntera
   return replica?.OpenThreads[draft.ThreadId]?.Thread?.interactionMode ?? "default";
 }
 
+export function* projectId(draft: IThreadSession): ISelectorGenerator<string | null> {
+  if (draft.NewThreadProjectId !== null) return draft.NewThreadProjectId;
+  const replica = yield* getData(draft, "Replica");
+  return replica?.OpenThreads[draft.ThreadId]?.Thread?.projectId ?? null;
+}
+
 export function* projectName(draft: IThreadSession): ISelectorGenerator<string | null> {
   const replica = yield* getData(draft, "Replica");
   const projectId =
@@ -576,6 +582,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     effectiveModelDriver,
     effectiveModelName,
     effectiveRuntimeMode,
+    projectId,
     projectName,
     stopRequested,
     sending,

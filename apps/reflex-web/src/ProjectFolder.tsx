@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { Show } from "solid-js";
 
 import { ProjectBadge } from "./brand";
 import Environment from "./Environment";
@@ -129,53 +129,5 @@ export function FolderHeader(props: {
         </Show>
       </div>
     </li>
-  );
-}
-
-function folderTitle(path: string): string {
-  return (
-    path
-      .replace(/[\\/]+$/, "")
-      .split(/[\\/]/)
-      .pop() || path
-  );
-}
-
-export function AddProjectForm(props: { onClose: () => void }) {
-  const environment = Environment.use();
-  const [path, setPath] = createSignal("");
-  const submit = () => {
-    const root = path().trim();
-    if (root === "") return;
-    environment.projectCommand(null, {
-      Kind: "create",
-      Title: folderTitle(root),
-      WorkspaceRoot: root,
-    });
-    props.onClose();
-  };
-  return (
-    <form
-      class="add-project"
-      onSubmit={(event) => {
-        event.preventDefault();
-        submit();
-      }}
-    >
-      <input
-        class="card-rename"
-        aria-label="Project folder"
-        placeholder="Folder on the server, e.g. E:\Code\app"
-        value={path()}
-        ref={(input) => queueMicrotask(() => input.focus())}
-        onInput={(event) => setPath(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") props.onClose();
-        }}
-      />
-      <button type="submit" class="card-action" disabled={path().trim() === ""}>
-        Add
-      </button>
-    </form>
   );
 }
