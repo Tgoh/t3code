@@ -42,6 +42,7 @@ import { hoverCard } from "./tooltip";
 const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "Setting up",
   working: "Working",
+  waiting: "Waiting",
   approval: "Approval",
   input: "Input",
   failed: "Failed",
@@ -51,7 +52,7 @@ const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
 function StatusIcon(props: { status: NonNullable<ISidebarStatus> }) {
   return (
     <Switch>
-      <Match when={isBusy(props.status)}>
+      <Match when={isBusy(props.status) || props.status === "waiting"}>
         <CircleDashed />
       </Match>
       <Match when={props.status === "approval"}>
@@ -204,7 +205,11 @@ export function ThreadCard(props: {
         classList={{
           selected: props.selected,
           receded:
-            !props.selected && (status() === null || isBusy(status()) || status() === "approval"),
+            !props.selected &&
+            (status() === null ||
+              isBusy(status()) ||
+              status() === "waiting" ||
+              status() === "approval"),
           dimmed: !props.selected && isBusy(status()),
         }}
         onClick={select}
@@ -239,7 +244,7 @@ export function ThreadCard(props: {
                 <span class={`card-status ${held()}`}>
                   <StatusIcon status={held()} />
                   {STATUS_LABEL[held()]}
-                  <Show when={isBusy(held()) && workingFor()}>
+                  <Show when={(isBusy(held()) || held() === "waiting") && workingFor()}>
                     {(elapsed) => <span class="card-elapsed">{elapsed()}</span>}
                   </Show>
                 </span>

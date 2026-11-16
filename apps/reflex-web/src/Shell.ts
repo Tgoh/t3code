@@ -281,6 +281,7 @@ function runtimeStatus(thread: IWireThreadShell): IWireThreadShell["status"] | n
 export type ISidebarStatus =
   | "preparing"
   | "working"
+  | "waiting"
   | "approval"
   | "input"
   | "failed"
@@ -312,9 +313,11 @@ export function sidebarStatus(
   if (request === "approval" || subagent === "approval") return "approval";
   if (request === "user_input" || subagent === "user_input") return "input";
   const runtime = runtimeStatus(thread);
-  if (runtime === "idle") return null;
+  if (runtime === "idle")
+    return backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) ? "waiting" : null;
   if (runtime === "preparing") return "preparing";
   const status = runtime === null ? null : runStatus(runtime);
+  if (status === "running" && thread.blockedOnThreadWait === true) return "waiting";
   if (status === "running" || status === "waiting") return "working";
   if (status === "failed") {
     // Stock keeps a usage limit on the row after a visit; only a plain failure settles.

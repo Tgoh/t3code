@@ -147,7 +147,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Projects: the order is per browser and port, as stock's is per browser, and keyed by project id where stock keys by environment and path, so a removed and re-added folder goes to the end. The sort choice is a sidebar picker, not a setting, and defaults to Manual (stock: Last user message), whose unsaved order is the old one: pinned first, then by title. The time orders keep pinned projects on top, which stock's don't.
 - Projects: dragging works with a mouse or pen in Manual only, with no keyboard or touch, as stock's old project drag had neither. Folders don't animate into place.
 - Projects: a clone that fails or finishes while its project isn't open shows nothing until you open it; stock raises a toast.
-- Sidebar: Waiting, Limited and a waiting guest message's Request aren't distinct states, drafts have no card, and the thread list shows no scrollbar.
+- Sidebar: Limited and a waiting guest message's Request aren't distinct states, drafts have no card, and the thread list shows no scrollbar.
 - Sidebar hover card: no environment, terminal process or pull request lines, and a long branch is cut at the end rather than the middle.
 - Sidebar and composer: only Claude and OpenAI provider icons are copied; Replay, Cursor, Grok, OpenCode, Antigravity and Kiro show none, and instance badges aren't drawn.
 - New thread: a pen button targets the current project, and a small native select beside it picks another, where stock has one button.

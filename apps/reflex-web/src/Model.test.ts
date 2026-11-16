@@ -1287,8 +1287,12 @@ describe("the sidebar", () => {
     expect(status({ status: "running" })).toBe("working");
     const holding = { pendingBackgroundTasks: [{ kind: "subagent", awaited: true }] };
     const unseen = { latestRunCompletedAt: at, lastVisitedAt: "2025-01-01" };
-    expect(status({ status: "completed", ...unseen, ...holding })).toBeNull();
-    expect(status({ status: "running", ...holding })).toBeNull();
+    expect(status({ status: "completed", ...unseen, ...holding })).toBe("waiting");
+    expect(status({ status: "running", ...holding })).toBe("waiting");
+    expect(status({ status: "running", blockedOnThreadWait: true })).toBe("waiting");
+    expect(
+      status({ status: "failed", pendingBackgroundTasks: [{ kind: "subagent", awaited: true }] }),
+    ).toBe("failed");
     expect(status({ status: "idle", ...unseen })).toBeNull();
     expect(status({ status: "running", latestRunId: null })).toBeNull();
     expect(status({ status: "running" }, "approval")).toBe("approval");

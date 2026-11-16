@@ -201,7 +201,7 @@ export type ILayoutRow =
     }
   | { Kind: "working"; Key: string }
   | { Kind: "thinking"; Key: string; GroupKey: string | null; Ids: string[]; Expanded: boolean }
-  | { Kind: "meta"; Key: string; Id: string };
+  | { Kind: "meta"; Key: string; Id: string; Files: string | null };
 
 export const groupKey = (anchorId: string) => `group:${anchorId}`;
 
@@ -529,7 +529,7 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
         isTerminal(entries, index);
       const trail: ITrail =
         entry.Kind === "checkpoint"
-          ? "trailing"
+          ? "files"
           : entry.Kind === "user" || entry.Kind === "steer" || entry.Kind === "assistant"
             ? "message"
             : "other";
@@ -626,7 +626,7 @@ function isTerminal(entries: ReadonlyArray<IEntryFacts>, index: number): boolean
  * How a row counts when a reply's actions look for the work after it: a message ends the search, a
  * summary or a changed files card is trailing work, and a single work row is when it's a tool.
  */
-type ITrail = "message" | "trailing" | "work" | "tool" | "other";
+type ITrail = "message" | "trailing" | "files" | "work" | "tool" | "other";
 
 interface IRowRun {
   RunId: string | null;
@@ -634,11 +634,12 @@ interface IRowRun {
 }
 
 // Follows attachTrailingToolGroupsToAssistant: a reply's copy and time move below the tool work
-// that followed it in its run. A changed files card counts as that work here, because stock draws
-// the card inside the reply, above its actions.
+// that followed it in its run. Where stock draws a changed files card above those actions, this
+// client folds the card into them, so a card the actions land on leaves the rows.
 function placeMeta(rows: ILayoutRow[], runs: ReadonlyArray<IRowRun>): ILayoutRow[] {
   const after = new Map<number, ILayoutRow>();
   const moved = new Set<number>();
+  const absorbed = new Set<number>();
   for (const [index, row] of rows.entries()) {
     const runId = runs[index]!.RunId;
     if (row.Kind !== "item" || !row.Meta || runId === null) continue;
@@ -653,11 +654,15 @@ function placeMeta(rows: ILayoutRow[], runs: ReadonlyArray<IRowRun>): ILayoutRow
     }
     if (last < 0) continue;
     moved.add(index);
-    after.set(last, { Kind: "meta", Key: `meta:${row.Id}`, Id: row.Id });
+    const card = rows[last]!;
+    const files = runs[last]!.Trail === "files" && card.Kind === "item" ? card.Id : null;
+    if (files !== null) absorbed.add(last);
+    after.set(last, { Kind: "meta", Key: `meta:${row.Id}`, Id: row.Id, Files: files });
   }
   const result: ILayoutRow[] = [];
   for (const [index, row] of rows.entries()) {
-    result.push(moved.has(index) && row.Kind === "item" ? { ...row, Meta: false } : row);
+    if (!absorbed.has(index))
+      result.push(moved.has(index) && row.Kind === "item" ? { ...row, Meta: false } : row);
     const meta = after.get(index);
     if (meta !== undefined) result.push(meta);
   }

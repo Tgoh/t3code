@@ -164,7 +164,7 @@ export function FolderHeader(props: {
   const needsYou = () =>
     props.folder.Threads.some((thread) => {
       const status = sidebarStatus(thread, shell.subagentRequests()[thread.id]);
-      return status !== null && !isBusy(status);
+      return status !== null && status !== "waiting" && !isBusy(status);
     });
   return (
     <li>
