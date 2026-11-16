@@ -1,13 +1,21 @@
-import { For, Match, Switch } from "solid-js";
+import { For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 
 import { ProjectBadge } from "./brand";
 import { Composer, FileDropSection } from "./Composer";
 import Environment from "./Environment";
 import Root from "./Root";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, SidebarToggle } from "./Sidebar";
 import ThreadSession from "./ThreadSession";
 import { ThreadView } from "./ThreadView";
 import { TooltipHost } from "./tooltip";
+import {
+  createMediaQuery,
+  createSidebarSheet,
+  SIDEBAR_SHEET_QUERY,
+  SidebarSheetContext,
+  trackVisualViewport,
+  useSidebarSheet,
+} from "./viewport";
 
 const NewThreadView = ThreadSession.provider(() => {
   const session = ThreadSession.use();
@@ -15,6 +23,7 @@ const NewThreadView = ThreadSession.provider(() => {
   return (
     <FileDropSection>
       <header class="thread-header">
+        <SidebarToggle />
         <div class="breadcrumb">
           <ProjectBadge name={projectName()} size={14} />
           <span class="crumb-project">{projectName()}</span>
@@ -34,25 +43,62 @@ const NewThreadView = ThreadSession.provider(() => {
 
 const EnvironmentView = Environment.provider(() => {
   const environment = Environment.use();
+  const sidebar = createSidebarSheet(
+    createMediaQuery(SIDEBAR_SHEET_QUERY),
+    () => environment.state.Local.SelectedThreadId,
+  );
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && sidebar.open()) sidebar.setOpen(false);
+  };
+  document.addEventListener("keydown", onKeyDown);
+  onCleanup(() => document.removeEventListener("keydown", onKeyDown));
   return (
-    <div class="layout">
-      <Sidebar state={environment.state.Replica.Shell} />
-      <main>
-        <Switch fallback={<p class="empty">Select a thread.</p>}>
-          <Match when={environment.selectedOpenThread()} keyed>
-            {(thread) => <ThreadView state={thread} />}
-          </Match>
-          <Match when={environment.selectedDraftSession()} keyed>
-            {(session) => <NewThreadView state={session} />}
-          </Match>
-        </Switch>
-      </main>
+    <div
+      class="layout"
+      classList={{ "sidebar-sheet": sidebar.sheet(), "sidebar-open": sidebar.open() }}
+    >
+      <SidebarSheetContext.Provider value={sidebar}>
+        <Sidebar state={environment.state.Replica.Shell} />
+        <Show when={sidebar.open()}>
+          <div class="sidebar-backdrop" aria-hidden="true" onClick={() => sidebar.setOpen(false)} />
+        </Show>
+        <EnvironmentMain />
+      </SidebarSheetContext.Provider>
     </div>
   );
 });
 
+function EnvironmentMain() {
+  const environment = Environment.use();
+  const sidebar = useSidebarSheet();
+  return (
+    <main inert={sidebar.open()}>
+      <Switch
+        fallback={
+          <>
+            <Show when={sidebar.sheet()}>
+              <header class="thread-header">
+                <SidebarToggle />
+              </header>
+            </Show>
+            <p class="empty">Select a thread.</p>
+          </>
+        }
+      >
+        <Match when={environment.selectedOpenThread()} keyed>
+          {(thread) => <ThreadView state={thread} />}
+        </Match>
+        <Match when={environment.selectedDraftSession()} keyed>
+          {(session) => <NewThreadView state={session} />}
+        </Match>
+      </Switch>
+    </main>
+  );
+}
+
 export const App = Root.provider(() => {
   const root = Root.use();
+  onMount(() => trackVisualViewport(document.documentElement));
   return (
     <>
       <Switch>
