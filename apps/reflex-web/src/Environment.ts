@@ -35,12 +35,19 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
-import { getDefaultOpenThread, type IOpenThread, openThreadStream } from "./OpenThread";
+import {
+  getDefaultOpenThread,
+  type IOpenThread,
+  openThreadStream,
+  resumeThread,
+  retainThread,
+} from "./OpenThread";
 import { dropThreadRow, getDefaultShell, type IShell, openShellStream } from "./Shell";
 import {
   detachTerminal,
   getDefaultThreadSession,
   type IReplica,
+  type ISelection,
   type IThreadSession,
   restoreTerminal,
 } from "./ThreadSession";
@@ -56,8 +63,7 @@ export interface IEnvironment extends IEntity {
   Label: string;
   FileAttachmentLimit: number | null;
   Replica: IReplica;
-  Local: IEntity & {
-    SelectedThreadId: string | null;
+  Local: ISelection & {
     ThreadSessions: Record<string, IThreadSession>;
   };
 }
@@ -84,6 +90,7 @@ export function* newEnvironment(
 
 export function* init(draft: IEnvironment): IActionGenerator {
   yield* registerDataSource(draft, "Replica", draft.Replica);
+  yield* registerDataSource(draft, "Selection", draft.Local);
   bind(draft, EnvironmentReceiver);
   yield* openShellStream(draft.Replica.Shell);
   yield* openResource(draft, "Project/Clones", {
@@ -120,13 +127,23 @@ function* sessionOf(
 }
 
 export function* openThread(draft: IEnvironment, threadId: string): IActionGenerator {
-  if (draft.Replica.OpenThreads[threadId] !== undefined) return;
   const session = yield* sessionOf(draft, threadId);
-  draft.Replica.OpenThreads[threadId] = yield* entity<IOpenThread>(
-    getDefaultOpenThread(draft.EnvironmentId, threadId),
-  );
-  yield* openThreadStream(draft.Replica.OpenThreads[threadId]!);
+  const held = draft.Replica.OpenThreads[threadId];
+  if (held !== undefined) yield* resumeThread(held);
+  else {
+    draft.Replica.OpenThreads[threadId] = yield* entity<IOpenThread>(
+      getDefaultOpenThread(draft.EnvironmentId, threadId),
+    );
+    yield* openThreadStream(draft.Replica.OpenThreads[threadId]!);
+  }
   yield* start(restoreTerminal, session.$Id);
+}
+
+function* leaveThread(draft: IEnvironment, threadId: string): IActionGenerator {
+  const held = draft.Replica.OpenThreads[threadId];
+  if (held !== undefined) yield* retainThread(held);
+  const session = draft.Local.ThreadSessions[threadId];
+  if (session !== undefined) yield* start(detachTerminal, session);
 }
 
 export function* closeThread(draft: IEnvironment, threadId: string): IActionGenerator {
@@ -139,7 +156,7 @@ export function* selectThread(draft: IEnvironment, threadId: string): IActionGen
   const previous = draft.Local.SelectedThreadId;
   if (previous === threadId) return;
   draft.Local.SelectedThreadId = threadId;
-  if (previous !== null) yield* closeThread(draft, previous);
+  if (previous !== null) yield* leaveThread(draft, previous);
   if (draft.Local.ThreadSessions[threadId]?.NewThreadProjectId != null) {
     yield* setAddressThread(null);
     return;
@@ -361,6 +378,9 @@ export function* currentProjectRoot(draft: IEnvironment): ISelectorGenerator<str
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
   *"Thread/Deleted"(draft, { ThreadId }) {
     yield* forgetThread(draft, ThreadId);
+  },
+  *"Thread/Expired"(draft, { ThreadId }) {
+    if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);
   },
   *"Thread/Started"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) return;

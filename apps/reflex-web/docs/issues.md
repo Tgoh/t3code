@@ -38,7 +38,7 @@ The RPC client decodes each stream item into `DateTime`s and the app encodes it 
 
 ## Mismatch: a cold open takes a full socket snapshot
 
-The stock client loads the first snapshot over HTTP and falls back to the socket. This client always uses the socket. Reconnects resume from the cursor.
+The stock client loads the first snapshot over HTTP and falls back to the socket, and seeds it from a thread cache it persists. This client always uses the socket and persists nothing, so a reload, or opening a thread not viewed in the last five minutes, waits for a snapshot. Reconnects and returns to a retained thread resume from the cursor.
 
 ## Mismatch: `thread.removed` doesn't say why
 
@@ -60,7 +60,7 @@ The server's history is the raw PTY bytes, written at whatever width the shell h
 
 Every busy mark is an `inFlight` read, which says whether an action runs on an entity and not which arguments it runs with, and only a repeat of the same `latest` action or the removal of its entity stops a running one. So where a mark has to be per row, or end with the data it's about, the row is an entity of its own:
 
-- Each runtime request, so an answer marks only its own request's buttons. The answer waits inside `open(...)`, so a server update or snapshot folds into the request while nothing holds it, and `leading` still drops a second press during the wait. Its typed answers stay on the `ThreadSession`, keyed by request, because the replica's fold would delete them and a closed thread drops its data. They aren't cleared once sent, so a resolved request's answers stay there unseen until the session goes.
+- Each runtime request, so an answer marks only its own request's buttons. The answer waits inside `open(...)`, so a server update or snapshot folds into the request while nothing holds it, and `leading` still drops a second press during the wait. Its typed answers stay on the `ThreadSession`, keyed by request, because the replica's fold would delete them and an expired thread drops its data. They aren't cleared once sent, so a resolved request's answers stay there unseen until the session goes.
 - The history window, which a snapshot with another cursor or has-more, or over a window holding a fetch error, replaces, ending its fetch and its mark. Its pages reach the thread through `History/Page`, and the thread drops a page from a window it no longer holds, which a page queued behind that snapshot would be. `OpenThread` is bound to `ThreadReceiver` only to hear those pages.
 
 ## Feedback for treflex
@@ -74,6 +74,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - There's no public way to react to derived state (`watch` is internal to treflex), so marking a thread visited when a completion is on screen stays in `ThreadBody`'s view effect. The model could do it at its write sites instead, in `selectThread` and in the shell delivery through `publishToNearest`.
 - Rows that belong to one ordered list with the parent's live rows can't be owned by the child. Moving loaded history pages onto the window entity split one sequence across two entities, so placement had to read and write both, and two ordering bugs followed. Lifetime fit the "results live and die with the window" case; order did not.
 - A timer recurs, so every backoff tick starts with `stopTimer`. There's no one-shot timer.
+- Keeping an entity for a while after its view leaves has no mechanism of its own. Retaining a left thread composes one: close its stream, start an expiry timer on it, and on the tick publish to the parent, because an entity can't remove itself inside its own delivery.
 - The timeline's `<For>` iterates ids from the `timelineIds` selector, a plain `[...draft.Timeline]` copy. Each row-adding delta re-runs the copy, which reads every id through the view proxy: about 31 ms p50 at 20,000 rows. The history window keeps a cold open near 500 rows, so this doesn't show at real sizes. If it does, send treflex the size and the timing; they've said they'd make the whole-array copy cheaper inside treflex rather than add an API.
 - A resource has one `r.status` detail string, and the terminal's connection phase already uses it, so the shell process's status goes through `emit` into a transient.
 - `treflex-eslint`'s rules aren't on. `no-edit-after-write` and `no-hidden-open` need type information, which the repo's oxlint JS plugins don't provide. `no-yield-in-finally` and `no-global-open` don't, but oxlint loads a JS plugin with Node's own import, where the package's extensionless imports don't resolve, and every rule imports `@typescript-eslint/utils`, which the repo doesn't install.
@@ -109,7 +110,6 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
 - A multi-select question takes its options as comma-separated text, with no checkboxes.
 - A thread that doesn't exist retries its subscription with backoff rather than reporting missing.
-- A closed thread drops its data, so reopening takes a new snapshot; there's no retention or local cache.
 - One terminal per thread, `term-1`, with no tabs or splits.
 - A new-thread draft has no terminal until its thread exists.
 - An exited shell has no restart button: Hide and Terminal start a new one.
