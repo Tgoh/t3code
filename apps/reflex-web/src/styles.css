@@ -631,21 +631,6 @@ main {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-border) 70%, transparent);
 }
 
-.thread-card.main {
-  position: relative;
-}
-
-.thread-card.main::before {
-  background: var(--success);
-  border-radius: 2px;
-  bottom: 8px;
-  content: "";
-  left: 2px;
-  position: absolute;
-  top: 8px;
-  width: 3px;
-}
-
 .thread-card.dimmed {
   opacity: 0.7;
 }
@@ -813,6 +798,31 @@ main {
 
 .folder-group + .folder-group {
   margin-top: 12px;
+}
+
+/* A guide line under the folder's chevron; top reaches into the rows' 5px gap so it reads as one line. */
+.folder-rows > li + li {
+  padding-left: 18px;
+  position: relative;
+}
+
+.folder-rows > li + li::before {
+  background: var(--sidebar-border);
+  bottom: 0;
+  content: "";
+  left: 12px;
+  position: absolute;
+  top: -5px;
+  width: 1px;
+}
+
+.folder-rows > li:has(> .thread-card.main)::before {
+  background: var(--success);
+  border-radius: 2px;
+  bottom: 4px;
+  left: 11px;
+  top: 4px;
+  width: 3px;
 }
 
 .folder-title {
