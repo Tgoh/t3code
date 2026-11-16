@@ -6501,3 +6501,11 @@ a.button {
     display: none;
   }
 }
+
+/* iOS Safari zooms the page into any focused field under 16px. Doubled :root outranks each
+   field's own font-size rule; keep this last in the file. */
+@media (max-width: 639px), (pointer: coarse) {
+  :root:root :is(input:not([type="checkbox"], [type="radio"]), textarea, select) {
+    font-size: 16px;
+  }
+}
