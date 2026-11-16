@@ -8,7 +8,8 @@ import { ChevronUp } from "./icons";
 import OpenThread, { isRowVisible, timelineItem } from "./OpenThread";
 import { workingStartedAt } from "./Shell";
 import ThreadSession from "./ThreadSession";
-import { QueuedMessage, useWorkspaceRoot } from "./TimelineRows";
+import { QueuedMessage } from "./TimelineRows";
+import { useWorkspaceRoot } from "./workspaceRoot";
 import {
   liveWorkEntryLabel,
   workEntryIsActiveTurnActivity,

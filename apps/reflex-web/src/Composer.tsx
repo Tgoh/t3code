@@ -16,6 +16,7 @@ import { ArrowUp, File as FileIcon, Paperclip, X } from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { StageArt } from "./StageArt";
 import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
+import { composerCollapses, createMediaQuery, PHONE_QUERY } from "./viewport";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -116,6 +117,24 @@ export function FileDropSection(props: { children: JSX.Element }) {
   );
 }
 
+function StopButton(props: { stopping: boolean; onStop: () => void }) {
+  return (
+    <button
+      type="button"
+      class="round-button stop"
+      aria-label={props.stopping ? "Stopping" : "Stop generation"}
+      data-tip={props.stopping ? "Stopping" : "Stop generation"}
+      disabled={props.stopping}
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={() => props.onStop()}
+    >
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+        <rect x="2" y="2" width="8" height="8" rx="1.5" />
+      </svg>
+    </button>
+  );
+}
+
 export function Composer(props: { active?: boolean; onSend?: () => void }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
@@ -126,6 +145,8 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
   const otherFiles = () => held().Attachments.filter((file) => file.Kind === "file");
   const [pasteAsTextUntil, setPasteAsTextUntil] = createSignal(0);
   const noProvider = () => environment.state.Replica.Providers.length === 0;
+  const placeholder = () =>
+    noProvider() ? "Enable a provider in Settings to send a message" : "Ask anything.";
   const isDraft = () => held().NewThreadProjectId !== null;
   const stopping = () => session.stopRequested() || session.stopping();
   const clone = useProjectClone(() => session.projectId());
@@ -134,10 +155,32 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
     blocked() === null &&
     !session.sending() &&
     (held().Draft.trim() !== "" || held().Attachments.length > 0);
+  const phone = createMediaQuery(PHONE_QUERY);
+  const [focused, setFocused] = createSignal(false);
+  const collapsed = () =>
+    composerCollapses({
+      Phone: phone(),
+      Focused: focused(),
+      Draft: held().Draft,
+      HasAttachments: held().Attachments.length > 0,
+    });
+  let form!: HTMLFormElement;
+  let textarea!: HTMLTextAreaElement;
+  // Focuses within the tap, since iOS raises the keyboard only for focus inside a user gesture.
+  const expand = () => {
+    setFocused(true);
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  };
+  // A tap on a control would take focus from the prompt and drop the on-screen keyboard.
+  const keepPromptFocus = (event: PointerEvent) => {
+    if (phone() && event.target !== textarea) event.preventDefault();
+  };
   const send = () => {
     if (blocked() !== null) return;
     if (canSend()) props.onSend?.();
     session.send();
+    if (phone()) textarea.blur();
   };
 
   const onPaste = (event: ClipboardEvent & { currentTarget: HTMLTextAreaElement }) => {
@@ -178,12 +221,55 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
         {(shown) => <ProjectCloneBanner clone={shown()} />}
       </Show>
       <form
+        ref={form}
         class="composer"
+        classList={{ collapsed: collapsed() }}
         onSubmit={(event) => {
           event.preventDefault();
           send();
         }}
+        onFocusIn={() => setFocused(true)}
+        onFocusOut={(event) => {
+          const next = event.relatedTarget;
+          if (next instanceof Node && form.contains(next)) return;
+          // Menus portal out of the form, and an open one still belongs to the composer.
+          if (document.querySelector("[data-popup]") !== null) return;
+          setFocused(false);
+        }}
       >
+        <Show when={collapsed()}>
+          <div class="composer-collapsed">
+            <button
+              type="button"
+              class="composer-preview"
+              classList={{ placeholder: held().Draft.trim() === "" }}
+              aria-label="Expand composer"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={expand}
+            >
+              {held().Draft.trim() || placeholder()}
+            </button>
+            <Show
+              when={props.active && !canSend()}
+              fallback={
+                <button
+                  type="submit"
+                  class="round-button send"
+                  aria-label={session.sending() ? "Sending" : "Submit message"}
+                  disabled={!canSend()}
+                  onPointerDown={(event) => event.preventDefault()}
+                >
+                  <span class="send-art">
+                    <StageArt compact />
+                  </span>
+                  <ArrowUp />
+                </button>
+              }
+            >
+              <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
+            </Show>
+          </div>
+        </Show>
         <Show when={images().length > 0}>
           <ul class="attachment-thumbs">
             <For each={images()}>
@@ -235,10 +321,9 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
           <p class="composer-notice">{held().AttachmentNotice}</p>
         </Show>
         <textarea
+          ref={textarea}
           rows={2}
-          placeholder={
-            noProvider() ? "Enable a provider in Settings to send a message" : "Ask anything."
-          }
+          placeholder={placeholder()}
           value={held().Draft}
           onInput={(event) => session.setDraft(event.currentTarget.value)}
           onPaste={onPaste}
@@ -258,7 +343,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
         <Show when={held().ModelError}>
           <p class="composer-error">{held().ModelError}</p>
         </Show>
-        <div class="composer-bar">
+        <div class="composer-bar" onPointerDown={keepPromptFocus}>
           <label class="icon-button attach" data-tip="Attach files">
             <Paperclip />
             <input
@@ -278,18 +363,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
             <PermissionsChip />
           </Show>
           <Show when={props.active}>
-            <button
-              type="button"
-              class="round-button stop"
-              aria-label={stopping() ? "Stopping" : "Stop generation"}
-              data-tip={stopping() ? "Stopping" : "Stop generation"}
-              disabled={stopping()}
-              onClick={() => session.stopRun()}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                <rect x="2" y="2" width="8" height="8" rx="1.5" />
-              </svg>
-            </button>
+            <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
           </Show>
           <Show when={!props.active || canSend()}>
             <button

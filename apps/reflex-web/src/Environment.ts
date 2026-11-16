@@ -17,6 +17,7 @@ import {
   openResource,
   receiver,
   registerDataSource,
+  resource,
   start,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
@@ -38,6 +39,7 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
+import type { IProjectFaviconTarget } from "./projectIcon";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import {
   getDefaultOpenThread,
@@ -59,6 +61,7 @@ import {
 declare module "treflex" {
   interface IResourceRegistry {
     "Project/Clones": { Type: "projectClones" };
+    "Project/Favicons": { Type: "projectFavicons" };
   }
 }
 
@@ -104,6 +107,10 @@ export function* init(draft: IEnvironment): IActionGenerator {
   yield* openShellStream(draft.Replica.Shell);
   yield* openResource(draft, "Project/Clones", {
     Type: "projectClones",
+    EnvironmentId: draft.EnvironmentId,
+  });
+  yield* openResource(draft, "Project/Favicons", {
+    Type: "projectFavicons",
     EnvironmentId: draft.EnvironmentId,
   });
   yield* start(loadProviders, draft);
@@ -316,6 +323,13 @@ export function* removingProject(draft: IEnvironment): ISelectorGenerator<boolea
   return yield* inFlight(removeProject, draft);
 }
 
+export function* requestProjectFavicon(
+  draft: IEnvironment,
+  target: IProjectFaviconTarget,
+): IActionGenerator {
+  yield* resource(draft, "Project/Favicons").request(target);
+}
+
 export function* openInFileManager(draft: IEnvironment, path: string): IOpenGenerator {
   yield* open(openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path }));
 }
@@ -479,6 +493,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     toggleModelFavorite,
     removeProject,
     openInFileManager,
+    requestProjectFavicon,
   },
   {
     selectedOpenThread,

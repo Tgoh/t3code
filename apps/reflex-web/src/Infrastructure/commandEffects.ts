@@ -1,4 +1,4 @@
-import type { ModelCapabilities } from "@t3tools/contracts";
+import type { AssetResource, ModelCapabilities } from "@t3tools/contracts";
 import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
 import type { IWireProjection, IWireTurnItem } from "./wire";
@@ -241,14 +241,18 @@ export const openInFileManagerEffect = defineEffect<IOpenInFileManagerEffect, vo
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 
-interface IAttachmentUrlEffect extends IEffect {
-  Type: "attachmentUrl";
+interface IAssetUrlEffect extends IEffect {
+  Type: "assetUrl";
   EnvironmentId: string;
-  AttachmentId: string;
-  File?: { Name: string; MimeType: string };
+  Resource: AssetResource;
 }
 
-export const attachmentUrlEffect = defineEffect<IAttachmentUrlEffect, string>("attachmentUrl");
+export interface IAssetUrl {
+  Url: string;
+  Size?: { Width: number; Height: number };
+}
+
+export const assetUrlEffect = defineEffect<IAssetUrlEffect, IAssetUrl>("assetUrl");
 
 interface IQueueCommandEffect extends IEffect, IQueueCommand {
   Type: "queueCommand";

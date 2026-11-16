@@ -5,7 +5,16 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 import { T3Mark } from "./brand";
 import Environment from "./Environment";
 import { ProjectBadge } from "./brand";
-import { ArrowUpDown, ChevronDown, ChevronRight, FolderPlus, Folders, SquarePen, X } from "./icons";
+import {
+  ArrowUpDown,
+  ChevronDown,
+  ChevronRight,
+  FolderPlus,
+  Folders,
+  PanelLeft,
+  SquarePen,
+  X,
+} from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { AddProjectPalette } from "./AddProject";
 import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder";
@@ -22,6 +31,7 @@ import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
 import { MINUTE } from "./timestamps";
+import { useSidebarSheet } from "./viewport";
 
 const CONNECTION_LABEL: Record<string, string> = {
   connected: "connected",
@@ -76,6 +86,22 @@ function SectionHeader(props: {
         <span class="section-count">{props.count}</span>
       </button>
     </li>
+  );
+}
+
+export function SidebarToggle() {
+  const sidebar = useSidebarSheet();
+  return (
+    <Show when={sidebar.sheet()}>
+      <button
+        class="icon-button sidebar-toggle"
+        aria-label="Toggle main sidebar"
+        aria-expanded={sidebar.open()}
+        onClick={() => sidebar.setOpen(!sidebar.open())}
+      >
+        <PanelLeft />
+      </button>
+    </Show>
   );
 }
 
@@ -210,6 +236,7 @@ export const Sidebar = Shell.provider(() => {
         <div class="sidebar-stage">
           <StageArt />
         </div>
+        <SidebarToggle />
         <span class="brand-mark">
           <T3Mark />
           <span>Code</span>
@@ -458,7 +485,7 @@ export const Sidebar = Shell.provider(() => {
       <Show when={folders().get(drag.dragging() ?? "")} keyed>
         {(folder) => (
           <div class="folder-ghost" ref={drag.setGhost} aria-hidden="true">
-            <ProjectBadge name={folder.Project?.title ?? "Unknown project"} size={12} />
+            <ProjectBadge project={folder.Project} size={12} />
             <span>{folder.Project?.title ?? "Unknown project"}</span>
           </div>
         )}

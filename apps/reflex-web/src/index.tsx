@@ -11,7 +11,7 @@ import { addressThreadImpl, setAddressThreadImpl } from "./Infrastructure/addres
 import { commandOutput } from "./Infrastructure/commandOutput";
 import {
   addProjectSettingsImpl,
-  attachmentUrlImpl,
+  assetUrlImpl,
   browseFoldersImpl,
   cloneControlImpl,
   closeTerminalImpl,
@@ -34,6 +34,7 @@ import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
 import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelMemory";
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
+import { projectFavicons } from "./Infrastructure/projectFavicons";
 import { shellStream } from "./Infrastructure/shellStream";
 import { rememberedTerminalImpl, rememberTerminalImpl } from "./Infrastructure/terminalMemory";
 import { terminalSession } from "./Infrastructure/terminalSession";
@@ -71,7 +72,7 @@ runtime.registerImplementation(newProjectImpl);
 runtime.registerImplementation(openInFileManagerImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
-runtime.registerImplementation(attachmentUrlImpl);
+runtime.registerImplementation(assetUrlImpl);
 runtime.registerImplementation(closeTerminalImpl);
 runtime.registerImplementation(rememberedTerminalImpl);
 runtime.registerImplementation(rememberTerminalImpl);
@@ -80,6 +81,7 @@ runtime.registerImplementation(rememberModelImpl);
 runtime.registerResourceType("composerFiles", composerFiles);
 runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);
+runtime.registerResourceType("projectFavicons", projectFavicons);
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);

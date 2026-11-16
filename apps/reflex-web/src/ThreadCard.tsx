@@ -38,10 +38,12 @@ import Shell, {
 } from "./Shell";
 import { relativeTime, timeUntil } from "./timestamps";
 import { hoverCard } from "./tooltip";
+import { longPress } from "./viewport";
 
 const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "Setting up",
   working: "Working",
+  waiting: "Waiting",
   approval: "Approval",
   input: "Input",
   failed: "Failed",
@@ -51,7 +53,7 @@ const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
 function StatusIcon(props: { status: NonNullable<ISidebarStatus> }) {
   return (
     <Switch>
-      <Match when={isBusy(props.status)}>
+      <Match when={isBusy(props.status) || props.status === "waiting"}>
         <CircleDashed />
       </Match>
       <Match when={props.status === "approval"}>
@@ -81,12 +83,16 @@ function ThreadHoverCard(props: {
   model: IModelDisplay;
   previousProviders: string[];
 }) {
+  const environment = Environment.use();
   return (
     <div class="hover-card">
       <div class="hover-card-title">{props.thread.title}</div>
       <div class="hover-card-details">
         <div class="hover-card-line">
-          <ProjectBadge name={props.projectName} size={12} />
+          <ProjectBadge
+            project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
+            size={12}
+          />
           <span>{props.projectName}</span>
         </div>
         <Show when={props.thread.branch}>
@@ -187,6 +193,7 @@ export function ThreadCard(props: {
     event.stopPropagation();
     environment.threadCommand(props.thread.id, command);
   };
+  const press = longPress((x, y) => props.onMenu(x, y));
   return (
     <li>
       <div
@@ -200,10 +207,16 @@ export function ThreadCard(props: {
         classList={{
           selected: props.selected,
           receded:
-            !props.selected && (status() === null || isBusy(status()) || status() === "approval"),
+            !props.selected &&
+            (status() === null ||
+              isBusy(status()) ||
+              status() === "waiting" ||
+              status() === "approval"),
           dimmed: !props.selected && isBusy(status()),
         }}
-        onClick={select}
+        onClick={() => {
+          if (!press.swallowsClick()) select();
+        }}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
           if (event.key !== "Enter" && event.key !== " ") return;
@@ -214,9 +227,15 @@ export function ThreadCard(props: {
           event.preventDefault();
           props.onMenu(event.clientX, event.clientY);
         }}
+        onPointerDown={press.onPointerDown}
+        onPointerMove={press.onPointerMove}
+        onPointerUp={press.onPointerUp}
+        onPointerCancel={press.onPointerCancel}
       >
         <span class="card-line">
-          <ProjectBadge name={props.projectName} />
+          <ProjectBadge
+            project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
+          />
           <span class="card-project">{props.projectName}</span>
           <span class="card-slot">
             <Show
@@ -233,7 +252,7 @@ export function ThreadCard(props: {
                 <span class={`card-status ${held()}`}>
                   <StatusIcon status={held()} />
                   {STATUS_LABEL[held()]}
-                  <Show when={isBusy(held()) && workingFor()}>
+                  <Show when={(isBusy(held()) || held() === "waiting") && workingFor()}>
                     {(elapsed) => <span class="card-elapsed">{elapsed()}</span>}
                   </Show>
                 </span>

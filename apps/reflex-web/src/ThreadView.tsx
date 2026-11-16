@@ -20,6 +20,7 @@ import { ChevronDown, PanelBottom, PanelRight } from "./icons";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, RequestBanner } from "./RequestViews";
 import { needsVisit, runStatus } from "./Shell";
+import { SidebarToggle } from "./Sidebar";
 import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
@@ -34,8 +35,10 @@ import {
   trimToTail,
 } from "./timelineWindow";
 
-const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
 import { TurnStatus } from "./TurnStatus";
+import { createMediaQuery, PANEL_SHEET_QUERY } from "./viewport";
+
+const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
@@ -152,6 +155,14 @@ const ThreadBody = ThreadSession.provider(() => {
   });
   const terminalOpen = () => session.state.Terminal.Open;
   const diffOpen = () => session.state.Panels.Diff.Open;
+  const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
+  const closeTopSheet = () => (diffOpen() ? session.closeDiff() : session.closeTerminal());
+  // Escape stays with the shell while the terminal sheet is the one on top.
+  const onSheetKey = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && panelSheet() && diffOpen()) session.closeDiff();
+  };
+  document.addEventListener("keydown", onSheetKey);
+  onCleanup(() => document.removeEventListener("keydown", onSheetKey));
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
   let head!: HTMLDivElement;
@@ -274,9 +285,10 @@ const ThreadBody = ThreadSession.provider(() => {
     });
   });
   return (
-    <div class="thread-layout">
+    <div class="thread-layout" classList={{ "panel-sheet": panelSheet() }}>
       <FileDropSection>
         <header class="thread-header">
+          <SidebarToggle />
           <div class="breadcrumb">
             <Show when={session.projectName()}>
               {(name) => (
@@ -290,7 +302,10 @@ const ThreadBody = ThreadSession.provider(() => {
                       if (projectId !== undefined) environment.newThread(projectId);
                     }}
                   >
-                    <ProjectBadge name={name()} size={14} />
+                    <ProjectBadge
+                      project={environment.state.Replica.Shell.Projects[session.projectId() ?? ""]}
+                      size={14}
+                    />
                     <span class="crumb-project">{name()}</span>
                   </button>
                   <span class="crumb-separator">/</span>
@@ -421,6 +436,9 @@ const ThreadBody = ThreadSession.provider(() => {
           <TerminalPanel />
         </Show>
       </FileDropSection>
+      <Show when={panelSheet() && (diffOpen() || terminalOpen())}>
+        <div class="panel-backdrop" aria-hidden="true" onClick={closeTopSheet} />
+      </Show>
       <Show when={diffOpen()}>
         <DiffPanel />
       </Show>
