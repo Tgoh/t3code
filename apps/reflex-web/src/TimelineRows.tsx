@@ -1,3 +1,8 @@
+import {
+  summarizeToolGroup,
+  toolGroupAction,
+  workEntryDisplayIndicatesToolFailure,
+} from "@t3tools/client-runtime/work-log/presentation";
 import { type IActionGenerator, type IEntity } from "treflex";
 import { useComponentState } from "treflex-solid";
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
@@ -24,6 +29,7 @@ import {
   Wrench,
   X,
 } from "./icons";
+import Environment from "./Environment";
 import { attachmentUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { Markdown } from "./Markdown";
@@ -31,6 +37,7 @@ import OpenThread, { diffTurnOf, fileChangeCounts, isRowVisible, timelineItem } 
 import ThreadSession from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
 import { viewOf } from "./turnItemView";
+import { singleToolCallLabel, workEntryDisplayLabel, workLogEntry } from "./workLog";
 
 function Body(props: { text: string; format: "markdown" | "text" | "code"; fromUser?: boolean }) {
   return (
@@ -43,7 +50,7 @@ function Body(props: { text: string; format: "markdown" | "text" | "code"; fromU
   );
 }
 
-function MessageTime(props: { at: string }) {
+export function MessageTime(props: { at: string }) {
   return (
     <span class="message-time" data-tip={fullTimestamp(props.at)}>
       {dayAwareTimestamp(props.at)}
@@ -255,13 +262,34 @@ function UserRow(props: IRowProps) {
   );
 }
 
-function MessageRow(props: IRowProps) {
+/** A reply's copy and time, shown on the last reply of a settled response. */
+export function MessageMeta(props: IRowProps & { standalone?: boolean }) {
+  const { item } = useRow(props);
+  const text = () => {
+    const held = item();
+    return held === undefined ? undefined : viewOf(held).Body;
+  };
+  const updatedAt = () => (item()?.status === "completed" ? item()?.updatedAt : undefined);
+  return (
+    <div class="message-actions" classList={{ standalone: props.standalone === true }}>
+      <Show when={updatedAt()}>
+        {(at) => (
+          <>
+            <Show when={text()}>{(body) => <CopyButton text={body()} label="Copy message" />}</Show>
+            <MessageTime at={at()} />
+          </>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+function MessageRow(props: IRowProps & { meta: boolean }) {
   const { item, inherited } = useRow(props);
   const view = createMemo(() => {
     const held = item();
     return held === undefined ? undefined : viewOf(held);
   });
-  const updatedAt = () => (item()?.status === "completed" ? item()?.updatedAt : undefined);
   return (
     <article class={`row ${view()?.Tone}`} classList={{ inherited: inherited() }}>
       <Show when={view()?.Tone === "plan"}>
@@ -270,19 +298,8 @@ function MessageRow(props: IRowProps) {
       <Show when={view()?.Body}>
         {(text) => <Body text={text()} format={view()?.Format ?? "text"} />}
       </Show>
-      <Show when={view()?.Tone === "assistant"}>
-        <div class="message-actions">
-          <Show when={updatedAt()}>
-            {(at) => (
-              <>
-                <Show when={view()?.Body}>
-                  {(text) => <CopyButton text={text()} label="Copy message" />}
-                </Show>
-                <MessageTime at={at()} />
-              </>
-            )}
-          </Show>
-        </div>
+      <Show when={view()?.Tone === "assistant" && props.meta}>
+        <MessageMeta id={props.id} />
       </Show>
     </article>
   );
@@ -301,14 +318,57 @@ function ChangedFilesRow(props: IRowProps) {
   );
 }
 
-function WorkRow(props: IRowProps) {
+export function useWorkspaceRoot(): () => string | undefined {
+  const thread = OpenThread.use();
+  const environment = Environment.use();
+  return () => {
+    const held = thread.state.Thread;
+    if (held === null) return undefined;
+    return (
+      held.worktreePath ??
+      environment.state.Replica.Shell.Projects[held.projectId]?.workspaceRoot ??
+      undefined
+    );
+  };
+}
+
+// Stock draws these as their own cards, so they keep this client's wording.
+const EVENT_TYPES = new Set<IWireTurnItem["type"]>([
+  "fork",
+  "handoff",
+  "run_interrupt_request",
+  "run_interrupt_result",
+  "secret_request",
+  "link_request",
+  "subagent",
+  "checkpoint",
+  "compaction",
+]);
+
+export function WorkRow(props: IRowProps & { single?: boolean }) {
   const { thread, item, inherited } = useRow(props);
   const session = ThreadSession.use();
+  const workspaceRoot = useWorkspaceRoot();
   const view = createMemo(() => {
     const held = item();
     if (held === undefined) return undefined;
-    return viewOf(held, held.type === "file_change" ? fileChangeCounts(thread.state, held) : null);
+    const base = viewOf(
+      held,
+      held.type === "file_change" ? fileChangeCounts(thread.state, held) : null,
+    );
+    if (EVENT_TYPES.has(held.type)) return { ...base, Failed: false };
+    const entry = workLogEntry(held);
+    const label = !props.single
+      ? workEntryDisplayLabel(entry, workspaceRoot())
+      : toolGroupAction(entry) === "edit"
+        ? summarizeToolGroup([entry]).summary
+        : singleToolCallLabel(entry, workspaceRoot());
+    return { ...base, Label: label, Failed: workEntryDisplayIndicatesToolFailure(entry) };
   });
+  const counts = () => {
+    const held = item();
+    return held?.type === "file_change" ? fileChangeCounts(thread.state, held) : null;
+  };
   const diffTurn = createMemo(() => {
     const held = item();
     return held === undefined ? null : diffTurnOf(thread.state, held);
@@ -322,6 +382,9 @@ function WorkRow(props: IRowProps) {
     <>
       <RowIcon type={item()?.type ?? ""} />
       <span class="work-label">{view()?.Label}</span>
+      <Show when={counts()}>
+        {(held) => <DiffCounts additions={held().additions} deletions={held().deletions} />}
+      </Show>
       <Show when={live()}>
         <span class="work-live">{live()}</span>
       </Show>
@@ -335,7 +398,11 @@ function WorkRow(props: IRowProps) {
   return (
     <article
       class={`row work ${view()?.Tone}`}
-      classList={{ inherited: inherited(), "with-action": diffTurn() !== null }}
+      classList={{
+        inherited: inherited(),
+        "with-action": diffTurn() !== null,
+        failed: view()?.Failed === true,
+      }}
     >
       <Show
         when={view()?.Collapsed && (view()?.Body || view()?.LiveOutput)}
@@ -380,7 +447,7 @@ function WorkRow(props: IRowProps) {
   );
 }
 
-const ROWS: Record<string, Component<IRowProps>> = {
+const ROWS: Record<string, Component<IRowProps & { meta: boolean }>> = {
   user: UserRow,
   message: MessageRow,
   "changed-files": ChangedFilesRow,
@@ -406,11 +473,11 @@ function rowKind(item: IWireTurnItem): string | null {
   }
 }
 
-export function TimelineRow(props: IRowProps) {
+export function TimelineRow(props: IRowProps & { meta: boolean }) {
   const thread = OpenThread.use();
   const kind = createMemo(() => {
     const item = timelineItem(thread.state, props.id);
     return item === undefined || !isRowVisible(thread.state, props.id) ? null : rowKind(item);
   });
-  return <Dynamic component={ROWS[kind() ?? ""]} id={props.id} />;
+  return <Dynamic component={ROWS[kind() ?? ""]} id={props.id} meta={props.meta} />;
 }

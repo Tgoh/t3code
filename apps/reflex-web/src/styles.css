@@ -1637,6 +1637,127 @@ details[open] > summary .work-chevron {
   color: var(--muted-foreground);
 }
 
+.row.work.failed .work-icon,
+.work-line.failed .work-icon {
+  color: var(--destructive);
+}
+
+.turn-fold,
+.working-row {
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  color: var(--muted-foreground);
+  display: flex;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  gap: 4px;
+  line-height: 24px;
+  margin-bottom: 6px;
+  padding: 4px 2px 8px 4px;
+}
+
+.turn-fold .message-time {
+  margin-left: auto;
+  opacity: 0;
+}
+
+.turn-fold:hover .message-time,
+.work-toggle:hover .message-time {
+  opacity: 1;
+}
+
+.turn-fold-toggle {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.turn-fold-toggle:hover {
+  color: var(--foreground);
+}
+
+.turn-fold-toggle svg {
+  height: 14px;
+  width: 14px;
+}
+
+.work-group {
+  padding: 2px 2px 8px;
+}
+
+.work-toggle,
+.work-live-toggle {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.work-live-toggle {
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+}
+
+.work-toggle:hover,
+.work-live-toggle:hover .work-line {
+  color: var(--foreground);
+}
+
+.work-toggle .message-time {
+  font-size: 12px;
+  opacity: 0;
+}
+
+.work-toggle:hover .work-chevron,
+.work-chevron.open {
+  opacity: 1;
+}
+
+.work-chevron.open {
+  transform: rotate(90deg);
+}
+
+.work-thought {
+  color: var(--foreground);
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.live-label {
+  color: var(--foreground);
+}
+
+.work-group-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(18rem, 50dvh);
+  overflow-y: auto;
+  padding-top: 2px;
+}
+
+.message-actions.standalone {
+  opacity: 1;
+  padding: 2px 4px 16px;
+}
+
+.row.changed-files:has(+ .message-actions.standalone) {
+  margin-bottom: 6px;
+}
+
 .pending-approval {
   padding: 2px;
 }

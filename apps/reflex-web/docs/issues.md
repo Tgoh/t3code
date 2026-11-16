@@ -89,7 +89,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 
 ## Skipped for the prototype
 
-- Deferred work isn't opted into (`acceptDeferredWork`), and `deferredWork` isn't preserved across updates, until the timeline can expand a group.
+- Deferred work isn't opted into (`acceptDeferredWork`), and `deferredWork` isn't preserved across updates, so a fold never loads work on opening as stock's does.
 - History pages load older rows only, with no `throughEntryId` jump.
 - History responses are held unchecked, so a turn item type this client doesn't know reaches the tree.
 - `encodeThreadItem`'s unknown-event pass-through has no test: the app has no `@effect/vitest`, and lint bars running effects by hand in tests.
@@ -107,7 +107,6 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - A sent message appears when the stream delivers it, with no pending row in Local; the gap wasn't noticeable.
 - The default model for a new thread is the first provider's default, as in the stock client, which can be a paid one.
 - A new thread asks the server to generate its title, which uses the server's title provider. On this machine that's Codex, which fails to spawn, so titles fall back to the text.
-- Timeline rows aren't grouped into work groups as in the stock UI.
 - Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
 - A multi-select question takes its options as comma-separated text, with no checkboxes.
 - A thread that doesn't exist retries its subscription with backoff rather than reporting missing.
@@ -147,10 +146,11 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - New thread: a pen button targets the current project, and a small native select beside it picks another, where stock has one button.
 - Header: no thread details toggle or title menu.
 - Tooltips: no keyboard shortcut hints, because this client has no shortcuts, and a quick move between triggers opens instantly everywhere, where stock does that only inside the sidebar.
-- Timeline: no "Worked for" fold or work-group summary, so tool rows always show; their wording is this client's (`Command: …`), not stock's (`Ran command`).
+- Timeline: the fold and work groups leave out stock's superseded-attempt folds ("Superseded attempt"), the tool-call visibility setting (zen and hide-successful), hiding delegation rows that a subagent card replaces, compaction dividers and `/compact` turns, viewed-image strips, html-render and MCP app rows, the "Waiting on N subagents" label and the timestamp setting. Resumed subagents fold with the response they appear in, not their original turn. Stock's tool icons and shimmer aren't copied, and an expanded group grows to a fixed height rather than by its open entries.
+- Timeline: an expanded work entry's body is this client's (`viewOf`), not stock's per-tool detail.
 - Timeline: no minimap, and the scroll-to-end pill doesn't summarise what's waiting below.
 - Timeline: when the composer grows while the view is stuck to the bottom (queued-turn chips, say), a gap stays below the last row, because the stick-to-bottom observer watches the timeline's content, not its scroller.
-- Message actions: copy and time show on every finished assistant message, where stock shows them only on the last of a response. Where a changed files card follows, they sit above the card, not below it, so that gap is 30px against stock's 16px. There's no edit, fork or prompt link action.
+- Message actions: no edit, fork, reply or prompt link action.
 - Timeline: approvals show every option inline, with no More menu and no decline-by-typing placeholder.
 - Timeline: an expanded image has no next, previous or zoom, images inside markdown don't expand, and an attachment URL isn't refreshed, so a thread left open past its expiry shows a name chip after a reload of the image.
 - Markdown: no syntax highlighting, language icons, run-in-terminal button, file link chips, math or diagrams. A relative link is plain text with its path in a tooltip, not a link that opens the file. A code block's wrap choice resets when its message re-renders during streaming.
