@@ -1,6 +1,7 @@
 import type {
   AssetResource,
   ModelCapabilities,
+  ProjectScript,
   ServerProviderSkill,
   ServerProviderSlashCommand,
 } from "@t3tools/contracts";
@@ -147,7 +148,8 @@ export type IThreadCommand =
   | { Kind: "markUnread" }
   | { Kind: "delete" }
   | { Kind: "modelSelection"; Selection: IWireModelSelection }
-  | { Kind: "runtimeMode"; Mode: IWireRuntimeMode };
+  | { Kind: "runtimeMode"; Mode: IWireRuntimeMode }
+  | { Kind: "branch"; Branch: string | null };
 
 interface IThreadCommandEffect extends IEffect {
   Type: "threadCommand";
@@ -165,7 +167,8 @@ export type IProjectCommand =
   | { Kind: "unpin" }
   | { Kind: "unarchive" }
   | { Kind: "rename"; Title: string }
-  | { Kind: "delete"; Force?: boolean };
+  | { Kind: "delete"; Force?: boolean }
+  | { Kind: "scripts"; Scripts: ProjectScript[] };
 
 interface IProjectCommandEffect extends IEffect {
   Type: "projectCommand";

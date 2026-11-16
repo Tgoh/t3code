@@ -10,7 +10,7 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 import { connectionRuntime } from "./connection";
 
 // Reuses the connection runtime's services, so no second connection is built.
-const atomRuntime = Atom.runtime(Layer.effectContext(connectionRuntime.contextEffect));
+export const atomRuntime = Atom.runtime(Layer.effectContext(connectionRuntime.contextEffect));
 const registry = AtomRegistry.make();
 
 export const sourceControl = createSourceControlEnvironmentAtoms(atomRuntime);

@@ -114,6 +114,7 @@ import {
   terminalAttachment,
   TerminalReceiver,
   toggleQuestionOption,
+  toggleRightPanel,
 } from "./ThreadSession";
 import {
   assistantItem,
@@ -2567,6 +2568,42 @@ describe("diffs", () => {
     await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     const panel = server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
     expect(panel).toMatchObject({ Error: "checkpoint is missing", Text: null });
+  });
+
+  it("diffs the branch in the thread's checkout, and the right panel toggle closes it", async () => {
+    const asked: unknown[] = [];
+    const server = await connect(undefined, null, {
+      branchDiff: (effect: { EnvironmentId: string; Cwd: string }) => {
+        asked.push(effect.Cwd);
+        return { Diff: "branch patch", BaseRef: "origin/main", Truncated: false };
+      },
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/repo" }],
+        threads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.open();
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    const panels = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels;
+    expect(panels().Details.Open).toBe(true);
+    await server.runtime.dispatch(toggleRightPanel, server.sessionId());
+    expect(panels().Launcher.Open).toBe(true);
+    await server.runtime.dispatch(openDiff, server.sessionId(), "branch", null);
+    expect(asked).toEqual(["/repo"]);
+    expect(panels().Launcher.Open).toBe(false);
+    expect(panels().Diff).toMatchObject({
+      Open: true,
+      Scope: "branch",
+      Text: "branch patch",
+      BaseRef: "origin/main",
+    });
+    await server.runtime.dispatch(toggleRightPanel, server.sessionId());
+    expect(panels().Diff).toMatchObject({ Open: false, Text: null });
+    expect(panels().Launcher.Open).toBe(false);
   });
 
   it("takes a file change's counts from its run's checkpoint when the item has none", async () => {
