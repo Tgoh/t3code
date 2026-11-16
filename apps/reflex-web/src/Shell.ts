@@ -317,8 +317,12 @@ export function sidebarStatus(
   const status = runtime === null ? null : runStatus(runtime);
   if (status === "running" || status === "waiting") return "working";
   if (status === "failed") {
-    const datedByRun = thread.latestRunId !== null && thread.status === "failed";
-    return datedByRun && !hasUnseenRunFailure(thread) ? null : "failed";
+    // Stock keeps a usage limit on the row after a visit; only a plain failure settles.
+    const settles =
+      thread.lastErrorClass !== "usage_limit" &&
+      thread.latestRunId !== null &&
+      thread.status === "failed";
+    return settles && !hasUnseenRunFailure(thread) ? null : "failed";
   }
   const completed = thread.latestRunId === null ? null : runCompletedAt(thread);
   const visited = thread.lastVisitedAt;

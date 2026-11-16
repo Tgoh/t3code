@@ -226,6 +226,10 @@ function placeRow(draft: IOpenThread, item: IWireTurnItem, heldOrdinal: number |
     return;
   if (row === undefined && hasPartialWindow(draft) && isUnloadedHistory(draft, item)) return;
   removeRow(draft, item.id);
+  insertRow(draft, item);
+}
+
+function insertRow(draft: IOpenThread, item: IWireTurnItem): void {
   // Local rows are in order, and new items land last, so this search stops at once.
   let insertion = draft.Timeline.length;
   for (let index = insertion - 1; index >= 0; index -= 1) {
@@ -248,7 +252,7 @@ function restoreQueuedUserRows(draft: IOpenThread, runId: string): void {
   for (const item of Object.values(draft.TurnItems)) {
     if (item.runId !== runId || item.type !== "user_message" || item.inputIntent !== "queued_turn")
       continue;
-    if (draft.Rows[item.id] === undefined) placeRow(draft, item, undefined);
+    if (draft.Rows[item.id] === undefined) insertRow(draft, item);
   }
 }
 

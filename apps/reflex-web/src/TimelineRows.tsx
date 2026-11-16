@@ -399,6 +399,8 @@ function rowKind(item: IWireTurnItem): string | null {
       return (item.filesTotal?.count ?? item.files.length) === 0 ? null : "changed-files";
     case "approval_request":
       return item.status === "waiting" ? null : "work";
+    case "dynamic_tool":
+      return viewOf(item).Tone === "assistant" ? "message" : "work";
     default:
       return "work";
   }
