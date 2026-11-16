@@ -45,15 +45,9 @@ import {
   layoutResponse,
   sameFacts,
 } from "./timelineLayout";
-import {
-  MessageMeta,
-  MessageTime,
-  RowIcon,
-  TimelineRow,
-  useWorkspaceRoot,
-  WorkRow,
-} from "./TimelineRows";
+import { MessageMeta, MessageTime, RowIcon, TimelineRow, WorkRow } from "./TimelineRows";
 import { liveWorkEntryLabel, workLogEntry, workLogEntryIsToolLike } from "./workLog";
+import { useWorkspaceRoot } from "./workspaceRoot";
 
 type IRowOf<K extends ILayoutRow["Kind"]> = Extract<ILayoutRow, { Kind: K }>;
 

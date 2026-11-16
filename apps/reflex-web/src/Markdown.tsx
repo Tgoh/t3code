@@ -1,3 +1,4 @@
+import type { AssetResource } from "@t3tools/contracts";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import type { Token, Tokens } from "marked";
 import {
@@ -6,16 +7,28 @@ import {
   createMemo,
   createSignal,
   Index,
+  onMount,
   Show,
   useContext,
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import { useComponentState } from "treflex-solid";
 
 import { ProjectBadge } from "./brand";
 import { CopyButton } from "./CopyButton";
 import Environment from "./Environment";
-import { MessagesSquare, WrapText } from "./icons";
+import { MessagesSquare, TriangleAlert, WrapText } from "./icons";
+import { ImageDialog } from "./ImageDialog";
+import type { IAssetUrl } from "./Infrastructure/commandEffects";
+import {
+  type IMarkdownImageUrl,
+  imageSizeStyle,
+  loadImageUrl,
+  markdownImageTarget,
+  sameTarget,
+} from "./markdownImage";
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
+import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml } from "./sanitize";
 import {
   contextThreadTarget,
@@ -24,12 +37,11 @@ import {
   type IThreadTitle,
   threadLinkTarget,
 } from "./userMessage";
+import { useWorkspaceRoot } from "./workspaceRoot";
 
 interface ITokenProps {
   token: Token;
 }
-
-const IMAGE_SOURCE = /^(?:https?:|data:image\/)/i;
 
 const decoder = document.createElement("textarea");
 
@@ -181,13 +193,161 @@ function LinkToken(props: ITokenProps) {
   );
 }
 
-function ImageToken(props: ITokenProps) {
-  const image = () => of<Tokens.Image>(props);
+function ImageUnavailable(props: { alt: string }) {
   return (
-    <Show when={IMAGE_SOURCE.test(image().href)} fallback={image().text}>
-      <img src={image().href} alt={image().text} />
+    <span class="markdown-image-unavailable">
+      <TriangleAlert />
+      {["Image unavailable", props.alt].filter(Boolean).join(" · ")}
+    </span>
+  );
+}
+
+// Follows ChatMarkdownImage in apps/web/src/components/chat/ChatMarkdownMedia.tsx.
+function ShownImage(props: {
+  src: string | null;
+  sourceFailed: boolean;
+  size: IAssetUrl["Size"] | null;
+  alt: string;
+  standalone: boolean;
+}) {
+  const [loaded, setLoaded] = createSignal(false);
+  const [errored, setErrored] = createSignal(false);
+  const [expanded, setExpanded] = createSignal(false);
+  const failed = () => props.sourceFailed || errored();
+  const settled = () => props.src !== null && !failed() && (!props.standalone || loaded());
+  const style = () => imageSizeStyle(props.size);
+  const events = {
+    onLoad: () => setLoaded(true),
+    onError: () => setErrored(true),
+  };
+  const expand = (event: Event) => {
+    if ((event.currentTarget as Element).closest("a")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setExpanded(true);
+  };
+  return (
+    <Show
+      when={settled() ? props.src : null}
+      fallback={
+        <Show
+          when={props.standalone}
+          fallback={
+            <Show when={failed()} fallback={<span role="status" aria-label="Loading image" />}>
+              <span class="markdown-image-chip">
+                <ImageUnavailable alt={props.alt} />
+              </span>
+            </Show>
+          }
+        >
+          <span
+            class="markdown-image-frame"
+            style={style()}
+            role={failed() ? "alert" : "status"}
+            aria-label={failed() ? undefined : "Loading image"}
+          >
+            <Show
+              when={failed()}
+              fallback={
+                <Show when={props.src}>
+                  {(src) => <img class="markdown-image-probe" src={src()} alt="" {...events} />}
+                </Show>
+              }
+            >
+              <span class="markdown-image-failed">
+                <ImageUnavailable alt={props.alt} />
+              </span>
+            </Show>
+          </span>
+        </Show>
+      }
+    >
+      {(src) => (
+        <>
+          <img
+            class="markdown-image"
+            src={src()}
+            alt={props.alt}
+            style={style()}
+            decoding="async"
+            loading="lazy"
+            draggable={false}
+            role="button"
+            tabIndex={0}
+            aria-label={`Preview ${props.alt.trim() || "image"}`}
+            onClick={expand}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") expand(event);
+            }}
+            {...events}
+          />
+          <Show when={expanded()}>
+            <ImageDialog src={src()} alt={props.alt} onClose={() => setExpanded(false)} />
+          </Show>
+        </>
+      )}
     </Show>
   );
+}
+
+function FileImage(props: {
+  resource: AssetResource;
+  fragment: string;
+  alt: string;
+  standalone: boolean;
+}) {
+  const environment = Environment.use();
+  const local = useComponentState<IMarkdownImageUrl>(() => ({
+    Url: null,
+    Size: null,
+    Failed: false,
+  }));
+  onMount(() => local.dispatch(loadImageUrl, environment.state.EnvironmentId, props.resource));
+  return (
+    <ShownImage
+      src={local.state.Url === null ? null : local.state.Url + props.fragment}
+      sourceFailed={local.state.Failed}
+      size={local.state.Size}
+      alt={props.alt}
+      standalone={props.standalone}
+    />
+  );
+}
+
+function MarkdownImage(props: { token: Tokens.Image; standalone: boolean }) {
+  const thread = OpenThread.use();
+  const workspaceRoot = useWorkspaceRoot();
+  const target = createMemo(
+    () => markdownImageTarget(props.token.href, workspaceRoot(), thread.state.Thread?.id),
+    undefined,
+    { equals: sameTarget },
+  );
+  return (
+    <Show when={target()} keyed fallback={props.token.text}>
+      {(held) =>
+        "Direct" in held ? (
+          <ShownImage
+            src={held.Direct}
+            sourceFailed={false}
+            size={null}
+            alt={props.token.text}
+            standalone={props.standalone}
+          />
+        ) : (
+          <FileImage
+            resource={held.Resource}
+            fragment={held.Fragment}
+            alt={props.token.text}
+            standalone={props.standalone}
+          />
+        )
+      }
+    </Show>
+  );
+}
+
+function ImageToken(props: ITokenProps) {
+  return <MarkdownImage token={of<Tokens.Image>(props)} standalone={false} />;
 }
 
 const INLINE: Record<string, Component<ITokenProps>> = {
@@ -211,9 +371,16 @@ function Blocks(props: { tokens: Token[] | undefined }) {
 }
 
 function ParagraphToken(props: ITokenProps) {
+  const tokens = () => of<Tokens.Paragraph>(props).tokens;
+  const alone = () => {
+    const shown = tokens().filter((token) => token.type !== "text" || token.raw.trim() !== "");
+    return shown.length === 1 && shown[0]!.type === "image" ? (shown[0] as Tokens.Image) : null;
+  };
   return (
     <p>
-      <Inline tokens={of<Tokens.Paragraph>(props).tokens} />
+      <Show when={alone()} fallback={<Inline tokens={tokens()} />}>
+        {(image) => <MarkdownImage token={image()} standalone />}
+      </Show>
     </p>
   );
 }

@@ -51,6 +51,7 @@ export { default as SquarePen } from "lucide-solid/icons/square-pen";
 export { default as Star } from "lucide-solid/icons/star";
 export { default as Terminal } from "lucide-solid/icons/terminal";
 export { default as Trash2 } from "lucide-solid/icons/trash-2";
+export { default as TriangleAlert } from "lucide-solid/icons/triangle-alert";
 export { default as Undo2 } from "lucide-solid/icons/undo-2";
 export { default as Workflow } from "lucide-solid/icons/workflow";
 export { default as Wrench } from "lucide-solid/icons/wrench";

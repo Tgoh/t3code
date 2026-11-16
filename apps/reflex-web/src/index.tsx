@@ -11,7 +11,7 @@ import { addressThreadImpl, setAddressThreadImpl } from "./Infrastructure/addres
 import { commandOutput } from "./Infrastructure/commandOutput";
 import {
   addProjectSettingsImpl,
-  attachmentUrlImpl,
+  assetUrlImpl,
   browseFoldersImpl,
   cloneControlImpl,
   closeTerminalImpl,
@@ -71,7 +71,7 @@ runtime.registerImplementation(newProjectImpl);
 runtime.registerImplementation(openInFileManagerImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
-runtime.registerImplementation(attachmentUrlImpl);
+runtime.registerImplementation(assetUrlImpl);
 runtime.registerImplementation(closeTerminalImpl);
 runtime.registerImplementation(rememberedTerminalImpl);
 runtime.registerImplementation(rememberTerminalImpl);

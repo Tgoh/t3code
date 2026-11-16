@@ -45,7 +45,7 @@ import { implementation } from "treflex";
 
 import {
   addProjectSettingsEffect,
-  attachmentUrlEffect,
+  assetUrlEffect,
   browseFoldersEffect,
   cloneControlEffect,
   closeTerminalEffect,
@@ -353,21 +353,18 @@ export const threadDiffImpl = implementation(threadDiffEffect, async (input, act
   return turn.diff;
 });
 
-export const attachmentUrlImpl = implementation(attachmentUrlEffect, async (input, action) => {
-  const { relativeUrl } = await inEnvironment(
+export const assetUrlImpl = implementation(assetUrlEffect, async (input, action) => {
+  const { relativeUrl, imageDimensions } = await inEnvironment(
     input.EnvironmentId,
-    request(WS_METHODS.assetsCreateUrl, {
-      resource: {
-        _tag: "attachment",
-        attachmentId: input.AttachmentId,
-        ...(input.File === undefined
-          ? {}
-          : { fileName: input.File.Name, mimeType: input.File.MimeType, disposition: "inline" }),
-      },
-    }),
+    request(WS_METHODS.assetsCreateUrl, { resource: input.Resource }),
     action?.signal,
   );
-  return relativeUrl;
+  return {
+    Url: relativeUrl,
+    ...(imageDimensions === undefined
+      ? {}
+      : { Size: { Width: imageDimensions.width, Height: imageDimensions.height } }),
+  };
 });
 
 export const serverProvidersImpl = implementation(serverProvidersEffect, async (input) => {

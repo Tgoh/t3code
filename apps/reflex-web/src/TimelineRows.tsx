@@ -33,10 +33,9 @@ import {
   SquarePen,
   Terminal,
   Wrench,
-  X,
 } from "./icons";
 import Environment from "./Environment";
-import { attachmentUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
+import { assetUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { Markdown } from "./Markdown";
 import OpenThread, {
@@ -58,7 +57,9 @@ import {
   messageFold,
   steerLabel,
 } from "./userMessage";
+import { ImageDialog } from "./ImageDialog";
 import { singleToolCallLabel, workEntryDisplayLabel, workLogEntry } from "./workLog";
+import { useWorkspaceRoot } from "./workspaceRoot";
 
 function Body(props: { text: string; format: "markdown" | "text" | "code"; fromUser?: boolean }) {
   return (
@@ -116,11 +117,17 @@ function* loadAttachmentUrl(
   file: IWireAttachment,
 ): IActionGenerator {
   try {
-    draft.Url = yield* attachmentUrlEffect({
+    const asset = yield* assetUrlEffect({
       EnvironmentId: environmentId,
-      AttachmentId: file.id,
-      ...(file.type === "image" ? {} : { File: { Name: file.name, MimeType: file.mimeType } }),
+      Resource: {
+        _tag: "attachment",
+        attachmentId: file.id,
+        ...(file.type === "image"
+          ? {}
+          : { fileName: file.name, mimeType: file.mimeType, disposition: "inline" }),
+      },
     });
+    draft.Url = asset.Url;
   } catch {
     draft.Failed = true;
   }
@@ -222,17 +229,7 @@ function AttachmentImage(props: {
               />
             </button>
             <Show when={expanded()}>
-              <dialog
-                class="image-dialog"
-                ref={(dialog) => queueMicrotask(() => dialog.showModal())}
-                onClose={() => setExpanded(false)}
-                onClick={(event) => event.currentTarget.close()}
-              >
-                <img src={url()} alt={props.file.name} />
-                <button class="icon-button image-dialog-close" aria-label="Close preview">
-                  <X />
-                </button>
-              </dialog>
+              <ImageDialog src={url()} alt={props.file.name} onClose={() => setExpanded(false)} />
             </Show>
           </>
         )}
@@ -571,20 +568,6 @@ function ChangedFilesRow(props: IRowProps) {
       {(held) => <ChangedFiles item={held()} turn={diffTurnOf(thread.state, held())} />}
     </Show>
   );
-}
-
-export function useWorkspaceRoot(): () => string | undefined {
-  const thread = OpenThread.use();
-  const environment = Environment.use();
-  return () => {
-    const held = thread.state.Thread;
-    if (held === null) return undefined;
-    return (
-      held.worktreePath ??
-      environment.state.Replica.Shell.Projects[held.projectId]?.workspaceRoot ??
-      undefined
-    );
-  };
 }
 
 // Stock draws these as their own cards, so they keep this client's wording.
