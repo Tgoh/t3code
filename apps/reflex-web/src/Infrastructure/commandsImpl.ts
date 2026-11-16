@@ -37,6 +37,7 @@ import {
   ProviderInstanceId,
   RunId,
   RuntimeRequestId,
+  THREAD_SEARCH_QUERY_MAX_LENGTH,
   ThreadId,
   WS_METHODS,
 } from "@t3tools/contracts";
@@ -52,6 +53,7 @@ import {
   assetUrlEffect,
   browseFoldersEffect,
   searchEntriesEffect,
+  searchThreadsEffect,
   cloneControlEffect,
   closeTerminalEffect,
   type IProviderOption,
@@ -239,6 +241,8 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
       ));
     case "runtimeMode":
       return void (await run(setThreadRuntimeMode({ ...common, runtimeMode: command.Mode })));
+    case "branch":
+      return void (await run(updateThreadMetadata({ ...common, branch: command.Branch })));
     default:
       command satisfies never;
   }
@@ -282,6 +286,8 @@ export const projectCommandImpl = implementation(projectCommandEffect, async (in
       return void (await run(
         deleteProject(command.Force === true ? { ...common, force: true } : common),
       ));
+    case "scripts":
+      return void (await run(updateProject({ ...common, scripts: command.Scripts })));
     default:
       command satisfies never;
   }
@@ -308,6 +314,18 @@ export const searchEntriesImpl = implementation(searchEntriesEffect, async (inpu
     action?.signal,
   );
   return { Entries: result.entries.map((entry) => ({ path: entry.path, kind: entry.kind })) };
+});
+
+export const searchThreadsImpl = implementation(searchThreadsEffect, async (input, action) => {
+  const result = await inEnvironment(
+    input.EnvironmentId,
+    request(ORCHESTRATION_V2_WS_METHODS.searchThreads, {
+      query: input.Query.trim().slice(0, THREAD_SEARCH_QUERY_MAX_LENGTH).trim(),
+    }),
+    action?.signal,
+  );
+  const environmentId = EnvironmentId.make(input.EnvironmentId);
+  return { Matches: result.matches.map((match) => ({ ...match, environmentId })) };
 });
 
 export const browseFoldersImpl = implementation(browseFoldersEffect, async (input, action) => {
@@ -367,10 +385,10 @@ export const openInFileManagerImpl = implementation(openInFileManagerEffect, asy
   );
 });
 
-const LAST_EDITOR_KEY = "t3code:last-editor";
+export const LAST_EDITOR_KEY = "t3code:last-editor";
 
 // Follows resolveAndPersistPreferredEditor in apps/web/src/editorPreferences.ts.
-function preferredEditor(available: ReadonlyArray<EditorId>): EditorId | null {
+export function preferredEditor(available: ReadonlyArray<EditorId>): EditorId | null {
   let stored: string | null = null;
   try {
     stored = JSON.parse(localStorage.getItem(LAST_EDITOR_KEY) ?? "null") as string | null;

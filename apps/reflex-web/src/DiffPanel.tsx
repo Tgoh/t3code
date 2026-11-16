@@ -58,8 +58,11 @@ export function DiffPanel() {
   const session = ThreadSession.use();
   const panel = () => session.state.Panels.Diff;
   const files = createMemo(() => parseDiff(panel().Text ?? ""));
-  const title = () =>
-    panel().Scope === "thread" ? "Whole thread" : `Turn ${panel().ToTurnCount ?? ""}`;
+  const title = () => {
+    const held = panel();
+    if (held.Scope === "branch") return held.BaseRef == null ? "Uncommitted" : `vs ${held.BaseRef}`;
+    return held.Scope === "thread" ? "Whole thread" : `Turn ${held.ToTurnCount ?? ""}`;
+  };
   return (
     <aside class="right-panel">
       <header class="panel-header">

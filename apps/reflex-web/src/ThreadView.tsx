@@ -5,6 +5,7 @@ import {
   createMemo,
   createSignal,
   For,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -16,12 +17,17 @@ import { Composer, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
-import { ChevronDown, PanelBottom, PanelRight } from "./icons";
+import { ChevronDown, PanelBottom, PanelRight, SquareMenu } from "./icons";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
 import { needsVisit, runStatus } from "./Shell";
 import { SidebarToggle } from "./Sidebar";
+import { SurfaceLauncher } from "./SurfaceLauncher";
+import { type ISurfaceKind, surfaceActions } from "./surfaces";
 import { TerminalPanel } from "./TerminalPanel";
+import type { ICheckout } from "./ThreadDetails";
+import { DetailsSurface, ThreadDetailsCard } from "./ThreadDetailsPanel";
+import { detailsLayout } from "./threadDetailsLayout";
 import ThreadSession from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
 import { TimelineResponse } from "./TimelineResponse";
@@ -35,7 +41,7 @@ import {
   trimToTail,
 } from "./timelineWindow";
 
-import { TurnStatus } from "./TurnStatus";
+import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
 import { createMediaQuery, PANEL_SHEET_QUERY } from "./viewport";
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
@@ -144,6 +150,7 @@ const ThreadBody = ThreadSession.provider(() => {
     const status = run === null ? null : runStatus(run.status);
     return status === "running" || status === "waiting" ? status : null;
   };
+  const checklist = useChecklist(() => turnState() !== null);
   // Once per completion, so a thread marked unread while open stays unread until the next one.
   let visitedCompletion: string | null | undefined;
   createEffect(() => {
@@ -155,11 +162,65 @@ const ThreadBody = ThreadSession.provider(() => {
   });
   const terminalOpen = () => session.state.Terminal.Open;
   const diffOpen = () => session.state.Panels.Diff.Open;
+  const launcherOpen = () => session.state.Panels.Launcher.Open && !diffOpen();
+  const rightPanelOpen = () => diffOpen() || launcherOpen();
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
-  const closeTopSheet = () => (diffOpen() ? session.closeDiff() : session.closeTerminal());
+  const closeRightPanel = () => (diffOpen() ? session.closeDiff() : session.closeLauncher());
+  const closeTopSheet = () => (rightPanelOpen() ? closeRightPanel() : session.closeTerminal());
   // Escape stays with the shell while the terminal sheet is the one on top.
   const onSheetKey = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && panelSheet() && diffOpen()) session.closeDiff();
+    if (event.key !== "Escape" || !panelSheet() || !rightPanelOpen()) return;
+    event.preventDefault();
+    closeRightPanel();
+  };
+  const [stageSize, setStageSize] = createSignal({ Width: 0, Height: 0 });
+  const [detailsPopover, setDetailsPopover] = createSignal(false);
+  const layout = createMemo(() =>
+    detailsLayout({
+      ...stageSize(),
+      Padding: 48,
+      MaxChatWidth: 736,
+      Open: session.state.Panels.Details.Open,
+    }),
+  );
+  const detailsInline = () => layout().Inline && session.state.Panels.Details.Open;
+  const toggleDetails = () => {
+    if (layout().Inline) session.toggleDetails();
+    else setDetailsPopover((open) => !open);
+  };
+  const checkout = createMemo<ICheckout | null>((previous) => {
+    const held = thread.state.Thread;
+    const project =
+      held == null ? undefined : environment.state.Replica.Shell.Projects[held.projectId];
+    if (held == null || project === undefined) return null;
+    const next = {
+      EnvironmentId: environment.state.EnvironmentId,
+      ThreadId: held.id,
+      ProjectId: held.projectId,
+      Cwd: held.worktreePath ?? project.workspaceRoot,
+      ProjectRoot: project.workspaceRoot,
+      WorktreePath: held.worktreePath,
+    };
+    return previous !== null && JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+  }, null);
+  const projectScripts = () => {
+    const projectId = thread.state.Thread?.projectId;
+    return projectId === undefined
+      ? []
+      : (environment.state.Replica.Shell.Projects[projectId]?.scripts ?? []);
+  };
+  const launcher = () =>
+    surfaceActions({
+      TerminalAvailable: thread.state.Thread !== null,
+      DiffAvailable: checkout() !== null,
+    });
+  const openSurface = (kind: ISurfaceKind) => {
+    if (kind === "terminal") {
+      void session.closeLauncher();
+      void session.openTerminal();
+    } else if (kind === "diff") {
+      void session.openDiff(latestDiffTurn(thread.state) === null ? "branch" : "thread", null);
+    }
   };
   document.addEventListener("keydown", onSheetKey);
   onCleanup(() => document.removeEventListener("keydown", onSheetKey));
@@ -168,6 +229,7 @@ const ThreadBody = ThreadSession.provider(() => {
   let head!: HTMLDivElement;
   let stage!: HTMLDivElement;
   let lane!: HTMLDivElement;
+  let detailsToggle: HTMLButtonElement | undefined;
   const [stuck, setStuck] = createSignal(true);
   const position = (): IScrollPosition => ({
     Top: scroller.scrollTop,
@@ -180,6 +242,17 @@ const ThreadBody = ThreadSession.provider(() => {
   const scrollToEnd = () => {
     scroller.scrollTop = scroller.scrollHeight;
   };
+  const statusRows = createMemo(() => checklistRows(checklist()));
+  // The status band sits outside the lane's box, so the lane's observer misses its resize.
+  createEffect(
+    on(
+      statusRows,
+      () => {
+        if (untrack(stuck)) scrollToEnd();
+      },
+      { defer: true },
+    ),
+  );
   const onComposerSend = () => {
     setStuck(true);
     scrollToEnd();
@@ -283,9 +356,14 @@ const ThreadBody = ThreadSession.provider(() => {
       if (stuck()) scrollToEnd();
     });
     laneObserver.observe(lane);
+    const stageObserver = new ResizeObserver(() =>
+      setStageSize({ Width: stage.clientWidth, Height: stage.clientHeight }),
+    );
+    stageObserver.observe(stage);
     onCleanup(() => {
       observer.disconnect();
       laneObserver.disconnect();
+      stageObserver.disconnect();
     });
   });
   return (
@@ -324,6 +402,19 @@ const ThreadBody = ThreadSession.provider(() => {
             </Show>
           </div>
           <div class="panel-controls">
+            <Show when={checkout() !== null}>
+              <button
+                ref={detailsToggle}
+                class="icon-button toggle"
+                classList={{ pressed: detailsInline() || detailsPopover() }}
+                aria-label="Toggle thread details panel"
+                data-tip="Toggle thread details"
+                aria-pressed={detailsInline() || detailsPopover()}
+                onClick={toggleDetails}
+              >
+                <SquareMenu />
+              </button>
+            </Show>
             <Show when={thread.state.Thread !== null}>
               <button
                 class="icon-button toggle"
@@ -338,12 +429,11 @@ const ThreadBody = ThreadSession.provider(() => {
             </Show>
             <button
               class="icon-button toggle"
-              classList={{ pressed: diffOpen() }}
-              aria-label="Toggle thread diff"
-              data-tip="Toggle thread diff"
-              aria-pressed={diffOpen()}
-              disabled={!diffOpen() && latestDiffTurn(thread.state) === null}
-              onClick={() => (diffOpen() ? session.closeDiff() : session.openDiff("thread", null))}
+              classList={{ pressed: rightPanelOpen() }}
+              aria-label="Toggle right panel"
+              data-tip="Toggle right panel"
+              aria-pressed={rightPanelOpen()}
+              onClick={() => session.toggleRightPanel()}
             >
               <PanelRight />
             </button>
@@ -355,7 +445,33 @@ const ThreadBody = ThreadSession.provider(() => {
         <Show when={retrying()}>
           <p class="thread-notice">Can't load this thread right now. Retrying.</p>
         </Show>
-        <div class="chat-stage" ref={stage}>
+        <div
+          class="chat-stage"
+          classList={{ "has-checklist": checklist() !== null, "with-details": detailsInline() }}
+          ref={stage}
+          style={{
+            "--checklist-rows": statusRows(),
+            "--details-shift": `${layout().Shift}px`,
+            "--details-lane": layout().LaneWidth === null ? undefined : `${layout().LaneWidth}px`,
+          }}
+        >
+          <Show when={checkout()} keyed>
+            {(held) => (
+              <Show when={detailsInline() || detailsPopover()}>
+                <DetailsSurface
+                  inline={detailsInline()}
+                  anchor={detailsToggle}
+                  onDismiss={() => setDetailsPopover(false)}
+                >
+                  <ThreadDetailsCard
+                    checkout={held}
+                    scripts={projectScripts()}
+                    running={turnState() !== null}
+                  />
+                </DetailsSurface>
+              </Show>
+            )}
+          </Show>
           <div
             class="timeline"
             ref={scroller}
@@ -423,7 +539,7 @@ const ThreadBody = ThreadSession.provider(() => {
                 Scroll to end
               </button>
             </Show>
-            <TurnStatus state={turnState()} />
+            <TurnStatus state={turnState()} checklist={checklist()} />
             <For each={thread.pendingOtherIds()}>
               {(id) => <UnansweredRequest state={thread.state.RuntimeRequests[id]!} />}
             </For>
@@ -451,11 +567,18 @@ const ThreadBody = ThreadSession.provider(() => {
           <TerminalPanel />
         </Show>
       </FileDropSection>
-      <Show when={panelSheet() && (diffOpen() || terminalOpen())}>
+      <Show when={panelSheet() && (rightPanelOpen() || terminalOpen())}>
         <div class="panel-backdrop" aria-hidden="true" onClick={closeTopSheet} />
       </Show>
       <Show when={diffOpen()}>
         <DiffPanel />
+      </Show>
+      <Show when={launcherOpen()}>
+        <SurfaceLauncher
+          actions={launcher()}
+          onRun={openSurface}
+          onClose={() => session.closeLauncher()}
+        />
       </Show>
     </div>
   );

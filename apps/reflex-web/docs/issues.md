@@ -134,7 +134,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Project icons: a cloned project's icon isn't asked for again when its clone lands, as stock does, so it shows the monogram until the next request after the 30-minute refresh. An icon file changed in place shows on the next refresh, not straight away.
 - Sidebar: no "Setting up" state for a thread launched from a draft before its first run lands, and no Regenerate title action.
 
-- Sidebar: no Search box, thread filter, sidebar toggle above 767px, or pull requests button, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
+- Sidebar: no pull requests button in the footer, because this client has no pull requests page.
 - Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
 - Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, auto-settle toggle or search.
 - Sidebar: every settled thread is streamed, where stock omits older ones and pages them in.
@@ -148,7 +148,12 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Sidebar hover card: no environment, terminal process or pull request lines, and a long branch is cut at the end rather than the middle.
 - Sidebar and composer: only Claude and OpenAI provider icons are copied; Replay, Cursor, Grok, OpenCode, Antigravity and Kiro show none, and instance badges aren't drawn.
 - New thread: a pen button targets the current project, and a small native select beside it picks another, where stock has one button.
-- Header: no thread details toggle or title menu.
+- Header: no title menu.
+- Thread details: no environment or worktree pickers (the machine row only names it), no usage, context, servers, automations, lineage, side chats or linked pull request rows, no "Choose what to show" menu, and no compact or essential density for a short window. Only an open thread has the card; a new-thread draft doesn't. Its open state is per thread and resets on reload, where stock keeps it.
+- Thread details, git: no progress phases or hook output while an action runs (the row says Working…), no View PR for a branch with an open pull request, no Publish repository dialog or Initialize Git, and no live branch sync for drafts. The commit dialog lists files without opening them in the editor. Closing the card while an action runs drops its result, though the server finishes it. Changes counts come from status alone, not the diff preview stock reads, and status refreshes when the menu opens, not when the window regains focus.
+- Thread details, branches: the picker lists the first 100 refs with a server-side search, with no remote refs, pull request checkout, worktree moves or context menu; a branch checked out in another worktree is refused.
+- Thread details, scripts: a script runs in the thread's one drawer terminal, where stock opens a new terminal. Scripts can be added but not edited or removed, and `t3.json` file scripts aren't imported. No keyboard shortcuts, and the shortcut dispatcher in `App.tsx` doesn't yet handle `threadPanel.toggle`, `rightPanel.toggle`, `diff.toggle`, `terminal.toggle` or `editor.openFavorite`.
+- Right panel: the launcher opens Terminal (as the drawer) and Diff; Browser, Files, Pull request, Linked pull requests, Device and Side chat are listed but disabled. No tabs or maximize; one surface shows at a time.
 - Tooltips: no keyboard shortcut hints, because this client has no shortcuts, and a quick move between triggers opens instantly everywhere, where stock does that only inside the sidebar.
 - Timeline: the fold and work groups leave out stock's superseded-attempt folds ("Superseded attempt"), the tool-call visibility setting (zen and hide-successful), hiding delegation rows that a subagent card replaces, compaction dividers and `/compact` turns, viewed-image strips, html-render and MCP app rows, the "Waiting on N subagents" label and the timestamp setting. Resumed subagents fold with the response they appear in, not their original turn. Stock's tool icons and shimmer aren't copied, and an expanded group grows to a fixed height rather than by its open entries.
 - Timeline: an expanded work entry's body is this client's (`viewOf`), not stock's per-tool detail.
@@ -187,7 +192,7 @@ Settings opens in place of the thread view, not as stock's modal, and keeps the 
 - Keybindings: read-only list with search; editing, recording, conflict warnings and Open keybindings.json aren't built.
 - Archive: one environment, no right-click menu, and a failure goes to the sidebar's error line rather than a toast.
 - About: the server's version, not the client build's, and no update, update track, mobile app or welcome rows.
-- Usage: no environment or provider pickers (this client has one environment), model price overrides, model detail dialog, chart hover tooltip, speed premium note, ChatGPT shared usage, or keyboard shortcuts (stock's `mod+u`, `c`, `t`, `l`).
+- Usage: no environment or provider pickers (this client has one environment), model price overrides, model detail dialog, chart hover tooltip, speed premium note, ChatGPT shared usage, or in-page shortcuts (stock's `c`, `t`, `l` and the period keys). `mod+u` opens it, as in stock.
 - Usage limits: no usage-limit hubs (`usageLimitSources` is stream-only and `server.getConfig` doesn't send it), external usage links, segment popovers or reset credits. Refresh re-reads the config instead of calling `server.refreshProviders`, which is a guarded RPC and fails without the atom command boundary (see "the command path assumes atoms").
 
 ## Open: reading `packages/` restarts the dev server on Windows

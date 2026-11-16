@@ -35,6 +35,7 @@ import {
   queueCommandImpl,
   respondRequestImpl,
   searchEntriesImpl,
+  searchThreadsImpl,
   modelFavoritesImpl,
   serverProvidersImpl,
   setModelFavoriteImpl,
@@ -58,14 +59,18 @@ import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelM
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
 import { projectFavicons } from "./Infrastructure/projectFavicons";
+import { serverKeybindings } from "./Infrastructure/serverKeybindings";
 import { shellStream } from "./Infrastructure/shellStream";
 import { rememberedTerminalImpl, rememberTerminalImpl } from "./Infrastructure/terminalMemory";
+import { sourceControlImplementations } from "./Infrastructure/sourceControlImpl";
 import { terminalSession } from "./Infrastructure/terminalSession";
+import { vcsStatus } from "./Infrastructure/vcsStatus";
 import { threadHistoryPageImpl } from "./Infrastructure/threadHistory";
 import { threadStream } from "./Infrastructure/threadStream";
 import { ThreadReceiver } from "./OpenThread";
 import { getDefaultRoot, load, RootReceiver } from "./Root";
 import { ShellReceiver } from "./Shell";
+import { DetailsReceiver } from "./ThreadDetails";
 import { TerminalReceiver } from "./ThreadSession";
 
 await pairFromUrl();
@@ -90,6 +95,7 @@ runtime.registerImplementation(projectCommandImpl);
 runtime.registerImplementation(addProjectSettingsImpl);
 runtime.registerImplementation(browseFoldersImpl);
 runtime.registerImplementation(searchEntriesImpl);
+runtime.registerImplementation(searchThreadsImpl);
 runtime.registerImplementation(startCloneImpl);
 runtime.registerImplementation(cloneControlImpl);
 runtime.registerImplementation(newProjectImpl);
@@ -108,10 +114,15 @@ runtime.registerImplementation(storedNewThreadImpl);
 runtime.registerImplementation(storeDraftImpl);
 runtime.registerImplementation(storedDraftFilesImpl);
 runtime.registerImplementation(storeDraftFilesImpl);
+for (const sourceControlImpl of sourceControlImplementations) {
+  runtime.registerImplementation(sourceControlImpl);
+}
 runtime.registerResourceType("composerFiles", composerFiles);
+runtime.registerResourceType("vcsStatus", vcsStatus);
 runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);
 runtime.registerResourceType("projectFavicons", projectFavicons);
+runtime.registerResourceType("serverKeybindings", serverKeybindings);
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);
@@ -131,6 +142,7 @@ runtime.registerReceiver(EnvironmentReceiver);
 runtime.registerReceiver(ShellReceiver);
 runtime.registerReceiver(ThreadReceiver);
 runtime.registerReceiver(TerminalReceiver);
+runtime.registerReceiver(DetailsReceiver);
 void runtime.dispatch(load, "Root");
 
 render(

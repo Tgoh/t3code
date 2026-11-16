@@ -1,9 +1,11 @@
 import type {
   AssetResource,
   ModelCapabilities,
+  ProjectScript,
   ServerProviderSkill,
   ServerProviderSlashCommand,
 } from "@t3tools/contracts";
+import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
 import type { IWireProjection, IWireTurnItem } from "./wire";
@@ -150,7 +152,8 @@ export type IThreadCommand =
   | { Kind: "unarchive" }
   | { Kind: "delete" }
   | { Kind: "modelSelection"; Selection: IWireModelSelection }
-  | { Kind: "runtimeMode"; Mode: IWireRuntimeMode };
+  | { Kind: "runtimeMode"; Mode: IWireRuntimeMode }
+  | { Kind: "branch"; Branch: string | null };
 
 interface IThreadCommandEffect extends IEffect {
   Type: "threadCommand";
@@ -169,7 +172,8 @@ export type IProjectCommand =
   | { Kind: "archive" }
   | { Kind: "unarchive" }
   | { Kind: "rename"; Title: string }
-  | { Kind: "delete"; Force?: boolean };
+  | { Kind: "delete"; Force?: boolean }
+  | { Kind: "scripts"; Scripts: ProjectScript[] };
 
 interface IProjectCommandEffect extends IEffect {
   Type: "projectCommand";
@@ -229,6 +233,17 @@ export const searchEntriesEffect = defineEffect<ISearchEntriesEffect, IProjectEn
 export const browseFoldersEffect = defineEffect<IBrowseFoldersEffect, IFolderListing>(
   "browseFolders",
 );
+
+interface ISearchThreadsEffect extends IEffect {
+  Type: "searchThreads";
+  EnvironmentId: string;
+  Query: string;
+}
+
+export const searchThreadsEffect = defineEffect<
+  ISearchThreadsEffect,
+  { Matches: EnvironmentThreadSearchMatch[] }
+>("searchThreads");
 
 export interface IStartClone {
   EnvironmentId: string;

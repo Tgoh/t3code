@@ -102,7 +102,12 @@ const layerUnused = Layer.mergeAll(
     listDisabled: Effect.succeed([]),
   }),
   Layer.mock(Persistence.ConnectionRegistrationStore)({}),
-  Layer.mock(Persistence.EnvironmentCacheStore)({ clear: () => Effect.void }),
+  // Git actions invalidate cached ref lists after they run, so these answer instead of defecting.
+  Layer.mock(Persistence.EnvironmentCacheStore)({
+    clear: () => Effect.void,
+    clearVcsRefs: () => Effect.void,
+    removeVcsRefs: () => Effect.void,
+  }),
   Layer.mock(ProfileStore.ConnectionProfileStore)({}),
   Layer.mock(CredentialStore.ConnectionCredentialStore)({}),
   Layer.mock(TokenStore.RemoteDpopAccessTokenStore)({}),

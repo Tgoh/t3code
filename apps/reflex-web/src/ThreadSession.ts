@@ -51,6 +51,7 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
+import { branchDiffEffect, type IBranchDiff } from "./Infrastructure/sourceControlEffects";
 import {
   storeDraftEffect,
   storedDraftEffect,
@@ -121,9 +122,10 @@ export type IAttachmentDraft = IPickedFile;
 
 export interface IDiffPanel {
   Open: boolean;
-  Scope: "turn" | "thread";
+  Scope: "turn" | "thread" | "branch";
   ToTurnCount: number | null;
   Text: string | null;
+  BaseRef?: string | null;
   Error?: string;
 }
 
@@ -164,7 +166,7 @@ export interface IThreadSession extends IEntity {
   QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
   QuestionIndex: Record<string, number>;
   QuestionNotice?: string;
-  Panels: { Diff: IDiffPanel };
+  Panels: { Diff: IDiffPanel; Details: { Open: boolean }; Launcher: { Open: boolean } };
   Terminal: ITerminalPanel;
 }
 
@@ -185,6 +187,9 @@ export function getDefaultThreadSession(
     QuestionIndex: {},
     Panels: {
       Diff: { Open: false, Scope: "turn", ToTurnCount: null, Text: null },
+      // Follows DEFAULT_THREAD_PANEL_VISIBILITY in apps/web/src/rightPanelStore.ts.
+      Details: { Open: true },
+      Launcher: { Open: false },
     },
     Terminal: { Open: false, TerminalId: DEFAULT_TERMINAL_ID },
   };
@@ -809,15 +814,21 @@ export function* toggleRowExpanded(draft: IThreadSession, rowId: string): IActio
 
 export function* openDiff(
   draft: IThreadSession,
-  scope: "turn" | "thread",
+  scope: "turn" | "thread" | "branch",
   turnCount: number | null,
 ): IOpenGenerator {
+  draft.Panels.Launcher.Open = false;
+  if (scope === "branch") {
+    yield* openBranchDiff(draft);
+    return;
+  }
   const toTurnCount = turnCount ?? (yield* select(latestThreadDiffTurn));
   const panel = draft.Panels.Diff;
   panel.Open = true;
   panel.Scope = scope;
   panel.ToTurnCount = toTurnCount;
   panel.Text = null;
+  delete panel.BaseRef;
   delete panel.Error;
   if (toTurnCount === null) {
     panel.Text = "";
@@ -843,11 +854,58 @@ export function* openDiff(
 }
 latest(openDiff);
 
+function* openBranchDiff(draft: IThreadSession): IOpenGenerator {
+  const cwd = yield* select(searchRoot);
+  const panel = draft.Panels.Diff;
+  panel.Open = true;
+  panel.Scope = "branch";
+  panel.ToTurnCount = null;
+  panel.Text = null;
+  panel.BaseRef = null;
+  delete panel.Error;
+  if (cwd === null) {
+    panel.Error = "This thread's project isn't loaded yet.";
+    return;
+  }
+  let diff: IBranchDiff | null = null;
+  let failure: string | null = null;
+  try {
+    diff = yield* open(branchDiffEffect({ EnvironmentId: draft.EnvironmentId, Cwd: cwd }));
+  } catch (error) {
+    failure = errorText(error);
+  }
+  const current = draft.Panels.Diff;
+  if (!current.Open || current.Scope !== "branch") return;
+  if (diff !== null) {
+    current.Text = diff.Diff;
+    current.BaseRef = diff.BaseRef;
+  }
+  if (failure !== null) current.Error = failure;
+}
+
 export function* closeDiff(draft: IThreadSession): IActionGenerator {
   const panel = draft.Panels.Diff;
   panel.Open = false;
   panel.Text = null;
+  delete panel.BaseRef;
   delete panel.Error;
+}
+
+export function* toggleDetails(draft: IThreadSession): IActionGenerator {
+  draft.Panels.Details.Open = !draft.Panels.Details.Open;
+}
+
+/** The header's right-panel toggle: closes whichever surface is open, or shows the launcher. */
+export function* toggleRightPanel(draft: IThreadSession): IActionGenerator {
+  if (draft.Panels.Diff.Open) {
+    yield* closeDiff(draft);
+    return;
+  }
+  draft.Panels.Launcher.Open = !draft.Panels.Launcher.Open;
+}
+
+export function* closeLauncher(draft: IThreadSession): IActionGenerator {
+  draft.Panels.Launcher.Open = false;
 }
 
 function* attachTerminal(draft: IThreadSession, launch: ITerminalLaunch): IActionGenerator {
@@ -970,6 +1028,9 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     toggleRowExpanded,
     openDiff,
     closeDiff,
+    toggleDetails,
+    toggleRightPanel,
+    closeLauncher,
     openTerminal,
     closeTerminal,
     endTerminal,

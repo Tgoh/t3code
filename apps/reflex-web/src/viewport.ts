@@ -112,22 +112,49 @@ export interface ISidebarSheet {
   sheet: Accessor<boolean>;
   open: Accessor<boolean>;
   setOpen: (open: boolean) => void;
+  /** The column is hidden, which only a wide layout allows. */
+  collapsed: Accessor<boolean>;
+  /** Opens or closes the sheet on a narrow layout, and collapses or restores the column on a wide one. */
+  toggle: () => void;
 }
 
-/** Selecting a thread closes the sheet, and leaving the sheet layout forgets that it was open. */
-export function createSidebarSheet(sheet: Accessor<boolean>, selection: Accessor<unknown>) {
+/**
+ * Selecting a thread closes the sheet, and leaving the sheet layout forgets that it was open. The
+ * column's collapse outlives the sheet layout, as stock's sidebar cookie does.
+ */
+export function createSidebarSheet(
+  sheet: Accessor<boolean>,
+  selection: Accessor<unknown>,
+  collapse: { initial: boolean; onChange: (collapsed: boolean) => void } = {
+    initial: false,
+    onChange: () => {},
+  },
+) {
   const [open, setOpen] = createSignal(false);
+  const [collapsed, setCollapsed] = createSignal(collapse.initial);
   createComputed(on(selection, () => setOpen(false), { defer: true }));
   createComputed(() => {
     if (!sheet()) setOpen(false);
   });
-  return { sheet, open: () => sheet() && open(), setOpen } satisfies ISidebarSheet;
+  return {
+    sheet,
+    open: () => sheet() && open(),
+    setOpen,
+    collapsed: () => !sheet() && collapsed(),
+    toggle: () => {
+      if (sheet()) return setOpen(!open());
+      setCollapsed(!collapsed());
+      collapse.onChange(collapsed());
+    },
+  } satisfies ISidebarSheet;
 }
 
 export const SidebarSheetContext = createContext<ISidebarSheet>({
   sheet: () => false,
   open: () => false,
   setOpen: () => {},
+  collapsed: () => false,
+  toggle: () => {},
 });
 
 export const useSidebarSheet = () => useContext(SidebarSheetContext);
