@@ -24,7 +24,17 @@ import { TerminalPanel } from "./TerminalPanel";
 import ThreadSession from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
 import { TimelineResponse } from "./TimelineResponse";
-import { firstAfterChange, grow, INITIAL_ROWS, keepsWindow, trimToTail } from "./timelineWindow";
+import {
+  firstAfterChange,
+  followAfterScroll,
+  grow,
+  type IScrollPosition,
+  INITIAL_ROWS,
+  keepsWindow,
+  trimToTail,
+} from "./timelineWindow";
+
+const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
 import { TurnStatus } from "./TurnStatus";
 
 const LoadEarlier = HistoryWindow.provider(() => {
@@ -148,7 +158,14 @@ const ThreadBody = ThreadSession.provider(() => {
   let stage!: HTMLDivElement;
   let lane!: HTMLDivElement;
   const [stuck, setStuck] = createSignal(true);
-  let lastTop = 0;
+  const position = (): IScrollPosition => ({
+    Top: scroller.scrollTop,
+    Height: scroller.scrollHeight,
+    ClientHeight: scroller.clientHeight,
+  });
+  let lastPosition: IScrollPosition = { Top: 0, Height: 0, ClientHeight: 0 };
+  let touching = false;
+  let dragging = false;
   const scrollToEnd = () => {
     scroller.scrollTop = scroller.scrollHeight;
   };
@@ -210,7 +227,7 @@ const ThreadBody = ThreadSession.provider(() => {
     // and a scroll-up in the same frame still is.
     if (trimmed)
       queueMicrotask(() => {
-        lastTop += scroller.scrollTop - before;
+        lastPosition = { ...lastPosition, Top: lastPosition.Top + scroller.scrollTop - before };
       });
   });
   const windowIds = createMemo(() => {
@@ -325,12 +342,26 @@ const ThreadBody = ThreadSession.provider(() => {
             ref={scroller}
             tabIndex={-1}
             onScroll={() => {
-              const top = scroller.scrollTop;
-              if (scroller.scrollHeight - top - scroller.clientHeight < 40) setStuck(true);
-              // Only an upward scroll detaches: the scroll event can land after more content
-              // arrived, which leaves a follow-up scroll looking far from the end.
-              else if (top < lastTop) setStuck(false);
-              lastTop = top;
+              const next = position();
+              const follow = followAfterScroll(lastPosition, next, touching || dragging);
+              if (follow === "stick") setStuck(true);
+              else if (follow === "detach") setStuck(false);
+              lastPosition = next;
+            }}
+            onWheel={(event) => {
+              if (event.deltaY < 0 && scroller.scrollTop > 0) setStuck(false);
+            }}
+            onKeyDown={(event) => {
+              if (SCROLL_UP_KEYS.has(event.key) && scroller.scrollTop > 0) setStuck(false);
+            }}
+            onTouchStart={() => (touching = true)}
+            onTouchEnd={() => (touching = false)}
+            onTouchCancel={() => (touching = false)}
+            onPointerDown={(event) => {
+              // A press on the scroller itself, not on a row, is its scrollbar.
+              if (event.target !== scroller) return;
+              dragging = true;
+              document.addEventListener("pointerup", () => (dragging = false), { once: true });
             }}
           >
             <div class="timeline-lane" ref={content}>
@@ -377,7 +408,13 @@ const ThreadBody = ThreadSession.provider(() => {
             <For each={thread.pendingQuestionIds()}>
               {(id) => <RequestBanner state={thread.state.RuntimeRequests[id]!} />}
             </For>
-            <Composer active={turnState() !== null} />
+            <Composer
+              active={turnState() !== null}
+              onSend={() => {
+                setStuck(true);
+                scrollToEnd();
+              }}
+            />
           </div>
         </div>
         <Show when={terminalOpen()}>

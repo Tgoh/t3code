@@ -116,7 +116,7 @@ export function FileDropSection(props: { children: JSX.Element }) {
   );
 }
 
-export function Composer(props: { active?: boolean }) {
+export function Composer(props: { active?: boolean; onSend?: () => void }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
   const held = () => session.state;
@@ -135,7 +135,9 @@ export function Composer(props: { active?: boolean }) {
     !session.sending() &&
     (held().Draft.trim() !== "" || held().Attachments.length > 0);
   const send = () => {
-    if (blocked() === null) session.send();
+    if (blocked() !== null) return;
+    if (canSend()) props.onSend?.();
+    session.send();
   };
 
   const onPaste = (event: ClipboardEvent & { currentTarget: HTMLTextAreaElement }) => {

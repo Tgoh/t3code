@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   CHUNK_ROWS,
   firstAfterChange,
+  followAfterScroll,
   grow,
   INITIAL_ROWS,
   initialFirst,
@@ -74,5 +75,21 @@ describe("the timeline window", () => {
     expect(trimToTail(200, 0, INITIAL_ROWS)).toBe(200 - INITIAL_ROWS);
     expect(trimToTail(200, 0, 120)).toBe(80);
     expect(trimToTail(50, 0, INITIAL_ROWS)).toBe(0);
+  });
+});
+
+describe("following the end", () => {
+  const at = (Top: number, Height = 2_000, ClientHeight = 500) => ({ Top, Height, ClientHeight });
+
+  it("sticks near the end and detaches on a move up with no size change", () => {
+    expect(followAfterScroll(at(1_000), at(1_480), false)).toBe("stick");
+    expect(followAfterScroll(at(1_000), at(900), false)).toBe("detach");
+    expect(followAfterScroll(at(900), at(1_000), false)).toBe("keep");
+  });
+
+  it("keeps following when a shrink lowers scrollTop, unless the user is scrolling", () => {
+    const clamped = at(1_200, 1_900, 500);
+    expect(followAfterScroll(at(1_500, 2_000, 400), clamped, false)).toBe("keep");
+    expect(followAfterScroll(at(1_500, 2_000, 400), clamped, true)).toBe("detach");
   });
 });
