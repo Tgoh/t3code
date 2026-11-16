@@ -4,10 +4,18 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 
 import { T3Mark } from "./brand";
 import Environment from "./Environment";
-import { ChevronDown, ChevronRight, FolderPlus, Folders, SquarePen, X } from "./icons";
+import { ProjectBadge } from "./brand";
+import { ArrowUpDown, ChevronDown, ChevronRight, FolderPlus, Folders, SquarePen, X } from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { AddProjectPalette } from "./AddProject";
-import { FolderHeader, ProjectMenu } from "./ProjectFolder";
+import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder";
+import { createProjectDrag } from "./projectDrag";
+import {
+  type IProjectSort,
+  isProjectSort,
+  orderFolders,
+  PROJECT_SORT_LABELS,
+} from "./projectOrder";
 import Root from "./Root";
 import Shell, { isBusy, projectFolders, sidebarSections, sidebarStatus } from "./Shell";
 import { StageArt } from "./StageArt";
@@ -29,6 +37,8 @@ const SETTLED_PAGE = 25;
 
 const GROUP_KEY = "reflex-web:group-by-project";
 const CLOSED_FOLDERS_KEY = "reflex-web:closed-folders";
+const PROJECT_SORT_KEY = "reflex-web:project-sort";
+const PROJECT_ORDER_KEY = "reflex-web:project-order";
 
 function readStored<T>(key: string, fallback: T): T {
   try {
@@ -125,17 +135,37 @@ export const Sidebar = Shell.provider(() => {
     setClosedFolders(next);
     writeStored(CLOSED_FOLDERS_KEY, [...next]);
   };
+  const storedSort = readStored<unknown>(PROJECT_SORT_KEY, "manual");
+  const [projectSort, setProjectSort] = createSignal<IProjectSort>(
+    isProjectSort(storedSort) ? storedSort : "manual",
+  );
+  const storedOrder = readStored<unknown>(PROJECT_ORDER_KEY, []);
+  const [projectOrder, setProjectOrder] = createSignal<string[]>(
+    Array.isArray(storedOrder) ? storedOrder.filter((id) => typeof id === "string") : [],
+  );
   const folders = createMemo(
     () =>
       new Map(
         grouped()
-          ? projectFolders(sections().Active, shell.state.Projects).map((folder) => [
-              folder.ProjectId,
-              folder,
-            ])
+          ? orderFolders(
+              projectFolders(sections().Active, shell.state.Projects),
+              projectSort(),
+              projectOrder(),
+              shell.sidebarThreads(),
+            ).map((folder) => [folder.ProjectId, folder])
           : [],
       ),
   );
+  const [list, setList] = createSignal<HTMLElement>();
+  const drag = createProjectDrag({
+    list,
+    order: () => [...folders().keys()],
+    onDrop: (order) => {
+      setProjectOrder(order);
+      writeStored(PROJECT_ORDER_KEY, order);
+    },
+  });
+  const [removingProject, setRemovingProject] = createSignal<string | null>(null);
   const [addingProject, setAddingProject] = createSignal(false);
   const [renamingProject, setRenamingProject] = createSignal<string | null>(null);
   const [projectMenu, setProjectMenu] = createSignal<{ Id: string; X: number; Y: number } | null>(
@@ -243,6 +273,28 @@ export const Sidebar = Shell.provider(() => {
         >
           <Folders />
         </button>
+        <Show when={grouped()}>
+          <label
+            class="icon-button picker-overlay"
+            data-tip={`Sort projects: ${PROJECT_SORT_LABELS[projectSort()]}`}
+          >
+            <ArrowUpDown />
+            <select
+              aria-label="Sort projects"
+              value={projectSort()}
+              onChange={(event) => {
+                const next = event.currentTarget.value;
+                if (!isProjectSort(next)) return;
+                setProjectSort(next);
+                writeStored(PROJECT_SORT_KEY, next);
+              }}
+            >
+              <For each={Object.entries(PROJECT_SORT_LABELS)}>
+                {([value, label]) => <option value={value}>{label}</option>}
+              </For>
+            </select>
+          </label>
+        </Show>
       </div>
       <Show when={addingProject()}>
         <AddProjectPalette onClose={() => setAddingProject(false)} />
@@ -271,7 +323,7 @@ export const Sidebar = Shell.provider(() => {
           <p class="empty">{shell.shellSynchronized() ? "No threads yet." : "Loading threads…"}</p>
         }
       >
-        <ul class="thread-list">
+        <ul class="thread-list" ref={setList}>
           <For each={sections().Pinned}>{(thread) => card(thread, "pinned")}</For>
           <Show
             when={
@@ -289,37 +341,52 @@ export const Sidebar = Shell.provider(() => {
               {(projectId) => {
                 const folder = () => folders().get(projectId)!;
                 return (
-                  <>
-                    <FolderHeader
-                      folder={folder()}
-                      open={!closedFolders().has(projectId)}
-                      renaming={renamingProject() === projectId}
-                      onToggle={() => toggleFolder(projectId)}
-                      onMenu={(x, y) => setProjectMenu({ Id: projectId, X: x, Y: y })}
-                      onRenamed={(title) => {
-                        setRenamingProject(null);
-                        const trimmed = title?.trim();
-                        if (trimmed && trimmed !== folder().Project?.title) {
-                          environment.projectCommand(projectId, {
-                            Kind: "rename",
-                            Title: trimmed,
-                          });
+                  <li
+                    class="folder-group"
+                    classList={{ dragging: drag.dragging() === projectId }}
+                    data-folder-id={projectId}
+                  >
+                    <ul class="folder-rows">
+                      <FolderHeader
+                        folder={folder()}
+                        open={!closedFolders().has(projectId)}
+                        renaming={renamingProject() === projectId}
+                        draggable={projectSort() === "manual"}
+                        onDragStart={(event) => drag.begin(event, projectId)}
+                        onToggle={() => toggleFolder(projectId)}
+                        onMenu={(x, y) => setProjectMenu({ Id: projectId, X: x, Y: y })}
+                        onRenamed={(title) => {
+                          setRenamingProject(null);
+                          const trimmed = title?.trim();
+                          if (trimmed && trimmed !== folder().Project?.title) {
+                            environment.projectCommand(projectId, {
+                              Kind: "rename",
+                              Title: trimmed,
+                            });
+                          }
+                        }}
+                      />
+                      <For
+                        each={
+                          closedFolders().has(projectId)
+                            ? folder().Threads.filter((thread) => thread.id === selected())
+                            : folder().Threads
                         }
-                      }}
-                    />
-                    <For
-                      each={
-                        closedFolders().has(projectId)
-                          ? folder().Threads.filter((thread) => thread.id === selected())
-                          : folder().Threads
-                      }
-                    >
-                      {(thread) => card(thread, "active")}
-                    </For>
-                  </>
+                      >
+                        {(thread) => card(thread, "active")}
+                      </For>
+                    </ul>
+                  </li>
                 );
               }}
             </For>
+            <Show when={drag.lineTop() !== null}>
+              <li
+                class="folder-drop-line"
+                style={{ top: `${drag.lineTop()}px` }}
+                aria-hidden="true"
+              />
+            </Show>
           </Show>
           <Show when={sections().Pinned.length === 0 && sections().Active.length === 0}>
             <li class="empty inbox-clear">All clear.</li>
@@ -378,8 +445,22 @@ export const Sidebar = Shell.provider(() => {
             x={projectMenu()?.X ?? 0}
             y={projectMenu()?.Y ?? 0}
             onRename={() => setRenamingProject(project.id)}
+            onRemove={() => setRemovingProject(project.id)}
             onClose={() => setProjectMenu(null)}
           />
+        )}
+      </Show>
+      <Show when={shell.state.Projects[removingProject() ?? ""]} keyed>
+        {(project) => (
+          <RemoveProjectDialog project={project} onClose={() => setRemovingProject(null)} />
+        )}
+      </Show>
+      <Show when={folders().get(drag.dragging() ?? "")} keyed>
+        {(folder) => (
+          <div class="folder-ghost" ref={drag.setGhost} aria-hidden="true">
+            <ProjectBadge name={folder.Project?.title ?? "Unknown project"} size={12} />
+            <span>{folder.Project?.title ?? "Unknown project"}</span>
+          </div>
         )}
       </Show>
     </nav>

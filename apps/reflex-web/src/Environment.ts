@@ -29,6 +29,7 @@ import {
   type IThreadCommand,
   modelFavoritesEffect,
   newProjectEffect,
+  openInFileManagerEffect,
   projectCommandEffect,
   serverProvidersEffect,
   setModelFavoriteEffect,
@@ -287,6 +288,38 @@ export function* projectCommand(
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+// Follows removeMembers in apps/web/src/components/settings/ProjectSettingsPanel.tsx.
+export function* removeProject(
+  draft: IEnvironment,
+  projectId: string,
+): IOpenGenerator<string | null> {
+  try {
+    yield* sendProjectCommand(draft.EnvironmentId, projectId, { Kind: "delete", Force: true });
+  } catch (error) {
+    return errorText(error);
+  }
+  // The server deleted the project's threads too, and the shell doesn't say why a row left.
+  const threadIds = new Set<string>(
+    Object.values(draft.Replica.Shell.Threads)
+      .filter((thread) => thread.projectId === projectId)
+      .map((thread) => thread.id),
+  );
+  for (const session of Object.values(draft.Local.ThreadSessions)) {
+    if (session.NewThreadProjectId === projectId) threadIds.add(session.ThreadId);
+  }
+  for (const threadId of threadIds) yield* forgetThread(draft, threadId);
+  return null;
+}
+leading(removeProject);
+
+export function* removingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return yield* inFlight(removeProject, draft);
+}
+
+export function* openInFileManager(draft: IEnvironment, path: string): IOpenGenerator {
+  yield* open(openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path }));
+}
+
 // Follows handleAddProjectForEnvironment in apps/web/src/components/CommandPalette.tsx.
 export function* addFolder(
   draft: IEnvironment,
@@ -444,6 +477,8 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     newProject,
     cloneControl,
     toggleModelFavorite,
+    removeProject,
+    openInFileManager,
   },
   {
     selectedOpenThread,
@@ -452,5 +487,6 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     currentProjectRoot,
     addingProject,
     cloneControlling,
+    removingProject,
   },
 );

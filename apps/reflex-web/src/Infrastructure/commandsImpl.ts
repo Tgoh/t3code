@@ -52,6 +52,7 @@ import {
   type IProviderOption,
   modelFavoritesEffect,
   newProjectEffect,
+  openInFileManagerEffect,
   projectCommandEffect,
   queueCommandEffect,
   respondRequestEffect,
@@ -241,7 +242,9 @@ export const projectCommandImpl = implementation(projectCommandEffect, async (in
     case "rename":
       return void (await run(updateProject({ ...common, title: command.Title })));
     case "delete":
-      return void (await run(deleteProject(common)));
+      return void (await run(
+        deleteProject(command.Force === true ? { ...common, force: true } : common),
+      ));
     default:
       command satisfies never;
   }
@@ -305,6 +308,13 @@ export const newProjectImpl = implementation(newProjectEffect, async (input) => 
     WorkspaceRoot: created.workspaceRoot,
     CommitError: created.commitError ?? null,
   };
+});
+
+export const openInFileManagerImpl = implementation(openInFileManagerEffect, async (input) => {
+  await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.shellOpenInEditor, { cwd: input.Path, editor: "file-manager" }),
+  );
 });
 
 export const closeTerminalImpl = implementation(closeTerminalEffect, async (input) => {

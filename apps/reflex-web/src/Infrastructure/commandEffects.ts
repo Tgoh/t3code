@@ -147,7 +147,7 @@ export type IProjectCommand =
   | { Kind: "unpin" }
   | { Kind: "unarchive" }
   | { Kind: "rename"; Title: string }
-  | { Kind: "delete" };
+  | { Kind: "delete"; Force?: boolean };
 
 interface IProjectCommandEffect extends IEffect {
   Type: "projectCommand";
@@ -228,6 +228,16 @@ interface INewProjectEffect extends IEffect {
 }
 
 export const newProjectEffect = defineEffect<INewProjectEffect, INewProject>("newProject");
+
+interface IOpenInFileManagerEffect extends IEffect {
+  Type: "openInFileManager";
+  EnvironmentId: string;
+  Path: string;
+}
+
+export const openInFileManagerEffect = defineEffect<IOpenInFileManagerEffect, void>(
+  "openInFileManager",
+);
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 
