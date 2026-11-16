@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import { implementation } from "treflex";
 
+import { fileAttachmentLimit } from "../attachmentIntake";
 import { loadDescriptor } from "./connection";
 import { environmentInfo } from "./environmentInfo";
 
@@ -17,6 +18,7 @@ async function readInfo() {
     Authenticated: session.authenticated === true,
     EnvironmentId: descriptor.environmentId,
     Label: descriptor.label,
+    FileAttachmentLimit: fileAttachmentLimit(descriptor.capabilities),
   };
 }
 

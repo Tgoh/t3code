@@ -4,6 +4,7 @@ export interface IEnvironmentInfo {
   Authenticated: boolean;
   EnvironmentId: string;
   Label: string;
+  FileAttachmentLimit: number | null;
 }
 
 interface IEnvironmentInfoEffect extends IEffect {

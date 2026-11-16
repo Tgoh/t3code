@@ -54,6 +54,7 @@ declare module "treflex" {
 export interface IEnvironment extends IEntity {
   EnvironmentId: string;
   Label: string;
+  FileAttachmentLimit: number | null;
   Replica: IReplica;
   Local: IEntity & {
     SelectedThreadId: string | null;
@@ -64,6 +65,7 @@ export interface IEnvironment extends IEntity {
 export function* newEnvironment(
   environmentId: string,
   label: string,
+  fileAttachmentLimit: number | null,
 ): IActionGenerator<IEnvironment> {
   const shell = yield* entity<IShell>(getDefaultShell(environmentId));
   const replica = yield* entity<IReplica>({ Providers: [], Shell: shell, OpenThreads: {} });
@@ -74,6 +76,7 @@ export function* newEnvironment(
   return yield* entity<IEnvironment>({
     EnvironmentId: environmentId,
     Label: label,
+    FileAttachmentLimit: fileAttachmentLimit,
     Replica: replica,
     Local: local,
   });

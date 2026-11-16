@@ -1,10 +1,28 @@
+import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
+import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useResource } from "treflex-solid";
-import { type Component, For, Show } from "solid-js";
+import { type Component, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
+import {
+  admitFiles,
+  attachmentDetail,
+  foldPastedText,
+  shouldHandleAttachmentPaste,
+  splitTransferredFiles,
+} from "./attachmentIntake";
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
-import { ArrowUp, Lock, Paperclip, PenLine, ShieldOff, Sparkles, X } from "./icons";
+import {
+  ArrowUp,
+  File as FileIcon,
+  Lock,
+  Paperclip,
+  PenLine,
+  ShieldOff,
+  Sparkles,
+  X,
+} from "./icons";
 import type { IWireModelSelection, IWireRuntimeMode } from "./Infrastructure/commandEffects";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { StageArt } from "./StageArt";
@@ -18,11 +36,114 @@ const RUNTIME_MODES: Record<string, { Label: string; Icon: Component }> = {
   "full-access": { Label: "Full access", Icon: ShieldOff },
 };
 
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+
+function useAttachmentIntake() {
+  const environment = Environment.use();
+  const session = ThreadSession.use();
+  const files = useResource(() => session.state, "Composer/Files");
+  const addFiles = async (picked: File[], pastedText = false) => {
+    if (picked.length === 0) return;
+    const admitted = admitFiles(picked, {
+      Reserved: session.state.Attachments.length,
+      FileLimit: environment.state.FileAttachmentLimit,
+      PastedText: pastedText,
+    });
+    const supplied = admitted.Accepted.length === 0 ? [] : await files.supply(admitted.Accepted);
+    if (supplied === undefined) {
+      session.addAttachments([], "Attachments aren't available right now. Try again.");
+      return;
+    }
+    const pasted = pastedText ? supplied[0] : undefined;
+    session.addAttachments(
+      supplied,
+      admitted.Error,
+      pasted === undefined
+        ? null
+        : `Large paste attached as ${pasted.Name} (${formatAttachmentSize(pasted.SizeBytes)}). Use ${
+            IS_MAC ? "⌘⇧V" : "Ctrl+Shift+V"
+          } to keep a large paste inline.`,
+    );
+  };
+  const addFolders = (folders: File[]) => {
+    const folder = folders.at(-1);
+    if (folder !== undefined) {
+      session.addAttachments(
+        [],
+        `Couldn't get the path of "${folder.name}". Type its path instead.`,
+      );
+    }
+  };
+  return { files, addFiles, addFolders };
+}
+
+/** The thread's drop target for files, with stock's "Drop files to attach" overlay. */
+export function FileDropSection(props: { children: JSX.Element }) {
+  const intake = useAttachmentIntake();
+  const [dragActive, setDragActive] = createSignal(false);
+  const isFileDrag = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
+  const movedWithin = (event: DragEvent & { currentTarget: HTMLElement }) =>
+    event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget);
+  onMount(() => {
+    // Escape can cancel a drag without a dragleave.
+    const clear = () => setDragActive(false);
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear);
+    onCleanup(() => {
+      window.removeEventListener("dragend", clear);
+      window.removeEventListener("drop", clear);
+    });
+  });
+  return (
+    <section
+      class="thread"
+      onDragEnter={(event) => {
+        if (!isFileDrag(event)) return;
+        event.preventDefault();
+        if (!movedWithin(event)) setDragActive(true);
+      }}
+      onDragOver={(event) => {
+        if (!isFileDrag(event)) return;
+        event.preventDefault();
+        event.dataTransfer!.dropEffect = "copy";
+        setDragActive(true);
+      }}
+      onDragLeave={(event) => {
+        if (!isFileDrag(event)) return;
+        event.preventDefault();
+        if (!movedWithin(event)) setDragActive(false);
+      }}
+      onDrop={(event) => {
+        if (!isFileDrag(event)) return;
+        event.preventDefault();
+        setDragActive(false);
+        const { files, folders } = splitTransferredFiles(event.dataTransfer!);
+        intake.addFolders(folders);
+        void intake.addFiles(files);
+      }}
+    >
+      <Show when={dragActive()}>
+        <div class="drop-overlay">
+          <div role="status">
+            <Paperclip />
+            Drop files to attach
+          </div>
+        </div>
+      </Show>
+      {props.children}
+    </section>
+  );
+}
+
 export function Composer(props: { active?: boolean }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
   const held = () => session.state;
-  const files = useResource(held, "Composer/Files");
+  const intake = useAttachmentIntake();
+  const files = intake.files;
+  const images = () => held().Attachments.filter((file) => file.Kind === "image");
+  const otherFiles = () => held().Attachments.filter((file) => file.Kind === "file");
+  const [pasteAsTextUntil, setPasteAsTextUntil] = createSignal(0);
   const isDraft = () => held().NewThreadProjectId != null;
   const selection = () => session.effectiveModelKey();
   const mode = () => RUNTIME_MODES[session.effectiveRuntimeMode()];
@@ -37,10 +158,36 @@ export function Composer(props: { active?: boolean }) {
     if (blocked() === null) session.send();
   };
 
-  const addFiles = async (picked: File[]) => {
-    if (picked.length === 0) return;
-    const supplied = await files.supply(picked);
-    if (supplied) session.addAttachments(supplied);
+  const onPaste = (event: ClipboardEvent & { currentTarget: HTMLTextAreaElement }) => {
+    const data = event.clipboardData;
+    if (data === null) return;
+    const bypass = event.timeStamp <= pasteAsTextUntil();
+    setPasteAsTextUntil(0);
+    const { files: pasted, folders } = splitTransferredFiles(data);
+    const plainText = data.getData("text/plain");
+    if (
+      folders.length > 0 ||
+      (pasted.length > 0 && shouldHandleAttachmentPaste({ files: pasted, plainText }))
+    ) {
+      event.preventDefault();
+      intake.addFolders(folders);
+      void intake.addFiles(pasted);
+      return;
+    }
+    const textarea = event.currentTarget;
+    const decision = foldPastedText({
+      Text: plainText,
+      Bypass: bypass,
+      DraftLength: textarea.value.length,
+      Selection: { start: textarea.selectionStart, end: textarea.selectionEnd },
+      AttachedNames: held().Attachments.map((file) => file.Name),
+      Reserved: held().Attachments.length,
+      FileLimit: environment.state.FileAttachmentLimit,
+    });
+    if (decision.Kind === "inline") return;
+    event.preventDefault();
+    if (decision.Kind === "refuse") session.addAttachments([], decision.Error);
+    else void intake.addFiles([decision.File], true);
   };
 
   const pickModel = (value: string) => {
@@ -60,12 +207,37 @@ export function Composer(props: { active?: boolean }) {
           send();
         }}
       >
-        <Show when={held().Attachments.length > 0}>
-          <ul class="attachments">
-            <For each={held().Attachments}>
+        <Show when={images().length > 0}>
+          <ul class="attachment-thumbs">
+            <For each={images()}>
               {(file) => (
                 <li>
-                  {file.Name}
+                  <Show when={file.PreviewUrl}>{(url) => <img src={url()} alt={file.Name} />}</Show>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${file.Name}`}
+                    data-tip={`Remove ${file.Name}`}
+                    onClick={() => session.removeAttachment(file.Id)}
+                  >
+                    <X />
+                  </button>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
+        <Show when={otherFiles().length > 0}>
+          <ul class="attachment-files">
+            <For each={otherFiles()}>
+              {(file) => (
+                <li>
+                  <FileIcon />
+                  <span class="attachment-file-name">
+                    {file.PastedText ? "Pasted text" : file.Name}
+                  </span>
+                  <span class="attachment-file-detail">
+                    {attachmentDetail(file.Name, file.SizeBytes, file.PastedText)}
+                  </span>
                   <button
                     type="button"
                     aria-label={`Remove ${file.Name}`}
@@ -82,18 +254,17 @@ export function Composer(props: { active?: boolean }) {
         <Show when={held().AttachmentError}>
           <p class="composer-error">{held().AttachmentError}</p>
         </Show>
+        <Show when={held().AttachmentNotice}>
+          <p class="composer-notice">{held().AttachmentNotice}</p>
+        </Show>
         <textarea
           rows={2}
           placeholder="Ask anything."
           value={held().Draft}
           onInput={(event) => session.setDraft(event.currentTarget.value)}
-          onPaste={(event) => {
-            const pasted = Array.from(event.clipboardData?.files ?? []);
-            if (pasted.length === 0) return;
-            event.preventDefault();
-            void addFiles(pasted);
-          }}
+          onPaste={onPaste}
           onKeyDown={(event) => {
+            if (isPasteAsTextShortcut(event, IS_MAC)) setPasteAsTextUntil(event.timeStamp + 1_000);
             if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
             event.preventDefault();
             send();
@@ -106,16 +277,15 @@ export function Composer(props: { active?: boolean }) {
           <p class="composer-error">Couldn't stop: {held().StopError}</p>
         </Show>
         <div class="composer-bar">
-          <label class="icon-button attach" data-tip="Attach images">
+          <label class="icon-button attach" data-tip="Attach files">
             <Paperclip />
             <input
               type="file"
-              aria-label="Attach images"
-              accept="image/gif,image/jpeg,image/png,image/webp"
+              aria-label="Attach files"
               multiple
               disabled={files.status().State !== "live"}
               onChange={(event) => {
-                void addFiles(Array.from(event.currentTarget.files ?? []));
+                void intake.addFiles(Array.from(event.currentTarget.files ?? []));
                 event.currentTarget.value = "";
               }}
             />
