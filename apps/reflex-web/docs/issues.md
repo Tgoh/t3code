@@ -30,7 +30,7 @@ Treflex ships as TypeScript source, so the app's typecheck covers it. Reflex fai
 
 ## Limit: providers exercised
 
-Replay and one provider are verified. A real Claude Haiku turn from this client completed with a file-change approval approved in the same tab, and a pasted image reached the provider, which answered correctly. `devReplay`'s ACP agent refuses image prompts, so an image turn there fails with "The provider could not start this turn". Codex and the other providers haven't been run from this client.
+Replay and one provider are verified. A real Claude Haiku turn from this client completed with a file-change approval approved in the same tab, and a pasted image and an attached Markdown file each reached the provider, which answered correctly. `devReplay`'s ACP agent refuses image prompts, so an image turn there fails with "The provider could not start this turn". Codex and the other providers haven't been run from this client.
 
 ## Mismatch: the wire format is decoded and then re-encoded
 
@@ -98,8 +98,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Tool output isn't fetched: the wire omits it, the row says so, and `getTurnItem` would fill it in.
 - A command row doesn't check the server's `commandOutputStreaming` capability, so an older server shows the subscription's error.
 - Secret and link requests are shown but can only be answered in the stock client.
-- Drafts and picked images don't survive a reload.
-- Attachments are images only, and the composer lists them by name with no thumbnail.
+- Drafts and attached files don't survive a reload.
 - The queue offers resume and cancel, with no edit, reorder or promote to steer.
 - A send during a run uses the server's `auto` delivery, with no steer or queue choice.
 - The permissions picker is on a new thread only, offering Full access and Supervised, and interaction mode isn't offered.
@@ -152,6 +151,9 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Timeline: when the composer grows while the view is stuck to the bottom (queued-turn chips, say), a gap stays below the last row, because the stick-to-bottom observer watches the timeline's content, not its scroller.
 - Message actions: copy and time show on every finished assistant message, where stock shows them only on the last of a response. Where a changed files card follows, they sit above the card, not below it, so that gap is 30px against stock's 16px. There's no edit, fork or prompt link action.
 - Timeline: approvals show every option inline, with no More menu and no decline-by-typing placeholder.
+- Attachments: images aren't resized or recompressed, so an image over 10 MB is refused and HEIC is refused rather than converted to JPEG. Uploads show no progress or retry button; a failed upload retries at send. Duplicate images aren't dropped, the 80 MB total for images is left to the server, and the text has no inline chips referring to attachments.
+- Attachments: no preview pane. A file card opens the server's URL in a new tab, and the server serves Markdown and other types it won't show inline as a download. A file card looks the same with or without message text, where stock lists files as rows above the text.
+- Attachments: a dropped or pasted folder is refused, as on stock web; stock desktop inserts its path.
 - Timeline: an expanded image has no next, previous or zoom, images inside markdown don't expand, and an attachment URL isn't refreshed, so a thread left open past its expiry shows a name chip after a reload of the image.
 - Markdown: no syntax highlighting, language icons, run-in-terminal button, file link chips, math or diagrams. A relative link is plain text with its path in a tooltip, not a link that opens the file. A code block's wrap choice resets when its message re-renders during streaming.
 - Changed files card: flat list, not a tree, and its rows don't open a single file's diff.

@@ -327,6 +327,7 @@ export function* send(draft: IThreadSession): IOpenGenerator {
   if (draft.Draft.trim() === text) draft.Draft = "";
   draft.Attachments = draft.Attachments.filter((file) => !fileIds.includes(file.Id));
   delete draft.AttachmentNotice;
+  delete draft.AttachmentError;
   if (fileIds.length > 0) yield* resource(draft, "Composer/Files").forget(fileIds);
   if (projectId !== null) {
     draft.NewThreadProjectId = null;
