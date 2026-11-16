@@ -1603,37 +1603,32 @@ button.fold-label:hover {
 }
 
 .thread-link {
-  align-items: center;
   background: none;
   border: 0;
   border-radius: 4px;
   color: var(--thread-link);
   cursor: pointer;
-  display: inline-flex;
+  display: inline;
   font: inherit;
   font-weight: 500;
-  gap: 0.2em;
-  line-height: normal;
-  max-width: 100%;
   padding: 0;
-  vertical-align: baseline;
+  text-align: inherit;
+}
+
+.thread-link > :first-child {
+  margin-right: 0.2em;
+  vertical-align: -0.15em;
 }
 
 .thread-link svg {
-  align-self: center;
-  flex: none;
   height: 1em;
   width: 1em;
 }
 
 .thread-link-label {
-  min-width: 0;
-  overflow: hidden;
   text-decoration: underline transparent 1px;
-  text-overflow: ellipsis;
   text-underline-offset: 0.2em;
   transition: text-decoration-color 0.15s;
-  white-space: nowrap;
 }
 
 .thread-link:hover .thread-link-label {
