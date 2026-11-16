@@ -11,4 +11,10 @@ Read [README.md](./README.md) first. It covers the state model, the logic copied
   cd /g/Sorted/Code/t3code && git status --porcelain && git merge --ff-only <your branch> && git push origin reflex-main
   ```
 
-  If the main checkout isn't clean, stop and report. If the fast-forward fails, `reflex-main` moved: merge it into your branch again, recheck, and retry. Then stop your test client by the task you started it with, and settle your own thread with `t3_thread_organize` (`action: "settle"`, no `threadId`).
+  If the main checkout isn't clean, stop and report. If the fast-forward fails, `reflex-main` moved: merge it into your branch again, recheck, and retry. If the merge changed `pnpm-lock.yaml` or any `package.json`, the driver doesn't have the new packages yet and its page fails to load: run `vp i` in the main checkout, then restart only the driver's client, which keeps the server and its running turns up:
+
+  ```bash
+  cd /g/Sorted/Code/t3code && vp i -- --yes && chcp.com 65001 >/dev/null; pwsh -NoProfile -File ./dev-stack.ps1 -Restart -Only reflex
+  ```
+
+  Then stop your test client by the task you started it with, and settle your own thread with `t3_thread_organize` (`action: "settle"`, no `threadId`).
