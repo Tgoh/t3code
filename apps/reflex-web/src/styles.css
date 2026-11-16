@@ -703,6 +703,23 @@ main {
   display: inline-flex;
 }
 
+/* A tap leaves :hover and focus on the card it selected, so touch keeps the status there and
+   reaches the actions by long-press. */
+@media (hover: none) {
+  .thread-card:not(:focus-visible, :has(:focus-visible)) .card-slot {
+    display: inline-flex;
+  }
+
+  .thread-card:not(:focus-visible, :has(:focus-visible)) .card-actions {
+    display: none;
+  }
+
+  .thread-card {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+}
+
 .card-action {
   align-items: center;
   background: none;
@@ -798,6 +815,16 @@ main {
 .folder-header:hover .folder-actions,
 .folder-header:focus-within .folder-actions {
   display: inline-flex;
+}
+
+@media (pointer: coarse) {
+  .folder-header .folder-actions {
+    display: inline-flex;
+  }
+
+  .folder-header .section-count {
+    display: none;
+  }
 }
 
 .folder-header:hover .section-count,
@@ -1362,6 +1389,50 @@ main {
 .thread-layout {
   display: flex;
   height: 100%;
+  position: relative;
+}
+
+.panel-backdrop {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  background: var(--dialog-backdrop);
+  inset: 0;
+  position: absolute;
+  z-index: 55;
+}
+
+/* Widths follow stock's RightPanelSheet. */
+.thread-layout.panel-sheet > .right-panel {
+  border-left: 1px solid var(--border);
+  bottom: 0;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  min-width: 20rem;
+  padding-right: env(safe-area-inset-right);
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: min(42vw, 28rem);
+  z-index: 60;
+}
+
+@media (max-width: 760px) {
+  .thread-layout.panel-sheet > .right-panel {
+    min-width: 0;
+    width: min(88vw, 24rem);
+  }
+}
+
+.thread-layout.panel-sheet .terminal-drawer {
+  border-radius: 12px 12px 0 0;
+  bottom: 0;
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 12%);
+  height: min(60%, 420px);
+  left: 0;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+  position: absolute;
+  right: 0;
+  z-index: 56;
 }
 
 .thread {
@@ -2047,6 +2118,13 @@ details[open] > summary .work-chevron {
 .turn-fold:hover .message-time,
 .work-toggle:hover .message-time {
   opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .turn-fold .message-time,
+  .work-toggle .message-time {
+    opacity: 1;
+  }
 }
 
 .turn-fold-toggle {

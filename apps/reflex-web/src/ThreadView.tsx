@@ -27,6 +27,7 @@ import { type IResponseSegments, segmentResponses, startsResponse } from "./time
 import { TimelineResponse } from "./TimelineResponse";
 import { QueuedMessage } from "./TimelineRows";
 import { firstAfterChange, grow, INITIAL_ROWS, keepsWindow, trimToTail } from "./timelineWindow";
+import { createMediaQuery, PANEL_SHEET_QUERY } from "./viewport";
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
@@ -142,6 +143,14 @@ const ThreadBody = ThreadSession.provider(() => {
   });
   const terminalOpen = () => session.state.Terminal.Open;
   const diffOpen = () => session.state.Panels.Diff.Open;
+  const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
+  const closeTopSheet = () => (diffOpen() ? session.closeDiff() : session.closeTerminal());
+  // Escape stays with the shell while the terminal sheet is the one on top.
+  const onSheetKey = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && panelSheet() && diffOpen()) session.closeDiff();
+  };
+  document.addEventListener("keydown", onSheetKey);
+  onCleanup(() => document.removeEventListener("keydown", onSheetKey));
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
   let head!: HTMLDivElement;
@@ -257,7 +266,7 @@ const ThreadBody = ThreadSession.provider(() => {
     });
   });
   return (
-    <div class="thread-layout">
+    <div class="thread-layout" classList={{ "panel-sheet": panelSheet() }}>
       <FileDropSection>
         <header class="thread-header">
           <SidebarToggle />
@@ -417,6 +426,9 @@ const ThreadBody = ThreadSession.provider(() => {
           <TerminalPanel />
         </Show>
       </FileDropSection>
+      <Show when={panelSheet() && (diffOpen() || terminalOpen())}>
+        <div class="panel-backdrop" aria-hidden="true" onClick={closeTopSheet} />
+      </Show>
       <Show when={diffOpen()}>
         <DiffPanel />
       </Show>

@@ -1,7 +1,7 @@
 import { createRoot, createSignal } from "solid-js";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { composerCollapses, createMediaQuery, createSidebarSheet } from "./viewport";
+import { composerCollapses, createMediaQuery, createSidebarSheet, longPress } from "./viewport";
 
 function fakeMedia(initial: boolean) {
   let listener: (() => void) | undefined;
@@ -58,6 +58,49 @@ describe("createSidebarSheet", () => {
       expect(sidebar.open()).toBe(false);
       dispose();
     });
+  });
+});
+
+describe("longPress", () => {
+  const pointer = (pointerType: string, clientX = 10, clientY = 20) =>
+    ({ pointerType, clientX, clientY }) as PointerEvent;
+
+  it("opens after a held touch and swallows the click that ends it", () => {
+    vi.useFakeTimers();
+    try {
+      const opened: Array<[number, number]> = [];
+      const press = longPress((x, y) => opened.push([x, y]));
+      press.onPointerDown(pointer("touch"));
+      vi.advanceTimersByTime(499);
+      expect(opened).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(opened).toEqual([[10, 20]]);
+      press.onPointerUp();
+      expect(press.swallowsClick()).toBe(true);
+      expect(press.swallowsClick()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores mice, a released tap and a touch that moves", () => {
+    vi.useFakeTimers();
+    try {
+      const opened: unknown[] = [];
+      const press = longPress(() => opened.push(true));
+      press.onPointerDown(pointer("mouse"));
+      vi.advanceTimersByTime(600);
+      press.onPointerDown(pointer("touch"));
+      press.onPointerUp();
+      vi.advanceTimersByTime(600);
+      press.onPointerDown(pointer("touch"));
+      press.onPointerMove(pointer("touch", 10, 40));
+      vi.advanceTimersByTime(600);
+      expect(opened).toEqual([]);
+      expect(press.swallowsClick()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

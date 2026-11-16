@@ -38,6 +38,7 @@ import Shell, {
 } from "./Shell";
 import { relativeTime, timeUntil } from "./timestamps";
 import { hoverCard } from "./tooltip";
+import { longPress } from "./viewport";
 
 const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "Setting up",
@@ -192,6 +193,7 @@ export function ThreadCard(props: {
     event.stopPropagation();
     environment.threadCommand(props.thread.id, command);
   };
+  const press = longPress((x, y) => props.onMenu(x, y));
   return (
     <li>
       <div
@@ -212,7 +214,9 @@ export function ThreadCard(props: {
               status() === "approval"),
           dimmed: !props.selected && isBusy(status()),
         }}
-        onClick={select}
+        onClick={() => {
+          if (!press.swallowsClick()) select();
+        }}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
           if (event.key !== "Enter" && event.key !== " ") return;
@@ -223,6 +227,10 @@ export function ThreadCard(props: {
           event.preventDefault();
           props.onMenu(event.clientX, event.clientY);
         }}
+        onPointerDown={press.onPointerDown}
+        onPointerMove={press.onPointerMove}
+        onPointerUp={press.onPointerUp}
+        onPointerCancel={press.onPointerCancel}
       >
         <span class="card-line">
           <ProjectBadge
