@@ -19,6 +19,7 @@ import {
   openInFileManagerImpl,
   queueCommandImpl,
   respondRequestImpl,
+  searchEntriesImpl,
   modelFavoritesImpl,
   serverProvidersImpl,
   setModelFavoriteImpl,
@@ -73,6 +74,7 @@ runtime.registerImplementation(queueCommandImpl);
 runtime.registerImplementation(projectCommandImpl);
 runtime.registerImplementation(addProjectSettingsImpl);
 runtime.registerImplementation(browseFoldersImpl);
+runtime.registerImplementation(searchEntriesImpl);
 runtime.registerImplementation(startCloneImpl);
 runtime.registerImplementation(cloneControlImpl);
 runtime.registerImplementation(newProjectImpl);

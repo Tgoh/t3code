@@ -1,4 +1,9 @@
-import type { AssetResource, ModelCapabilities } from "@t3tools/contracts";
+import type {
+  AssetResource,
+  ModelCapabilities,
+  ServerProviderSkill,
+  ServerProviderSlashCommand,
+} from "@t3tools/contracts";
 import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
 import type { IWireProjection, IWireTurnItem } from "./wire";
@@ -67,6 +72,8 @@ export interface IProviderOption {
   Driver?: string;
   Name: string;
   SupportedRuntimeModes?: IWireRuntimeMode[];
+  SlashCommands?: ServerProviderSlashCommand[];
+  Skills?: ServerProviderSkill[];
   Models: Array<{
     Slug: string;
     Name: string;
@@ -197,6 +204,22 @@ interface IBrowseFoldersEffect extends IEffect {
   PartialPath: string;
   Cwd: string | null;
 }
+
+export interface IProjectEntries {
+  Entries: Array<{ path: string; kind: "file" | "directory" }>;
+}
+
+interface ISearchEntriesEffect extends IEffect {
+  Type: "searchEntries";
+  EnvironmentId: string;
+  Cwd: string;
+  Query: string;
+  Limit: number;
+}
+
+export const searchEntriesEffect = defineEffect<ISearchEntriesEffect, IProjectEntries>(
+  "searchEntries",
+);
 
 export const browseFoldersEffect = defineEffect<IBrowseFoldersEffect, IFolderListing>(
   "browseFolders",

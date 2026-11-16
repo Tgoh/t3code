@@ -11,10 +11,13 @@ import {
   shouldHandleAttachmentPaste,
   splitTransferredFiles,
 } from "./attachmentIntake";
+import { ComposerCommandMenu, useComposerMenu } from "./ComposerCommandMenu";
 import { ModelPicker, PermissionsChip } from "./ComposerMenus";
+import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
 import Environment from "./Environment";
 import { ArrowUp, CornerUpRight, File as FileIcon, ListPlus, Paperclip, X } from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
+import { caretOnEdge, type IPromptHistoryPosition, stepPromptHistory } from "./promptHistory";
 import { StageArt } from "./StageArt";
 import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
 import { composerCollapses, createMediaQuery, PHONE_QUERY } from "./viewport";
@@ -217,7 +220,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
   const [pasteAsTextUntil, setPasteAsTextUntil] = createSignal(0);
   const noProvider = () => environment.state.Replica.Providers.length === 0;
   const placeholder = () =>
-    noProvider() ? "Enable a provider in Settings to send a message" : "Ask anything.";
+    noProvider() ? "Enable a provider in Settings to send a message" : MENU_PLACEHOLDER;
   const isDraft = () => held().NewThreadProjectId !== null;
   const stopping = () => session.stopRequested() || session.stopping();
   const clone = useProjectClone(() => session.projectId());
@@ -254,6 +257,68 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
     if (canSend()) props.onSend?.();
     session.send(resolveComposerDispatchMode({ running: running(), alternateModifier: alternate }));
     if (phone()) textarea.blur();
+  };
+
+  const [cursor, setCursor] = createSignal(0);
+  const trackCursor = () => setCursor(textarea.selectionStart);
+  const menu = useComposerMenu(() => held().Draft, cursor);
+  const replaceDraft = (text: string, caret: number) => {
+    textarea.value = text;
+    textarea.setSelectionRange(caret, caret);
+    setCursor(caret);
+    session.setDraft(text);
+  };
+  const pick = (item: IMenuItem) => {
+    const trigger = menu.open();
+    if (trigger === null) return;
+    const next = applyMenuItem(held().Draft, trigger, item.Insert);
+    replaceDraft(next.Text, next.Cursor);
+    textarea.focus();
+  };
+  const onMenuKey = (event: KeyboardEvent): boolean => {
+    if (!focused() || menu.open() === null || event.isComposing) return false;
+    switch (event.key) {
+      case "ArrowDown":
+      case "ArrowUp":
+        if (menu.items().length === 0) return false;
+        menu.move(event.key === "ArrowDown" ? 1 : -1);
+        return true;
+      case "Enter":
+      case "Tab": {
+        if (event.shiftKey) return false;
+        const item = menu.highlighted();
+        if (item === undefined) return false;
+        pick(item);
+        return true;
+      }
+      case "Escape":
+        menu.dismiss();
+        return true;
+    }
+    return false;
+  };
+  // Follows navigatePromptHistory in apps/web/src/components/chat/composerCommandKey.ts.
+  const [historyPosition, setHistoryPosition] = createSignal<IPromptHistoryPosition | null>(null);
+  const onHistoryKey = (event: KeyboardEvent): boolean => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || event.isComposing)
+      return false;
+    if (held().Attachments.length > 0) return false;
+    const current = held().Draft;
+    if (historyPosition() === null && current.length > 0) return false;
+    const direction = event.key === "ArrowUp" ? "backward" : "forward";
+    if (!caretOnEdge(current, textarea.selectionStart, textarea.selectionEnd, direction))
+      return false;
+    const step = stepPromptHistory({
+      Direction: direction,
+      Entries: session.promptHistory(),
+      Position: historyPosition(),
+      Current: current,
+    });
+    if (step === null) return false;
+    setHistoryPosition(step.Position);
+    replaceDraft(step.Prompt, step.Prompt.length);
+    return true;
   };
 
   const onPaste = (event: ClipboardEvent & { currentTarget: HTMLTextAreaElement }) => {
@@ -389,15 +454,28 @@ export function Composer(props: { active?: boolean; onSend?: () => void }) {
         <Show when={held().AttachmentNotice}>
           <p class="composer-notice">{held().AttachmentNotice}</p>
         </Show>
+        <Show when={focused() && menu.open()}>
+          {(trigger) => <ComposerCommandMenu menu={menu} trigger={trigger()} onPick={pick} />}
+        </Show>
         <textarea
           ref={textarea}
           rows={2}
           placeholder={placeholder()}
           value={held().Draft}
-          onInput={(event) => session.setDraft(event.currentTarget.value)}
+          onInput={(event) => {
+            setCursor(event.currentTarget.selectionStart);
+            session.setDraft(event.currentTarget.value);
+          }}
+          onKeyUp={trackCursor}
+          onClick={trackCursor}
+          onSelect={trackCursor}
           onPaste={onPaste}
           onKeyDown={(event) => {
             if (isPasteAsTextShortcut(event, IS_MAC)) setPasteAsTextUntil(event.timeStamp + 1_000);
+            if (onMenuKey(event) || onHistoryKey(event)) {
+              event.preventDefault();
+              return;
+            }
             if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
             event.preventDefault();
             send(isAlternate(event));

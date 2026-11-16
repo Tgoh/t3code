@@ -2819,6 +2819,75 @@ details[open] > summary .work-chevron {
   z-index: 1;
 }
 
+.composer-menu {
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  bottom: calc(100% + 4px);
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 20%);
+  color: var(--foreground);
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  max-height: min(18rem, 40dvh);
+  overflow-y: auto;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  z-index: 40;
+}
+
+.composer-menu-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: none;
+  font-size: 13px;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.composer-menu-item[aria-selected="true"] {
+  background: var(--accent);
+}
+
+.composer-menu-item svg {
+  color: var(--muted-foreground);
+  flex: none;
+  height: 14px;
+  width: 14px;
+}
+
+.composer-menu-label {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-menu-detail {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-menu-empty {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  margin: 0;
+  padding: 6px 8px;
+}
+
 .composer.collapsed > :not(.composer-collapsed, .composer-bar),
 .composer.collapsed .composer-bar > :not(.model-trigger) {
   display: none;

@@ -47,6 +47,7 @@ import {
   addProjectSettingsEffect,
   assetUrlEffect,
   browseFoldersEffect,
+  searchEntriesEffect,
   cloneControlEffect,
   closeTerminalEffect,
   type IProviderOption,
@@ -285,6 +286,19 @@ export const addProjectSettingsImpl = implementation(addProjectSettingsEffect, a
   };
 });
 
+export const searchEntriesImpl = implementation(searchEntriesEffect, async (input, action) => {
+  const result = await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.projectsSearchEntries, {
+      cwd: input.Cwd,
+      query: input.Query.trim().slice(0, 256),
+      limit: input.Limit,
+    }),
+    action?.signal,
+  );
+  return { Entries: result.entries.map((entry) => ({ path: entry.path, kind: entry.kind })) };
+});
+
 export const browseFoldersImpl = implementation(browseFoldersEffect, async (input, action) => {
   const listing = await inEnvironment(
     input.EnvironmentId,
@@ -392,6 +406,8 @@ export const assetUrlImpl = implementation(assetUrlEffect, async (input, action)
   };
 });
 
+const plainCopy = <T>(value: ReadonlyArray<T>): T[] => JSON.parse(JSON.stringify(value));
+
 export const serverProvidersImpl = implementation(serverProvidersEffect, async (input) => {
   // This runs at startup, before the environment may be registered, which followStream waits for.
   const config = await connectionRuntime.runPromise(
@@ -419,6 +435,10 @@ export const serverProvidersImpl = implementation(serverProvidersEffect, async (
       ...(provider.supportedRuntimeModes === undefined
         ? {}
         : { SupportedRuntimeModes: [...provider.supportedRuntimeModes] }),
+      ...(provider.slashCommands.length === 0
+        ? {}
+        : { SlashCommands: plainCopy(provider.slashCommands) }),
+      ...(provider.skills.length === 0 ? {} : { Skills: plainCopy(provider.skills) }),
       Models: applyModelPreferences(provider.models, preferences[provider.instanceId]).map(
         (model) => ({
           Slug: model.slug,

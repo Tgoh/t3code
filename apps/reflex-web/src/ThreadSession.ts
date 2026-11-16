@@ -40,6 +40,7 @@ import {
   type IWireModelSelection,
   type IWireRuntimeMode,
   queueCommandEffect,
+  searchEntriesEffect,
   startTurnEffect,
   stopThreadEffect,
   threadCommandEffect,
@@ -71,7 +72,9 @@ import {
   pickedSelection,
   providerOf,
 } from "./modelOptions";
+import { FILE_SEARCH_LIMIT, type IProjectEntry } from "./composerMenu";
 import { type IOpenThread, latestDiffTurn } from "./OpenThread";
+import { type IPromptHistoryEntry, promptHistoryEntries } from "./promptHistory";
 import type { IShell } from "./Shell";
 
 declare module "treflex" {
@@ -122,6 +125,12 @@ const attachment = (draft: IThreadSession) =>
   transient(draft, "Terminal/Attachment", {
     Status: null as ITerminalStatus | null,
     FocusOnMount: false,
+  });
+
+const fileSearch = (draft: IThreadSession) =>
+  transient(draft, "Composer/FileSearch", {
+    Query: null as string | null,
+    Entries: [] as IProjectEntry[],
   });
 
 const expandedRows = (owner: IThreadSession) =>
@@ -341,6 +350,65 @@ function* terminalLaunch(draft: IThreadSession): ISelectorGenerator<ITerminalLau
   const root = replica.Shell.Projects[thread.projectId]?.workspaceRoot;
   if (root === undefined) return null;
   return { Cwd: thread.worktreePath ?? root, WorktreePath: thread.worktreePath, ProjectRoot: root };
+}
+
+export interface IMenuCatalog {
+  Commands: NonNullable<IProviderOption["SlashCommands"]>;
+  Skills: NonNullable<IProviderOption["Skills"]>;
+}
+
+const EMPTY_CATALOG: IMenuCatalog = { Commands: [], Skills: [] };
+
+export function* menuCatalog(draft: IThreadSession): ISelectorGenerator<IMenuCatalog> {
+  const provider = yield* effectiveProvider(draft);
+  if (provider === undefined) return EMPTY_CATALOG;
+  return { Commands: provider.SlashCommands ?? [], Skills: provider.Skills ?? [] };
+}
+
+function* searchRoot(draft: IThreadSession): ISelectorGenerator<string | null> {
+  const replica = yield* getData(draft, "Replica");
+  if (replica === undefined) return null;
+  const thread = replica.OpenThreads[draft.ThreadId]?.Thread;
+  const projectId = draft.NewThreadProjectId ?? thread?.projectId;
+  const root = projectId == null ? undefined : replica.Shell.Projects[projectId]?.workspaceRoot;
+  return thread?.worktreePath ?? root ?? null;
+}
+
+export function* promptHistory(draft: IThreadSession): ISelectorGenerator<IPromptHistoryEntry[]> {
+  const replica = yield* getData(draft, "Replica");
+  const thread = replica?.OpenThreads[draft.ThreadId];
+  return thread === undefined ? [] : promptHistoryEntries(Object.values(thread.Messages));
+}
+
+/** Files matching an `@` query, from the thread's worktree or project root. */
+export function* searchFiles(draft: IThreadSession, query: string): IOpenGenerator {
+  const root = yield* select(searchRoot);
+  const search = yield* fileSearch(draft);
+  if (root === null) {
+    search.Query = query;
+    search.Entries = [];
+    return;
+  }
+  const request = {
+    EnvironmentId: draft.EnvironmentId,
+    Cwd: root,
+    Query: query,
+    Limit: FILE_SEARCH_LIMIT,
+  };
+  let entries: IProjectEntry[] = [];
+  try {
+    entries = (yield* open(searchEntriesEffect(request))).Entries;
+  } catch {
+    entries = [];
+  }
+  const held = yield* fileSearch(draft);
+  held.Query = query;
+  held.Entries = entries;
+}
+latest(searchFiles);
+
+export function* fileSearchResult(draft: IThreadSession) {
+  return yield* fileSearch(draft);
 }
 
 function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
@@ -826,6 +894,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     setModelSelection,
     chooseModel,
     setRuntimeMode,
+    searchFiles,
     addAttachments,
     removeAttachment,
     send,
@@ -849,6 +918,9 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     projectId,
     projectName,
     queueWorkflow,
+    menuCatalog,
+    promptHistory,
+    fileSearchResult,
     stopRequested,
     sending,
     stopping,
