@@ -14,7 +14,7 @@ Under `node_modules/.pnpm`, treflex is a real directory and not a link, so chang
 
 ## Setup: `vp run check:changed` fails its unused-patches step
 
-The step installs the workspace in a temp directory, where `../../../reflex-t3code-treflex/packages/core` doesn't exist. Its other checks still run. It runs when the lockfile, the workspace file, patches or any `package.json` change, so this comes back whenever dependencies do.
+The step installs the workspace in a temp directory, where the `.t3/treflex` junction doesn't exist. Its other checks still run. It runs when the lockfile, the workspace file, patches or any `package.json` change, so this comes back whenever dependencies do.
 
 ## Setup: the app's tsconfig turns off two of the repo's strict flags
 

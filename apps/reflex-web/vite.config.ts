@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     host: "localhost",
-    port: 5734,
+    port: Number(process.env.REFLEX_WEB_PORT ?? 5734),
     strictPort: true,
     // Reached from other devices through Tailscale Serve, which keeps the tailnet hostname.
     allowedHosts: [".ts.net"],

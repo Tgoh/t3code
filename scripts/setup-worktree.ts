@@ -46,6 +46,12 @@ if (!projectRoot) {
   throw new Error("T3CODE_PROJECT_ROOT is not set. Run this through the t3.json setup action.");
 }
 
+// apps/reflex-web's treflex dependency points here, so the lockfile is the same in every checkout.
+const treflexLink = NodePath.join(markerDir, "treflex");
+if (!NodeFS.lstatSync(treflexLink, { throwIfNoEntry: false })) {
+  NodeFS.symlinkSync("G:\\Sorted\\Code\\reflex-t3code-treflex", treflexLink, "junction");
+}
+
 // Use the shell for Windows vp shims. Unattended installs need pnpm's confirmation
 // flag and closed stdin so other prompts fail. A stale lockfile must fail, not be rewritten.
 // Pipe output so the failure marker can keep its tail.
