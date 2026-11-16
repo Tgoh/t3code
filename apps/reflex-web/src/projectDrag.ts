@@ -84,6 +84,8 @@ export function createProjectDrag(options: {
         if (Math.hypot(move.clientX - startX, move.clientY - startY) < ACTIVATION_DISTANCE) return;
         measured = measure(list);
         setDragging(id);
+        window.getSelection()?.removeAllRanges();
+        document.documentElement.style.userSelect = "none";
       }
       if (ghost !== undefined) {
         ghost.style.transform = `translate(${move.clientX + 12}px, ${move.clientY - 10}px)`;
@@ -114,6 +116,7 @@ export function createProjectDrag(options: {
       window.removeEventListener("pointercancel", end);
       window.removeEventListener("keydown", onKey, true);
       cancelAnimationFrame(frame);
+      document.documentElement.style.userSelect = "";
       measured = null;
       setDragging(null);
       setGap(null);

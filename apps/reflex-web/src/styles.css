@@ -710,6 +710,7 @@ main {
   color: var(--sidebar-foreground);
   font-size: 13px;
   gap: 6px;
+  user-select: none;
 }
 
 .folder-title {
