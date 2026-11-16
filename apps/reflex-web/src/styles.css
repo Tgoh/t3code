@@ -2657,6 +2657,7 @@ details[open] > summary .work-chevron {
 }
 
 .chat-stage {
+  --turn-status-height: 24px;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -2664,8 +2665,9 @@ details[open] > summary .work-chevron {
   position: relative;
 }
 
+/* The bottom padding holds the turn status line, which sits above the lane without adding to it. */
 .chat-stage > .timeline {
-  padding-bottom: calc(var(--composer-height, 0px) + 16px);
+  padding-bottom: calc(var(--composer-height, 0px) + var(--turn-status-height));
 }
 
 .composer-lane {
@@ -2691,7 +2693,7 @@ details[open] > summary .work-chevron {
   background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
   border-radius: 9999px;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + var(--turn-status-height) + 4px);
   box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
   cursor: pointer;
   display: inline-flex;
@@ -2716,12 +2718,14 @@ details[open] > summary .work-chevron {
   color: var(--muted-foreground);
   display: flex;
   font-size: 13px;
+  bottom: 100%;
   font-variant-numeric: tabular-nums;
   gap: 4px;
-  height: 28px;
-  margin-bottom: 4px;
+  height: var(--turn-status-height);
+  left: var(--gutter);
   padding: 0 14px;
-  position: relative;
+  position: absolute;
+  right: var(--gutter);
 }
 
 .turn-status.idle {
