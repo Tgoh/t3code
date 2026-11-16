@@ -56,6 +56,8 @@ export { default as ShieldCheck } from "lucide-solid/icons/shield-check";
 export { default as ShieldOff } from "lucide-solid/icons/shield-off";
 export { default as ShieldQuestion } from "lucide-solid/icons/shield-question";
 export { default as Sparkles } from "lucide-solid/icons/sparkles";
+export { default as Square } from "lucide-solid/icons/square";
+export { default as SquareCheck } from "lucide-solid/icons/square-check";
 export { default as SquarePen } from "lucide-solid/icons/square-pen";
 export { default as Star } from "lucide-solid/icons/star";
 export { default as Terminal } from "lucide-solid/icons/terminal";

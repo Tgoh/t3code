@@ -2996,6 +2996,69 @@ details[open] > summary .work-chevron {
   visibility: hidden;
 }
 
+.chat-stage.has-checklist {
+  --checklist-row-height: 22px;
+  --turn-status-height: calc(var(--checklist-rows) * var(--checklist-row-height) + 8px);
+}
+
+.turn-status.checklist {
+  align-items: flex-start;
+  padding-block: 4px;
+}
+
+.checklist-steps {
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.checklist-step {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  height: var(--checklist-row-height, 22px);
+}
+
+.checklist-step svg {
+  flex: none;
+  height: 14px;
+  width: 14px;
+}
+
+.checklist-step span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checklist-step.active {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.checklist-step.done span {
+  text-decoration: line-through;
+}
+
+.checklist-count,
+.turn-status.checklist .turn-status-queued {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  height: var(--checklist-row-height);
+}
+
+.checklist-count {
+  margin-left: auto;
+}
+
+.queued-popover .checklist-steps {
+  color: var(--muted-foreground);
+}
+
 .turn-status-text {
   flex: 1;
   min-width: 0;
