@@ -3,13 +3,17 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { IProviderOption, IWireModelSelection } from "./Infrastructure/commandEffects";
 import {
+  applyModelPreferences,
   compatibleRuntimeMode,
   dispatchSelection,
+  FAVORITES_TAB,
+  initialPickerTab,
   type ISelectDescriptor,
+  legacyStartsExpanded,
   modelChangeBlock,
   modelTraits,
   pickedSelection,
-  pickerModels,
+  pickerList,
   triggerSuffix,
   withBooleanValue,
   withSelectValue,
@@ -152,19 +156,115 @@ describe("model options", () => {
     expect(modelChangeBlock({ ...started, Started: false, NextInstanceId: "codex" })).toBeNull();
   });
 
-  it("lists one provider's models, or ranks a search across all of them", () => {
-    const providers = [claude, codex];
-    expect(pickerModels(providers, "codex", "").map((model) => model.Slug)).toEqual(["gpt-5.4"]);
-    expect(pickerModels(providers, "codex", "haiku").map((model) => model.Slug)).toEqual([
-      "claude-haiku-4-5",
-    ]);
-  });
-
   it("falls back to the first mode a provider supports", () => {
     expect(compatibleRuntimeMode("full-access", ["approval-required", "auto"])).toEqual({
       Modes: ["approval-required", "auto"],
       Mode: "approval-required",
     });
     expect(compatibleRuntimeMode("auto", undefined).Modes).toHaveLength(4);
+  });
+});
+
+describe("the model list", () => {
+  const model = (slug: string, isLegacy = false) => ({
+    Slug: slug,
+    Name: slug,
+    IsDefault: false,
+    ...(isLegacy ? { IsLegacy: true } : {}),
+  });
+  const anthropic: IProviderOption = {
+    InstanceId: "claudeAgent",
+    Driver: "claudeAgent",
+    Name: "Claude",
+    Models: [
+      model("opus-5-5"),
+      model("sonnet-5-5"),
+      model("fable-5-2"),
+      model("fable-5-1", true),
+      model("opus-4-8", true),
+      model("haiku-5-5"),
+    ],
+  };
+  const providers = [anthropic, codex];
+  const slugs = (list: ReturnType<typeof pickerList>) => list.Models.map((held) => held.Slug);
+  const list = (input: Partial<Parameters<typeof pickerList>[0]>) =>
+    pickerList({
+      Providers: providers,
+      Favorites: [],
+      Tab: "claudeAgent",
+      Query: "",
+      LegacyExpanded: false,
+      ...input,
+    });
+
+  it("puts a provider's older models behind Show more, after its current ones", () => {
+    const collapsed = list({});
+    expect(slugs(collapsed)).toEqual(["opus-5-5", "sonnet-5-5", "fable-5-2", "haiku-5-5"]);
+    expect(collapsed.Legacy).toEqual({ Count: 2, Expanded: false });
+    expect(slugs(list({ LegacyExpanded: true }))).toEqual([
+      "opus-5-5",
+      "sonnet-5-5",
+      "fable-5-2",
+      "haiku-5-5",
+      "fable-5-1",
+      "opus-4-8",
+    ]);
+    expect(list({ Tab: "codex" }).Legacy).toBeNull();
+  });
+
+  it("lists favorites first on their tab and keeps a favorite older model out of Show more", () => {
+    const favorites = [
+      { Provider: "codex", Model: "gpt-5.4" },
+      { Provider: "claudeAgent", Model: "opus-4-8" },
+    ];
+    const tab = list({ Favorites: favorites });
+    expect(slugs(tab)).toEqual(["opus-4-8", "opus-5-5", "sonnet-5-5", "fable-5-2", "haiku-5-5"]);
+    expect(tab.Legacy).toEqual({ Count: 1, Expanded: false });
+    expect(tab.Models[0]!.IsFavorite).toBe(true);
+    const starred = list({ Favorites: favorites, Tab: FAVORITES_TAB });
+    expect(slugs(starred)).toEqual(["opus-4-8", "gpt-5.4"]);
+    expect(starred.Legacy).toBeNull();
+  });
+
+  it("ranks a search across every provider, older models included", () => {
+    const found = list({ Query: "fable", Tab: "codex" });
+    expect(slugs(found)).toEqual(["fable-5-2", "fable-5-1"]);
+    expect(found.Legacy).toBeNull();
+  });
+
+  it("opens on Favorites when one is offered, but a started thread opens on its provider", () => {
+    const favorites = [{ Provider: "codex", Model: "gpt-5.4" }];
+    const opening = { Providers: providers, Favorites: favorites, ActiveInstanceId: "claudeAgent" };
+    expect(initialPickerTab({ ...opening, Started: false })).toBe(FAVORITES_TAB);
+    expect(initialPickerTab({ ...opening, Started: true })).toBe("claudeAgent");
+    expect(
+      initialPickerTab({
+        ...opening,
+        Favorites: [{ Provider: "codex", Model: "gone" }],
+        Started: false,
+      }),
+    ).toBe("claudeAgent");
+  });
+
+  it("opens Show more only when the active model is an older one that isn't a favorite", () => {
+    const active = { instanceId: "claudeAgent", model: "opus-4-8" } as IWireModelSelection;
+    expect(legacyStartsExpanded(providers, [], active)).toBe(true);
+    expect(
+      legacyStartsExpanded(providers, [{ Provider: "claudeAgent", Model: "opus-4-8" }], active),
+    ).toBe(false);
+    expect(
+      legacyStartsExpanded(providers, [], { ...active, model: "opus-5-5" } as IWireModelSelection),
+    ).toBe(false);
+  });
+
+  it("hides the models a user hid and applies their order, keeping custom models", () => {
+    const models = [{ slug: "a" }, { slug: "b" }, { slug: "c" }, { slug: "d", isCustom: true }];
+    const preferences = { hiddenModels: ["b", "d"], modelOrder: ["c"] };
+    expect(applyModelPreferences(models, preferences).map((held) => held.slug)).toEqual([
+      "c",
+      "a",
+      "d",
+    ]);
+    expect(applyModelPreferences(models, undefined)).toEqual(models);
   });
 });

@@ -63,9 +63,34 @@ export interface IProviderOption {
     ShortName?: string;
     SubProvider?: string;
     IsDefault: boolean;
+    IsLegacy?: boolean;
     Capabilities?: ModelCapabilities;
   }>;
 }
+
+export interface IModelFavorite {
+  Provider: string;
+  Model: string;
+}
+
+interface IModelFavoritesEffect extends IEffect {
+  Type: "modelFavorites";
+  EnvironmentId: string;
+}
+
+export const modelFavoritesEffect = defineEffect<IModelFavoritesEffect, IModelFavorite[]>(
+  "modelFavorites",
+);
+
+interface ISetModelFavoriteEffect extends IEffect, IModelFavorite {
+  Type: "setModelFavorite";
+  EnvironmentId: string;
+  Favorite: boolean;
+}
+
+export const setModelFavoriteEffect = defineEffect<ISetModelFavoriteEffect, void>(
+  "setModelFavorite",
+);
 
 interface IStartTurnEffect extends IEffect, IStartTurn {
   Type: "startTurn";

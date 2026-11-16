@@ -2460,17 +2460,90 @@ button.composer-control.open {
 }
 
 .picker-model-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.picker-model-provider {
+.picker-model-spacer {
+  flex: 1;
+}
+
+.picker-more {
   color: var(--muted-foreground);
+}
+
+.picker-more.highlighted {
+  color: var(--foreground);
+}
+
+.favorite-star {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  display: inline-flex;
   flex: none;
-  font-size: 12px;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.favorite-star:hover:enabled {
+  background: color-mix(in srgb, var(--foreground) 9%, transparent);
+  color: var(--foreground);
+}
+
+.favorite-star svg {
+  height: 12px;
+  width: 12px;
+}
+
+.favorite-star.on svg {
+  color: var(--warning);
+  fill: currentColor;
+}
+
+.favorite-star.hover-only {
+  opacity: 0;
+}
+
+.picker-model:hover .favorite-star.hover-only,
+.picker-model.highlighted .favorite-star.hover-only,
+.favorite-star.hover-only:focus-visible {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .favorite-star.hover-only {
+    opacity: 1;
+  }
+}
+
+.provider-divider {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  flex: none;
+  margin: 2px 0;
+  width: 20px;
+}
+
+.favorites-tab svg {
+  fill: currentColor;
+  height: 18px;
+  width: 18px;
+}
+
+.sr-only {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .picker-model > svg,

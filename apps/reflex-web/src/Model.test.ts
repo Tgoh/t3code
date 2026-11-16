@@ -17,6 +17,7 @@ import {
   projectCommand,
   selectThread,
   threadCommand,
+  toggleModelFavorite,
 } from "./Environment";
 import { loadEarlier, loadingEarlier } from "./HistoryWindow";
 import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
@@ -136,6 +137,7 @@ async function connect(
         },
       ],
       generateGuid: () => `guid-${(guid += 1)}`,
+      modelFavorites: () => [],
       rememberedModels: () => models,
       rememberModel: (effect: { Selection: IWireModelSelection }) => {
         models.Last = effect.Selection;
@@ -1583,6 +1585,28 @@ describe("writing to the server", () => {
       JSON.stringify({ Kind: "runtimeMode", Mode: "approval-required" }),
       "turn approval-required",
     ]);
+  });
+
+  it("a favorite toggle saves the opposite of the server's list and reads the list back", async () => {
+    const saved: Array<{ Model: string; Favorite: boolean }> = [];
+    let held: Array<{ Provider: string; Model: string }> = [];
+    const server = await connect(undefined, null, {
+      modelFavorites: () => held,
+      setModelFavorite: (effect: { Provider: string; Model: string; Favorite: boolean }) => {
+        saved.push({ Model: effect.Model, Favorite: effect.Favorite });
+        held = effect.Favorite ? [{ Provider: effect.Provider, Model: effect.Model }] : [];
+      },
+    });
+    await server.runtime.dispatch(toggleModelFavorite, server.envId(), "devReplay", "showcase");
+    expect(server.environment().Replica.ModelFavorites).toEqual([
+      { Provider: "devReplay", Model: "showcase" },
+    ]);
+    await server.runtime.dispatch(toggleModelFavorite, server.envId(), "devReplay", "showcase");
+    expect(saved).toEqual([
+      { Model: "showcase", Favorite: true },
+      { Model: "showcase", Favorite: false },
+    ]);
+    expect(server.environment().Replica.ModelFavorites).toEqual([]);
   });
 
   it("a new thread starts on the last picked model while its provider still offers it", async () => {

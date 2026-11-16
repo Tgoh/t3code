@@ -22,19 +22,23 @@ import {
   Search,
   ShieldCheck,
   ShieldOff,
+  Star,
   Workflow,
   Zap,
 } from "./icons";
-import type { IProviderOption, IWireRuntimeMode } from "./Infrastructure/commandEffects";
+import type { IWireRuntimeMode } from "./Infrastructure/commandEffects";
 import {
+  FAVORITES_TAB,
   type IBooleanDescriptor,
   type IColumnControl,
+  initialPickerTab,
   type IPickerModel,
   type ISelectDescriptor,
   type ITraits,
+  legacyStartsExpanded,
   modelChangeBlock,
   modelTraits,
-  pickerModels,
+  pickerList,
   providerOf,
   selectValue,
   triggerSuffix,
@@ -254,17 +258,6 @@ export function PermissionsChip(props: { context?: boolean }) {
   );
 }
 
-function ProviderMark(props: { provider: IProviderOption }) {
-  return (
-    <Show
-      when={props.provider.Driver === "claudeAgent" || props.provider.Driver === "codex"}
-      fallback={<span class="provider-letter">{props.provider.Name.slice(0, 1)}</span>}
-    >
-      <ProviderIcon driver={props.provider.Driver} />
-    </Show>
-  );
-}
-
 export function ModelPicker() {
   const environment = Environment.use();
   const session = ThreadSession.use();
@@ -332,24 +325,64 @@ export function ModelPicker() {
   );
 }
 
+function ProviderGlyph(props: { driver: string | undefined; name: string; size?: number }) {
+  return (
+    <Show
+      when={props.driver === "claudeAgent" || props.driver === "codex"}
+      fallback={<span class="provider-letter">{props.name.slice(0, 1)}</span>}
+    >
+      <ProviderIcon driver={props.driver} size={props.size} />
+    </Show>
+  );
+}
+
 function PickerContent(props: { traits: ITraits | null }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
   const providers = () => environment.state.Replica.Providers;
+  const favorites = () => environment.state.Replica.ModelFavorites;
   const selection = () => session.effectiveModel();
-  const [instance, setInstance] = createSignal(
-    selection()?.instanceId ?? providers()[0]?.InstanceId ?? null,
+  const [tab, setTab] = createSignal(
+    initialPickerTab({
+      Providers: providers(),
+      Favorites: favorites(),
+      ActiveInstanceId: selection()?.instanceId ?? null,
+      Started: session.modelSwitch().Started,
+    }),
+  );
+  const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(
+    new Set(
+      legacyStartsExpanded(providers(), favorites(), selection()) ? [selection()!.instanceId] : [],
+    ),
   );
   const [query, setQuery] = createSignal("");
   const [highlight, setHighlight] = createSignal(0);
-  const models = createMemo(() => pickerModels(providers(), instance(), query()));
+  const list = createMemo(() =>
+    pickerList({
+      Providers: providers(),
+      Favorites: favorites(),
+      Tab: tab(),
+      Query: query(),
+      LegacyExpanded: expanded().has(tab() ?? ""),
+    }),
+  );
+  const models = () => list().Models;
+  const rowCount = () => models().length + (list().Legacy === null ? 0 : 1);
+  const toggleLegacy = () => {
+    const held = tab();
+    if (held === null) return;
+    const next = new Set(expanded());
+    if (next.has(held)) next.delete(held);
+    else next.add(held);
+    setExpanded(next);
+  };
   const blockOf = (instanceId: string) =>
     modelChangeBlock({ ...session.modelSwitch(), NextInstanceId: instanceId });
   const isSelected = (model: IPickerModel) =>
     selection()?.instanceId === model.InstanceId && selection()?.model === model.Slug;
   const [search, setSearch] = createSignal<HTMLInputElement>();
   const [column, setColumn] = createSignal<HTMLDivElement>();
-  const [list, setList] = createSignal<HTMLUListElement>();
+  const [listElement, setListElement] = createSignal<HTMLUListElement>();
 
   const focusEffort = () => {
     const held = column();
@@ -360,7 +393,8 @@ function PickerContent(props: { traits: ITraits | null }) {
     row?.focus({ preventScroll: true });
     return row != null;
   };
-  const showRow = (index: number) => list()?.children[index]?.scrollIntoView({ block: "nearest" });
+  const showRow = (index: number) =>
+    listElement()?.children[index]?.scrollIntoView({ block: "nearest" });
   const choose = (model: IPickerModel) => {
     if (blockOf(model.InstanceId) !== null) return;
     void session.chooseModel(model.InstanceId, model.Slug);
@@ -368,12 +402,23 @@ function PickerContent(props: { traits: ITraits | null }) {
       if (!focusEffort()) search()?.focus();
     });
   };
+  const chooseRow = (index: number) => {
+    const model = models()[index];
+    if (model !== undefined) choose(model);
+    else if (index === models().length && list().Legacy !== null) toggleLegacy();
+  };
   const moveHighlight = (step: number) => {
-    const count = models().length;
+    const count = rowCount();
     if (count === 0) return;
     const next = Math.max(0, Math.min(count - 1, highlight() + step));
     setHighlight(next);
     showRow(next);
+  };
+  const pickTab = (next: string) => {
+    setTab(next);
+    setQuery("");
+    setHighlight(0);
+    search()?.focus();
   };
 
   onMount(() => {
@@ -386,12 +431,24 @@ function PickerContent(props: { traits: ITraits | null }) {
   return (
     <div class="model-picker">
       <div class="picker-providers" role="toolbar" aria-label="Providers">
+        <button
+          type="button"
+          class="provider-tab favorites-tab"
+          aria-pressed={tab() === FAVORITES_TAB && query() === ""}
+          aria-label="Favorites"
+          data-tip="Favorites"
+          data-tip-side="right"
+          onClick={() => pickTab(FAVORITES_TAB)}
+        >
+          <Star />
+        </button>
+        <span class="provider-divider" />
         <For each={providers()}>
           {(provider) => (
             <button
               type="button"
               class="provider-tab"
-              aria-pressed={instance() === provider.InstanceId && query() === ""}
+              aria-pressed={tab() === provider.InstanceId && query() === ""}
               aria-label={provider.Name}
               data-tip={
                 blockOf(provider.InstanceId) === null
@@ -400,14 +457,9 @@ function PickerContent(props: { traits: ITraits | null }) {
               }
               data-tip-side="right"
               disabled={blockOf(provider.InstanceId) !== null}
-              onClick={() => {
-                setInstance(provider.InstanceId);
-                setQuery("");
-                setHighlight(0);
-                search()?.focus();
-              }}
+              onClick={() => pickTab(provider.InstanceId)}
             >
-              <ProviderMark provider={provider} />
+              <ProviderGlyph driver={provider.Driver} name={provider.Name} />
             </button>
           )}
         </For>
@@ -432,8 +484,7 @@ function PickerContent(props: { traits: ITraits | null }) {
                 moveHighlight(event.key === "ArrowDown" ? 1 : -1);
               } else if (event.key === "Enter") {
                 event.preventDefault();
-                const model = models()[highlight()];
-                if (model !== undefined) choose(model);
+                chooseRow(highlight());
               } else if (
                 event.key === "ArrowRight" &&
                 event.currentTarget.selectionStart === query().length
@@ -445,8 +496,15 @@ function PickerContent(props: { traits: ITraits | null }) {
             }}
           />
         </label>
-        <ul class="picker-list" role="listbox" aria-label="Models" ref={setList}>
-          <For each={models()} fallback={<li class="picker-empty">No models found</li>}>
+        <ul class="picker-list" role="listbox" aria-label="Models" ref={setListElement}>
+          <For
+            each={models()}
+            fallback={
+              <li class="picker-empty">
+                {tab() === FAVORITES_TAB && query() === "" ? "No favorites yet" : "No models found"}
+              </li>
+            }
+          >
             {(model, index) => (
               <li
                 role="option"
@@ -458,21 +516,51 @@ function PickerContent(props: { traits: ITraits | null }) {
                 onPointerMove={() => setHighlight(index())}
                 onClick={() => choose(model)}
               >
-                <Show when={query() !== ""}>
-                  <span class="picker-model-icon">
-                    <ProviderIcon driver={model.Driver} size={14} />
-                  </span>
-                </Show>
-                <span class="picker-model-name">{model.Name}</span>
-                <Show when={query() !== ""}>
-                  <span class="picker-model-provider">{model.ProviderName}</span>
-                </Show>
+                <span class="picker-model-icon">
+                  <ProviderGlyph driver={model.Driver} name={model.ProviderName} size={14} />
+                </span>
+                <span class="picker-model-name">
+                  {model.Name}
+                  <span class="sr-only">, {model.ProviderName}</span>
+                </span>
                 <Show when={isSelected(model)}>
                   <Check />
                 </Show>
+                <span class="picker-model-spacer" />
+                <button
+                  type="button"
+                  class="favorite-star"
+                  classList={{
+                    on: model.IsFavorite,
+                    "hover-only": !model.IsFavorite || tab() === FAVORITES_TAB,
+                  }}
+                  aria-label={model.IsFavorite ? "Remove from favorites" : "Add to favorites"}
+                  data-tip={model.IsFavorite ? "Remove from favorites" : "Add to favorites"}
+                  disabled={blockOf(model.InstanceId) !== null}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void environment.toggleModelFavorite(model.InstanceId, model.Slug);
+                  }}
+                >
+                  <Star />
+                </button>
               </li>
             )}
           </For>
+          <Show when={list().Legacy}>
+            {(legacy) => (
+              <li
+                role="option"
+                aria-expanded={legacy().Expanded}
+                class="picker-model picker-more"
+                classList={{ highlighted: highlight() === models().length }}
+                onPointerMove={() => setHighlight(models().length)}
+                onClick={toggleLegacy}
+              >
+                {legacy().Expanded ? "Show less" : "Show more"}
+              </li>
+            )}
+          </Show>
         </ul>
       </div>
       <div class="picker-effort" ref={setColumn} onKeyDown={moveBetweenRows}>

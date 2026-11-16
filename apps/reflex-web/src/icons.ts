@@ -43,6 +43,7 @@ export { default as ShieldOff } from "lucide-solid/icons/shield-off";
 export { default as ShieldQuestion } from "lucide-solid/icons/shield-question";
 export { default as Sparkles } from "lucide-solid/icons/sparkles";
 export { default as SquarePen } from "lucide-solid/icons/square-pen";
+export { default as Star } from "lucide-solid/icons/star";
 export { default as Terminal } from "lucide-solid/icons/terminal";
 export { default as Trash2 } from "lucide-solid/icons/trash-2";
 export { default as Undo2 } from "lucide-solid/icons/undo-2";

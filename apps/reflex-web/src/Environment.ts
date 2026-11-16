@@ -27,9 +27,11 @@ import {
   type INewProject,
   type IProjectCommand,
   type IThreadCommand,
+  modelFavoritesEffect,
   newProjectEffect,
   projectCommandEffect,
   serverProvidersEffect,
+  setModelFavoriteEffect,
   startCloneEffect,
   threadCommandEffect,
   withCommandId,
@@ -69,7 +71,12 @@ export function* newEnvironment(
   fileAttachmentLimit: number | null,
 ): IActionGenerator<IEnvironment> {
   const shell = yield* entity<IShell>(getDefaultShell(environmentId));
-  const replica = yield* entity<IReplica>({ Providers: [], Shell: shell, OpenThreads: {} });
+  const replica = yield* entity<IReplica>({
+    Providers: [],
+    ModelFavorites: [],
+    Shell: shell,
+    OpenThreads: {},
+  });
   const local = yield* entity<IEnvironment["Local"]>({
     SelectedThreadId: null,
     ThreadSessions: {},
@@ -100,6 +107,33 @@ export function* loadProviders(draft: IEnvironment): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
   const providers = yield* open(serverProvidersEffect({ EnvironmentId: environmentId }));
   draft.Replica.Providers = providers;
+  yield* loadModelFavorites(draft);
+}
+
+function* loadModelFavorites(draft: IEnvironment): IOpenGenerator {
+  const environmentId = draft.EnvironmentId;
+  const favorites = yield* open(modelFavoritesEffect({ EnvironmentId: environmentId }));
+  draft.Replica.ModelFavorites = favorites;
+}
+
+export function* toggleModelFavorite(
+  draft: IEnvironment,
+  provider: string,
+  model: string,
+): IOpenGenerator {
+  const favorite = !draft.Replica.ModelFavorites.some(
+    (held) => held.Provider === provider && held.Model === model,
+  );
+  const environmentId = draft.EnvironmentId;
+  yield* open(
+    setModelFavoriteEffect({
+      EnvironmentId: environmentId,
+      Provider: provider,
+      Model: model,
+      Favorite: favorite,
+    }),
+  );
+  yield* loadModelFavorites(draft);
 }
 
 function* sessionOf(
@@ -389,6 +423,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     cloneProject,
     newProject,
     cloneControl,
+    toggleModelFavorite,
   },
   {
     selectedOpenThread,

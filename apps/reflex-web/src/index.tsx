@@ -18,7 +18,9 @@ import {
   newProjectImpl,
   queueCommandImpl,
   respondRequestImpl,
+  modelFavoritesImpl,
   serverProvidersImpl,
+  setModelFavoriteImpl,
   startCloneImpl,
   startTurnImpl,
   stopThreadImpl,
@@ -56,6 +58,8 @@ runtime.registerImplementation(startTurnImpl);
 runtime.registerImplementation(stopThreadImpl);
 runtime.registerImplementation(respondRequestImpl);
 runtime.registerImplementation(serverProvidersImpl);
+runtime.registerImplementation(modelFavoritesImpl);
+runtime.registerImplementation(setModelFavoriteImpl);
 runtime.registerImplementation(queueCommandImpl);
 runtime.registerImplementation(projectCommandImpl);
 runtime.registerImplementation(addProjectSettingsImpl);

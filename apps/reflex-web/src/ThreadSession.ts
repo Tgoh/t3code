@@ -26,6 +26,7 @@ import { createEntityFeature } from "treflex-solid";
 
 import {
   closeTerminalEffect,
+  type IModelFavorite,
   type IProviderOption,
   type IStartTurn,
   type IWireAttachment,
@@ -79,6 +80,7 @@ export const DEFAULT_RUNTIME_MODE: IWireRuntimeMode = "full-access";
 
 export interface IReplica extends IEntity {
   Providers: IProviderOption[];
+  ModelFavorites: IModelFavorite[];
   Shell: IShell;
   OpenThreads: Record<string, IOpenThread>;
 }

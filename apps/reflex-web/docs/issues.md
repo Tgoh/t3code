@@ -102,7 +102,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - The queue offers resume and cancel, with no edit, reorder or promote to steer.
 - A send during a run uses the server's `auto` delivery, with no steer or queue choice.
 - The composer doesn't offer interaction mode (Plan).
-- The provider list is read once at startup, not followed.
+- The provider list and the hidden-model and model-order settings are read once at startup, not followed. Model favorites are read at startup and after this client's own toggle, so one changed in stock shows after a reload.
 - A sent message appears when the stream delivers it, with no pending row in Local; the gap wasn't noticeable.
 - A new thread starts on the model and options last picked in this browser, else the project's default, else the first provider's default, which can be a paid one. The last pick and each model's options are kept in this port's `localStorage`, not stock's draft store, so the two clients remember picks separately.
 - A new thread's permission mode defaults to Full access, not the project's `defaultRuntimeMode` setting.
@@ -158,7 +158,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Markdown: no syntax highlighting, language icons, run-in-terminal button, file link chips, math or diagrams. A relative link is plain text with its path in a tooltip, not a link that opens the file. A code block's wrap choice resets when its message re-renders during streaming.
 - Changed files card: flat list, not a tree, and its rows don't open a single file's diff.
 - Composer: no `@ files`, `$ skills` or `/ commands` menus and no voice input, so the placeholder leaves out their hints. No prompt history, stash, multi-model send or keyboard shortcuts.
-- Model menu: no favorites, number-key jumps, provider setup or update notices, Show more section, custom models from settings or instance badges. Providers other than Claude and Codex show a letter, not their icon. A non-reasoning option such as an agent's mode opens its choices below its row, not in a side menu.
+- Model menu: no number-key jumps, provider setup or update notices, unavailable-provider state, custom models from settings, instance badges or New badges, and a fixed height rather than stock's fit to the tallest tab. Providers other than Claude and Codex show a letter, not their icon. A favorite toggle doesn't migrate favorites a stock browser kept locally before the server held them. A non-reasoning option such as an agent's mode opens its choices below its row, not in a side menu.
 - Model menu: a typed `ultrathink` doesn't take over the effort label or lock the levels, the effort shows as a word with no bars setting, and the provider's reported selection isn't shown.
 - Permissions: no overflow menu at narrow widths, and modes a managed policy forbids aren't disabled. A new thread's strip under the composer holds only the permissions chip, with no workspace or branch pickers.
 - Diff panel: no tabs, split view, wrap, turn picker, file icons or collapsed unchanged-line markers.

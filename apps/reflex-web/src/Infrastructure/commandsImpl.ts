@@ -30,6 +30,7 @@ import {
   MessageId,
   ORCHESTRATION_V2_WS_METHODS,
   ProjectId,
+  ProviderInstanceId,
   RunId,
   RuntimeRequestId,
   ThreadId,
@@ -49,17 +50,20 @@ import {
   cloneControlEffect,
   closeTerminalEffect,
   type IProviderOption,
+  modelFavoritesEffect,
   newProjectEffect,
   projectCommandEffect,
   queueCommandEffect,
   respondRequestEffect,
   serverProvidersEffect,
+  setModelFavoriteEffect,
   startCloneEffect,
   startTurnEffect,
   stopThreadEffect,
   threadCommandEffect,
   threadDiffEffect,
 } from "./commandEffects";
+import { applyModelPreferences } from "../modelOptions";
 import { connectionRuntime } from "./connection";
 import { runCommand, sourceControl } from "./sourceControl";
 
@@ -373,6 +377,7 @@ export const serverProvidersImpl = implementation(serverProvidersEffect, async (
       Effect.map(Option.getOrThrow),
     ),
   );
+  const preferences = config.settings?.providerModelPreferences ?? {};
   return config.providers
     .filter((provider) => provider.enabled && isProviderAvailable(provider))
     .map((provider): IProviderOption => ({
@@ -382,13 +387,41 @@ export const serverProvidersImpl = implementation(serverProvidersEffect, async (
       ...(provider.supportedRuntimeModes === undefined
         ? {}
         : { SupportedRuntimeModes: [...provider.supportedRuntimeModes] }),
-      Models: provider.models.map((model) => ({
-        Slug: model.slug,
-        Name: model.name,
-        ...(model.shortName === undefined ? {} : { ShortName: model.shortName }),
-        ...(model.subProvider === undefined ? {} : { SubProvider: model.subProvider }),
-        IsDefault: model.isDefault === true,
-        ...(model.capabilities == null ? {} : { Capabilities: model.capabilities }),
-      })),
+      Models: applyModelPreferences(provider.models, preferences[provider.instanceId]).map(
+        (model) => ({
+          Slug: model.slug,
+          Name: model.name,
+          ...(model.shortName === undefined ? {} : { ShortName: model.shortName }),
+          ...(model.subProvider === undefined ? {} : { SubProvider: model.subProvider }),
+          IsDefault: model.isDefault === true,
+          ...(model.isLegacy === true ? { IsLegacy: true } : {}),
+          ...(model.capabilities == null ? {} : { Capabilities: model.capabilities }),
+        }),
+      ),
     }));
+});
+
+export const modelFavoritesImpl = implementation(modelFavoritesEffect, async (input) => {
+  const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
+  return (config.settings.favorites ?? []).map((favorite) => ({
+    Provider: favorite.provider,
+    Model: favorite.model,
+  }));
+});
+
+export const setModelFavoriteImpl = implementation(setModelFavoriteEffect, async (input) => {
+  await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.serverUpdateSettings, {
+      patch: {
+        setModelFavorites: [
+          {
+            provider: ProviderInstanceId.make(input.Provider),
+            model: input.Model,
+            favorite: input.Favorite,
+          },
+        ],
+      },
+    }),
+  );
 });

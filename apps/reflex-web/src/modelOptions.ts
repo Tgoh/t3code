@@ -26,6 +26,7 @@ import {
 } from "@t3tools/shared/model";
 
 import type {
+  IModelFavorite,
   IProviderOption,
   IWireModelSelection,
   IWireRuntimeMode,
@@ -270,42 +271,137 @@ export function modelChangeBlock(input: {
   return "This thread does not support switching providers after it has started. Start a new thread to use this model.";
 }
 
+export const FAVORITES_TAB = "favorites";
+
 export interface IPickerModel {
   InstanceId: string;
   Driver: string | undefined;
   ProviderName: string;
   Slug: string;
   Name: string;
+  IsFavorite: boolean;
 }
 
-/** The provider's models, or a ranked search across every provider while a query is typed. */
-export function pickerModels(
+export interface IPickerList {
+  Models: IPickerModel[];
+  /** Older models behind Show more on a provider tab, or null when there are none. */
+  Legacy: { Count: number; Expanded: boolean } | null;
+}
+
+const favoriteKey = (instanceId: string, slug: string) => `${instanceId}\n${slug}`;
+
+/** Hides the models the user hid for this provider and applies their order, as stock's settings do. */
+export function applyModelPreferences<T extends { slug: string; isCustom?: boolean | undefined }>(
+  models: ReadonlyArray<T>,
+  preferences:
+    | { readonly hiddenModels: ReadonlyArray<string>; readonly modelOrder: ReadonlyArray<string> }
+    | undefined,
+): T[] {
+  const hidden = new Set(preferences?.hiddenModels ?? []);
+  const order = new Map((preferences?.modelOrder ?? []).map((slug, index) => [slug, index]));
+  return models
+    .map((model, index) => ({ model, index }))
+    .filter(({ model }) => model.isCustom === true || !hidden.has(model.slug))
+    .sort(
+      (left, right) =>
+        (order.get(left.model.slug) ?? Number.POSITIVE_INFINITY) -
+          (order.get(right.model.slug) ?? Number.POSITIVE_INFINITY) || left.index - right.index,
+    )
+    .map(({ model }) => model);
+}
+
+/** Favorites first when any is offered, except on a started thread, which opens on its own provider. */
+export function initialPickerTab(input: {
+  Providers: ReadonlyArray<IProviderOption>;
+  Favorites: ReadonlyArray<IModelFavorite>;
+  ActiveInstanceId: string | null;
+  Started: boolean;
+}): string | null {
+  const active = input.ActiveInstanceId ?? input.Providers[0]?.InstanceId ?? null;
+  if (input.Started) return active;
+  const offered = input.Favorites.some((favorite) =>
+    input.Providers.some(
+      (provider) =>
+        provider.InstanceId === favorite.Provider &&
+        provider.Models.some((model) => model.Slug === favorite.Model),
+    ),
+  );
+  return offered ? FAVORITES_TAB : active;
+}
+
+/** Whether a provider tab opens with its older models shown: only when the active model is one of them. */
+export function legacyStartsExpanded(
   providers: ReadonlyArray<IProviderOption>,
-  instanceId: string | null,
-  query: string,
-): IPickerModel[] {
-  const all = providers.flatMap((provider) =>
+  favorites: ReadonlyArray<IModelFavorite>,
+  selection: IWireModelSelection | null,
+): boolean {
+  if (selection === null) return false;
+  const model = providerOf(providers, selection)?.Models.find(
+    (held) => held.Slug === selection.model,
+  );
+  return (
+    model?.IsLegacy === true &&
+    !favorites.some(
+      (favorite) => favorite.Provider === selection.instanceId && favorite.Model === model.Slug,
+    )
+  );
+}
+
+/**
+ * A provider tab lists favorites first, then its current models, with older ones behind Show more.
+ * The Favorites tab lists favorites in provider order, and a query ranks every provider's models.
+ */
+export function pickerList(input: {
+  Providers: ReadonlyArray<IProviderOption>;
+  Favorites: ReadonlyArray<IModelFavorite>;
+  Tab: string | null;
+  Query: string;
+  LegacyExpanded: boolean;
+}): IPickerList {
+  const favorites = new Set(
+    input.Favorites.map((favorite) => favoriteKey(favorite.Provider, favorite.Model)),
+  );
+  const all = input.Providers.flatMap((provider) =>
     provider.Models.map((model) => ({
       InstanceId: provider.InstanceId,
       Driver: provider.Driver,
       ProviderName: provider.Name,
       Slug: model.Slug,
       Name: model.Name,
+      IsFavorite: favorites.has(favoriteKey(provider.InstanceId, model.Slug)),
+      IsLegacy: model.IsLegacy === true,
       ShortName: model.ShortName,
       SubProvider: model.SubProvider,
     })),
   );
-  const ranked =
-    query.trim() === ""
-      ? all.filter((model) => model.InstanceId === instanceId)
-      : rankModelPickerSearch(all, query, (model) => ({
-          driverKind: model.Driver ?? model.InstanceId,
-          providerDisplayName: model.ProviderName,
-          name: model.Name,
-          ...(model.ShortName === undefined ? {} : { shortName: model.ShortName }),
-          ...(model.SubProvider === undefined ? {} : { subProvider: model.SubProvider }),
-        }));
-  return ranked.map(({ ShortName: _short, SubProvider: _sub, ...model }) => model);
+  const shown = (models: typeof all): IPickerModel[] =>
+    models.map(({ IsLegacy: _legacy, ShortName: _short, SubProvider: _sub, ...model }) => model);
+  if (input.Query.trim() !== "") {
+    const ranked = rankModelPickerSearch(all, input.Query, (model) => ({
+      driverKind: model.Driver ?? model.InstanceId,
+      providerDisplayName: model.ProviderName,
+      name: model.Name,
+      isFavorite: model.IsFavorite,
+      ...(model.ShortName === undefined ? {} : { shortName: model.ShortName }),
+      ...(model.SubProvider === undefined ? {} : { subProvider: model.SubProvider }),
+    }));
+    return { Models: shown(ranked), Legacy: null };
+  }
+  if (input.Tab === FAVORITES_TAB) {
+    return { Models: shown(all.filter((model) => model.IsFavorite)), Legacy: null };
+  }
+  const tab = all.filter((model) => model.InstanceId === input.Tab);
+  const ordered = [
+    ...tab.filter((model) => model.IsFavorite),
+    ...tab.filter((model) => !model.IsFavorite),
+  ];
+  const current = ordered.filter((model) => !model.IsLegacy || model.IsFavorite);
+  const legacy = ordered.filter((model) => model.IsLegacy && !model.IsFavorite);
+  if (legacy.length === 0) return { Models: shown(current), Legacy: null };
+  return {
+    Models: shown(input.LegacyExpanded ? [...current, ...legacy] : current),
+    Legacy: { Count: legacy.length, Expanded: input.LegacyExpanded },
+  };
 }
 
 export const RUNTIME_MODES: ReadonlyArray<IWireRuntimeMode> = [
