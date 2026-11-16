@@ -14,6 +14,7 @@ import { TERMINAL_PALETTES } from "@t3tools/shared/terminalOutput";
 import * as Effect from "effect/Effect";
 import type { IResourceImplementation } from "treflex";
 
+import { colorScheme, onColorSchemeChange } from "../colorScheme";
 import { connectionRuntime } from "./connection";
 import { failureText, followLive } from "./followItems";
 
@@ -50,8 +51,6 @@ function nextChunk(input: string): string {
   return input.slice(0, splitsSurrogate ? end - 1 : end);
 }
 
-const DARK_SCHEME = "(prefers-color-scheme: dark)";
-
 // The tokens are var() chains, which getPropertyValue returns unresolved and xterm can't parse.
 function terminalTheme() {
   const probe = document.createElement("div");
@@ -77,7 +76,7 @@ function terminalTheme() {
     brightMagenta,
     brightCyan,
     brightWhite,
-  ] = TERMINAL_PALETTES[matchMedia(DARK_SCHEME).matches ? "dark" : "light"];
+  ] = TERMINAL_PALETTES[colorScheme()];
   const theme = {
     background: read("--terminal-background"),
     foreground: read("--terminal-foreground"),
@@ -120,13 +119,10 @@ export const terminalSession: IResourceImplementation<"terminalSession"> = async
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
-  matchMedia(DARK_SCHEME).addEventListener(
-    "change",
-    () => {
-      terminal.options.theme = terminalTheme();
-    },
-    { signal: r.signal },
-  );
+  const stopFollowingScheme = onColorSchemeChange(() => {
+    terminal.options.theme = terminalTheme();
+  });
+  r.signal.addEventListener("abort", stopFollowingScheme);
 
   const ids = { threadId: params.ThreadId, terminalId: params.TerminalId };
   const environmentId = EnvironmentId.make(params.EnvironmentId);

@@ -122,6 +122,8 @@ interface IRespondRequestEffect extends IEffect, IRespondRequest {
 interface IServerProvidersEffect extends IEffect {
   Type: "serverProviders";
   EnvironmentId: string;
+  /** Reads the server's current config instead of the one the connection opened with. */
+  Fresh: boolean;
 }
 
 export interface IThreadDiff {
@@ -145,6 +147,7 @@ export type IThreadCommand =
   | { Kind: "rename"; Title: string }
   | { Kind: "visit"; VisitedAt: string }
   | { Kind: "markUnread" }
+  | { Kind: "unarchive" }
   | { Kind: "delete" }
   | { Kind: "modelSelection"; Selection: IWireModelSelection }
   | { Kind: "runtimeMode"; Mode: IWireRuntimeMode };
@@ -163,6 +166,7 @@ export type IProjectCommand =
   | { Kind: "create"; Title: string; WorkspaceRoot: string }
   | { Kind: "pin" }
   | { Kind: "unpin" }
+  | { Kind: "archive" }
   | { Kind: "unarchive" }
   | { Kind: "rename"; Title: string }
   | { Kind: "delete"; Force?: boolean };

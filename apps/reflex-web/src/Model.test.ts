@@ -27,6 +27,14 @@ import {
   toggleModelFavorite,
 } from "./Environment";
 import { loadEarlier, loadingEarlier } from "./HistoryWindow";
+import {
+  archivedThreadCommand,
+  loadUsage,
+  openView,
+  updateServerSettings,
+  writeSetting,
+} from "./Settings";
+import type { IAddressView } from "./Infrastructure/address";
 import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type {
@@ -144,7 +152,10 @@ async function connect(
   stored: IStoredDrafts = { Drafts: new Map(), Files: new Map() },
   resources?: ITestRuntimeOptions["resources"],
 ) {
-  const address = { thread: initialAddress };
+  const address: { thread: string | null; view: IAddressView | null } = {
+    thread: initialAddress,
+    view: null,
+  };
   const terminals = new Map<string, ITerminalLaunch>();
   const models: IRememberedModels = { Last: null, OptionsByModel: {} };
   let guid = 0;
@@ -166,6 +177,10 @@ async function connect(
       ],
       generateGuid: () => `guid-${(guid += 1)}`,
       modelFavorites: () => [],
+      addressView: () => address.view,
+      setAddressView: (effect: { View: IAddressView | null }) => {
+        address.view = effect.View;
+      },
       rememberedModels: () => models,
       rememberModel: (effect: { Selection: IWireModelSelection }) => {
         models.Last = effect.Selection;
@@ -2829,8 +2844,171 @@ describe("reconnect", () => {
   });
 });
 
+function settingsServer() {
+  const calls: Array<{ Type: string; [key: string]: unknown }> = [];
+  let settings = { favorites: [], sidebarAutoSettleAfterDays: 7 } as Record<string, unknown>;
+  let client = { toolCallVisibility: "showAll" } as Record<string, unknown>;
+  let refreshing = true;
+  const commands = {
+    serverConfig: () => {
+      calls.push({ Type: "serverConfig" });
+      return { settings, providers: [], keybindings: [] };
+    },
+    updateServerSettings: (effect: { Patch: object; InstanceMutation: unknown }) => {
+      calls.push({
+        Type: "updateServerSettings",
+        Patch: effect.Patch,
+        Mutation: effect.InstanceMutation,
+      });
+      settings = { ...settings, ...effect.Patch };
+      return settings;
+    },
+    storedClientSettings: () => client,
+    storeClientSettings: (effect: { Settings: Record<string, unknown> }) => {
+      calls.push({ Type: "storeClientSettings", Settings: effect.Settings });
+      client = effect.Settings;
+    },
+    serverProviders: (effect: { Fresh: boolean }) => {
+      calls.push({ Type: "serverProviders", Fresh: effect.Fresh });
+      return [
+        {
+          InstanceId: "devReplay",
+          Name: "Replay",
+          Models: [{ Slug: "showcase", Name: "Showcase", IsDefault: true }],
+        },
+      ];
+    },
+    archivedShell: () => {
+      calls.push({ Type: "archivedShell" });
+      return { projects: [], threads: [] };
+    },
+    threadCommand: (effect: { Command: IThreadCommand }) => {
+      calls.push({ Type: "threadCommand", Command: effect.Command });
+    },
+    usageSummary: (effect: { Input: Record<string, unknown> }) => {
+      calls.push({ Type: "usageSummary", Input: effect.Input });
+      const sources = [{ refreshing: refreshing && effect.Input.provisional === true }];
+      return { buckets: [], sources, contractVersion: 6 };
+    },
+  };
+  return {
+    calls,
+    commands,
+    stopRefreshing: () => {
+      refreshing = false;
+    },
+  };
+}
+
+describe("settings and usage", () => {
+  it("open over the thread, keep the address, load both stores, and close on a thread pick", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "voice" });
+    await settled();
+    expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "general" });
+    expect(server.address.view).toEqual({ Kind: "settings", Page: "general" });
+    expect(server.environment().Replica.Config?.settings.sidebarAutoSettleAfterDays).toBe(7);
+    expect(server.environment().Local.ClientSettings?.toolCallVisibility).toBe("showAll");
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    expect(server.environment().Local.View).toBeNull();
+    expect(server.address.view).toBeNull();
+    expect(server.address.thread).toBe(THREAD_ID);
+  });
+
+  it("reopen the page in the address on load", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, {
+      ...fake.commands,
+      addressView: () => ({ Kind: "settings", Page: "providers" }),
+    });
+    await settled();
+    expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "providers" });
+    expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(true);
+  });
+
+  it("send a server row's patch and hold what the server returns, and merge a client row into the whole stored object", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "threads" });
+    await settled();
+    await server.runtime.dispatch(writeSetting, server.envId(), {
+      Store: "server",
+      Patch: { sidebarAutoSettleAfterDays: null },
+    });
+    expect(fake.calls.filter((call) => call.Type === "updateServerSettings")).toEqual([
+      { Type: "updateServerSettings", Patch: { sidebarAutoSettleAfterDays: null }, Mutation: null },
+    ]);
+    expect(server.environment().Replica.Config?.settings.sidebarAutoSettleAfterDays).toBeNull();
+    await server.runtime.dispatch(writeSetting, server.envId(), {
+      Store: "client",
+      Patch: { timestampFormat: "24-hour" },
+    });
+    expect(fake.calls.at(-1)).toEqual({
+      Type: "storeClientSettings",
+      Settings: { toolCallVisibility: "showAll", timestampFormat: "24-hour" },
+    });
+    expect(server.environment().Local.ClientSettings?.timestampFormat).toBe("24-hour");
+    expect(fake.calls.some((call) => call.Type === "serverProviders" && call.Fresh)).toBe(false);
+  });
+
+  it("reload the composer's providers from the current config after a model or provider change", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    await server.runtime.dispatch(openView, server.envId(), {
+      Kind: "settings",
+      Page: "providers",
+    });
+    await settled();
+    const configReads = () => fake.calls.filter((call) => call.Type === "serverConfig").length;
+    const before = configReads();
+    await server.runtime.dispatch(updateServerSettings, server.envId(), {
+      setModelsHidden: [{ provider: "devReplay", model: "showcase", hidden: true }],
+    } as never);
+    expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
+    expect(configReads()).toBe(before);
+    await server.runtime.dispatch(updateServerSettings, server.envId(), {}, {
+      operation: "upsert",
+      instanceId: "devReplay",
+      instance: { driver: "devReplay", enabled: false },
+    } as never);
+    expect(configReads()).toBe(before + 1);
+    expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
+  });
+
+  it("unarchive a thread with stock's command and read the archive again", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "archived" });
+    await settled();
+    expect(server.environment().Replica.Archived).toEqual({ projects: [], threads: [] });
+    await server.runtime.dispatch(archivedThreadCommand, server.envId(), "t-9", "unarchive");
+    expect(fake.calls.slice(-2)).toEqual([
+      { Type: "threadCommand", Command: { Kind: "unarchive" } },
+      { Type: "archivedShell" },
+    ]);
+  });
+
+  it("show a provisional usage summary, then wait for the refresh it reports", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    const input = { sinceDay: "2026-10-19", untilDay: "2026-11-17", timeZone: "UTC" };
+    await server.runtime.dispatch(loadUsage, server.envId(), "30", input as never);
+    expect(
+      fake.calls.filter((call) => call.Type === "usageSummary").map((call) => call.Input),
+    ).toEqual([
+      { ...input, provisional: true },
+      { ...input, awaitRefresh: true },
+    ]);
+    expect(server.environment().Replica.Usage?.Key).toBe("30");
+    fake.stopRefreshing();
+    await server.runtime.dispatch(loadUsage, server.envId(), "7", input as never);
+    expect(fake.calls.filter((call) => call.Type === "usageSummary")).toHaveLength(3);
+  });
+});
+
 describe("the replica's writers", () => {
-  it("are the stream receivers, opening and closing, history pages and providers, plus every action on a replica entity", async () => {
+  it("are the stream receivers, opening and closing, history pages, providers, and the settings, archive and usage reads, plus every action on a replica entity", async () => {
     const server = await connect(
       async () =>
         ({
@@ -2841,6 +3019,7 @@ describe("the replica's writers", () => {
         }) as unknown as IWireHistoryPage,
       null,
       {
+        ...settingsServer().commands,
         startTurn: () => undefined,
         stopThread: () => undefined,
         threadDiff: () => "",
@@ -2898,15 +3077,28 @@ describe("the replica's writers", () => {
     expect(server.thread()).toBeUndefined();
     await server.open();
     await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "archived" });
+    await settled();
+    await server.runtime.dispatch(writeSetting, server.envId(), {
+      Store: "server",
+      Patch: { ghqCloneLayout: true },
+    });
+    await server.runtime.dispatch(archivedThreadCommand, server.envId(), "t-9", "unarchive");
+    await server.runtime.dispatch(loadUsage, server.envId(), "30", {} as never);
     expect([...writers].sort()).toEqual([
       "EnvironmentReceiver",
       "ShellReceiver",
       "ThreadReceiver",
       "answerRequest",
+      "archivedThreadCommand",
       "closeThread",
+      "loadArchived",
       "loadEarlier",
       "loadProviders",
+      "loadSettings",
+      "loadUsage",
       "openThread",
+      "writeSetting",
     ]);
   });
 });

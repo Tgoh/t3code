@@ -22,7 +22,12 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { addressThread, setAddressThread } from "./Infrastructure/address";
+import {
+  addressThread,
+  addressView,
+  type IAddressView,
+  setAddressThread,
+} from "./Infrastructure/address";
 import {
   cloneControlEffect,
   type INewProject,
@@ -45,6 +50,7 @@ import {
   storeDraftFilesEffect,
 } from "./Infrastructure/draftMemory";
 import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
+import type { IWireClientSettings } from "./Infrastructure/settings";
 import type { IProjectFaviconTarget } from "./projectIcon";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import {
@@ -54,6 +60,16 @@ import {
   resumeThread,
   retainThread,
 } from "./OpenThread";
+import {
+  archivedThreadCommand,
+  loadUsage,
+  openView,
+  refreshingUsage,
+  refreshUsage,
+  savingSettings,
+  updateServerSettings,
+  writeSetting,
+} from "./Settings";
 import { dropThreadRow, getDefaultShell, type IShell, openShellStream } from "./Shell";
 import {
   detachTerminal,
@@ -80,6 +96,8 @@ export interface IEnvironment extends IEntity {
   Replica: IReplica;
   Local: ISelection & {
     ThreadSessions: Record<string, IThreadSession>;
+    View: IAddressView | null;
+    ClientSettings: IWireClientSettings | null;
   };
 }
 
@@ -94,10 +112,15 @@ export function* newEnvironment(
     ModelFavorites: [],
     Shell: shell,
     OpenThreads: {},
+    Config: null,
+    Archived: null,
+    Usage: null,
   });
   const local = yield* entity<IEnvironment["Local"]>({
     SelectedThreadId: null,
     ThreadSessions: {},
+    View: null,
+    ClientSettings: null,
   });
   return yield* entity<IEnvironment>({
     EnvironmentId: environmentId,
@@ -124,11 +147,15 @@ export function* init(draft: IEnvironment): IActionGenerator {
   yield* start(loadProviders, draft);
   const selected = yield* addressThread();
   if (selected !== null) yield* selectThread(draft, selected);
+  const view = yield* addressView();
+  if (view !== null) yield* openView(draft, view);
 }
 
-export function* loadProviders(draft: IEnvironment): IOpenGenerator {
+export function* loadProviders(draft: IEnvironment, fresh = false): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
-  const providers = yield* open(serverProvidersEffect({ EnvironmentId: environmentId }));
+  const providers = yield* open(
+    serverProvidersEffect({ EnvironmentId: environmentId, Fresh: fresh }),
+  );
   draft.Replica.Providers = providers;
   yield* loadModelFavorites(draft);
 }
@@ -205,6 +232,7 @@ export function* closeThread(draft: IEnvironment, threadId: string): IActionGene
 }
 
 export function* selectThread(draft: IEnvironment, threadId: string): IActionGenerator {
+  if (draft.Local.View !== null) yield* openView(draft, null);
   const previous = draft.Local.SelectedThreadId;
   if (previous === threadId) return;
   draft.Local.SelectedThreadId = threadId;
@@ -527,6 +555,12 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     openInFileManager,
     openInEditor,
     requestProjectFavicon,
+    openView,
+    writeSetting,
+    updateServerSettings,
+    archivedThreadCommand,
+    loadUsage,
+    refreshUsage,
   },
   {
     selectedOpenThread,
@@ -536,5 +570,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     addingProject,
     cloneControlling,
     removingProject,
+    savingSettings,
+    refreshingUsage,
   },
 );

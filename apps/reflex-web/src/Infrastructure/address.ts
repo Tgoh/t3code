@@ -25,3 +25,37 @@ export const setAddressThreadImpl = implementation(setAddress, (effect) => {
   else url.searchParams.set("thread", effect.ThreadId);
   history.replaceState(null, "", url);
 });
+
+/** A page over the thread view; the thread stays in the address underneath it. */
+export type IAddressView = { Kind: "settings"; Page: string } | { Kind: "usage" };
+
+interface IAddressViewEffect extends IEffect {
+  Type: "addressView";
+}
+
+interface ISetAddressViewEffect extends IEffect {
+  Type: "setAddressView";
+  View: IAddressView | null;
+}
+
+export const addressView = defineEffect<IAddressViewEffect, IAddressView | null>("addressView");
+
+const setView = defineEffect<ISetAddressViewEffect, void>("setAddressView");
+
+export const setAddressView = (view: IAddressView | null) => setView({ View: view });
+
+export const addressViewImpl = implementation(addressView, (): IAddressView | null => {
+  const params = new URL(location.href).searchParams;
+  const page = params.get("settings");
+  if (page !== null) return { Kind: "settings", Page: page };
+  return params.has("usage") ? { Kind: "usage" } : null;
+});
+
+export const setAddressViewImpl = implementation(setView, (effect) => {
+  const url = new URL(location.href);
+  url.searchParams.delete("settings");
+  url.searchParams.delete("usage");
+  if (effect.View?.Kind === "settings") url.searchParams.set("settings", effect.View.Page);
+  if (effect.View?.Kind === "usage") url.searchParams.set("usage", "");
+  history.replaceState(null, "", url);
+});

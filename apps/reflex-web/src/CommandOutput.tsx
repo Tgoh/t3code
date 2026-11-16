@@ -7,14 +7,15 @@ import { type IActionGenerator, type IEntity, openResource } from "treflex";
 import { useComponentState, useResource } from "treflex-solid";
 import { createEffect, createMemo, createSignal, Index, onMount, Show } from "solid-js";
 
+import { colorScheme } from "./colorScheme";
+
 declare module "treflex" {
   interface IResourceRegistry {
     "Command/Output": { Type: "commandOutput" };
   }
 }
 
-const palette = () =>
-  TERMINAL_PALETTES[matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"];
+const palette = () => TERMINAL_PALETTES[colorScheme()];
 
 const cssOf = (style: TerminalSpanStyle) => ({
   color: style.color,

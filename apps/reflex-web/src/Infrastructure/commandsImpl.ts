@@ -16,6 +16,7 @@ import {
   setThreadRuntimeMode,
   snoozeThread,
   startThreadTurn,
+  unarchiveThread,
   unpinThread,
   unsettleThread,
   unsnoozeThread,
@@ -73,7 +74,7 @@ import { applyModelPreferences } from "../modelOptions";
 import { connectionRuntime } from "./connection";
 import { runCommand, sourceControl } from "./sourceControl";
 
-const inEnvironment = <A, E>(
+export const inEnvironment = <A, E>(
   environmentId: string,
   effect: Effect.Effect<
     A,
@@ -228,6 +229,8 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
       return void (await run(visitThread({ ...common, visitedAt: command.VisitedAt })));
     case "markUnread":
       return void (await run(markThreadUnread(common)));
+    case "unarchive":
+      return void (await run(unarchiveThread(common)));
     case "delete":
       return void (await run(deleteThread(common)));
     case "modelSelection":
@@ -269,6 +272,8 @@ export const projectCommandImpl = implementation(projectCommandEffect, async (in
       return void (await run(updateProject({ ...common, pinned: true })));
     case "unpin":
       return void (await run(updateProject({ ...common, pinned: false })));
+    case "archive":
+      return void (await run(updateProject({ ...common, archived: true })));
     case "unarchive":
       return void (await run(updateProject({ ...common, archived: false })));
     case "rename":
@@ -451,23 +456,41 @@ export const assetUrlImpl = implementation(assetUrlEffect, async (input, action)
 
 const plainCopy = <T>(value: ReadonlyArray<T>): T[] => JSON.parse(JSON.stringify(value));
 
-export const serverProvidersImpl = implementation(serverProvidersEffect, async (input) => {
-  // This runs at startup, before the environment may be registered, which followStream waits for.
-  const config = await connectionRuntime.runPromise(
+const followOnce = <A, E>(
+  environmentId: string,
+  effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>,
+) =>
+  connectionRuntime.runPromise(
     EnvironmentRegistry.EnvironmentRegistry.pipe(
       Effect.flatMap((registry) =>
         registry
-          .followStream(
-            EnvironmentId.make(input.EnvironmentId),
-            Stream.fromEffect(
-              getInitialServerConfig().pipe(Effect.retry(Schedule.spaced("1 second"))),
-            ),
-          )
+          .followStream(EnvironmentId.make(environmentId), Stream.fromEffect(effect))
           .pipe(Stream.runHead),
       ),
       Effect.map(Option.getOrThrow),
     ),
   );
+
+/** A read that can run at startup: it waits for the environment to register and connect. */
+export const onceRegistered = <A, E>(
+  environmentId: string,
+  effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>,
+) =>
+  followOnce(
+    environmentId,
+    effect.pipe(Effect.retry({ times: 30, schedule: Schedule.spaced("1 second") })),
+  );
+
+const initialConfig = (environmentId: string) =>
+  followOnce(
+    environmentId,
+    getInitialServerConfig().pipe(Effect.retry(Schedule.spaced("1 second"))),
+  );
+
+export const serverProvidersImpl = implementation(serverProvidersEffect, async (input) => {
+  const config = input.Fresh
+    ? await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}))
+    : await initialConfig(input.EnvironmentId);
   const preferences = config.settings?.providerModelPreferences ?? {};
   return config.providers
     .filter((provider) => provider.enabled && isProviderAvailable(provider))

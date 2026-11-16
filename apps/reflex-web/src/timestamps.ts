@@ -41,6 +41,9 @@ export function fullTimestamp(iso: string): string {
 
 export const MINUTE = 60_000;
 
+// Solid components run once, so React's purity rule, which flags Date.now in a component, doesn't apply.
+export const clockNow = () => Date.now();
+
 export function relativeTime(iso: string, now: number): string {
   const seconds = Math.floor(Math.max(0, now - Date.parse(iso)) / 1000);
   if (seconds < 60) return "now";

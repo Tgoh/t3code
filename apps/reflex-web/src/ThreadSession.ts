@@ -79,6 +79,11 @@ import { FILE_SEARCH_LIMIT, type IProjectEntry } from "./composerMenu";
 import { type IOpenThread, latestDiffTurn } from "./OpenThread";
 import { type IPromptHistoryEntry, promptHistoryEntries } from "./promptHistory";
 import { carryIntoPrompt, type IQuestion, type IQuestionDraft, seededDrafts } from "./questions";
+import type {
+  IWireArchivedShell,
+  IWireServerConfig,
+  IWireUsageSummary,
+} from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
 
 declare module "treflex" {
@@ -103,6 +108,9 @@ export interface IReplica extends IEntity {
   ModelFavorites: IModelFavorite[];
   Shell: IShell;
   OpenThreads: Record<string, IOpenThread>;
+  Config: IWireServerConfig | null;
+  Archived: IWireArchivedShell | null;
+  Usage: { Key: string; Summary: IWireUsageSummary } | null;
 }
 
 export interface ISelection extends IEntity {

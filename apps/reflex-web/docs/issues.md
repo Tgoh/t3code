@@ -134,7 +134,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Project icons: a cloned project's icon isn't asked for again when its clone lands, as stock does, so it shows the monogram until the next request after the 30-minute refresh. An icon file changed in place shows on the next refresh, not straight away.
 - Sidebar: no "Setting up" state for a thread launched from a draft before its first run lands, and no Regenerate title action.
 
-- Sidebar: no Search box, thread filter, sidebar toggle above 767px, or settings, pull request and usage buttons, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
+- Sidebar: no Search box, thread filter, sidebar toggle above 767px, or pull requests button, because this client has no behaviour for them, so the T3 mark sits where the toggle was.
 - Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
 - Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, auto-settle toggle or search.
 - Sidebar: every settled thread is streamed, where stock omits older ones and pages them in.
@@ -170,6 +170,25 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Permissions: no overflow menu at narrow widths, and modes a managed policy forbids aren't disabled. A new thread's strip under the composer holds only the permissions chip, with no workspace or branch pickers.
 - Diff panel: no tabs, split view, wrap, turn picker, file icons or collapsed unchanged-line markers.
 - Terminal drawer: fixed height with no resize, tabs or splits; the emulator is xterm, so glyph rendering differs from stock's.
+
+## Unmatched: settings and usage
+
+Settings opens in place of the thread view, not as stock's modal, and keeps the thread in the address underneath it (`?settings=<page>`, `?usage`).
+
+- Settings pages not built, shown greyed out in the nav: Diffs & pull requests, Voice, SnapShots, Browser, Devices, Scheduled tasks, Source control, Worktrees, Environments, Sharing & access, Secrets, Maintenance, Labs, and Open source licenses under About. The footer has no Pull requests button or page.
+- Client settings (General, Chat and most of Appearance) are written to stock's `t3code:client-settings:v1` key in stock's shape, but `localStorage` is per port, so stock web on 5733 and this client never see each other's values, and stock desktop keeps its own file. This client acts only on the color scheme; every other client row says "Not used here yet". The timeline doesn't read tool-call visibility or the time format, and the composer doesn't read the send shortcut, follow-up behavior, rich text or skills-in-slash-menu.
+- Settings are read when a page opens and replaced by each write's reply. Stock follows the config stream, so a change made elsewhere while a page is open shows only after reopening it. The composer's provider list reloads after a provider or model write from this client, but not after one made in stock.
+- No settings search, no "Applying settings for" project and environment scope (every write goes to the one environment, as stock's environment-wide path), no per-row reset or inheritance markers, and no Restore device defaults.
+- Appearance: the color scheme only, no theme library, theme editor, contrast, glass opacity, thread details items, panel animations, environment identification, composer context or typography.
+- General: no language select or desktop quit shortcut. Project grouping turns on as "repository" rather than stock's remembered last mode.
+- Providers: enable and disable, hide, reorder and favorite models only. No adding or removing instances, display name or accent edits, setup, runtime or environment forms, custom models, model filter, Enable all, provider refresh, usage-provider hubs, text generators, health check interval or idle compaction, and no project-scoped enable override. Favorites aren't migrated when the server's `favorites` is still null. Providers other than Claude and Codex show no icon.
+- Projects: name, pin, archive and remove for a picked project. No icon picker, new-thread defaults, actions or checkout grouping.
+- Threads: no default model, fallback model or text generation model pickers, and no snooze presets. The workspace select offers "Default" for the inherited value, where stock shows what it resolves to.
+- Keybindings: read-only list with search; editing, recording, conflict warnings and Open keybindings.json aren't built.
+- Archive: one environment, no right-click menu, and a failure goes to the sidebar's error line rather than a toast.
+- About: the server's version, not the client build's, and no update, update track, mobile app or welcome rows.
+- Usage: no environment or provider filters, model price overrides, cost and token share bars, Day or Hour breakdown table, model detail dialog, chart hover tooltip, ChatGPT shared usage, or keyboard shortcuts (stock's `mod+u`, `c`, `t`, `l`). The chart is straight segments, not stock's smoothed curves.
+- Usage limits: no usage-limit hubs (`usageLimitSources` is stream-only and `server.getConfig` doesn't send it), external usage links, segment popovers or reset credits. Refresh re-reads the config instead of calling `server.refreshProviders`, which is a guarded RPC and fails without the atom command boundary (see "the command path assumes atoms").
 
 ## Open: reading `packages/` restarts the dev server on Windows
 

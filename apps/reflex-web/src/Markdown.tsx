@@ -16,6 +16,7 @@ import { Dynamic } from "solid-js/web";
 import { useComponentState } from "treflex-solid";
 
 import { ProjectBadge } from "./brand";
+import { colorScheme } from "./colorScheme";
 import {
   cachedHighlight,
   fenceOf,
@@ -595,9 +596,7 @@ function TableToken(props: ITokenProps) {
   );
 }
 
-const darkScheme = matchMedia("(prefers-color-scheme: dark)");
-const [scheme, setScheme] = createSignal<Scheme>(darkScheme.matches ? "dark" : "light");
-darkScheme.addEventListener("change", (event) => setScheme(event.matches ? "dark" : "light"));
+const scheme = (): Scheme => colorScheme();
 
 // A message's blocks remount as its turn settles and as the timeline windows, so each block's
 // wrap choice is held here by message and position rather than in the block.

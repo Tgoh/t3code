@@ -4,10 +4,12 @@ import { ProjectBadge } from "./brand";
 import { Composer, FileDropSection } from "./Composer";
 import Environment from "./Environment";
 import Root from "./Root";
+import { SettingsView } from "./SettingsView";
 import { Sidebar, SidebarToggle } from "./Sidebar";
 import ThreadSession from "./ThreadSession";
 import { ThreadView } from "./ThreadView";
 import { TooltipHost } from "./tooltip";
+import { UsageView } from "./UsageView";
 import {
   createMediaQuery,
   createSidebarSheet,
@@ -89,6 +91,16 @@ function EnvironmentMain() {
           </>
         }
       >
+        <Match
+          when={
+            environment.state.Local.View?.Kind === "settings" ? environment.state.Local.View : null
+          }
+        >
+          {(view) => <SettingsView page={view().Page} />}
+        </Match>
+        <Match when={environment.state.Local.View?.Kind === "usage"}>
+          <UsageView />
+        </Match>
         <Match when={environment.selectedOpenThread()} keyed>
           {(thread) => <ThreadView state={thread} />}
         </Match>

@@ -7,7 +7,21 @@ import "./styles.css";
 
 import { App } from "./App";
 import { EnvironmentReceiver } from "./Environment";
-import { addressThreadImpl, setAddressThreadImpl } from "./Infrastructure/address";
+import {
+  addressThreadImpl,
+  addressViewImpl,
+  setAddressThreadImpl,
+  setAddressViewImpl,
+} from "./Infrastructure/address";
+import {
+  archivedShellImpl,
+  refreshUsageRatesImpl,
+  serverConfigImpl,
+  storeClientSettingsImpl,
+  storedClientSettingsImpl,
+  updateServerSettingsImpl,
+  usageSummaryImpl,
+} from "./Infrastructure/settingsImpl";
 import { commandOutput } from "./Infrastructure/commandOutput";
 import {
   addProjectSettingsImpl,
@@ -101,6 +115,15 @@ runtime.registerResourceType("projectFavicons", projectFavicons);
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);
+runtime.registerImplementation(addressViewImpl);
+runtime.registerImplementation(setAddressViewImpl);
+runtime.registerImplementation(serverConfigImpl);
+runtime.registerImplementation(updateServerSettingsImpl);
+runtime.registerImplementation(storedClientSettingsImpl);
+runtime.registerImplementation(storeClientSettingsImpl);
+runtime.registerImplementation(archivedShellImpl);
+runtime.registerImplementation(usageSummaryImpl);
+runtime.registerImplementation(refreshUsageRatesImpl);
 runtime.registerResourceType("shellStream", shellStream, { endOnReceiverFailure: true });
 runtime.registerResourceType("threadStream", threadStream, { endOnReceiverFailure: true });
 runtime.registerReceiver(RootReceiver);

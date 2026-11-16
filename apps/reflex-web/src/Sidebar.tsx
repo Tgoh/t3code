@@ -36,6 +36,7 @@ import Shell, {
   sidebarStatus,
   unhiddenThreads,
 } from "./Shell";
+import { SidebarFooter } from "./SidebarFooter";
 import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
@@ -565,6 +566,7 @@ export const Sidebar = Shell.provider(() => {
           </div>
         )}
       </Show>
+      <SidebarFooter />
     </nav>
   );
 });
