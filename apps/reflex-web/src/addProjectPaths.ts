@@ -11,6 +11,7 @@ import {
 import {
   appendBrowsePathSegment,
   hasTrailingPathSeparator,
+  isExplicitRelativeProjectPath,
   isWindowsPlatform,
 } from "@t3tools/client-runtime/state/projects";
 
@@ -49,6 +50,14 @@ export function filterPinnedBrowseEntries(input: {
         (normalizedMatches.length === 1 ? normalizedMatches[0]! : null))
       : null;
   return { visibleEntries, exactEntry };
+}
+
+// Follows hasBrowseTarget in apps/web/src/components/CommandPalette.tsx.
+export function browseTarget(query: string, platform: string, cwd: string | null): string {
+  const browse = getFilesystemBrowsePath(query, platform);
+  if (!browse.isBrowsing) return "";
+  if (cwd === null && isExplicitRelativeProjectPath(query.trim())) return "";
+  return browse.directoryPath;
 }
 
 export function folderChoices(input: {

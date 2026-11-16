@@ -4,10 +4,7 @@ import {
   normalizePastedCloneUrl,
   resolveAddProjectPath,
 } from "@t3tools/client-runtime/operations/projects";
-import {
-  getFilesystemBrowsePath,
-  getFilesystemBrowseTabCompletion,
-} from "@t3tools/client-runtime/state/filesystem";
+import { getFilesystemBrowseTabCompletion } from "@t3tools/client-runtime/state/filesystem";
 import { type IActionGenerator, type IEntity, latest } from "treflex";
 import { useComponentState } from "treflex-solid";
 import {
@@ -23,6 +20,7 @@ import {
 
 import {
   browsePlatform,
+  browseTarget,
   chosenFolder,
   defaultCloneDestination,
   enterFolder,
@@ -67,12 +65,21 @@ interface IFolderPicker extends IEntity {
   Error: string | null;
 }
 
-function* browse(draft: IFolderPicker, environmentId: string, path: string): IActionGenerator {
+function* browse(
+  draft: IFolderPicker,
+  environmentId: string,
+  path: string,
+  cwd: string | null,
+): IActionGenerator {
   draft.Path = path;
   draft.Listing = null;
   draft.Error = null;
   try {
-    draft.Listing = yield* browseFoldersEffect({ EnvironmentId: environmentId, PartialPath: path });
+    draft.Listing = yield* browseFoldersEffect({
+      EnvironmentId: environmentId,
+      PartialPath: path,
+      Cwd: cwd,
+    });
   } catch (error) {
     draft.Error = errorText(error);
   }
@@ -89,6 +96,7 @@ export function AddProjectPanel(props: { onClose: () => void }) {
   }));
   onMount(() => panel.dispatch(loadSettings, environment.state.EnvironmentId));
   const [mode, setMode] = createSignal<IMode>("folder");
+  const cwd = () => environment.currentProjectRoot();
   const settings = () =>
     panel.state.Settings ?? (panel.state.SettingsError === null ? null : UNKNOWN_SETTINGS);
   const modes = (): Array<{ Id: IMode; Label: string }> => [
@@ -128,10 +136,10 @@ export function AddProjectPanel(props: { onClose: () => void }) {
         {(held) => (
           <Switch>
             <Match when={mode() === "folder"}>
-              <AddFolder settings={held} onDone={props.onClose} />
+              <AddFolder settings={held} cwd={cwd()} onDone={props.onClose} />
             </Match>
             <Match when={mode() === "clone"}>
-              <CloneRepository settings={held} onDone={props.onClose} />
+              <CloneRepository settings={held} cwd={cwd()} onDone={props.onClose} />
             </Match>
             <Match when={mode() === "new" && held.NewProjectsRoot}>
               {(root) => <NewProject root={root()} onDone={props.onClose} />}
@@ -143,12 +151,20 @@ export function AddProjectPanel(props: { onClose: () => void }) {
   );
 }
 
-function AddFolder(props: { settings: IAddProjectSettings; onDone: () => void }) {
+function AddFolder(props: {
+  settings: IAddProjectSettings;
+  cwd: string | null;
+  onDone: () => void;
+}) {
   const environment = Environment.use();
   const [error, setError] = createSignal<string | null>(null);
   const platform = () => browsePlatform(props.settings.Os);
   const submit = async (rawPath: string) => {
-    const resolved = resolveAddProjectPath({ rawPath, platform: platform() });
+    const resolved = resolveAddProjectPath({
+      rawPath,
+      platform: platform(),
+      currentProjectCwd: props.cwd,
+    });
     if (!resolved.ok) return setError(resolved.error);
     setError(null);
     const failure = await environment.addFolder(resolved.path);
@@ -159,6 +175,7 @@ function AddFolder(props: { settings: IAddProjectSettings; onDone: () => void })
     <FolderPicker
       initialQuery={initialFolderQuery(props.settings)}
       platform={platform()}
+      cwd={props.cwd}
       cloneFolder=""
       label="Project folder"
       submitLabel="Add"
@@ -168,14 +185,22 @@ function AddFolder(props: { settings: IAddProjectSettings; onDone: () => void })
   );
 }
 
-function CloneRepository(props: { settings: IAddProjectSettings; onDone: () => void }) {
+function CloneRepository(props: {
+  settings: IAddProjectSettings;
+  cwd: string | null;
+  onDone: () => void;
+}) {
   const environment = Environment.use();
   const [url, setUrl] = createSignal("");
   const [remoteUrl, setRemoteUrl] = createSignal<string | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const platform = () => browsePlatform(props.settings.Os);
   const submit = async (remote: string, rawPath: string) => {
-    const resolved = resolveAddProjectPath({ rawPath, platform: platform() });
+    const resolved = resolveAddProjectPath({
+      rawPath,
+      platform: platform(),
+      currentProjectCwd: props.cwd,
+    });
     if (!resolved.ok) return setError(resolved.error);
     setError(null);
     const failure = await environment.cloneProject(remote, resolved.path);
@@ -229,6 +254,7 @@ function CloneRepository(props: { settings: IAddProjectSettings; onDone: () => v
           <FolderPicker
             initialQuery={defaultCloneDestination(props.settings, remote)}
             platform={platform()}
+            cwd={props.cwd}
             cloneFolder={getCloneDirectoryLeafName(remote, props.settings.GhqCloneLayout)}
             label="Clone into"
             submitLabel="Clone"
@@ -245,13 +271,21 @@ function NewProject(props: { root: string; onDone: () => void }) {
   const environment = Environment.use();
   const [name, setName] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
+  const [notice, setNotice] = createSignal<string | null>(null);
   const trimmed = () => name().trim();
   const submit = async () => {
-    if (trimmed() === "" || environment.addingProject()) return;
+    const created = trimmed();
+    if (created === "" || environment.addingProject()) return;
     setError(null);
-    const failure = await environment.newProject(trimmed());
-    if (failure === null) props.onDone();
-    else if (failure !== undefined) setError(failure);
+    setNotice(null);
+    const outcome = await environment.newProject(created);
+    if (outcome === undefined) return;
+    if ("Error" in outcome) return setError(outcome.Error);
+    if (outcome.CommitError === null) return props.onDone();
+    setName("");
+    setNotice(
+      `Created ${created} without a first commit: ${outcome.CommitError} The project is in ${outcome.WorkspaceRoot}.`,
+    );
   };
   return (
     <>
@@ -285,6 +319,7 @@ function NewProject(props: { root: string; onDone: () => void }) {
           : `Creates ${getNewProjectPathPreview(props.root, trimmed())}`}
       </p>
       <Show when={error()}>{(shown) => <p class="add-project-error">{shown()}</p>}</Show>
+      <Show when={notice()}>{(shown) => <p class="add-project-warning">{shown()}</p>}</Show>
     </>
   );
 }
@@ -292,6 +327,7 @@ function NewProject(props: { root: string; onDone: () => void }) {
 function FolderPicker(props: {
   initialQuery: string;
   platform: string;
+  cwd: string | null;
   cloneFolder: string;
   label: string;
   submitLabel: string;
@@ -311,13 +347,10 @@ function FolderPicker(props: {
     element?.setSelectionRange(element.value.length, element.value.length);
   });
   const [query, setQuery] = createSignal(props.initialQuery);
-  const directory = createMemo(() => {
-    const browsed = getFilesystemBrowsePath(query(), props.platform);
-    return browsed.isBrowsing ? browsed.directoryPath : "";
-  });
+  const directory = createMemo(() => browseTarget(query(), props.platform, props.cwd));
   createEffect(() => {
     const path = directory();
-    if (path !== "") picker.dispatch(browse, environment.state.EnvironmentId, path);
+    if (path !== "") picker.dispatch(browse, environment.state.EnvironmentId, path, props.cwd);
   });
   const listing = () => (picker.state.Path === directory() ? picker.state.Listing : null);
   const choices = createMemo(() =>
@@ -376,7 +409,7 @@ function FolderPicker(props: {
           onInput={(event) => setQuery(event.currentTarget.value)}
           onKeyDown={(event) => {
             if (event.key !== "Tab" || event.shiftKey || event.isComposing) return;
-            if (!choices().browse.isBrowsing) return;
+            if (directory() === "") return;
             event.preventDefault();
             complete();
           }}
@@ -386,7 +419,7 @@ function FolderPicker(props: {
         </button>
       </div>
       <Show when={props.error}>{(shown) => <p class="add-project-error">{shown()}</p>}</Show>
-      <Show when={choices().browse.isBrowsing}>
+      <Show when={directory() !== ""}>
         <ul class="folder-list">
           <Show when={choices().browse.canBrowseUp}>
             <li>

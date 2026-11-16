@@ -783,6 +783,7 @@ main {
 }
 
 .add-project-note,
+.add-project-warning,
 .add-project-error {
   font-size: 12px;
   margin: 0 2px;
@@ -795,6 +796,10 @@ main {
 
 .add-project-error {
   color: var(--error-foreground);
+}
+
+.add-project-warning {
+  color: var(--warning-foreground);
 }
 
 .add-project-remote {

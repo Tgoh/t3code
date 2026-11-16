@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  browseTarget,
   chosenFolder,
   defaultCloneDestination,
   enterFolder,
@@ -90,6 +91,14 @@ describe("folder browsing", () => {
         caseSensitive: true,
       }).exactEntry,
     ).toBeNull();
+  });
+
+  it("browses a relative path only from an open project", () => {
+    expect(browseTarget("./sub/", "Linux", "/code/app")).toBe("./sub/");
+    expect(browseTarget("../sib", "Linux", "/code/app")).toBe("../");
+    expect(browseTarget("./sub/", "Linux", null)).toBe("");
+    expect(browseTarget("/code/sub", "Linux", null)).toBe("/code/");
+    expect(browseTarget("app", "Linux", "/code/app")).toBe("");
   });
 
   it("adds the listed folder for a trailing separator, else the exact match or the typed path", () => {

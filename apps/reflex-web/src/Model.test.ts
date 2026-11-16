@@ -1737,10 +1737,19 @@ describe("writing to the server", () => {
     expect(server.environment().Local.SelectedThreadId).toBe(selected);
   });
 
-  it("adding a folder already a project opens that project, unarchiving it first", async () => {
+  it("adding a folder already a project opens its latest unsettled thread, unarchiving it first", async () => {
     const sent: { ProjectId: string; Command: object }[] = [];
     const server = await connect(undefined, null, {
       projectCommand: (effect: { ProjectId: string; Command: object }) => void sent.push(effect),
+    });
+    const thread = (id: string, projectId: string, updatedAt: string, settled = false) => ({
+      id,
+      projectId,
+      title: id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt,
+      archivedAt: null,
+      settledOverride: settled ? "settled" : null,
     });
     await server.sendShell({
       kind: "snapshot",
@@ -1754,8 +1763,14 @@ describe("writing to the server", () => {
             workspaceRoot: "/code/old",
             archivedAt: "2026-01-01T00:00:00.000Z",
           },
+          { id: "p-busy", title: "Busy", workspaceRoot: "/code/busy" },
+          { id: "p-done", title: "Done", workspaceRoot: "/code/done" },
         ],
-        threads: [],
+        threads: [
+          thread("t-older", "p-busy", "2026-02-01T00:00:00.000Z"),
+          thread("t-busy", "p-busy", "2026-03-01T00:00:00.000Z"),
+          thread("t-done", "p-done", "2026-03-01T00:00:00.000Z", true),
+        ],
         archivedThreads: [],
       },
     } as unknown as IWireShellItem);
@@ -1765,6 +1780,10 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(addFolder, server.envId(), "/code/old");
     expect(sent).toMatchObject([{ ProjectId: "p-old", Command: { Kind: "unarchive" } }]);
     expect(draftProjectOf(server)).toBe("p-old");
+    await server.runtime.dispatch(addFolder, server.envId(), "/code/busy");
+    expect(server.environment().Local.SelectedThreadId).toBe("t-busy");
+    await server.runtime.dispatch(addFolder, server.envId(), "/code/done");
+    expect(draftProjectOf(server)).toBe("p-done");
   });
 
   it("cloning opens the project as soon as the server takes the clone", async () => {
@@ -1796,9 +1815,13 @@ describe("writing to the server", () => {
       newProject: (effect: { Name: string }) => ({
         ProjectId: "p-new",
         WorkspaceRoot: `/projects/${effect.Name}`,
+        CommitError: "no git identity",
       }),
     });
-    expect(await server.runtime.dispatch(newProject, server.envId(), "demo")).toBeNull();
+    expect(await server.runtime.dispatch(newProject, server.envId(), "demo")).toMatchObject({
+      WorkspaceRoot: "/projects/demo",
+      CommitError: "no git identity",
+    });
     expect(draftProjectOf(server)).toBe("p-new");
   });
 

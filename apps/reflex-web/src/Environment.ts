@@ -2,6 +2,7 @@ import {
   findProjectByPath,
   inferProjectTitleFromPath,
 } from "@t3tools/client-runtime/state/projects";
+import { getLatestThreadForProject } from "@t3tools/client-runtime/state/thread-sort";
 import {
   bind,
   entity,
@@ -243,11 +244,25 @@ export function* addFolder(
   } catch (error) {
     return errorText(error);
   }
-  yield* newThread(draft, projectId);
+  const latest =
+    existing === undefined
+      ? null
+      : getLatestThreadForProject(
+          Object.values(draft.Replica.Shell.Threads).map((thread) => ({
+            ...thread,
+            archivedAt: thread.archivedAt ?? null,
+          })),
+          existing.id,
+          "updated_at",
+        );
+  if (latest !== null && latest.settledOverride !== "settled")
+    yield* selectThread(draft, latest.id);
+  else yield* newThread(draft, projectId);
   return null;
 }
 leading(addFolder);
 
+// Follows submitAddProjectCloneFlow in apps/web/src/components/CommandPalette.tsx.
 export function* cloneProject(
   draft: IEnvironment,
   remoteUrl: string,
@@ -273,16 +288,20 @@ export function* cloneProject(
 }
 leading(cloneProject);
 
-export function* newProject(draft: IEnvironment, name: string): IOpenGenerator<string | null> {
+// Follows useNewProject in apps/web/src/hooks/useNewProject.ts.
+export function* newProject(
+  draft: IEnvironment,
+  name: string,
+): IOpenGenerator<{ Error: string } | INewProject> {
   const environmentId = draft.EnvironmentId;
   let created: INewProject;
   try {
     created = yield* open(newProjectEffect({ EnvironmentId: environmentId, Name: name }));
   } catch (error) {
-    return errorText(error);
+    return { Error: errorText(error) };
   }
   yield* newThread(draft, created.ProjectId);
-  return null;
+  return created;
 }
 leading(newProject);
 
@@ -329,6 +348,13 @@ export function* currentProjectId(draft: IEnvironment): ISelectorGenerator<strin
   );
 }
 
+export function* currentProjectRoot(draft: IEnvironment): ISelectorGenerator<string | null> {
+  const projectId = yield* currentProjectId(draft);
+  return projectId === null
+    ? null
+    : (draft.Replica.Shell.Projects[projectId]?.workspaceRoot ?? null);
+}
+
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
   *"Thread/Deleted"(draft, { ThreadId }) {
     yield* forgetThread(draft, ThreadId);
@@ -351,5 +377,12 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     newProject,
     cloneControl,
   },
-  { selectedOpenThread, selectedDraftSession, currentProjectId, addingProject, cloneControlling },
+  {
+    selectedOpenThread,
+    selectedDraftSession,
+    currentProjectId,
+    currentProjectRoot,
+    addingProject,
+    cloneControlling,
+  },
 );

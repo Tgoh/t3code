@@ -249,7 +249,10 @@ export const addProjectSettingsImpl = implementation(addProjectSettingsEffect, a
 export const browseFoldersImpl = implementation(browseFoldersEffect, async (input, action) => {
   const listing = await inEnvironment(
     input.EnvironmentId,
-    request(WS_METHODS.filesystemBrowse, { partialPath: input.PartialPath }),
+    request(WS_METHODS.filesystemBrowse, {
+      partialPath: input.PartialPath,
+      ...(input.Cwd === null ? {} : { cwd: input.Cwd }),
+    }),
     action?.signal,
   );
   return {
@@ -286,7 +289,11 @@ export const newProjectImpl = implementation(newProjectEffect, async (input) => 
     input.EnvironmentId,
     request(WS_METHODS.projectsCreateNew, { name: input.Name }),
   );
-  return { ProjectId: created.projectId, WorkspaceRoot: created.workspaceRoot };
+  return {
+    ProjectId: created.projectId,
+    WorkspaceRoot: created.workspaceRoot,
+    CommitError: created.commitError ?? null,
+  };
 });
 
 export const closeTerminalImpl = implementation(closeTerminalEffect, async (input) => {

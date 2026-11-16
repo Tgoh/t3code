@@ -149,6 +149,7 @@ interface IBrowseFoldersEffect extends IEffect {
   Type: "browseFolders";
   EnvironmentId: string;
   PartialPath: string;
+  Cwd: string | null;
 }
 
 export const browseFoldersEffect = defineEffect<IBrowseFoldersEffect, IFolderListing>(
@@ -181,6 +182,7 @@ export const cloneControlEffect = defineEffect<ICloneControlEffect, void>("clone
 export interface INewProject {
   ProjectId: string;
   WorkspaceRoot: string;
+  CommitError: string | null;
 }
 
 interface INewProjectEffect extends IEffect {

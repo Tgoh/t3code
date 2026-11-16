@@ -9,6 +9,7 @@ import { createMemo, Show } from "solid-js";
 import Environment from "./Environment";
 import { Download } from "./icons";
 
+// Follows useProjectClone in apps/web/src/state/projectClones.ts.
 export function useProjectClone(projectId: () => string | null) {
   const environment = Environment.use();
   const clones = useResource(environment.state, "Project/Clones");
