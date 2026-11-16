@@ -1,5 +1,8 @@
 import { hasQueuedTurnStart } from "@t3tools/client-runtime/state/thread-settled";
-import { sortActiveThreadsByOrderKey } from "@t3tools/client-runtime/state/thread-sort";
+import {
+  resolveThreadActivityTimestamp,
+  sortActiveThreadsByOrderKey,
+} from "@t3tools/client-runtime/state/thread-sort";
 import { isListedThreadLineage, isProviderNativeSubagentThread } from "@t3tools/contracts";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
@@ -222,11 +225,11 @@ export function* subagentRequests(
 ): ISelectorGenerator<Record<string, ISubagentRequest>> {
   const threads = draft.Threads;
   const requests: Record<string, ISubagentRequest> = {};
-  const flagApproval = (firstParentId: string | null, seen: Set<string>) => {
+  const flag = (firstParentId: string | null, request: ISubagentRequest, seen: Set<string>) => {
     let parentId = firstParentId;
     while (parentId !== null && !seen.has(parentId)) {
       seen.add(parentId);
-      requests[parentId] = "approval";
+      if (requests[parentId] !== "approval") requests[parentId] = request;
       const parent = threads[parentId];
       parentId =
         parent?.lineage.relationshipToParent === "subagent" || parent?.lineage.sideChat === true
@@ -243,13 +246,12 @@ export function* subagentRequests(
       continue;
     }
     if (child.lineage.relationshipToParent !== "subagent") continue;
-    // The coordinator answers a subagent's questions, so only its approvals reach the user.
-    if (
-      requestOf(child) === "approval" &&
-      !isProviderNativeSubagentThread(child) &&
-      isChildRunLive(child)
-    )
-      flagApproval(parentId, new Set([child.id]));
+    if (isProviderNativeSubagentThread(child) || !isChildRunLive(child)) continue;
+    // The coordinator answers a subagent's questions, except the cards only the user can fill.
+    const request = requestOf(child);
+    if (request === "approval") flag(parentId, "approval", new Set([child.id]));
+    else if (request === "user_input" && child.pendingRuntimeRequest?.userOnly === true)
+      flag(parentId, "user_input", new Set([child.id]));
   }
   return Object.keys(requests).length === 0 ? NO_SUBAGENT_REQUESTS : requests;
 }
@@ -272,14 +274,36 @@ function runtimeStatus(thread: IWireThreadShell): IWireThreadShell["status"] | n
   const parkAtIdle =
     backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) &&
     thread.status !== "failed";
-  if (thread.latestRunId === null && thread.activeProviderThreadId === null && !parkAtIdle)
-    return null;
+  if (thread.latestRunId === null && !parkAtIdle) return null;
   return parkAtIdle ? "idle" : (thread.activityRunStatus ?? thread.status);
 }
 
-export type ISidebarStatus = "working" | "approval" | "input" | "failed" | "done" | null;
+export type ISidebarStatus =
+  | "preparing"
+  | "working"
+  | "approval"
+  | "input"
+  | "failed"
+  | "done"
+  | null;
 
-// Follows resolveSidebarThreadStatus and hasUnseenCompletion in apps/web/src/components/Sidebar.logic.ts.
+export const isBusy = (status: ISidebarStatus): boolean =>
+  status === "working" || status === "preparing";
+
+// Follows hasUnseenRunFailure in packages/client-runtime/src/state/threadSettled.ts.
+function hasUnseenRunFailure(thread: IWireThreadShell): boolean {
+  if (thread.latestRunId === null || thread.status !== "failed") return false;
+  if (!thread.lastVisitedAt) return true;
+  const failedAt = Date.parse(
+    runCompletedAt(thread) ?? thread.latestRunStartedAt ?? thread.latestRunRequestedAt ?? "",
+  );
+  const visitedAt = Date.parse(thread.lastVisitedAt);
+  if (Number.isNaN(failedAt) || Number.isNaN(visitedAt)) return true;
+  return failedAt > visitedAt;
+}
+
+// Follows resolveSidebarRowStatus, resolveSidebarThreadStatus and hasUnseenCompletion in
+// apps/web/src/components/Sidebar.logic.ts.
 export function sidebarStatus(
   thread: IWireThreadShell,
   subagent: ISubagentRequest | undefined,
@@ -289,9 +313,13 @@ export function sidebarStatus(
   if (request === "user_input" || subagent === "user_input") return "input";
   const runtime = runtimeStatus(thread);
   if (runtime === "idle") return null;
+  if (runtime === "preparing") return "preparing";
   const status = runtime === null ? null : runStatus(runtime);
   if (status === "running" || status === "waiting") return "working";
-  if (status === "failed") return "failed";
+  if (status === "failed") {
+    const datedByRun = thread.latestRunId !== null && thread.status === "failed";
+    return datedByRun && !hasUnseenRunFailure(thread) ? null : "failed";
+  }
   const completed = thread.latestRunId === null ? null : runCompletedAt(thread);
   const visited = thread.lastVisitedAt;
   if (completed == null || Number.isNaN(Date.parse(completed)) || !visited) return null;
@@ -314,12 +342,25 @@ function failureEdgeAt(thread: IWireThreadShell): string | null | undefined {
     : thread.updatedAt;
 }
 
-function asksForUser(thread: IWireThreadShell, subagent: ISubagentRequest | undefined): boolean {
+function blocksSnooze(thread: IWireThreadShell, subagent: ISubagentRequest | undefined): boolean {
+  const request = thread.pendingRuntimeRequest;
   return (
-    thread.pendingRuntimeRequest !== null ||
+    (request !== null && request.kind !== "user_input") ||
     subagent !== undefined ||
     (thread.pendingGuestMessageCount ?? 0) > 0
   );
+}
+
+// A question already open when the thread was snoozed waits for the snooze to end.
+function raisedHandWhileSnoozed(
+  thread: IWireThreadShell,
+  subagent: ISubagentRequest | undefined,
+): boolean {
+  if (blocksSnooze(thread, subagent)) return true;
+  const request = thread.pendingRuntimeRequest;
+  if (request?.kind !== "user_input") return false;
+  const snoozedAt = thread.snoozedAt;
+  return snoozedAt == null || !(Date.parse(request.createdAt) <= Date.parse(snoozedAt));
 }
 
 // Follows canSnooze in packages/client-runtime/src/state/threadSettled.ts.
@@ -328,7 +369,7 @@ export function canSnooze(
   subagent: ISubagentRequest | undefined,
   now: number,
 ): boolean {
-  if (asksForUser(thread, subagent)) return false;
+  if (blocksSnooze(thread, subagent)) return false;
   const status = runtimeStatus(thread);
   return !hasQueuedTurnStart(
     {
@@ -357,7 +398,7 @@ export function isSnoozed(
   if (thread.snoozedUntil == null) return false;
   const wakeAt = Date.parse(thread.snoozedUntil);
   if (Number.isNaN(wakeAt) || wakeAt <= now) return false;
-  if (asksForUser(thread, subagent)) return false;
+  if (raisedHandWhileSnoozed(thread, subagent)) return false;
   const failedAt = failureEdgeAt(thread);
   if (failedAt === undefined) return true;
   const snoozedAt = thread.snoozedAt;
@@ -430,6 +471,21 @@ export function needsVisit(thread: IWireThreadShell): boolean {
   if (completed == null) return false;
   const visited = thread.lastVisitedAt;
   return visited == null || Date.parse(completed) > Date.parse(visited);
+}
+
+export function activityAt(thread: IWireThreadShell): string | null {
+  return resolveThreadActivityTimestamp({
+    latestUserMessageAt: thread.latestUserMessageAt ?? null,
+    updatedAt: thread.updatedAt,
+    latestRun:
+      thread.latestRunId === null
+        ? null
+        : {
+            requestedAt: thread.latestRunRequestedAt ?? null,
+            startedAt: thread.latestRunStartedAt ?? null,
+            completedAt: runCompletedAt(thread),
+          },
+  } as never);
 }
 
 // Follows resolveThreadWorkingStartedAt in packages/client-runtime/src/state/models.ts.

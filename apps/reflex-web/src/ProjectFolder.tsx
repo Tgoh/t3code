@@ -6,7 +6,7 @@ import { ChevronRight, Ellipsis, PenLine, Pin, PinOff, SquarePen } from "./icons
 import type { IProjectCommand } from "./Infrastructure/commandEffects";
 import type { IWireProject } from "./Infrastructure/wire";
 import { MenuItem, Popup } from "./Menu";
-import Shell, { type IProjectFolder, sidebarStatus } from "./Shell";
+import Shell, { type IProjectFolder, isBusy, sidebarStatus } from "./Shell";
 import { RenameInput } from "./ThreadCard";
 
 export function ProjectMenu(props: {
@@ -65,7 +65,7 @@ export function FolderHeader(props: {
   const needsYou = () =>
     props.folder.Threads.some((thread) => {
       const status = sidebarStatus(thread, shell.subagentRequests()[thread.id]);
-      return status !== null && status !== "working";
+      return status !== null && !isBusy(status);
     });
   return (
     <li>

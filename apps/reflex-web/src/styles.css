@@ -840,7 +840,8 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
-.card-status.working {
+.card-status.working,
+.card-status.preparing {
   color: var(--info-foreground);
 }
 

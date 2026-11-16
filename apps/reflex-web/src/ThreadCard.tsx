@@ -28,7 +28,9 @@ import type { IThreadCommand } from "./Infrastructure/commandEffects";
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { MenuItem, Popup } from "./Menu";
 import Shell, {
+  activityAt,
   canSnooze,
+  isBusy,
   type ISidebarStatus,
   isSnoozed,
   sidebarStatus,
@@ -38,6 +40,7 @@ import { relativeTime, timeUntil } from "./timestamps";
 import { hoverCard } from "./tooltip";
 
 const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
+  preparing: "Setting up",
   working: "Working",
   approval: "Approval",
   input: "Input",
@@ -48,7 +51,7 @@ const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
 function StatusIcon(props: { status: NonNullable<ISidebarStatus> }) {
   return (
     <Switch>
-      <Match when={props.status === "working"}>
+      <Match when={isBusy(props.status)}>
         <CircleDashed />
       </Match>
       <Match when={props.status === "approval"}>
@@ -197,9 +200,8 @@ export function ThreadCard(props: {
         classList={{
           selected: props.selected,
           receded:
-            !props.selected &&
-            (status() === null || status() === "working" || status() === "approval"),
-          dimmed: !props.selected && status() === "working",
+            !props.selected && (status() === null || isBusy(status()) || status() === "approval"),
+          dimmed: !props.selected && isBusy(status()),
         }}
         onClick={select}
         onKeyDown={(event) => {
@@ -223,10 +225,7 @@ export function ThreadCard(props: {
                 <span class="card-time">
                   {props.section === "snoozed"
                     ? timeUntil(props.thread.snoozedUntil ?? "", props.now)
-                    : relativeTime(
-                        props.thread.latestUserMessageAt ?? props.thread.updatedAt,
-                        props.now,
-                      )}
+                    : relativeTime(activityAt(props.thread) ?? props.thread.updatedAt, props.now)}
                 </span>
               }
             >
@@ -234,7 +233,7 @@ export function ThreadCard(props: {
                 <span class={`card-status ${held()}`}>
                   <StatusIcon status={held()} />
                   {STATUS_LABEL[held()]}
-                  <Show when={held() === "working" && workingFor()}>
+                  <Show when={isBusy(held()) && workingFor()}>
                     {(elapsed) => <span class="card-elapsed">{elapsed()}</span>}
                   </Show>
                 </span>

@@ -52,6 +52,7 @@ import {
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
 import { answering, answerRequest, canAnswer, type IRuntimeRequest } from "./RuntimeRequest";
 import {
+  activityAt,
   canSnooze,
   projectFolders,
   ShellReceiver,
@@ -1097,6 +1098,9 @@ describe("the sidebar", () => {
           child("grandchild", "mid", "command"),
           child("both-subagent", "both", "command"),
           child("both-side", "both", "user_input", { sideChat: true }),
+          child("user-only", "user-only-parent", "user_input", {
+            pendingRuntimeRequest: { id: "r-user-only", kind: "user_input", userOnly: true },
+          }),
         ],
         archivedThreads: [],
       },
@@ -1106,6 +1110,7 @@ describe("the sidebar", () => {
       mid: "approval",
       top: "approval",
       both: "approval",
+      "user-only-parent": "user_input",
     });
   });
 
@@ -1148,6 +1153,20 @@ describe("the sidebar", () => {
         latestRunCompletedAt: null,
       }),
       row("subagent-asked", "p", at, { snoozedUntil: future, snoozedAt: at }),
+      row("question-before", "p", at, {
+        snoozedUntil: future,
+        snoozedAt: "2026-01-01T06:00:00.000Z",
+        pendingRuntimeRequest: { id: "q", kind: "user_input", createdAt: at },
+      }),
+      row("question-after", "p", at, {
+        snoozedUntil: future,
+        snoozedAt: at,
+        pendingRuntimeRequest: {
+          id: "q",
+          kind: "user_input",
+          createdAt: "2026-01-01T06:00:00.000Z",
+        },
+      }),
     ];
     const sections = sidebarSections(threads as never, now, { "subagent-asked": "approval" });
     const ids = (list: { id: string }[]) => list.map((thread) => thread.id);
@@ -1158,8 +1177,14 @@ describe("the sidebar", () => {
       "asked",
       "failed-since",
       "subagent-asked",
+      "question-after",
     ]);
-    expect(ids(sections.Snoozed)).toEqual(["snoozed", "failed-before", "failed-undated"]);
+    expect(ids(sections.Snoozed)).toEqual([
+      "snoozed",
+      "failed-before",
+      "failed-undated",
+      "question-before",
+    ]);
     expect(ids(sections.Settled)).toEqual(["settled-new", "settled-old"]);
 
     const snoozable = (extra: object, subagent?: "approval") =>
@@ -1174,7 +1199,8 @@ describe("the sidebar", () => {
       snoozable({ pendingRuntimeRequest: { id: "r", kind: "command" } }),
       snoozable({}, "approval"),
       snoozable({ pendingGuestMessageCount: 1 }),
-    ]).toEqual([true, false, false, true, true, false, false, false]);
+      snoozable({ pendingRuntimeRequest: { id: "q", kind: "user_input", createdAt: at } }),
+    ]).toEqual([true, false, false, true, true, false, false, false, true]);
   });
 
   it("folds active rows into a folder per open project, pinned first and archived last", () => {
@@ -1236,6 +1262,23 @@ describe("the sidebar", () => {
       status({ status: "running", pendingRuntimeRequest: { id: "r", kind: "user_input" } }),
     ).toBe("input");
     expect(status({ status: "failed" })).toBe("failed");
+    expect(
+      status({ status: "failed", latestRunCompletedAt: at, lastVisitedAt: "2025-01-01" }),
+    ).toBe("failed");
+    expect(status({ status: "failed", latestRunCompletedAt: at, lastVisitedAt: at })).toBeNull();
+    expect(
+      status({ status: "running", latestRunId: null, activeProviderThreadId: "pt" }),
+    ).toBeNull();
+    expect(status({ status: "preparing" })).toBe("preparing");
+    expect(
+      activityAt(
+        row("t", "p", at, {
+          latestRunId: "r",
+          latestUserMessageAt: "2026-01-01T10:00:00.000Z",
+          latestRunCompletedAt: "2026-01-01T10:40:00.000Z",
+        }) as never,
+      ),
+    ).toBe("2026-01-01T10:40:00.000Z");
     expect(
       status({ status: "completed", latestRunCompletedAt: at, lastVisitedAt: "2025-01-01" }),
     ).toBe("done");

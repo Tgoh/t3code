@@ -8,7 +8,7 @@ import { ChevronDown, ChevronRight, FolderPlus, Folders, SquarePen, X } from "./
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { AddProjectForm, FolderHeader, ProjectMenu } from "./ProjectFolder";
 import Root from "./Root";
-import Shell, { projectFolders, sidebarSections, sidebarStatus } from "./Shell";
+import Shell, { isBusy, projectFolders, sidebarSections, sidebarStatus } from "./Shell";
 import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
@@ -94,7 +94,7 @@ export const Sidebar = Shell.provider(() => {
   const anyWorking = createMemo(() =>
     shell
       .sidebarThreads()
-      .some((thread) => sidebarStatus(thread, shell.subagentRequests()[thread.id]) === "working"),
+      .some((thread) => isBusy(sidebarStatus(thread, shell.subagentRequests()[thread.id]))),
   );
   createEffect(() => {
     if (!anyWorking()) return;
