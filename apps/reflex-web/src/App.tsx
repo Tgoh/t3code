@@ -11,12 +11,16 @@ import { TooltipHost } from "./tooltip";
 
 const NewThreadView = ThreadSession.provider(() => {
   const session = ThreadSession.use();
+  const environment = Environment.use();
   const projectName = () => session.projectName() ?? "Unknown project";
   return (
     <FileDropSection>
       <header class="thread-header">
         <div class="breadcrumb">
-          <ProjectBadge name={projectName()} size={14} />
+          <ProjectBadge
+            project={environment.state.Replica.Shell.Projects[session.projectId() ?? ""]}
+            size={14}
+          />
           <span class="crumb-project">{projectName()}</span>
           <span class="crumb-separator">/</span>
           <h1>New thread</h1>

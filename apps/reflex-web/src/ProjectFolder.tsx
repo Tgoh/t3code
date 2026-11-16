@@ -193,7 +193,7 @@ export function FolderHeader(props: {
         }}
       >
         <ChevronRight class="section-chevron" classList={{ open: props.open }} />
-        <ProjectBadge name={title()} size={12} />
+        <ProjectBadge project={props.folder.Project} size={12} />
         <Show when={props.renaming} fallback={<span class="folder-title">{title()}</span>}>
           <RenameInput title={title()} onDone={props.onRenamed} />
         </Show>

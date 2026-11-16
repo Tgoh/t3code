@@ -458,7 +458,7 @@ export const Sidebar = Shell.provider(() => {
       <Show when={folders().get(drag.dragging() ?? "")} keyed>
         {(folder) => (
           <div class="folder-ghost" ref={drag.setGhost} aria-hidden="true">
-            <ProjectBadge name={folder.Project?.title ?? "Unknown project"} size={12} />
+            <ProjectBadge project={folder.Project} size={12} />
             <span>{folder.Project?.title ?? "Unknown project"}</span>
           </div>
         )}

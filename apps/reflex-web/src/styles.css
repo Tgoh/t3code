@@ -1244,12 +1244,44 @@ main {
 }
 
 .project-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  user-select: none;
+}
+
+.project-monogram {
+  width: 100%;
+  height: 100%;
   background-color: color-mix(in srgb, currentcolor 14%, transparent);
   border-radius: 25%;
-  flex: none;
   font-family: var(--font-mono);
   overflow: hidden;
-  user-select: none;
+}
+
+.project-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 25%;
+  object-fit: contain;
+}
+
+.project-image.loading {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+.project-emoji {
+  line-height: 1;
+}
+
+.project-lucide,
+.project-lucide svg {
+  width: 100%;
+  height: 100%;
 }
 
 .provider-icon {

@@ -81,12 +81,16 @@ function ThreadHoverCard(props: {
   model: IModelDisplay;
   previousProviders: string[];
 }) {
+  const environment = Environment.use();
   return (
     <div class="hover-card">
       <div class="hover-card-title">{props.thread.title}</div>
       <div class="hover-card-details">
         <div class="hover-card-line">
-          <ProjectBadge name={props.projectName} size={12} />
+          <ProjectBadge
+            project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
+            size={12}
+          />
           <span>{props.projectName}</span>
         </div>
         <Show when={props.thread.branch}>
@@ -216,7 +220,9 @@ export function ThreadCard(props: {
         }}
       >
         <span class="card-line">
-          <ProjectBadge name={props.projectName} />
+          <ProjectBadge
+            project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
+          />
           <span class="card-project">{props.projectName}</span>
           <span class="card-slot">
             <Show
