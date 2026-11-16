@@ -69,6 +69,7 @@ declare module "treflex" {
   }
   interface IDataSourceRegistry {
     Replica: IReplica;
+    Selection: ISelection;
   }
   interface IMessageRegistry {
     "Thread/Started": { ThreadId: string };
@@ -83,6 +84,10 @@ export interface IReplica extends IEntity {
   ModelFavorites: IModelFavorite[];
   Shell: IShell;
   OpenThreads: Record<string, IOpenThread>;
+}
+
+export interface ISelection extends IEntity {
+  SelectedThreadId: string | null;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -299,9 +304,9 @@ function* terminalLaunch(draft: IThreadSession): ISelectorGenerator<ITerminalLau
   return { Cwd: thread.worktreePath ?? root, WorktreePath: thread.worktreePath, ProjectRoot: root };
 }
 
-function* isThreadOpen(draft: IThreadSession): ISelectorGenerator<boolean> {
-  const replica = yield* getData(draft, "Replica");
-  return replica?.OpenThreads[draft.ThreadId] !== undefined;
+function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
+  const selection = yield* getData(draft, "Selection");
+  return selection?.SelectedThreadId === draft.ThreadId;
 }
 
 export function* setDraft(draft: IThreadSession, text: string): IActionGenerator {
@@ -613,7 +618,7 @@ function* attachTerminal(draft: IThreadSession, launch: ITerminalLaunch): IActio
 
 export function* restoreTerminal(draft: IThreadSession): IActionGenerator {
   const launch = yield* rememberedTerminalEffect({ ThreadId: draft.ThreadId });
-  if (launch === null || !(yield* select(isThreadOpen))) return;
+  if (launch === null || !(yield* select(isThreadSelected))) return;
   draft.Terminal.Open = true;
   (yield* attachment(draft)).FocusOnMount = false;
   yield* attachTerminal(draft, launch);

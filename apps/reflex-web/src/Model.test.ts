@@ -51,6 +51,7 @@ import {
   latestRun,
   pendingApprovalIds,
   pendingRequest,
+  RETAIN_MS,
   ThreadReceiver,
   threadSynchronized,
   timelineEntries,
@@ -1357,10 +1358,69 @@ describe("selection", () => {
     expect(streams(server)).toEqual(["a"]);
     await server.runtime.dispatch(selectThread, server.envId(), "b");
     expect(streams(server)).toEqual(["b"]);
-    expect(Object.keys(server.environment().Replica.OpenThreads)).toEqual(["b"]);
     expect(server.environment().Local.SelectedThreadId).toBe("b");
     expect(server.environment().Local.ThreadSessions["a"]!.Draft).toBe("kept");
     expect(server.address.thread).toBe("b");
+  });
+
+  it("keeps a left thread's data, and a return resumes its stream from where it stopped", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendThread(snapshotOf(longThread(3), 5));
+    await server.sendThread({ kind: "synchronized" });
+    const node = server.thread();
+    const synchronized = () => server.runtime.processSelector(threadSynchronized, server.thread);
+
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
+    expect(streams(server)).toEqual(["b"]);
+    expect(server.thread()).toBe(node);
+    expect(server.runtime.timers(server.openId())).toMatchObject([
+      { Key: "Thread/Expire", IntervalMs: RETAIN_MS },
+    ]);
+    expect(synchronized()).toBe(false);
+
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    expect(server.thread()).toBe(node);
+    expect(server.runtime.timers(server.openId())).toEqual([]);
+    const row = server.runtime
+      .resources()
+      .find((resource) => resource.Key === "Thread/Stream" && resource.OwnerId === node.$Id);
+    expect(row?.ResumeFrom).toBe("LastSequence");
+    expect(server.thread().LastSequence).toBe(5);
+    expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2"]);
+    await server.sendThread({
+      kind: "event",
+      sequence: 6,
+      event: event("turn-item.updated", commandItem("missed", "run-0", 9)),
+    } as IWireThreadItem);
+    await server.sendThread({ kind: "synchronized" });
+    expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2", "missed"]);
+    expect(synchronized()).toBe(true);
+  });
+
+  it("drops a left thread when its retention expires, but not the selected one", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendThread(snapshotOf(longThread(3), 5));
+    const expire = () =>
+      server.runtime.dispatch(
+        ThreadReceiver.handle,
+        server.openId(),
+        { Type: "Thread/Expire" },
+        { publisher: { Id: server.openId() } },
+      );
+    await expire();
+    await settled();
+    expect(server.thread()).toBeDefined();
+
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
+    const gone = server.disposed(server.openId());
+    await expire();
+    await gone;
+    expect(server.thread()).toBeUndefined();
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeDefined();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    expect(server.thread().LastSequence).toBe(0);
   });
 
   it("a reload returns to the thread in the address", async () => {

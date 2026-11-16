@@ -200,7 +200,8 @@ const ThreadBody = ThreadSession.provider(() => {
     const isStuck = untrack(stuck);
     const first = snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved);
     if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
-    const trimmed = first !== moved;
+    // A retained thread has rows before the scroller mounts, and there's no scroll to keep then.
+    const trimmed = held.Ids.length > 0 && first !== moved;
     const before = trimmed ? scroller.scrollTop : 0;
     setTimeline({ ...held, Ids: ids, First: first });
     // Only the trim's own shift, so the scroll event it causes isn't read as the user scrolling up
