@@ -46,6 +46,7 @@
   --input: var(--zinc-300);
   --info-foreground: oklch(48.8% 0.243 264.376);
   --thread-link: #006f6b;
+  --file-link: oklch(0.5 0.11 215);
   --success: oklch(69.6% 0.17 162.48);
   --success-foreground: oklch(50.8% 0.118 165.612);
   --warning: oklch(76.9% 0.188 70.08);
@@ -111,6 +112,7 @@
     --error: color-mix(in srgb, oklch(63.7% 0.237 25.331) 90%, #fff);
     --error-foreground: oklch(70.4% 0.191 22.216);
     --thread-link: oklch(76% 0.12 190);
+    --file-link: oklch(0.76 0.11 215);
     --border: rgb(255 255 255 / 8%);
     --input: rgb(255 255 255 / 11%);
     --info-foreground: oklch(70.7% 0.165 254.624);
@@ -2581,12 +2583,83 @@ details[open] > summary .work-chevron {
 }
 
 .code-language {
+  align-items: center;
+  display: inline-flex;
   font-family: var(--font-mono);
   font-size: 11px;
+  gap: 6px;
   min-width: 0;
+  white-space: nowrap;
+}
+
+.code-language .file-icon {
+  flex-shrink: 0;
+  height: 14px;
+  width: 14px;
+}
+
+.code-language-icon {
+  display: inline-flex;
+}
+
+.code-title {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.code-highlight :is(pre, .shiki, .diffs) {
+  background: transparent !important;
+}
+
+/* Plain-text fences override the highlighter's inline foreground colors. */
+.code-block:is(
+    [data-language="text" i],
+    [data-language="txt" i],
+    [data-language="plain" i],
+    [data-language="plaintext" i]
+  )
+  pre {
+  color: inherit !important;
+}
+
+.file-link {
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--file-link);
+  cursor: pointer;
+  display: inline-block;
+  font: inherit;
+  font-weight: 500;
+  max-width: 100%;
+  overflow-x: clip;
+  padding: 0;
+  text-align: inherit;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
   white-space: nowrap;
+}
+
+.file-link .file-icon {
+  height: 1em;
+  margin-right: 0.2em;
+  vertical-align: -0.125em;
+  width: 1em;
+}
+
+.file-link-label {
+  text-decoration: underline transparent 1px;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color 0.15s;
+}
+
+.file-link:hover .file-link-label {
+  text-decoration-color: currentcolor;
+}
+
+.file-link:focus-visible {
+  outline: 2px solid currentcolor;
+  outline-offset: -2px;
 }
 
 .code-actions {
@@ -2817,6 +2890,75 @@ details[open] > summary .work-chevron {
   box-shadow: var(--composer-shadow);
   position: relative;
   z-index: 1;
+}
+
+.composer-menu {
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  bottom: calc(100% + 4px);
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 20%);
+  color: var(--foreground);
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  max-height: min(18rem, 40dvh);
+  overflow-y: auto;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  z-index: 40;
+}
+
+.composer-menu-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: none;
+  font-size: 13px;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.composer-menu-item[aria-selected="true"] {
+  background: var(--accent);
+}
+
+.composer-menu-item svg {
+  color: var(--muted-foreground);
+  flex: none;
+  height: 14px;
+  width: 14px;
+}
+
+.composer-menu-label {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-menu-detail {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-menu-empty {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  margin: 0;
+  padding: 6px 8px;
 }
 
 .composer.collapsed > :not(.composer-collapsed, .composer-bar),
@@ -4150,6 +4292,47 @@ a.attachment-file-open:hover .attachment-file-name {
   gap: 8px;
   margin: 6px 0 0;
   overflow-wrap: anywhere;
+}
+
+.queued > .queued-text,
+.queued > .queued-fold {
+  flex: 1;
+  min-width: 0;
+}
+
+.queued-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.queued-actions svg {
+  height: 14px;
+  width: 14px;
+}
+
+.queued-edit {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.queued-edit textarea {
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  padding: 6px 10px;
+  resize: vertical;
+}
+
+.queued-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .right-panel {

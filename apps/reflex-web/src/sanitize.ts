@@ -1,5 +1,8 @@
+import { LOCAL_FILE_LINK_SCHEMES } from "@t3tools/contracts";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import DOMPurify from "dompurify";
+
+import { isEditorLinkHref } from "./fileLinks";
 
 // Follows the tag list rehype-sanitize's default schema gives stock's assistant messages.
 const ALLOWED_TAGS = [
@@ -26,11 +29,22 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   } else if (EXTERNAL_LINK.test(href)) {
     node.setAttribute("target", "_blank");
     node.setAttribute("rel", "noopener noreferrer");
-  } else {
+  } else if (!isEditorLinkHref(href)) {
     node.removeAttribute("href");
     node.setAttribute("data-tip", href);
   }
 });
 
+// DOMPurify's default URI pattern, plus the editors' own schemes so their file links survive.
+const ALLOWED_URI_REGEXP = new RegExp(
+  `^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|${LOCAL_FILE_LINK_SCHEMES.join("|")}):|[^a-z]|[a-z+.\\-]+(?:[^a-z+.\\-:]|$))`,
+  "i",
+);
+
 export const sanitizeHtml = (html: string): string =>
-  DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR, ADD_ATTR: ["target", "rel"] });
+  DOMPurify.sanitize(html, {
+    ALLOWED_TAGS,
+    ALLOWED_ATTR,
+    ALLOWED_URI_REGEXP,
+    ADD_ATTR: ["target", "rel"],
+  });

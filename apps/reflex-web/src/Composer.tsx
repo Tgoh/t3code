@@ -1,4 +1,5 @@
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
+import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useResource } from "treflex-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
@@ -10,16 +11,97 @@ import {
   shouldHandleAttachmentPaste,
   splitTransferredFiles,
 } from "./attachmentIntake";
+import { ComposerCommandMenu, useComposerMenu } from "./ComposerCommandMenu";
 import { ModelPicker, PermissionsChip } from "./ComposerMenus";
+import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
 import Environment from "./Environment";
-import { ArrowUp, ChevronLeft, File as FileIcon, Paperclip, X } from "./icons";
+import {
+  ArrowUp,
+  ChevronLeft,
+  CornerUpRight,
+  File as FileIcon,
+  ListPlus,
+  Paperclip,
+  X,
+} from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
+import { caretOnEdge, type IPromptHistoryPosition, stepPromptHistory } from "./promptHistory";
 import { advanceLabel, answerPlaceholder, type IAnswering } from "./questions";
 import { StageArt } from "./StageArt";
 import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
 import { composerCollapses, createMediaQuery, PHONE_QUERY } from "./viewport";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
+
+const isAlternate = (event: MouseEvent | KeyboardEvent) => (IS_MAC ? event.metaKey : event.ctrlKey);
+
+/** Holds whether ⌘ or Ctrl is down, so the send button can show what a click would do. */
+function useAlternateHeld() {
+  const [held, setHeld] = createSignal(false);
+  onMount(() => {
+    const update = (event: KeyboardEvent) => setHeld(isAlternate(event));
+    const clear = () => setHeld(false);
+    window.addEventListener("keydown", update);
+    window.addEventListener("keyup", update);
+    window.addEventListener("blur", clear);
+    onCleanup(() => {
+      window.removeEventListener("keydown", update);
+      window.removeEventListener("keyup", update);
+      window.removeEventListener("blur", clear);
+    });
+  });
+  return held;
+}
+
+// Follows submitLabel and submitTooltip in apps/web/src/components/chat/ComposerPrimaryActions.tsx.
+function SendButton(props: {
+  running: boolean;
+  alternate: boolean;
+  sending: boolean;
+  disabled: boolean;
+  blocked: string | null;
+  onSend: (alternate: boolean) => void;
+}) {
+  const mode = () =>
+    resolveComposerDispatchMode({ running: props.running, alternateModifier: props.alternate });
+  const label = () =>
+    props.sending
+      ? "Sending"
+      : mode() === "queue"
+        ? "Queue message"
+        : mode() === "steer"
+          ? "Steer message"
+          : "Submit message";
+  const tip = () =>
+    props.blocked ??
+    (props.running
+      ? `Click to steer, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to queue`
+      : undefined);
+  return (
+    <button
+      type="submit"
+      class="round-button send"
+      aria-label={label()}
+      data-tip={tip()}
+      disabled={props.disabled}
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault();
+        props.onSend(isAlternate(event));
+      }}
+    >
+      <span class="send-art">
+        <StageArt compact />
+      </span>
+      <Show when={mode() !== "auto"} fallback={<ArrowUp />}>
+        <Show when={mode() === "queue"} fallback={<CornerUpRight />}>
+          <ListPlus />
+        </Show>
+      </Show>
+    </button>
+  );
+}
 
 function useAttachmentIntake() {
   const environment = Environment.use();
@@ -191,7 +273,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const placeholder = () => {
     const question = asked();
     if (question !== null) return answerPlaceholder(question);
-    return noProvider() ? "Enable a provider in Settings to send a message" : "Ask anything.";
+    return noProvider() ? "Enable a provider in Settings to send a message" : MENU_PLACEHOLDER;
   };
   const text = () => answering()?.progress().CustomAnswer ?? held().Draft;
   const answerLocked = () => {
@@ -230,7 +312,9 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const keepPromptFocus = (event: PointerEvent) => {
     if (phone() && event.target !== textarea) event.preventDefault();
   };
-  const send = () => {
+  const alternateHeld = useAlternateHeld();
+  const running = () => props.active === true;
+  const send = (alternate = false) => {
     const question = answering();
     if (question !== undefined) {
       question.advance();
@@ -238,8 +322,70 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     }
     if (blocked() !== null) return;
     if (canSend()) props.onSend?.();
-    session.send();
+    session.send(resolveComposerDispatchMode({ running: running(), alternateModifier: alternate }));
     if (phone()) textarea.blur();
+  };
+
+  const [cursor, setCursor] = createSignal(0);
+  const trackCursor = () => setCursor(textarea.selectionStart);
+  const menu = useComposerMenu(() => held().Draft, cursor);
+  const replaceDraft = (text: string, caret: number) => {
+    textarea.value = text;
+    textarea.setSelectionRange(caret, caret);
+    setCursor(caret);
+    session.setDraft(text);
+  };
+  const pick = (item: IMenuItem) => {
+    const trigger = menu.open();
+    if (trigger === null) return;
+    const next = applyMenuItem(held().Draft, trigger, item.Insert);
+    replaceDraft(next.Text, next.Cursor);
+    textarea.focus();
+  };
+  const onMenuKey = (event: KeyboardEvent): boolean => {
+    if (!focused() || menu.open() === null || event.isComposing) return false;
+    switch (event.key) {
+      case "ArrowDown":
+      case "ArrowUp":
+        if (menu.items().length === 0) return false;
+        menu.move(event.key === "ArrowDown" ? 1 : -1);
+        return true;
+      case "Enter":
+      case "Tab": {
+        if (event.shiftKey) return false;
+        const item = menu.highlighted();
+        if (item === undefined) return false;
+        pick(item);
+        return true;
+      }
+      case "Escape":
+        menu.dismiss();
+        return true;
+    }
+    return false;
+  };
+  // Follows navigatePromptHistory in apps/web/src/components/chat/composerCommandKey.ts.
+  const [historyPosition, setHistoryPosition] = createSignal<IPromptHistoryPosition | null>(null);
+  const onHistoryKey = (event: KeyboardEvent): boolean => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || event.isComposing)
+      return false;
+    if (held().Attachments.length > 0) return false;
+    const current = held().Draft;
+    if (historyPosition() === null && current.length > 0) return false;
+    const direction = event.key === "ArrowUp" ? "backward" : "forward";
+    if (!caretOnEdge(current, textarea.selectionStart, textarea.selectionEnd, direction))
+      return false;
+    const step = stepPromptHistory({
+      Direction: direction,
+      Entries: session.promptHistory(),
+      Position: historyPosition(),
+      Current: current,
+    });
+    if (step === null) return false;
+    setHistoryPosition(step.Position);
+    replaceDraft(step.Prompt, step.Prompt.length);
+    return true;
   };
 
   const onPaste = (event: ClipboardEvent & { currentTarget: HTMLTextAreaElement }) => {
@@ -311,18 +457,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             <Show
               when={props.active && !canSend()}
               fallback={
-                <button
-                  type="submit"
-                  class="round-button send"
-                  aria-label={session.sending() ? "Sending" : "Submit message"}
+                <SendButton
+                  running={running()}
+                  alternate={alternateHeld()}
+                  sending={session.sending()}
                   disabled={!canSend()}
-                  onPointerDown={(event) => event.preventDefault()}
-                >
-                  <span class="send-art">
-                    <StageArt compact />
-                  </span>
-                  <ArrowUp />
-                </button>
+                  blocked={null}
+                  onSend={send}
+                />
               }
             >
               <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
@@ -379,6 +521,9 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         <Show when={held().AttachmentNotice}>
           <p class="composer-notice">{held().AttachmentNotice}</p>
         </Show>
+        <Show when={focused() && !answering() && menu.open()}>
+          {(trigger) => <ComposerCommandMenu menu={menu} trigger={trigger()} onPick={pick} />}
+        </Show>
         <textarea
           ref={textarea}
           rows={2}
@@ -386,16 +531,24 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           value={text()}
           disabled={answerLocked()}
           onInput={(event) => {
+            setCursor(event.currentTarget.selectionStart);
             const question = answering();
             if (question === undefined) session.setDraft(event.currentTarget.value);
             else question.setCustomAnswer(event.currentTarget.value);
           }}
+          onKeyUp={trackCursor}
+          onClick={trackCursor}
+          onSelect={trackCursor}
           onPaste={onPaste}
           onKeyDown={(event) => {
             if (isPasteAsTextShortcut(event, IS_MAC)) setPasteAsTextUntil(event.timeStamp + 1_000);
+            if (!answering() && (onMenuKey(event) || onHistoryKey(event))) {
+              event.preventDefault();
+              return;
+            }
             if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
             event.preventDefault();
-            send();
+            send(isAlternate(event));
           }}
         />
         <Show when={held().SendError}>
@@ -433,18 +586,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
           </Show>
           <Show when={!answering() && (!props.active || canSend())}>
-            <button
-              type="submit"
-              class="round-button send"
-              aria-label={session.sending() ? "Sending" : "Submit message"}
-              data-tip={blocked() ?? undefined}
+            <SendButton
+              running={running()}
+              alternate={alternateHeld()}
+              sending={session.sending()}
               disabled={!canSend()}
-            >
-              <span class="send-art">
-                <StageArt compact />
-              </span>
-              <ArrowUp />
-            </button>
+              blocked={blocked()}
+              onSend={send}
+            />
           </Show>
         </div>
       </form>

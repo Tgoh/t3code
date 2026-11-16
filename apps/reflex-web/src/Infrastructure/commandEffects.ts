@@ -1,4 +1,9 @@
-import type { AssetResource, ModelCapabilities } from "@t3tools/contracts";
+import type {
+  AssetResource,
+  ModelCapabilities,
+  ServerProviderSkill,
+  ServerProviderSlashCommand,
+} from "@t3tools/contracts";
 import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
 import type { IWireProjection, IWireTurnItem } from "./wire";
@@ -17,6 +22,8 @@ export type IApprovalDecision =
   | "decline"
   | "cancel";
 
+export type IDispatchMode = "auto" | "queue" | "steer" | "restart";
+
 export interface IStartTurn {
   EnvironmentId: string;
   ThreadId: string;
@@ -27,6 +34,7 @@ export interface IStartTurn {
   ModelSelection: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode;
   InteractionMode: IWireInteractionMode;
+  DispatchMode: IDispatchMode;
   NewThread: { ProjectId: string; Title: string } | null;
 }
 
@@ -46,11 +54,18 @@ export interface IRespondRequest {
   Dismiss?: true;
 }
 
+export type IQueueOperation =
+  | { Kind: "resume" }
+  | { Kind: "cancel"; RunId: string }
+  | { Kind: "start"; RunId: string }
+  | { Kind: "steer"; RunId: string; TargetRunId: string }
+  | { Kind: "edit"; RunId: string; Text: string };
+
 export interface IQueueCommand {
   EnvironmentId: string;
   ThreadId: string;
   CommandId: string;
-  RunId: string | null;
+  Operation: IQueueOperation;
 }
 
 export interface IProviderOption {
@@ -58,6 +73,8 @@ export interface IProviderOption {
   Driver?: string;
   Name: string;
   SupportedRuntimeModes?: IWireRuntimeMode[];
+  SlashCommands?: ServerProviderSlashCommand[];
+  Skills?: ServerProviderSkill[];
   Models: Array<{
     Slug: string;
     Name: string;
@@ -189,6 +206,22 @@ interface IBrowseFoldersEffect extends IEffect {
   Cwd: string | null;
 }
 
+export interface IProjectEntries {
+  Entries: Array<{ path: string; kind: "file" | "directory" }>;
+}
+
+interface ISearchEntriesEffect extends IEffect {
+  Type: "searchEntries";
+  EnvironmentId: string;
+  Cwd: string;
+  Query: string;
+  Limit: number;
+}
+
+export const searchEntriesEffect = defineEffect<ISearchEntriesEffect, IProjectEntries>(
+  "searchEntries",
+);
+
 export const browseFoldersEffect = defineEffect<IBrowseFoldersEffect, IFolderListing>(
   "browseFolders",
 );
@@ -239,6 +272,16 @@ interface IOpenInFileManagerEffect extends IEffect {
 export const openInFileManagerEffect = defineEffect<IOpenInFileManagerEffect, void>(
   "openInFileManager",
 );
+
+interface IOpenInEditorEffect extends IEffect {
+  Type: "openInEditor";
+  EnvironmentId: string;
+  // An absolute path, with a `:line:column` suffix when it names a position.
+  Path: string;
+  ProjectRoot: string | null;
+}
+
+export const openInEditorEffect = defineEffect<IOpenInEditorEffect, void>("openInEditor");
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 

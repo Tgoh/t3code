@@ -2,7 +2,10 @@ import {
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
 } from "@t3tools/client-runtime/state/pending-user-input";
-import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
+import {
+  deriveThreadQueueWorkflowState,
+  threadSupportsProviderHandoff,
+} from "@t3tools/client-runtime/state/thread-workflows";
 import { DEFAULT_TERMINAL_ID } from "@t3tools/contracts";
 import {
   closeResource,
@@ -23,20 +26,24 @@ import {
   receiver,
   resource,
   select,
+  start,
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
 import {
   closeTerminalEffect,
+  type IDispatchMode,
   type IModelFavorite,
   type IProviderOption,
+  type IQueueOperation,
   type IStartTurn,
   type IWireAttachment,
   type IWireInteractionMode,
   type IWireModelSelection,
   type IWireRuntimeMode,
   queueCommandEffect,
+  searchEntriesEffect,
   startTurnEffect,
   stopThreadEffect,
   threadCommandEffect,
@@ -44,6 +51,12 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
+import {
+  storeDraftEffect,
+  storedDraftEffect,
+  storedDraftFilesEffect,
+  storeDraftFilesEffect,
+} from "./Infrastructure/draftMemory";
 import {
   rememberedModelKey,
   rememberedModelsEffect,
@@ -62,7 +75,9 @@ import {
   pickedSelection,
   providerOf,
 } from "./modelOptions";
+import { FILE_SEARCH_LIMIT, type IProjectEntry } from "./composerMenu";
 import { type IOpenThread, latestDiffTurn } from "./OpenThread";
+import { type IPromptHistoryEntry, promptHistoryEntries } from "./promptHistory";
 import { carryIntoPrompt, type IQuestion, type IQuestionDraft, seededDrafts } from "./questions";
 import type { IShell } from "./Shell";
 
@@ -114,6 +129,12 @@ const attachment = (draft: IThreadSession) =>
   transient(draft, "Terminal/Attachment", {
     Status: null as ITerminalStatus | null,
     FocusOnMount: false,
+  });
+
+const fileSearch = (draft: IThreadSession) =>
+  transient(draft, "Composer/FileSearch", {
+    Query: null as string | null,
+    Entries: [] as IProjectEntry[],
   });
 
 const expandedRows = (owner: IThreadSession) =>
@@ -236,6 +257,33 @@ export function* modelSwitch(draft: IThreadSession): ISelectorGenerator<IModelSw
   };
 }
 
+export interface IQueueWorkflow {
+  CanSendNow: boolean;
+  CanSteer: boolean;
+  ActiveRunId: string | null;
+}
+
+export function* queueWorkflow(draft: IThreadSession): ISelectorGenerator<IQueueWorkflow> {
+  const replica = yield* getData(draft, "Replica");
+  const open = replica?.OpenThreads[draft.ThreadId];
+  if (open?.Thread == null) return { CanSendNow: false, CanSteer: false, ActiveRunId: null };
+  const byOrdinal = <T extends { ordinal: number }>(rows: T[]) =>
+    rows.sort((left, right) => left.ordinal - right.ordinal);
+  const state = deriveThreadQueueWorkflowState({
+    thread: open.Thread,
+    runs: byOrdinal(Object.values(open.Runs)),
+    messages: Object.values(open.Messages),
+    providerTurns: Object.values(open.ProviderTurns),
+    providerThreads: Object.values(open.ProviderThreads),
+    providerSessions: Object.values(open.ProviderSessions),
+  } as never);
+  return {
+    CanSendNow: state.canSendNow,
+    CanSteer: state.canPromoteToSteer,
+    ActiveRunId: state.activeRun?.id ?? null,
+  };
+}
+
 function* effectiveModelDisplay(
   draft: IThreadSession,
 ): ISelectorGenerator<ReturnType<typeof modelDisplay> | null> {
@@ -311,13 +359,123 @@ function* terminalLaunch(draft: IThreadSession): ISelectorGenerator<ITerminalLau
   return { Cwd: thread.worktreePath ?? root, WorktreePath: thread.worktreePath, ProjectRoot: root };
 }
 
+export interface IMenuCatalog {
+  Commands: NonNullable<IProviderOption["SlashCommands"]>;
+  Skills: NonNullable<IProviderOption["Skills"]>;
+}
+
+const EMPTY_CATALOG: IMenuCatalog = { Commands: [], Skills: [] };
+
+export function* menuCatalog(draft: IThreadSession): ISelectorGenerator<IMenuCatalog> {
+  const provider = yield* effectiveProvider(draft);
+  if (provider === undefined) return EMPTY_CATALOG;
+  return { Commands: provider.SlashCommands ?? [], Skills: provider.Skills ?? [] };
+}
+
+function* searchRoot(draft: IThreadSession): ISelectorGenerator<string | null> {
+  const replica = yield* getData(draft, "Replica");
+  if (replica === undefined) return null;
+  const thread = replica.OpenThreads[draft.ThreadId]?.Thread;
+  const projectId = draft.NewThreadProjectId ?? thread?.projectId;
+  const root = projectId == null ? undefined : replica.Shell.Projects[projectId]?.workspaceRoot;
+  return thread?.worktreePath ?? root ?? null;
+}
+
+export function* promptHistory(draft: IThreadSession): ISelectorGenerator<IPromptHistoryEntry[]> {
+  const replica = yield* getData(draft, "Replica");
+  const thread = replica?.OpenThreads[draft.ThreadId];
+  return thread === undefined ? [] : promptHistoryEntries(Object.values(thread.Messages));
+}
+
+/** Files matching an `@` query, from the thread's worktree or project root. */
+export function* searchFiles(draft: IThreadSession, query: string): IOpenGenerator {
+  const root = yield* select(searchRoot);
+  const search = yield* fileSearch(draft);
+  if (root === null) {
+    search.Query = query;
+    search.Entries = [];
+    return;
+  }
+  const request = {
+    EnvironmentId: draft.EnvironmentId,
+    Cwd: root,
+    Query: query,
+    Limit: FILE_SEARCH_LIMIT,
+  };
+  let entries: IProjectEntry[] = [];
+  try {
+    entries = (yield* open(searchEntriesEffect(request))).Entries;
+  } catch {
+    entries = [];
+  }
+  const held = yield* fileSearch(draft);
+  held.Query = query;
+  held.Entries = entries;
+}
+latest(searchFiles);
+
+export function* fileSearchResult(draft: IThreadSession) {
+  return yield* fileSearch(draft);
+}
+
 function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
   const selection = yield* getData(draft, "Selection");
   return selection?.SelectedThreadId === draft.ThreadId;
 }
 
+function* storeDraft(draft: IThreadSession): IActionGenerator {
+  const kept = draft.Draft !== "" || draft.ModelSelection !== null || draft.RuntimeMode !== null;
+  yield* storeDraftEffect({
+    ThreadId: draft.ThreadId,
+    Draft: kept
+      ? {
+          Text: draft.Draft,
+          NewThreadProjectId: draft.NewThreadProjectId,
+          ModelSelection: draft.ModelSelection,
+          RuntimeMode: draft.RuntimeMode,
+        }
+      : null,
+  });
+}
+
+export function* storeFiles(draft: IThreadSession): IOpenGenerator {
+  const ids = draft.Attachments.map((file) => file.Id);
+  const threadId = draft.ThreadId;
+  const files = resource(draft, "Composer/Files");
+  const stored = ids.length === 0 ? [] : yield* open(files.stored(ids));
+  if (stored === undefined) return;
+  yield* storeDraftFilesEffect({ ThreadId: threadId, Files: stored });
+}
+latest(storeFiles);
+
+/** Fills a fresh session from what this browser kept, before anything is typed into it. */
+export function* restoreDraft(draft: IThreadSession): IActionGenerator {
+  const stored = yield* storedDraftEffect({ ThreadId: draft.ThreadId });
+  if (stored !== null) {
+    draft.Draft = stored.Text;
+    draft.ModelSelection = stored.ModelSelection;
+    draft.RuntimeMode = stored.RuntimeMode;
+  }
+  yield* start(restoreFiles, draft);
+}
+
+export function* restoreFiles(draft: IThreadSession): IOpenGenerator {
+  const stored = yield* storedDraftFilesEffect({ ThreadId: draft.ThreadId });
+  if (stored.length === 0) return;
+  const files = resource(draft, "Composer/Files");
+  const restored = yield* open(files.restore(stored));
+  if (restored === undefined) return;
+  draft.Attachments.unshift(...restored);
+  if (restored.length < stored.length) {
+    draft.AttachmentNotice =
+      "Some attachments didn't finish uploading before the page closed. Attach them again.";
+  }
+  yield* start(storeFiles, draft);
+}
+
 export function* setDraft(draft: IThreadSession, text: string): IActionGenerator {
   draft.Draft = text;
+  yield* storeDraft(draft);
 }
 
 /** Holds the pick for the next turn, and on a started thread's own provider saves it at once. */
@@ -327,6 +485,7 @@ export function* setModelSelection(
 ): IOpenGenerator {
   draft.ModelSelection = selection;
   delete draft.ModelError;
+  yield* storeDraft(draft);
   yield* rememberModelEffect({ Selection: selection });
   const thread = yield* select(threadModelSelection);
   if (draft.NewThreadProjectId !== null || thread?.instanceId !== selection.instanceId) return;
@@ -385,6 +544,7 @@ export function* chooseModel(
 
 export function* setRuntimeMode(draft: IThreadSession, mode: IWireRuntimeMode): IActionGenerator {
   draft.RuntimeMode = mode;
+  yield* storeDraft(draft);
 }
 
 export function* addAttachments(
@@ -398,12 +558,14 @@ export function* addAttachments(
   else draft.AttachmentError = error;
   if (notice !== null) draft.AttachmentNotice = notice;
   draft.Attachments.push(...picked);
+  if (picked.length > 0) yield* start(storeFiles, draft);
 }
 
 export function* removeAttachment(draft: IThreadSession, id: string): IActionGenerator {
   const index = draft.Attachments.findIndex((held) => held.Id === id);
   if (index >= 0) draft.Attachments.splice(index, 1);
   yield* resource(draft, "Composer/Files").remove(id);
+  yield* start(storeFiles, draft);
 }
 
 function* uploadAndStart(
@@ -438,7 +600,8 @@ function* uploadAndStart(
   });
 }
 
-export function* send(draft: IThreadSession): IOpenGenerator {
+/** `auto` lets the server choose; during a run the composer asks for `steer` or `queue`. */
+export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpenGenerator {
   const text = draft.Draft.trim();
   const fileIds = draft.Attachments.map((file) => file.Id);
   if (text === "" && fileIds.length === 0) return;
@@ -456,6 +619,7 @@ export function* send(draft: IThreadSession): IOpenGenerator {
     ModelSelection: model === null ? null : dispatchSelection(provider, model),
     RuntimeMode: runtimeMode,
     InteractionMode: interaction,
+    DispatchMode: mode,
     NewThread:
       projectId === null
         ? null
@@ -474,9 +638,13 @@ export function* send(draft: IThreadSession): IOpenGenerator {
   draft.Attachments = draft.Attachments.filter((file) => !fileIds.includes(file.Id));
   delete draft.AttachmentNotice;
   delete draft.AttachmentError;
-  if (fileIds.length > 0) yield* resource(draft, "Composer/Files").forget(fileIds);
+  if (fileIds.length > 0) {
+    yield* resource(draft, "Composer/Files").forget(fileIds);
+    yield* start(storeFiles, draft);
+  }
+  if (projectId !== null) draft.NewThreadProjectId = null;
+  yield* storeDraft(draft);
   if (projectId !== null) {
-    draft.NewThreadProjectId = null;
     yield* publishToNearest(draft, "Thread/Started", { ThreadId: draft.ThreadId });
   }
 }
@@ -502,8 +670,22 @@ export function* stopRun(draft: IThreadSession): IOpenGenerator {
 }
 leading(stopRun);
 
-export function* queueAction(draft: IThreadSession, runId: string | null): IOpenGenerator {
+export type IQueuePress =
+  | Exclude<IQueueOperation, { Kind: "start" | "steer" }>
+  | { Kind: "sendNow"; RunId: string };
+
+// Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx.
+export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGenerator {
   delete draft.StopError;
+  let operation: IQueueOperation;
+  if (press.Kind !== "sendNow") operation = press;
+  else {
+    const workflow = yield* select(queueWorkflow);
+    if (workflow.CanSendNow) operation = { Kind: "start", RunId: press.RunId };
+    else if (workflow.ActiveRunId !== null && workflow.CanSteer) {
+      operation = { Kind: "steer", RunId: press.RunId, TargetRunId: workflow.ActiveRunId };
+    } else return;
+  }
   const environmentId = draft.EnvironmentId;
   const threadId = draft.ThreadId;
   try {
@@ -513,7 +695,7 @@ export function* queueAction(draft: IThreadSession, runId: string | null): IOpen
           EnvironmentId: environmentId,
           ThreadId: threadId,
           CommandId: commandId,
-          RunId: runId,
+          Operation: operation,
         }),
       ),
     );
@@ -569,6 +751,7 @@ export function* toggleQuestionOption(
     draft.Draft = prompt;
     draft.QuestionNotice =
       "Your typed text was set aside. It will be back in the composer once the question is answered.";
+    yield* storeDraft(draft);
   }
   heldDrafts(draft, requestId)[questionId] = plainDraft(
     togglePendingUserInputOptionSelection(question, current, optionValue),
@@ -593,6 +776,7 @@ export function* settleQuestions(
   pendingIds: ReadonlyArray<string>,
   unansweredIds: ReadonlyArray<string>,
 ): IActionGenerator {
+  const before = draft.Draft;
   for (const [requestId, drafts] of Object.entries(draft.QuestionAnswers)) {
     if (pendingIds.includes(requestId)) continue;
     if (unansweredIds.includes(requestId)) {
@@ -606,6 +790,7 @@ export function* settleQuestions(
     if (!pendingIds.includes(requestId)) delete draft.QuestionIndex[requestId];
   }
   if (pendingIds.length === 0) delete draft.QuestionNotice;
+  if (draft.Draft !== before) yield* storeDraft(draft);
 }
 
 export function* toggleRowExpanded(draft: IThreadSession, rowId: string): IActionGenerator {
@@ -765,6 +950,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     setModelSelection,
     chooseModel,
     setRuntimeMode,
+    searchFiles,
     addAttachments,
     removeAttachment,
     send,
@@ -789,6 +975,10 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     runtimeModes,
     projectId,
     projectName,
+    queueWorkflow,
+    menuCatalog,
+    promptHistory,
+    fileSearchResult,
     stopRequested,
     sending,
     stopping,

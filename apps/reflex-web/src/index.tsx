@@ -16,9 +16,11 @@ import {
   cloneControlImpl,
   closeTerminalImpl,
   newProjectImpl,
+  openInEditorImpl,
   openInFileManagerImpl,
   queueCommandImpl,
   respondRequestImpl,
+  searchEntriesImpl,
   modelFavoritesImpl,
   serverProvidersImpl,
   setModelFavoriteImpl,
@@ -31,6 +33,13 @@ import {
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
 import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
+import {
+  storeDraftFilesImpl,
+  storeDraftImpl,
+  storedDraftFilesImpl,
+  storedDraftImpl,
+  storedNewThreadImpl,
+} from "./Infrastructure/draftMemory";
 import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelMemory";
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
@@ -66,10 +75,12 @@ runtime.registerImplementation(queueCommandImpl);
 runtime.registerImplementation(projectCommandImpl);
 runtime.registerImplementation(addProjectSettingsImpl);
 runtime.registerImplementation(browseFoldersImpl);
+runtime.registerImplementation(searchEntriesImpl);
 runtime.registerImplementation(startCloneImpl);
 runtime.registerImplementation(cloneControlImpl);
 runtime.registerImplementation(newProjectImpl);
 runtime.registerImplementation(openInFileManagerImpl);
+runtime.registerImplementation(openInEditorImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
 runtime.registerImplementation(assetUrlImpl);
@@ -78,6 +89,11 @@ runtime.registerImplementation(rememberedTerminalImpl);
 runtime.registerImplementation(rememberTerminalImpl);
 runtime.registerImplementation(rememberedModelsImpl);
 runtime.registerImplementation(rememberModelImpl);
+runtime.registerImplementation(storedDraftImpl);
+runtime.registerImplementation(storedNewThreadImpl);
+runtime.registerImplementation(storeDraftImpl);
+runtime.registerImplementation(storedDraftFilesImpl);
+runtime.registerImplementation(storeDraftFilesImpl);
 runtime.registerResourceType("composerFiles", composerFiles);
 runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);

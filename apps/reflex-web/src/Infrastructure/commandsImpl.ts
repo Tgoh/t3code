@@ -26,6 +26,8 @@ import {
 import { getInitialServerConfig, request } from "@t3tools/client-runtime/rpc";
 import {
   CommandId,
+  EDITORS,
+  type EditorId,
   EnvironmentId,
   isProviderAvailable,
   MessageId,
@@ -48,11 +50,13 @@ import {
   addProjectSettingsEffect,
   assetUrlEffect,
   browseFoldersEffect,
+  searchEntriesEffect,
   cloneControlEffect,
   closeTerminalEffect,
   type IProviderOption,
   modelFavoritesEffect,
   newProjectEffect,
+  openInEditorEffect,
   openInFileManagerEffect,
   projectCommandEffect,
   queueCommandEffect,
@@ -104,6 +108,7 @@ export const startTurnImpl = implementation(startTurnEffect, async (input) => {
     ...(input.ModelSelection === null ? {} : { modelSelection }),
     runtimeMode: input.RuntimeMode,
     interactionMode: input.InteractionMode,
+    dispatchMode: input.DispatchMode,
     ...(input.NewThread === null
       ? {}
       : {
@@ -156,14 +161,38 @@ export const queueCommandImpl = implementation(queueCommandEffect, async (input)
     commandId: CommandId.make(input.CommandId),
     threadId: ThreadId.make(input.ThreadId),
   };
+  const operation = input.Operation;
+  const command = (() => {
+    switch (operation.Kind) {
+      case "resume":
+        return { type: "queue.resume" as const, ...common };
+      case "cancel":
+        return {
+          type: "queued-run.cancel" as const,
+          ...common,
+          runId: RunId.make(operation.RunId),
+        };
+      case "start":
+        return { type: "queued-run.start" as const, ...common, runId: RunId.make(operation.RunId) };
+      case "steer":
+        return {
+          type: "queued-message.promote-to-steer" as const,
+          ...common,
+          queuedRunId: RunId.make(operation.RunId),
+          targetRunId: RunId.make(operation.TargetRunId),
+        };
+      case "edit":
+        return {
+          type: "queued-run.edit" as const,
+          ...common,
+          runId: RunId.make(operation.RunId),
+          text: operation.Text,
+        };
+    }
+  })();
   await inEnvironment(
     input.EnvironmentId,
-    request(
-      ORCHESTRATION_V2_WS_METHODS.dispatchCommand,
-      input.RunId === null
-        ? { type: "queue.resume", ...common }
-        : { type: "queued-run.cancel", ...common, runId: RunId.make(input.RunId) },
-    ),
+    request(ORCHESTRATION_V2_WS_METHODS.dispatchCommand, command),
   );
 });
 
@@ -263,6 +292,19 @@ export const addProjectSettingsImpl = implementation(addProjectSettingsEffect, a
   };
 });
 
+export const searchEntriesImpl = implementation(searchEntriesEffect, async (input, action) => {
+  const result = await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.projectsSearchEntries, {
+      cwd: input.Cwd,
+      query: input.Query.trim().slice(0, 256),
+      limit: input.Limit,
+    }),
+    action?.signal,
+  );
+  return { Entries: result.entries.map((entry) => ({ path: entry.path, kind: entry.kind })) };
+});
+
 export const browseFoldersImpl = implementation(browseFoldersEffect, async (input, action) => {
   const listing = await inEnvironment(
     input.EnvironmentId,
@@ -320,6 +362,43 @@ export const openInFileManagerImpl = implementation(openInFileManagerEffect, asy
   );
 });
 
+const LAST_EDITOR_KEY = "t3code:last-editor";
+
+// Follows resolveAndPersistPreferredEditor in apps/web/src/editorPreferences.ts.
+function preferredEditor(available: ReadonlyArray<EditorId>): EditorId | null {
+  let stored: string | null = null;
+  try {
+    stored = JSON.parse(localStorage.getItem(LAST_EDITOR_KEY) ?? "null") as string | null;
+  } catch {
+    stored = null;
+  }
+  const held = available.find((editor) => editor === stored);
+  if (held !== undefined) return held;
+  const editor = EDITORS.find((candidate) => available.includes(candidate.id))?.id ?? null;
+  if (editor !== null) {
+    try {
+      localStorage.setItem(LAST_EDITOR_KEY, JSON.stringify(editor));
+    } catch {
+      // Without storage the first available editor is picked again next time.
+    }
+  }
+  return editor;
+}
+
+export const openInEditorImpl = implementation(openInEditorEffect, async (input) => {
+  const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
+  const editor = preferredEditor(config.availableEditors);
+  if (editor === null) throw new Error(`No editor on this machine can open ${input.Path}.`);
+  await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.shellOpenInEditor, {
+      cwd: input.Path,
+      editor,
+      ...(input.ProjectRoot === null ? {} : { projectRoot: input.ProjectRoot }),
+    }),
+  );
+});
+
 export const closeTerminalImpl = implementation(closeTerminalEffect, async (input) => {
   await inEnvironment(
     input.EnvironmentId,
@@ -370,6 +449,8 @@ export const assetUrlImpl = implementation(assetUrlEffect, async (input, action)
   };
 });
 
+const plainCopy = <T>(value: ReadonlyArray<T>): T[] => JSON.parse(JSON.stringify(value));
+
 export const serverProvidersImpl = implementation(serverProvidersEffect, async (input) => {
   // This runs at startup, before the environment may be registered, which followStream waits for.
   const config = await connectionRuntime.runPromise(
@@ -397,6 +478,10 @@ export const serverProvidersImpl = implementation(serverProvidersEffect, async (
       ...(provider.supportedRuntimeModes === undefined
         ? {}
         : { SupportedRuntimeModes: [...provider.supportedRuntimeModes] }),
+      ...(provider.slashCommands.length === 0
+        ? {}
+        : { SlashCommands: plainCopy(provider.slashCommands) }),
+      ...(provider.skills.length === 0 ? {} : { Skills: plainCopy(provider.skills) }),
       Models: applyModelPreferences(provider.models, preferences[provider.instanceId]).map(
         (model) => ({
           Slug: model.slug,
