@@ -239,6 +239,16 @@ export const openInFileManagerEffect = defineEffect<IOpenInFileManagerEffect, vo
   "openInFileManager",
 );
 
+interface IOpenInEditorEffect extends IEffect {
+  Type: "openInEditor";
+  EnvironmentId: string;
+  // An absolute path, with a `:line:column` suffix when it names a position.
+  Path: string;
+  ProjectRoot: string | null;
+}
+
+export const openInEditorEffect = defineEffect<IOpenInEditorEffect, void>("openInEditor");
+
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 
 interface IAssetUrlEffect extends IEffect {

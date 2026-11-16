@@ -30,6 +30,7 @@ import {
   type IThreadCommand,
   modelFavoritesEffect,
   newProjectEffect,
+  openInEditorEffect,
   openInFileManagerEffect,
   projectCommandEffect,
   serverProvidersEffect,
@@ -334,6 +335,20 @@ export function* openInFileManager(draft: IEnvironment, path: string): IOpenGene
   yield* open(openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path }));
 }
 
+export function* openInEditor(
+  draft: IEnvironment,
+  path: string,
+  projectRoot: string | null,
+): IOpenGenerator {
+  yield* open(
+    openInEditorEffect({
+      EnvironmentId: draft.EnvironmentId,
+      Path: path,
+      ProjectRoot: projectRoot,
+    }),
+  );
+}
+
 // Follows handleAddProjectForEnvironment in apps/web/src/components/CommandPalette.tsx.
 export function* addFolder(
   draft: IEnvironment,
@@ -493,6 +508,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     toggleModelFavorite,
     removeProject,
     openInFileManager,
+    openInEditor,
     requestProjectFavicon,
   },
   {

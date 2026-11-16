@@ -25,6 +25,8 @@ import {
 import { getInitialServerConfig, request } from "@t3tools/client-runtime/rpc";
 import {
   CommandId,
+  EDITORS,
+  type EditorId,
   EnvironmentId,
   isProviderAvailable,
   MessageId,
@@ -52,6 +54,7 @@ import {
   type IProviderOption,
   modelFavoritesEffect,
   newProjectEffect,
+  openInEditorEffect,
   openInFileManagerEffect,
   projectCommandEffect,
   queueCommandEffect,
@@ -314,6 +317,43 @@ export const openInFileManagerImpl = implementation(openInFileManagerEffect, asy
   await inEnvironment(
     input.EnvironmentId,
     request(WS_METHODS.shellOpenInEditor, { cwd: input.Path, editor: "file-manager" }),
+  );
+});
+
+const LAST_EDITOR_KEY = "t3code:last-editor";
+
+// Follows resolveAndPersistPreferredEditor in apps/web/src/editorPreferences.ts.
+function preferredEditor(available: ReadonlyArray<EditorId>): EditorId | null {
+  let stored: string | null = null;
+  try {
+    stored = JSON.parse(localStorage.getItem(LAST_EDITOR_KEY) ?? "null") as string | null;
+  } catch {
+    stored = null;
+  }
+  const held = available.find((editor) => editor === stored);
+  if (held !== undefined) return held;
+  const editor = EDITORS.find((candidate) => available.includes(candidate.id))?.id ?? null;
+  if (editor !== null) {
+    try {
+      localStorage.setItem(LAST_EDITOR_KEY, JSON.stringify(editor));
+    } catch {
+      // Without storage the first available editor is picked again next time.
+    }
+  }
+  return editor;
+}
+
+export const openInEditorImpl = implementation(openInEditorEffect, async (input) => {
+  const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
+  const editor = preferredEditor(config.availableEditors);
+  if (editor === null) throw new Error(`No editor on this machine can open ${input.Path}.`);
+  await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.shellOpenInEditor, {
+      cwd: input.Path,
+      editor,
+      ...(input.ProjectRoot === null ? {} : { projectRoot: input.ProjectRoot }),
+    }),
   );
 });
 
