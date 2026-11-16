@@ -2155,6 +2155,37 @@ button.composer-control.open {
   font-size: 12px;
 }
 
+.composer-context {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 8px 0;
+}
+
+.context-control {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+}
+
+.context-control:hover,
+.context-control.open {
+  background: color-mix(in srgb, var(--foreground) 9%, transparent);
+  color: var(--foreground);
+}
+
+.context-control svg {
+  height: 14px;
+  width: 14px;
+}
+
 .fast-bolt {
   color: var(--warning);
   fill: currentColor;
@@ -2181,7 +2212,7 @@ button.composer-control.open {
 
 .model-popup {
   height: 24rem;
-  width: min(38rem, calc(100vw - 16px));
+  width: min(34rem, calc(100vw - 16px));
 }
 
 .model-picker {
@@ -2190,7 +2221,7 @@ button.composer-control.open {
   grid-template-areas:
     "providers models effort"
     "footer footer footer";
-  grid-template-columns: auto minmax(0, 1fr) 12rem;
+  grid-template-columns: auto minmax(0, 1fr) 11.75rem;
   grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
 }

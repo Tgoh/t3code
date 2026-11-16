@@ -158,7 +158,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Composer: no `@ files`, `$ skills` or `/ commands` menus and no voice input, so the placeholder leaves out their hints. No prompt history, stash, multi-model send or keyboard shortcuts.
 - Model menu: no favorites, number-key jumps, provider setup or update notices, Show more section, custom models from settings or instance badges. Providers other than Claude and Codex show a letter, not their icon. A non-reasoning option such as an agent's mode opens its choices below its row, not in a side menu.
 - Model menu: a typed `ultrathink` doesn't take over the effort label or lock the levels, the effort shows as a word with no bars setting, and the provider's reported selection isn't shown.
-- Permissions: the chip always shows, where stock hides it while the mode matches the default and folds controls into an overflow menu at narrow widths. Modes a managed policy forbids aren't disabled.
+- Permissions: no overflow menu at narrow widths, and modes a managed policy forbids aren't disabled. A new thread's strip under the composer holds only the permissions chip, with no workspace or branch pickers.
 - Diff panel: no tabs, split view, wrap, turn picker, file icons or collapsed unchanged-line markers.
 - Terminal drawer: fixed height with no resize, tabs or splits; the emulator is xterm, so glyph rendering differs from stock's.
 - Layout: no narrow-width sidebar collapse; below 640px only the chat gutter shrinks.

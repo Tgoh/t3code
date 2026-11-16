@@ -75,7 +75,7 @@ declare module "treflex" {
 }
 
 const TITLE_LENGTH = 60;
-const DEFAULT_RUNTIME_MODE: IWireRuntimeMode = "full-access";
+export const DEFAULT_RUNTIME_MODE: IWireRuntimeMode = "full-access";
 
 export interface IReplica extends IEntity {
   Providers: IProviderOption[];

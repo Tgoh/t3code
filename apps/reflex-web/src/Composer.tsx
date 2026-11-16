@@ -6,7 +6,7 @@ import Environment from "./Environment";
 import { ArrowUp, Paperclip, X } from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { StageArt } from "./StageArt";
-import ThreadSession from "./ThreadSession";
+import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
 
 export function Composer(props: { active?: boolean }) {
   const environment = Environment.use();
@@ -14,6 +14,7 @@ export function Composer(props: { active?: boolean }) {
   const held = () => session.state;
   const files = useResource(held, "Composer/Files");
   const noProvider = () => environment.state.Replica.Providers.length === 0;
+  const isDraft = () => held().NewThreadProjectId !== null;
   const stopping = () => session.stopRequested() || session.stopping();
   const clone = useProjectClone(() => session.projectId());
   const blocked = () => cloneSendBlock(clone());
@@ -108,9 +109,11 @@ export function Composer(props: { active?: boolean }) {
               }}
             />
           </label>
-          <ModelPicker />
-          <PermissionsChip />
           <span class="composer-spacer" />
+          <ModelPicker />
+          <Show when={!isDraft() && session.effectiveRuntimeMode() !== DEFAULT_RUNTIME_MODE}>
+            <PermissionsChip />
+          </Show>
           <Show when={props.active}>
             <button
               type="button"
@@ -141,6 +144,11 @@ export function Composer(props: { active?: boolean }) {
           </Show>
         </div>
       </form>
+      <Show when={isDraft()}>
+        <div class="composer-context">
+          <PermissionsChip context />
+        </div>
+      </Show>
     </>
   );
 }

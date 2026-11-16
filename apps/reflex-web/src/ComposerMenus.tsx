@@ -71,6 +71,7 @@ const RUNTIME_MODE_CONFIG: Record<
 };
 
 const MARGIN = 8;
+const GAP = 4;
 
 /** A popup that opens above its anchor, portalled so the composer's glass can't clip it. */
 function Anchored(props: {
@@ -90,8 +91,8 @@ function Anchored(props: {
       const width = popup.offsetWidth;
       const left = props.align === "start" ? rect.left : rect.right - width;
       popup.style.left = `${Math.max(MARGIN, Math.min(left, window.innerWidth - width - MARGIN))}px`;
-      popup.style.bottom = `${window.innerHeight - rect.top + 6}px`;
-      popup.style.maxHeight = `${rect.top - 6 - MARGIN}px`;
+      popup.style.bottom = `${window.innerHeight - rect.top + GAP}px`;
+      popup.style.maxHeight = `${rect.top - GAP - MARGIN}px`;
     };
     place();
     const onPointerDown = (event: PointerEvent) => {
@@ -220,7 +221,7 @@ function PermissionsPopup(props: {
   );
 }
 
-export function PermissionsChip() {
+export function PermissionsChip(props: { context?: boolean }) {
   const session = ThreadSession.use();
   const [open, setOpen] = createSignal(false);
   const [trigger, setTrigger] = createSignal<HTMLButtonElement>();
@@ -229,7 +230,7 @@ export function PermissionsChip() {
     <>
       <button
         type="button"
-        class="composer-control"
+        class={props.context ? "context-control" : "composer-control"}
         classList={{ open: open() }}
         ref={setTrigger}
         aria-label={`Permissions: ${mode().Label}`}
@@ -242,7 +243,11 @@ export function PermissionsChip() {
       </button>
       <Show when={open() && trigger()}>
         {(anchor) => (
-          <PermissionsPopup anchor={anchor()} align="start" onClose={() => setOpen(false)} />
+          <PermissionsPopup
+            anchor={anchor()}
+            align={props.context ? "end" : "start"}
+            onClose={() => setOpen(false)}
+          />
         )}
       </Show>
     </>
@@ -314,7 +319,7 @@ export function ModelPicker() {
         {(anchor) => (
           <Anchored
             anchor={anchor()}
-            align="start"
+            align="end"
             label="Model"
             class="model-popup"
             onClose={() => setOpen(false)}
