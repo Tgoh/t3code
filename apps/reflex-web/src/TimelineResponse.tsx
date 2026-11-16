@@ -147,7 +147,9 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined; ids: () => readon
         <WorkingRow />
       </Match>
       <Match when={of("thinking")}>{(row) => <ThinkingRow row={row()} ids={props.ids} />}</Match>
-      <Match when={of("meta")}>{(row) => <MessageMeta id={row().Id} standalone />}</Match>
+      <Match when={of("meta")}>
+        {(row) => <MessageMeta id={row().Id} files={row().Files} standalone />}
+      </Match>
     </Switch>
   );
 }

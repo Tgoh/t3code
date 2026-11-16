@@ -104,7 +104,7 @@ const shape = (rows: ILayoutRow[]) =>
       case "live":
         return `live ${row.Id} of ${row.Ids.join(",")}${row.Active ? "" : " settled"}`;
       case "meta":
-        return `meta ${row.Id}`;
+        return `meta ${row.Id}${row.Files === null ? "" : ` with ${row.Files}`}`;
       default:
         return row.Kind;
     }
@@ -123,7 +123,7 @@ describe("the timeline's turn folds", () => {
   ];
 
   it("folds a settled turn's work under one row, keeping the answer and its changed files", () => {
-    expect(shape(layout(turn))).toEqual(["u", "fold Worked for 15s", "a2", "cp", "meta a2"]);
+    expect(shape(layout(turn))).toEqual(["u", "fold Worked for 15s", "a2", "meta a2 with cp"]);
   });
 
   it("leaves out workspace preparation, so a reply after only that gets no fold", () => {
@@ -152,8 +152,7 @@ describe("the timeline's turn folds", () => {
       "a1",
       "single c3",
       "a2",
-      "cp",
-      "meta a2",
+      "meta a2 with cp",
     ]);
   });
 
