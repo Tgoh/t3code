@@ -132,7 +132,7 @@ Code imported from `@t3tools/*` follows upstream through the typecheck. These pa
 
 Add a row whenever stock logic is copied rather than imported. A `Follows …` comment in `src` that names a source missing here is a missing row.
 
-A running turn deliberately doesn't follow stock, so the text on screen stays still while the agent works. Its response folds under "Working for …" from the start, as it will once settled, and shows only its latest reply; each steer's segment also keeps its last reply, which stock folds. What the agent is doing and the queued messages sit in `TurnStatus`, one fixed-height line above the composer that keeps its space when empty, in place of stock's live, working and thinking rows and its Queued banner. A sync doesn't port those back.
+A running turn deliberately doesn't follow stock, so the text on screen stays still while the agent works. Its response folds under "Working for …" from the start, as it will once settled, and shows only its latest reply; each steer's segment also keeps its last reply, which stock folds. What the agent is doing and the queued messages sit in `TurnStatus`, one fixed-height line above the composer that keeps its space when empty, in place of stock's live, working and thinking rows and its Queued banner. Once the running turn has a to-do list, that line becomes the list, which stock doesn't show outside the timeline: at most six rows, so it grows only when the list appears, changes length or goes, never when a step changes status. A sync doesn't port those back.
 
 ## Running it
 
