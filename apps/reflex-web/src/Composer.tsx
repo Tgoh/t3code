@@ -1,8 +1,7 @@
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useResource } from "treflex-solid";
-import { type Component, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 
 import {
   admitFiles,
@@ -11,30 +10,12 @@ import {
   shouldHandleAttachmentPaste,
   splitTransferredFiles,
 } from "./attachmentIntake";
-import { ProviderIcon } from "./brand";
+import { ModelPicker, PermissionsChip } from "./ComposerMenus";
 import Environment from "./Environment";
-import {
-  ArrowUp,
-  File as FileIcon,
-  Lock,
-  Paperclip,
-  PenLine,
-  ShieldOff,
-  Sparkles,
-  X,
-} from "./icons";
-import type { IWireModelSelection, IWireRuntimeMode } from "./Infrastructure/commandEffects";
+import { ArrowUp, File as FileIcon, Paperclip, X } from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { StageArt } from "./StageArt";
-import ThreadSession, { modelKey } from "./ThreadSession";
-
-// Labels and icons copy apps/web/src/components/chat/runtimeModeConfig.ts.
-const RUNTIME_MODES: Record<string, { Label: string; Icon: Component }> = {
-  "approval-required": { Label: "Supervised", Icon: Lock },
-  "auto-accept-edits": { Label: "Auto-accept edits", Icon: PenLine },
-  auto: { Label: "Auto", Icon: Sparkles },
-  "full-access": { Label: "Full access", Icon: ShieldOff },
-};
+import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -144,9 +125,8 @@ export function Composer(props: { active?: boolean }) {
   const images = () => held().Attachments.filter((file) => file.Kind === "image");
   const otherFiles = () => held().Attachments.filter((file) => file.Kind === "file");
   const [pasteAsTextUntil, setPasteAsTextUntil] = createSignal(0);
-  const isDraft = () => held().NewThreadProjectId != null;
-  const selection = () => session.effectiveModelKey();
-  const mode = () => RUNTIME_MODES[session.effectiveRuntimeMode()];
+  const noProvider = () => environment.state.Replica.Providers.length === 0;
+  const isDraft = () => held().NewThreadProjectId !== null;
   const stopping = () => session.stopRequested() || session.stopping();
   const clone = useProjectClone(() => session.projectId());
   const blocked = () => cloneSendBlock(clone());
@@ -188,11 +168,6 @@ export function Composer(props: { active?: boolean }) {
     event.preventDefault();
     if (decision.Kind === "refuse") session.addAttachments([], decision.Error);
     else void intake.addFiles([decision.File], true);
-  };
-
-  const pickModel = (value: string) => {
-    const [instanceId, model] = value.split("\n");
-    session.setModelSelection({ instanceId, model } as IWireModelSelection);
   };
 
   return (
@@ -259,7 +234,9 @@ export function Composer(props: { active?: boolean }) {
         </Show>
         <textarea
           rows={2}
-          placeholder="Ask anything."
+          placeholder={
+            noProvider() ? "Enable a provider in Settings to send a message" : "Ask anything."
+          }
           value={held().Draft}
           onInput={(event) => session.setDraft(event.currentTarget.value)}
           onPaste={onPaste}
@@ -276,6 +253,9 @@ export function Composer(props: { active?: boolean }) {
         <Show when={held().StopError}>
           <p class="composer-error">Couldn't stop: {held().StopError}</p>
         </Show>
+        <Show when={held().ModelError}>
+          <p class="composer-error">{held().ModelError}</p>
+        </Show>
         <div class="composer-bar">
           <label class="icon-button attach" data-tip="Attach files">
             <Paperclip />
@@ -291,59 +271,9 @@ export function Composer(props: { active?: boolean }) {
             />
           </label>
           <span class="composer-spacer" />
-          <label class="composer-control picker-overlay">
-            <ProviderIcon driver={session.effectiveModelDriver()} />
-            <span class="control-label">{session.effectiveModelName() ?? "No model"}</span>
-            <select
-              aria-label="Model"
-              value={selection()}
-              onChange={(event) => pickModel(event.currentTarget.value)}
-            >
-              <For each={environment.state.Replica.Providers}>
-                {(provider) => (
-                  <optgroup label={provider.Name}>
-                    <For each={provider.Models}>
-                      {(model) => (
-                        <option
-                          value={modelKey(provider.InstanceId, model.Slug)}
-                          selected={selection() === modelKey(provider.InstanceId, model.Slug)}
-                        >
-                          {model.Name}
-                        </option>
-                      )}
-                    </For>
-                  </optgroup>
-                )}
-              </For>
-            </select>
-          </label>
-          <Show when={mode()}>
-            {(shown) => (
-              <Show
-                when={isDraft()}
-                fallback={
-                  <span class="composer-control">
-                    <Dynamic component={shown().Icon} />
-                    <span class="control-label">{shown().Label}</span>
-                  </span>
-                }
-              >
-                <label class="composer-control picker-overlay">
-                  <Dynamic component={shown().Icon} />
-                  <span class="control-label">{shown().Label}</span>
-                  <select
-                    aria-label="Permissions"
-                    value={held().RuntimeMode}
-                    onChange={(event) =>
-                      session.setRuntimeMode(event.currentTarget.value as IWireRuntimeMode)
-                    }
-                  >
-                    <option value="full-access">Full access</option>
-                    <option value="approval-required">Supervised</option>
-                  </select>
-                </label>
-              </Show>
-            )}
+          <ModelPicker />
+          <Show when={!isDraft() && session.effectiveRuntimeMode() !== DEFAULT_RUNTIME_MODE}>
+            <PermissionsChip />
           </Show>
           <Show when={props.active}>
             <button
@@ -375,6 +305,11 @@ export function Composer(props: { active?: boolean }) {
           </Show>
         </div>
       </form>
+      <Show when={isDraft()}>
+        <div class="composer-context">
+          <PermissionsChip context />
+        </div>
+      </Show>
     </>
   );
 }

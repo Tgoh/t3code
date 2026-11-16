@@ -16,9 +16,12 @@ import {
   cloneControlImpl,
   closeTerminalImpl,
   newProjectImpl,
+  openInFileManagerImpl,
   queueCommandImpl,
   respondRequestImpl,
+  modelFavoritesImpl,
   serverProvidersImpl,
+  setModelFavoriteImpl,
   startCloneImpl,
   startTurnImpl,
   stopThreadImpl,
@@ -28,6 +31,7 @@ import {
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
 import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
+import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelMemory";
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
 import { shellStream } from "./Infrastructure/shellStream";
@@ -55,6 +59,8 @@ runtime.registerImplementation(startTurnImpl);
 runtime.registerImplementation(stopThreadImpl);
 runtime.registerImplementation(respondRequestImpl);
 runtime.registerImplementation(serverProvidersImpl);
+runtime.registerImplementation(modelFavoritesImpl);
+runtime.registerImplementation(setModelFavoriteImpl);
 runtime.registerImplementation(queueCommandImpl);
 runtime.registerImplementation(projectCommandImpl);
 runtime.registerImplementation(addProjectSettingsImpl);
@@ -62,12 +68,15 @@ runtime.registerImplementation(browseFoldersImpl);
 runtime.registerImplementation(startCloneImpl);
 runtime.registerImplementation(cloneControlImpl);
 runtime.registerImplementation(newProjectImpl);
+runtime.registerImplementation(openInFileManagerImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
 runtime.registerImplementation(attachmentUrlImpl);
 runtime.registerImplementation(closeTerminalImpl);
 runtime.registerImplementation(rememberedTerminalImpl);
 runtime.registerImplementation(rememberTerminalImpl);
+runtime.registerImplementation(rememberedModelsImpl);
+runtime.registerImplementation(rememberModelImpl);
 runtime.registerResourceType("composerFiles", composerFiles);
 runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);

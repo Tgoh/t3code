@@ -38,7 +38,7 @@ The RPC client decodes each stream item into `DateTime`s and the app encodes it 
 
 ## Mismatch: a cold open takes a full socket snapshot
 
-The stock client loads the first snapshot over HTTP and falls back to the socket. This client always uses the socket. Reconnects resume from the cursor.
+The stock client loads the first snapshot over HTTP and falls back to the socket, and seeds it from a thread cache it persists. This client always uses the socket and persists nothing, so a reload, or opening a thread not viewed in the last five minutes, waits for a snapshot. Reconnects and returns to a retained thread resume from the cursor.
 
 ## Mismatch: `thread.removed` doesn't say why
 
@@ -60,7 +60,7 @@ The server's history is the raw PTY bytes, written at whatever width the shell h
 
 Every busy mark is an `inFlight` read, which says whether an action runs on an entity and not which arguments it runs with, and only a repeat of the same `latest` action or the removal of its entity stops a running one. So where a mark has to be per row, or end with the data it's about, the row is an entity of its own:
 
-- Each runtime request, so an answer marks only its own request's buttons. The answer waits inside `open(...)`, so a server update or snapshot folds into the request while nothing holds it, and `leading` still drops a second press during the wait. Its typed answers stay on the `ThreadSession`, keyed by request, because the replica's fold would delete them and a closed thread drops its data. They aren't cleared once sent, so a resolved request's answers stay there unseen until the session goes.
+- Each runtime request, so an answer marks only its own request's buttons. The answer waits inside `open(...)`, so a server update or snapshot folds into the request while nothing holds it, and `leading` still drops a second press during the wait. Its typed answers stay on the `ThreadSession`, keyed by request, because the replica's fold would delete them and an expired thread drops its data. They aren't cleared once sent, so a resolved request's answers stay there unseen until the session goes.
 - The history window, which a snapshot with another cursor or has-more, or over a window holding a fetch error, replaces, ending its fetch and its mark. Its pages reach the thread through `History/Page`, and the thread drops a page from a window it no longer holds, which a page queued behind that snapshot would be. `OpenThread` is bound to `ThreadReceiver` only to hear those pages.
 
 ## Feedback for treflex
@@ -74,6 +74,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - There's no public way to react to derived state (`watch` is internal to treflex), so marking a thread visited when a completion is on screen stays in `ThreadBody`'s view effect. The model could do it at its write sites instead, in `selectThread` and in the shell delivery through `publishToNearest`.
 - Rows that belong to one ordered list with the parent's live rows can't be owned by the child. Moving loaded history pages onto the window entity split one sequence across two entities, so placement had to read and write both, and two ordering bugs followed. Lifetime fit the "results live and die with the window" case; order did not.
 - A timer recurs, so every backoff tick starts with `stopTimer`. There's no one-shot timer.
+- Keeping an entity for a while after its view leaves has no mechanism of its own. Retaining a left thread composes one: close its stream, start an expiry timer on it, and on the tick publish to the parent, because an entity can't remove itself inside its own delivery.
 - The timeline's `<For>` iterates ids from the `timelineIds` selector, a plain `[...draft.Timeline]` copy. Each row-adding delta re-runs the copy, which reads every id through the view proxy: about 31 ms p50 at 20,000 rows. The history window keeps a cold open near 500 rows, so this doesn't show at real sizes. If it does, send treflex the size and the timing; they've said they'd make the whole-array copy cheaper inside treflex rather than add an API.
 - A resource has one `r.status` detail string, and the terminal's connection phase already uses it, so the shell process's status goes through `emit` into a transient.
 - `treflex-eslint`'s rules aren't on. `no-edit-after-write` and `no-hidden-open` need type information, which the repo's oxlint JS plugins don't provide. `no-yield-in-finally` and `no-global-open` don't, but oxlint loads a JS plugin with Node's own import, where the package's extensionless imports don't resolve, and every rule imports `@typescript-eslint/utils`, which the repo doesn't install.
@@ -101,15 +102,15 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Drafts and attached files don't survive a reload.
 - The queue offers resume and cancel, with no edit, reorder or promote to steer.
 - A send during a run uses the server's `auto` delivery, with no steer or queue choice.
-- The permissions picker is on a new thread only, offering Full access and Supervised, and interaction mode isn't offered.
-- The provider list is read once at startup, not followed.
+- The composer doesn't offer interaction mode (Plan).
+- The provider list and the hidden-model and model-order settings are read once at startup, not followed. Model favorites are read at startup and after this client's own toggle, so one changed in stock shows after a reload.
 - A sent message appears when the stream delivers it, with no pending row in Local; the gap wasn't noticeable.
-- The default model for a new thread is the first provider's default, as in the stock client, which can be a paid one.
+- A new thread starts on the model and options last picked in this browser, else the project's default, else the first provider's default, which can be a paid one. The last pick and each model's options are kept in this port's `localStorage`, not stock's draft store, so the two clients remember picks separately.
+- A new thread's permission mode defaults to Full access, not the project's `defaultRuntimeMode` setting.
 - A new thread asks the server to generate its title, which uses the server's title provider. On this machine that's Codex, which fails to spawn, so titles fall back to the text.
 - Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
 - A multi-select question takes its options as comma-separated text, with no checkboxes.
 - A thread that doesn't exist retries its subscription with backoff rather than reporting missing.
-- A closed thread drops its data, so reopening takes a new snapshot; there's no retention or local cache.
 - One terminal per thread, `term-1`, with no tabs or splits.
 - A new-thread draft has no terminal until its thread exists.
 - An exited shell has no restart button: Hide and Terminal start a new one.
@@ -131,7 +132,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Visits: a visit that fails isn't retried after a reconnect, so Done can stay until the next completion.
 - Questions: answers typed into a question that Stop cancels or that expires are lost; stock moves them into the composer. Option previews don't render, and an `initialAnswer` isn't filled in.
 - Markdown: `vscode://`, `cursor://` and other editor links are dropped instead of opening the file.
-- Thread links: a link to a thread the shell doesn't hold shows its written label, or "Thread", and still opens, where stock asks the server for its title and shows "Thread no longer available" when it's gone. A thread on another machine is named but never opens, since this client connects to one environment. The chip has no project badge or hover card, `t3code://` deep links and prompt links aren't recognised, and a raw-HTML block's thread link keeps its written text rather than the thread's title.
+- Thread links: a link to a thread the shell doesn't hold shows its written label, or "Thread", and still opens, where stock asks the server for its title and shows "Thread no longer available" when it's gone. A thread on another machine is named but never opens, since this client connects to one environment. The chip shows the sidebar's monogram badge where stock shows the project's favicon, and has no hover card; `t3code://` deep links and prompt links aren't recognised, and a raw-HTML block's thread link keeps its written text rather than the thread's title.
 - Messages from other threads and automations: the automation fold shows the prompt's first line, not its scheduled task's title, and has no Open automation link. Consecutive steers each show their Steer label, where stock shows it once, because a row doesn't know its neighbours. Guest messages show the guest's words without the guest name or styling.
 - Sidebar: no "Setting up" state for a thread launched from a draft before its first run lands, and no Regenerate title action.
 
@@ -139,7 +140,11 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
 - Sidebar: no archive (this client has no way back from it), custom snooze time, bulk settle, drag reorder, auto-settle toggle or search.
 - Sidebar: every settled thread is streamed, where stock omits older ones and pages them in.
-- Projects: Add project is stock's palette for its own views only. It clones only from a pasted URL, with no hosting-provider sources (GitHub and the rest, with their Setup Required state) or repository lookup, and a new project can't be published to GitHub from it. There's no environment chooser, no Open in file manager, and no keyboard shortcut to open it. Folders group one per project, as stock's "separate" mode, with no repository grouping, and every open project has a folder, where stock shows an idle one only while pinned. No project archive, settings or reorder, and delete only from a failed clone's banner.
+- Projects: Add project is stock's palette for its own views only. It clones only from a pasted URL, with no hosting-provider sources (GitHub and the rest, with their Setup Required state) or repository lookup, and a new project can't be published to GitHub from it. There's no environment chooser, no Open in file manager, and no keyboard shortcut to open it. Folders group one per project, as stock's "separate" mode, with no repository grouping, and every open project has a folder, where stock shows an idle one only while pinned. No project archive.
+- Projects: the folder menu has no Project settings page (icon, default model, workspace, actions, checkouts); rename is in the menu instead. Open in file manager is offered whatever the server's `availableEditors` says, and its failure shows in the sidebar's error line.
+- Projects: removal counts only threads the shell holds, where stock adds the older settled threads it pages in, so the count can be low. It removes one project, with no grouped checkouts, and a failure stays in the dialog rather than a toast.
+- Projects: the order is per browser and port, as stock's is per browser, and keyed by project id where stock keys by environment and path, so a removed and re-added folder goes to the end. The sort choice is a sidebar picker, not a setting, and defaults to Manual (stock: Last user message), whose unsaved order is the old one: pinned first, then by title. The time orders keep pinned projects on top, which stock's don't.
+- Projects: dragging works with a mouse or pen in Manual only, with no keyboard or touch, as stock's old project drag had neither. Folders don't animate into place.
 - Projects: a clone that fails or finishes while its project isn't open shows nothing until you open it; stock raises a toast.
 - Sidebar: Waiting, Limited and a waiting guest message's Request aren't distinct states, drafts have no card, and the thread list shows no scrollbar.
 - Sidebar hover card: no environment, terminal process or pull request lines, and a long branch is cut at the end rather than the middle.
@@ -150,7 +155,6 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Timeline: the fold and work groups leave out stock's superseded-attempt folds ("Superseded attempt"), the tool-call visibility setting (zen and hide-successful), hiding delegation rows that a subagent card replaces, compaction dividers and `/compact` turns, viewed-image strips, html-render and MCP app rows, the "Waiting on N subagents" label and the timestamp setting. Resumed subagents fold with the response they appear in, not their original turn. Stock's tool icons and shimmer aren't copied, and an expanded group grows to a fixed height rather than by its open entries.
 - Timeline: an expanded work entry's body is this client's (`viewOf`), not stock's per-tool detail.
 - Timeline: no minimap, and the scroll-to-end pill doesn't summarise what's waiting below.
-- Timeline: when the composer grows while the view is stuck to the bottom (queued-turn chips, say), a gap stays below the last row, because the stick-to-bottom observer watches the timeline's content, not its scroller.
 - Message actions: no edit, fork, reply or prompt link action.
 - Timeline: approvals show every option inline, with no More menu and no decline-by-typing placeholder.
 - Attachments: images aren't resized or recompressed, so an image over 10 MB is refused and HEIC is refused rather than converted to JPEG. Uploads show no progress or retry button; a failed upload retries at send. Duplicate images aren't dropped, the 80 MB total for images is left to the server, and the text has no inline chips referring to attachments.
@@ -159,8 +163,10 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Timeline: an expanded image has no next, previous or zoom, images inside markdown don't expand, and an attachment URL isn't refreshed, so a thread left open past its expiry shows a name chip after a reload of the image.
 - Markdown: no syntax highlighting, language icons, run-in-terminal button, file link chips, math or diagrams. A relative link is plain text with its path in a tooltip, not a link that opens the file. A code block's wrap choice resets when its message re-renders during streaming.
 - Changed files card: flat list, not a tree, and its rows don't open a single file's diff.
-- Composer: native select popups, not stock's model and permission menus, and no effort label; the composer is a solid block below the timeline, not glass floating over it.
-- Composer: the permission label is read-only on an existing thread, and the placeholder leaves out `@ files, $ skills, / commands`, which this client doesn't have.
+- Composer: no `@ files`, `$ skills` or `/ commands` menus and no voice input, so the placeholder leaves out their hints. No prompt history, stash, multi-model send or keyboard shortcuts.
+- Model menu: no number-key jumps, provider setup or update notices, unavailable-provider state, custom models from settings, instance badges or New badges, and a fixed height rather than stock's fit to the tallest tab. Providers other than Claude and Codex show a letter, not their icon. A favorite toggle doesn't migrate favorites a stock browser kept locally before the server held them. A non-reasoning option such as an agent's mode opens its choices below its row, not in a side menu.
+- Model menu: a typed `ultrathink` doesn't take over the effort label or lock the levels, the effort shows as a word with no bars setting, and the provider's reported selection isn't shown.
+- Permissions: no overflow menu at narrow widths, and modes a managed policy forbids aren't disabled. A new thread's strip under the composer holds only the permissions chip, with no workspace or branch pickers.
 - Diff panel: no tabs, split view, wrap, turn picker, file icons or collapsed unchanged-line markers.
 - Terminal drawer: fixed height with no resize, tabs or splits; the emulator is xterm, so glyph rendering differs from stock's.
 - Layout: no narrow-width sidebar collapse; below 640px only the chat gutter shrinks.

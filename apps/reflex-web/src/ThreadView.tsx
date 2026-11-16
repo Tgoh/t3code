@@ -144,6 +144,8 @@ const ThreadBody = ThreadSession.provider(() => {
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
   let head!: HTMLDivElement;
+  let stage!: HTMLDivElement;
+  let lane!: HTMLDivElement;
   const [stuck, setStuck] = createSignal(true);
   let lastTop = 0;
   const scrollToEnd = () => {
@@ -199,7 +201,8 @@ const ThreadBody = ThreadSession.provider(() => {
     const isStuck = untrack(stuck);
     const first = snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved);
     if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
-    const trimmed = first !== moved;
+    // A retained thread has rows before the scroller mounts, and there's no scroll to keep then.
+    const trimmed = held.Ids.length > 0 && first !== moved;
     const before = trimmed ? scroller.scrollTop : 0;
     setTimeline({ ...held, Ids: ids, First: first });
     // Only the trim's own shift, so the scroll event it causes isn't read as the user scrolling up
@@ -242,7 +245,15 @@ const ThreadBody = ThreadSession.provider(() => {
       if (stuck()) scrollToEnd();
     });
     observer.observe(content);
-    onCleanup(() => observer.disconnect());
+    const laneObserver = new ResizeObserver(() => {
+      stage.style.setProperty("--composer-height", `${lane.offsetHeight}px`);
+      if (stuck()) scrollToEnd();
+    });
+    laneObserver.observe(lane);
+    onCleanup(() => {
+      observer.disconnect();
+      laneObserver.disconnect();
+    });
   });
   return (
     <div class="thread-layout">
@@ -307,93 +318,95 @@ const ThreadBody = ThreadSession.provider(() => {
         <Show when={retrying()}>
           <p class="thread-notice">Can't load this thread right now. Retrying.</p>
         </Show>
-        <div
-          class="timeline"
-          ref={scroller}
-          tabIndex={-1}
-          onScroll={() => {
-            const top = scroller.scrollTop;
-            if (scroller.scrollHeight - top - scroller.clientHeight < 40) setStuck(true);
-            // Only an upward scroll detaches: the scroll event can land after more content
-            // arrived, which leaves a follow-up scroll looking far from the end.
-            else if (top < lastTop) setStuck(false);
-            lastTop = top;
-          }}
-        >
-          <div class="timeline-lane" ref={content}>
-            <div ref={head}>
-              <Show
-                when={reachedTop()}
-                fallback={
-                  <TimelineSentinel
-                    root={scroller}
-                    onReach={() => growTo(grow(timeline().First))}
-                    onFocus={showAll}
-                  />
-                }
-              >
-                <Show when={thread.state.History} keyed>
-                  {(history) => <LoadEarlier state={history} />}
-                </Show>
-              </Show>
-            </div>
-            <For each={responses()?.Starts}>
-              {(start) => (
-                <TimelineResponse
-                  ids={responses()?.Segments[start] ?? []}
-                  latest={start === lastStart()}
-                />
-              )}
-            </For>
-            <For each={thread.pendingApprovalIds()}>
-              {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
-            </For>
-            <Show when={thread.state.Thread !== null && thread.state.Timeline.length === 0}>
-              <p class="empty">Nothing here yet.</p>
-            </Show>
-          </div>
-        </div>
-        <div class="composer-lane">
-          <Show when={!stuck()}>
-            <button class="scroll-to-end" onClick={scrollToEnd}>
-              <ChevronDown />
-              Scroll to end
-            </button>
-          </Show>
-          <For each={thread.pendingQuestionIds()}>
-            {(id) => <RequestBanner state={thread.state.RuntimeRequests[id]!} />}
-          </For>
-          <Show when={thread.queuedRunIds().length > 0}>
-            <div class="composer-banner">
-              <div class="banner-title">
-                <strong>Queued</strong>
-                <Show when={runState() !== "running" && runState() !== "waiting"}>
-                  <button
-                    class="button"
-                    disabled={session.queueing()}
-                    onClick={() => session.queueAction(null)}
-                  >
-                    Resume
-                  </button>
+        <div class="chat-stage" ref={stage}>
+          <div
+            class="timeline"
+            ref={scroller}
+            tabIndex={-1}
+            onScroll={() => {
+              const top = scroller.scrollTop;
+              if (scroller.scrollHeight - top - scroller.clientHeight < 40) setStuck(true);
+              // Only an upward scroll detaches: the scroll event can land after more content
+              // arrived, which leaves a follow-up scroll looking far from the end.
+              else if (top < lastTop) setStuck(false);
+              lastTop = top;
+            }}
+          >
+            <div class="timeline-lane" ref={content}>
+              <div ref={head}>
+                <Show
+                  when={reachedTop()}
+                  fallback={
+                    <TimelineSentinel
+                      root={scroller}
+                      onReach={() => growTo(grow(timeline().First))}
+                      onFocus={showAll}
+                    />
+                  }
+                >
+                  <Show when={thread.state.History} keyed>
+                    {(history) => <LoadEarlier state={history} />}
+                  </Show>
                 </Show>
               </div>
-              <For each={thread.queuedRunIds()}>
-                {(runId) => (
-                  <p class="queued">
+              <For each={responses()?.Starts}>
+                {(start) => (
+                  <TimelineResponse
+                    ids={responses()?.Segments[start] ?? []}
+                    latest={start === lastStart()}
+                  />
+                )}
+              </For>
+              <For each={thread.pendingApprovalIds()}>
+                {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
+              </For>
+              <Show when={thread.state.Thread !== null && thread.state.Timeline.length === 0}>
+                <p class="empty">Nothing here yet.</p>
+              </Show>
+            </div>
+          </div>
+          <div class="composer-lane" ref={lane}>
+            <Show when={!stuck()}>
+              <button class="scroll-to-end" onClick={scrollToEnd}>
+                <ChevronDown />
+                Scroll to end
+              </button>
+            </Show>
+            <For each={thread.pendingQuestionIds()}>
+              {(id) => <RequestBanner state={thread.state.RuntimeRequests[id]!} />}
+            </For>
+            <Show when={thread.queuedRunIds().length > 0}>
+              <div class="composer-banner">
+                <div class="banner-title">
+                  <strong>Queued</strong>
+                  <Show when={runState() !== "running" && runState() !== "waiting"}>
                     <button
                       class="button"
                       disabled={session.queueing()}
-                      onClick={() => session.queueAction(runId)}
+                      onClick={() => session.queueAction(null)}
                     >
-                      Cancel
+                      Resume
                     </button>
-                    <QueuedMessage runId={runId} />
-                  </p>
-                )}
-              </For>
-            </div>
-          </Show>
-          <Composer active={runState() === "running" || runState() === "waiting"} />
+                  </Show>
+                </div>
+                <For each={thread.queuedRunIds()}>
+                  {(runId) => (
+                    <p class="queued">
+                      <button
+                        class="button"
+                        disabled={session.queueing()}
+                        onClick={() => session.queueAction(runId)}
+                      >
+                        Cancel
+                      </button>
+                      <QueuedMessage runId={runId} />
+                    </p>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <Composer active={runState() === "running" || runState() === "waiting"} />
+          </div>
         </div>
         <Show when={terminalOpen()}>
           <TerminalPanel />

@@ -22,9 +22,11 @@ const NewThreadView = ThreadSession.provider(() => {
           <h1>New thread</h1>
         </div>
       </header>
-      <div class="timeline" />
-      <div class="composer-lane">
-        <Composer />
+      <div class="chat-stage">
+        <div class="timeline" />
+        <div class="composer-lane">
+          <Composer />
+        </div>
       </div>
     </FileDropSection>
   );

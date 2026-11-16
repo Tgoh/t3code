@@ -27,20 +27,31 @@ import {
   type INewProject,
   type IProjectCommand,
   type IThreadCommand,
+  modelFavoritesEffect,
   newProjectEffect,
+  openInFileManagerEffect,
   projectCommandEffect,
   serverProvidersEffect,
+  setModelFavoriteEffect,
   startCloneEffect,
   threadCommandEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
+import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
-import { getDefaultOpenThread, type IOpenThread, openThreadStream } from "./OpenThread";
+import {
+  getDefaultOpenThread,
+  type IOpenThread,
+  openThreadStream,
+  resumeThread,
+  retainThread,
+} from "./OpenThread";
 import { dropThreadRow, getDefaultShell, type IShell, openShellStream } from "./Shell";
 import {
   detachTerminal,
   getDefaultThreadSession,
   type IReplica,
+  type ISelection,
   type IThreadSession,
   restoreTerminal,
 } from "./ThreadSession";
@@ -56,8 +67,7 @@ export interface IEnvironment extends IEntity {
   Label: string;
   FileAttachmentLimit: number | null;
   Replica: IReplica;
-  Local: IEntity & {
-    SelectedThreadId: string | null;
+  Local: ISelection & {
     ThreadSessions: Record<string, IThreadSession>;
   };
 }
@@ -68,7 +78,12 @@ export function* newEnvironment(
   fileAttachmentLimit: number | null,
 ): IActionGenerator<IEnvironment> {
   const shell = yield* entity<IShell>(getDefaultShell(environmentId));
-  const replica = yield* entity<IReplica>({ Providers: [], Shell: shell, OpenThreads: {} });
+  const replica = yield* entity<IReplica>({
+    Providers: [],
+    ModelFavorites: [],
+    Shell: shell,
+    OpenThreads: {},
+  });
   const local = yield* entity<IEnvironment["Local"]>({
     SelectedThreadId: null,
     ThreadSessions: {},
@@ -84,6 +99,7 @@ export function* newEnvironment(
 
 export function* init(draft: IEnvironment): IActionGenerator {
   yield* registerDataSource(draft, "Replica", draft.Replica);
+  yield* registerDataSource(draft, "Selection", draft.Local);
   bind(draft, EnvironmentReceiver);
   yield* openShellStream(draft.Replica.Shell);
   yield* openResource(draft, "Project/Clones", {
@@ -99,6 +115,33 @@ export function* loadProviders(draft: IEnvironment): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
   const providers = yield* open(serverProvidersEffect({ EnvironmentId: environmentId }));
   draft.Replica.Providers = providers;
+  yield* loadModelFavorites(draft);
+}
+
+function* loadModelFavorites(draft: IEnvironment): IOpenGenerator {
+  const environmentId = draft.EnvironmentId;
+  const favorites = yield* open(modelFavoritesEffect({ EnvironmentId: environmentId }));
+  draft.Replica.ModelFavorites = favorites;
+}
+
+export function* toggleModelFavorite(
+  draft: IEnvironment,
+  provider: string,
+  model: string,
+): IOpenGenerator {
+  const favorite = !draft.Replica.ModelFavorites.some(
+    (held) => held.Provider === provider && held.Model === model,
+  );
+  const environmentId = draft.EnvironmentId;
+  yield* open(
+    setModelFavoriteEffect({
+      EnvironmentId: environmentId,
+      Provider: provider,
+      Model: model,
+      Favorite: favorite,
+    }),
+  );
+  yield* loadModelFavorites(draft);
 }
 
 function* sessionOf(
@@ -120,13 +163,23 @@ function* sessionOf(
 }
 
 export function* openThread(draft: IEnvironment, threadId: string): IActionGenerator {
-  if (draft.Replica.OpenThreads[threadId] !== undefined) return;
   const session = yield* sessionOf(draft, threadId);
-  draft.Replica.OpenThreads[threadId] = yield* entity<IOpenThread>(
-    getDefaultOpenThread(draft.EnvironmentId, threadId),
-  );
-  yield* openThreadStream(draft.Replica.OpenThreads[threadId]!);
+  const held = draft.Replica.OpenThreads[threadId];
+  if (held !== undefined) yield* resumeThread(held);
+  else {
+    draft.Replica.OpenThreads[threadId] = yield* entity<IOpenThread>(
+      getDefaultOpenThread(draft.EnvironmentId, threadId),
+    );
+    yield* openThreadStream(draft.Replica.OpenThreads[threadId]!);
+  }
   yield* start(restoreTerminal, session.$Id);
+}
+
+function* leaveThread(draft: IEnvironment, threadId: string): IActionGenerator {
+  const held = draft.Replica.OpenThreads[threadId];
+  if (held !== undefined) yield* retainThread(held);
+  const session = draft.Local.ThreadSessions[threadId];
+  if (session !== undefined) yield* start(detachTerminal, session);
 }
 
 export function* closeThread(draft: IEnvironment, threadId: string): IActionGenerator {
@@ -139,7 +192,7 @@ export function* selectThread(draft: IEnvironment, threadId: string): IActionGen
   const previous = draft.Local.SelectedThreadId;
   if (previous === threadId) return;
   draft.Local.SelectedThreadId = threadId;
-  if (previous !== null) yield* closeThread(draft, previous);
+  if (previous !== null) yield* leaveThread(draft, previous);
   if (draft.Local.ThreadSessions[threadId]?.NewThreadProjectId != null) {
     yield* setAddressThread(null);
     return;
@@ -153,7 +206,16 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
     (session) => session.NewThreadProjectId === projectId,
   );
   const threadId = existing?.ThreadId ?? (yield* generateGuid());
-  yield* sessionOf(draft, threadId, projectId);
+  const session = yield* sessionOf(draft, threadId, projectId);
+  if (existing === undefined) {
+    const last = (yield* rememberedModelsEffect()).Last;
+    const offered = draft.Replica.Providers.some(
+      (provider) =>
+        provider.InstanceId === last?.instanceId &&
+        provider.Models.some((model) => model.Slug === last.model),
+    );
+    if (offered) session.ModelSelection = last;
+  }
   yield* selectThread(draft, threadId);
 }
 
@@ -225,6 +287,38 @@ export function* projectCommand(
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+// Follows removeMembers in apps/web/src/components/settings/ProjectSettingsPanel.tsx.
+export function* removeProject(
+  draft: IEnvironment,
+  projectId: string,
+): IOpenGenerator<string | null> {
+  try {
+    yield* sendProjectCommand(draft.EnvironmentId, projectId, { Kind: "delete", Force: true });
+  } catch (error) {
+    return errorText(error);
+  }
+  // The server deleted the project's threads too, and the shell doesn't say why a row left.
+  const threadIds = new Set<string>(
+    Object.values(draft.Replica.Shell.Threads)
+      .filter((thread) => thread.projectId === projectId)
+      .map((thread) => thread.id),
+  );
+  for (const session of Object.values(draft.Local.ThreadSessions)) {
+    if (session.NewThreadProjectId === projectId) threadIds.add(session.ThreadId);
+  }
+  for (const threadId of threadIds) yield* forgetThread(draft, threadId);
+  return null;
+}
+leading(removeProject);
+
+export function* removingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return yield* inFlight(removeProject, draft);
+}
+
+export function* openInFileManager(draft: IEnvironment, path: string): IOpenGenerator {
+  yield* open(openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path }));
+}
 
 // Follows handleAddProjectForEnvironment in apps/web/src/components/CommandPalette.tsx.
 export function* addFolder(
@@ -362,6 +456,9 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Thread/Deleted"(draft, { ThreadId }) {
     yield* forgetThread(draft, ThreadId);
   },
+  *"Thread/Expired"(draft, { ThreadId }) {
+    if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);
+  },
   *"Thread/Started"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) return;
     yield* openThread(draft, ThreadId);
@@ -379,6 +476,9 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     cloneProject,
     newProject,
     cloneControl,
+    toggleModelFavorite,
+    removeProject,
+    openInFileManager,
   },
   {
     selectedOpenThread,
@@ -387,5 +487,6 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     currentProjectRoot,
     addingProject,
     cloneControlling,
+    removingProject,
   },
 );

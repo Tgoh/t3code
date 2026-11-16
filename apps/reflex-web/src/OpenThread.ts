@@ -10,6 +10,7 @@ import {
 } from "@t3tools/shared/orchestrationV2DedupedBodies";
 import { isOrchestrationV2TurnItemVisible } from "@t3tools/shared/orchestrationV2Timeline";
 import {
+  closeResource,
   entity,
   type IActionGenerator,
   type IEntity,
@@ -43,13 +44,17 @@ declare module "treflex" {
   }
   interface IMessageRegistry {
     "Thread/Deleted": { ThreadId: string };
+    "Thread/Expired": { ThreadId: string };
   }
   interface ITimerRegistry {
     "Thread/Reopen": {};
+    "Thread/Expire": {};
   }
 }
 
 const REOPEN_MS = 1_000;
+// Follows THREAD_SNAPSHOT_IDLE_TTL_MS in packages/client-runtime/src/state/threadRetention.ts.
+export const RETAIN_MS = 5 * 60_000;
 
 export type IWireRun = IWireProjection["runs"][number];
 
@@ -136,6 +141,18 @@ export function* openThreadStream(draft: IOpenThread): IActionGenerator {
     { Type: "threadStream", EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
     { ResumeFrom: "LastSequence" },
   );
+}
+
+export function* retainThread(draft: IOpenThread): IActionGenerator {
+  yield* closeResource(draft, "Thread/Stream");
+  yield* stopTimer(draft, "Thread/Reopen");
+  (yield* streamState(draft)).Synchronized = false;
+  yield* startTimer(draft, "Thread/Expire", ThreadReceiver, RETAIN_MS);
+}
+
+export function* resumeThread(draft: IOpenThread): IActionGenerator {
+  yield* stopTimer(draft, "Thread/Expire");
+  yield* openThreadStream(draft);
 }
 
 type IBodySources = Pick<IOpenThread, "Messages" | "Checkpoints" | "Subagents">;
@@ -514,6 +531,11 @@ export const ThreadReceiver = receiver<IOpenThread>("ThreadReceiver")({
   *"Thread/Reopen"(draft) {
     yield* stopTimer(draft, "Thread/Reopen");
     yield* openThreadStream(draft);
+  },
+  // Removing this entity has to happen outside its own delivery.
+  *"Thread/Expire"(draft) {
+    yield* stopTimer(draft, "Thread/Expire");
+    yield* publishToNearest(draft, "Thread/Expired", { ThreadId: draft.ThreadId });
   },
   // A page can queue behind a snapshot that replaces its window.
   *"History/Page"(draft, { WindowId, Items }) {

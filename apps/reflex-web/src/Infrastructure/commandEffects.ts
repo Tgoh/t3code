@@ -1,3 +1,4 @@
+import type { ModelCapabilities } from "@t3tools/contracts";
 import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
 import type { IWireProjection, IWireTurnItem } from "./wire";
@@ -55,8 +56,41 @@ export interface IProviderOption {
   InstanceId: string;
   Driver?: string;
   Name: string;
-  Models: Array<{ Slug: string; Name: string; IsDefault: boolean }>;
+  SupportedRuntimeModes?: IWireRuntimeMode[];
+  Models: Array<{
+    Slug: string;
+    Name: string;
+    ShortName?: string;
+    SubProvider?: string;
+    IsDefault: boolean;
+    IsLegacy?: boolean;
+    Capabilities?: ModelCapabilities;
+  }>;
 }
+
+export interface IModelFavorite {
+  Provider: string;
+  Model: string;
+}
+
+interface IModelFavoritesEffect extends IEffect {
+  Type: "modelFavorites";
+  EnvironmentId: string;
+}
+
+export const modelFavoritesEffect = defineEffect<IModelFavoritesEffect, IModelFavorite[]>(
+  "modelFavorites",
+);
+
+interface ISetModelFavoriteEffect extends IEffect, IModelFavorite {
+  Type: "setModelFavorite";
+  EnvironmentId: string;
+  Favorite: boolean;
+}
+
+export const setModelFavoriteEffect = defineEffect<ISetModelFavoriteEffect, void>(
+  "setModelFavorite",
+);
 
 interface IStartTurnEffect extends IEffect, IStartTurn {
   Type: "startTurn";
@@ -93,7 +127,9 @@ export type IThreadCommand =
   | { Kind: "rename"; Title: string }
   | { Kind: "visit"; VisitedAt: string }
   | { Kind: "markUnread" }
-  | { Kind: "delete" };
+  | { Kind: "delete" }
+  | { Kind: "modelSelection"; Selection: IWireModelSelection }
+  | { Kind: "runtimeMode"; Mode: IWireRuntimeMode };
 
 interface IThreadCommandEffect extends IEffect {
   Type: "threadCommand";
@@ -111,7 +147,7 @@ export type IProjectCommand =
   | { Kind: "unpin" }
   | { Kind: "unarchive" }
   | { Kind: "rename"; Title: string }
-  | { Kind: "delete" };
+  | { Kind: "delete"; Force?: boolean };
 
 interface IProjectCommandEffect extends IEffect {
   Type: "projectCommand";
@@ -192,6 +228,16 @@ interface INewProjectEffect extends IEffect {
 }
 
 export const newProjectEffect = defineEffect<INewProjectEffect, INewProject>("newProject");
+
+interface IOpenInFileManagerEffect extends IEffect {
+  Type: "openInFileManager";
+  EnvironmentId: string;
+  Path: string;
+}
+
+export const openInFileManagerEffect = defineEffect<IOpenInFileManagerEffect, void>(
+  "openInFileManager",
+);
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 

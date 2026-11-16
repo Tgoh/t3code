@@ -11,6 +11,7 @@ import {
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
+import { ProjectBadge } from "./brand";
 import { CopyButton } from "./CopyButton";
 import Environment from "./Environment";
 import { MessagesSquare, WrapText } from "./icons";
@@ -117,17 +118,27 @@ function ThreadChip(props: { target: ILinkTarget }) {
         </span>
       }
     >
-      {(target) => (
-        <button
-          type="button"
-          class="thread-link"
-          data-tip="Open thread"
-          onClick={() => environment.selectThread(target().Ref.threadId)}
-        >
-          <MessagesSquare />
-          {target().Title}
-        </button>
-      )}
+      {(target) => {
+        const projectName = () => {
+          const shell = environment.state.Replica.Shell;
+          const projectId = shell.Threads[target().Ref.threadId]?.projectId;
+          return projectId === undefined ? undefined : shell.Projects[projectId]?.title;
+        };
+        return (
+          <button
+            type="button"
+            class="thread-link"
+            aria-label={`Thread, ${target().Title}`}
+            data-tip="Open thread"
+            onClick={() => environment.selectThread(target().Ref.threadId)}
+          >
+            <Show when={projectName()} fallback={<MessagesSquare />}>
+              {(name) => <ProjectBadge name={name()} />}
+            </Show>
+            <span class="thread-link-label">{target().Title}</span>
+          </button>
+        );
+      }}
     </Show>
   );
 }

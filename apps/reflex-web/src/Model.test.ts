@@ -15,8 +15,10 @@ import {
   newThread,
   openThread,
   projectCommand,
+  removeProject,
   selectThread,
   threadCommand,
+  toggleModelFavorite,
 } from "./Environment";
 import { loadEarlier, loadingEarlier } from "./HistoryWindow";
 import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
@@ -38,7 +40,9 @@ import type {
   IStopThread,
   IThreadCommand,
   IThreadDiff,
+  IWireModelSelection,
 } from "./Infrastructure/commandEffects";
+import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import {
   diffTurnOf,
   fileChangeCounts,
@@ -48,6 +52,7 @@ import {
   latestRun,
   pendingApprovalIds,
   pendingRequest,
+  RETAIN_MS,
   ThreadReceiver,
   threadSynchronized,
   timelineEntries,
@@ -67,10 +72,12 @@ import {
   workingStartedAt,
 } from "./Shell";
 import {
+  chooseModel,
   closeDiff,
   diffLoading,
   closeTerminal,
   effectiveModel,
+  effectiveRuntimeMode,
   ending,
   endTerminal,
   type IThreadSession,
@@ -82,7 +89,9 @@ import {
   send,
   sending,
   setDraft,
+  setModelSelection,
   setQuestionAnswer,
+  setRuntimeMode,
   stopping,
   stopRun,
   terminalAttachment,
@@ -100,6 +109,7 @@ import {
   snapshotOf,
   THREAD_ID,
 } from "./testing/threadFixture";
+import { orderFolders } from "./projectOrder";
 import { reconcile } from "./rows";
 
 const ENV = "env-1";
@@ -111,6 +121,7 @@ async function connect(
 ) {
   const address = { thread: initialAddress };
   const terminals = new Map<string, ITerminalLaunch>();
+  const models: IRememberedModels = { Last: null, OptionsByModel: {} };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
     getDefaultRoot("Root"),
@@ -129,6 +140,11 @@ async function connect(
         },
       ],
       generateGuid: () => `guid-${(guid += 1)}`,
+      modelFavorites: () => [],
+      rememberedModels: () => models,
+      rememberModel: (effect: { Selection: IWireModelSelection }) => {
+        models.Last = effect.Selection;
+      },
       ...commands,
       threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
       addressThread: () => address.thread,
@@ -164,6 +180,7 @@ async function connect(
     runtime,
     address,
     terminals,
+    models,
     environment,
     session,
     thread,
@@ -1246,7 +1263,12 @@ describe("the sidebar", () => {
     };
     const active = [row("m1", "mango", at), row("o1", "old", at), row("b1", "banana", at)];
     active.push(row("m2", "mango", at), row("gone", "missing", at));
-    const folders = projectFolders(active as never, projects as never);
+    const folders = orderFolders(
+      projectFolders(active as never, projects as never),
+      "manual",
+      [],
+      [],
+    );
     expect(folders.map((folder) => [folder.ProjectId, folder.Threads.map((t) => t.id)])).toEqual([
       ["apple", []],
       ["zed", []],
@@ -1343,10 +1365,69 @@ describe("selection", () => {
     expect(streams(server)).toEqual(["a"]);
     await server.runtime.dispatch(selectThread, server.envId(), "b");
     expect(streams(server)).toEqual(["b"]);
-    expect(Object.keys(server.environment().Replica.OpenThreads)).toEqual(["b"]);
     expect(server.environment().Local.SelectedThreadId).toBe("b");
     expect(server.environment().Local.ThreadSessions["a"]!.Draft).toBe("kept");
     expect(server.address.thread).toBe("b");
+  });
+
+  it("keeps a left thread's data, and a return resumes its stream from where it stopped", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendThread(snapshotOf(longThread(3), 5));
+    await server.sendThread({ kind: "synchronized" });
+    const node = server.thread();
+    const synchronized = () => server.runtime.processSelector(threadSynchronized, server.thread);
+
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
+    expect(streams(server)).toEqual(["b"]);
+    expect(server.thread()).toBe(node);
+    expect(server.runtime.timers(server.openId())).toMatchObject([
+      { Key: "Thread/Expire", IntervalMs: RETAIN_MS },
+    ]);
+    expect(synchronized()).toBe(false);
+
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    expect(server.thread()).toBe(node);
+    expect(server.runtime.timers(server.openId())).toEqual([]);
+    const row = server.runtime
+      .resources()
+      .find((resource) => resource.Key === "Thread/Stream" && resource.OwnerId === node.$Id);
+    expect(row?.ResumeFrom).toBe("LastSequence");
+    expect(server.thread().LastSequence).toBe(5);
+    expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2"]);
+    await server.sendThread({
+      kind: "event",
+      sequence: 6,
+      event: event("turn-item.updated", commandItem("missed", "run-0", 9)),
+    } as IWireThreadItem);
+    await server.sendThread({ kind: "synchronized" });
+    expect(server.thread().Timeline).toEqual(["item-0", "item-1", "item-2", "missed"]);
+    expect(synchronized()).toBe(true);
+  });
+
+  it("drops a left thread when its retention expires, but not the selected one", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendThread(snapshotOf(longThread(3), 5));
+    const expire = () =>
+      server.runtime.dispatch(
+        ThreadReceiver.handle,
+        server.openId(),
+        { Type: "Thread/Expire" },
+        { publisher: { Id: server.openId() } },
+      );
+    await expire();
+    await settled();
+    expect(server.thread()).toBeDefined();
+
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
+    const gone = server.disposed(server.openId());
+    await expire();
+    await gone;
+    expect(server.thread()).toBeUndefined();
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeDefined();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    expect(server.thread().LastSequence).toBe(0);
   });
 
   it("a reload returns to the thread in the address", async () => {
@@ -1477,6 +1558,134 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(newThread, server.envId(), "project-1");
     const draftId = server.environment().Local.SelectedThreadId!;
     expect(model(draftId)).toEqual({ instanceId: "devReplay", model: "showcase" });
+  });
+
+  const codexWithEffort = () => [
+    {
+      InstanceId: "codex",
+      Driver: "codex",
+      Name: "Codex",
+      Models: [
+        {
+          Slug: "gpt-5.4",
+          Name: "GPT-5.4",
+          IsDefault: true,
+          Capabilities: {
+            optionDescriptors: [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning",
+                type: "select",
+                options: [
+                  { id: "medium", label: "Medium" },
+                  { id: "high", label: "High", isDefault: true },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    },
+  ];
+  const medium = {
+    instanceId: "codex",
+    model: "gpt-5.4",
+    options: [{ id: "reasoningEffort", value: "medium" }],
+  } as unknown as IWireModelSelection;
+
+  it("a pick on the thread's own provider saves to the thread at once, and the next turn carries it", async () => {
+    const log: Array<IThreadCommand | IStartTurn> = [];
+    const server = await connect(undefined, null, {
+      serverProviders: codexWithEffort,
+      threadCommand: (effect: { Command: IThreadCommand }) => {
+        log.push(effect.Command);
+      },
+      startTurn: (effect: IStartTurn) => {
+        log.push(effect);
+      },
+    });
+    await server.open();
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    await server.runtime.dispatch(setModelSelection, server.sessionId(), medium);
+    expect(log).toEqual([{ Kind: "modelSelection", Selection: medium }]);
+    expect(server.models.Last).toEqual(medium);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "go");
+    await server.runtime.dispatch(send, server.sessionId());
+    expect((log[1] as IStartTurn).ModelSelection).toEqual(medium);
+  });
+
+  it("refuses another provider on a started thread that can't hand off", async () => {
+    const commands: IThreadCommand[] = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { Command: IThreadCommand }) => {
+        commands.push(effect.Command);
+      },
+    });
+    await server.open();
+    await server.sendThread(snapshotOf({ ...emptyProjection(), runs: [run("run-1", 1)] }, 1));
+    await server.runtime.dispatch(chooseModel, server.sessionId(), "devReplay", "showcase");
+    expect(server.session().ModelError).toMatch(/Start a new thread/);
+    expect(server.session().ModelSelection).toBeNull();
+    expect(commands).toEqual([]);
+  });
+
+  it("a permission change on a started thread applies just before the next turn", async () => {
+    const log: string[] = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { Command: IThreadCommand }) => {
+        log.push(JSON.stringify(effect.Command));
+      },
+      startTurn: (effect: IStartTurn) => {
+        log.push(`turn ${effect.RuntimeMode}`);
+      },
+    });
+    await server.open();
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    await server.runtime.dispatch(setRuntimeMode, server.sessionId(), "approval-required");
+    expect(server.runtime.processSelector(effectiveRuntimeMode, () => server.session())).toBe(
+      "approval-required",
+    );
+    expect(log).toEqual([]);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "careful");
+    await server.runtime.dispatch(send, server.sessionId());
+    expect(log).toEqual([
+      JSON.stringify({ Kind: "runtimeMode", Mode: "approval-required" }),
+      "turn approval-required",
+    ]);
+  });
+
+  it("a favorite toggle saves the opposite of the server's list and reads the list back", async () => {
+    const saved: Array<{ Model: string; Favorite: boolean }> = [];
+    let held: Array<{ Provider: string; Model: string }> = [];
+    const server = await connect(undefined, null, {
+      modelFavorites: () => held,
+      setModelFavorite: (effect: { Provider: string; Model: string; Favorite: boolean }) => {
+        saved.push({ Model: effect.Model, Favorite: effect.Favorite });
+        held = effect.Favorite ? [{ Provider: effect.Provider, Model: effect.Model }] : [];
+      },
+    });
+    await server.runtime.dispatch(toggleModelFavorite, server.envId(), "devReplay", "showcase");
+    expect(server.environment().Replica.ModelFavorites).toEqual([
+      { Provider: "devReplay", Model: "showcase" },
+    ]);
+    await server.runtime.dispatch(toggleModelFavorite, server.envId(), "devReplay", "showcase");
+    expect(saved).toEqual([
+      { Model: "showcase", Favorite: true },
+      { Model: "showcase", Favorite: false },
+    ]);
+    expect(server.environment().Replica.ModelFavorites).toEqual([]);
+  });
+
+  it("a new thread starts on the last picked model while its provider still offers it", async () => {
+    const server = await connect(undefined, null, { serverProviders: codexWithEffort });
+    server.models.Last = medium;
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
+    const draftId = server.environment().Local.SelectedThreadId!;
+    expect(server.session(draftId).ModelSelection).toEqual(medium);
+    server.models.Last = { instanceId: "gone", model: "x" } as IWireModelSelection;
+    await server.runtime.dispatch(newThread, server.envId(), "project-2");
+    const otherId = server.environment().Local.SelectedThreadId!;
+    expect(server.session(otherId).ModelSelection).toBeNull();
   });
 
   it("a failed new thread stays a draft with no stream", async () => {
@@ -1836,6 +2045,46 @@ describe("writing to the server", () => {
     const draftId = server.environment().Local.SelectedThreadId!;
     await server.runtime.dispatch(projectCommand, server.envId(), "p-1", { Kind: "delete" });
     expect(server.environment().Local.ThreadSessions[draftId]).toBeUndefined();
+    expect(server.environment().Local.SelectedThreadId).toBeNull();
+  });
+
+  it("removing a project forces the delete and forgets its threads, or keeps them on failure", async () => {
+    let failWith: string | null = "Project is in use";
+    const sent: Array<{ ProjectId: string; Command: object }> = [];
+    const server = await connect(undefined, THREAD_ID, {
+      projectCommand: (effect: { ProjectId: string; Command: object }) => {
+        sent.push(effect);
+        if (failWith !== null) throw new Error(failWith);
+      },
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/1" }],
+        threads: [
+          { id: THREAD_ID, projectId: "project-1", title: "T" },
+          { id: "other", projectId: "project-2", title: "O" },
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "kept");
+
+    const failure = await server.runtime.dispatch(removeProject, server.envId(), "project-1");
+    expect(failure).toBe("Project is in use");
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]?.Draft).toBe("kept");
+    expect(server.environment().Local.SelectedThreadId).toBe(THREAD_ID);
+
+    failWith = null;
+    expect(await server.runtime.dispatch(removeProject, server.envId(), "project-1")).toBeNull();
+    expect(sent.map((effect) => effect.Command)).toEqual([
+      { Kind: "delete", Force: true },
+      { Kind: "delete", Force: true },
+    ]);
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
+    expect(server.environment().Replica.Shell.Threads[THREAD_ID]).toBeUndefined();
+    expect(server.environment().Replica.Shell.Threads.other).toBeDefined();
     expect(server.environment().Local.SelectedThreadId).toBeNull();
   });
 

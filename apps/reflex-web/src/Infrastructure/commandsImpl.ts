@@ -12,6 +12,7 @@ import {
   respondToThreadApproval,
   respondToThreadUserInput,
   settleThread,
+  setThreadRuntimeMode,
   snoozeThread,
   startThreadTurn,
   unpinThread,
@@ -29,6 +30,7 @@ import {
   MessageId,
   ORCHESTRATION_V2_WS_METHODS,
   ProjectId,
+  ProviderInstanceId,
   RunId,
   RuntimeRequestId,
   ThreadId,
@@ -48,17 +50,21 @@ import {
   cloneControlEffect,
   closeTerminalEffect,
   type IProviderOption,
+  modelFavoritesEffect,
   newProjectEffect,
+  openInFileManagerEffect,
   projectCommandEffect,
   queueCommandEffect,
   respondRequestEffect,
   serverProvidersEffect,
+  setModelFavoriteEffect,
   startCloneEffect,
   startTurnEffect,
   stopThreadEffect,
   threadCommandEffect,
   threadDiffEffect,
 } from "./commandEffects";
+import { applyModelPreferences } from "../modelOptions";
 import { connectionRuntime } from "./connection";
 import { runCommand, sourceControl } from "./sourceControl";
 
@@ -192,6 +198,12 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
       return void (await run(markThreadUnread(common)));
     case "delete":
       return void (await run(deleteThread(common)));
+    case "modelSelection":
+      return void (await run(
+        updateThreadMetadata({ ...common, modelSelection: command.Selection as never }),
+      ));
+    case "runtimeMode":
+      return void (await run(setThreadRuntimeMode({ ...common, runtimeMode: command.Mode })));
     default:
       command satisfies never;
   }
@@ -230,7 +242,9 @@ export const projectCommandImpl = implementation(projectCommandEffect, async (in
     case "rename":
       return void (await run(updateProject({ ...common, title: command.Title })));
     case "delete":
-      return void (await run(deleteProject(common)));
+      return void (await run(
+        deleteProject(command.Force === true ? { ...common, force: true } : common),
+      ));
     default:
       command satisfies never;
   }
@@ -294,6 +308,13 @@ export const newProjectImpl = implementation(newProjectEffect, async (input) => 
     WorkspaceRoot: created.workspaceRoot,
     CommitError: created.commitError ?? null,
   };
+});
+
+export const openInFileManagerImpl = implementation(openInFileManagerEffect, async (input) => {
+  await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.shellOpenInEditor, { cwd: input.Path, editor: "file-manager" }),
+  );
 });
 
 export const closeTerminalImpl = implementation(closeTerminalEffect, async (input) => {
@@ -366,16 +387,51 @@ export const serverProvidersImpl = implementation(serverProvidersEffect, async (
       Effect.map(Option.getOrThrow),
     ),
   );
+  const preferences = config.settings?.providerModelPreferences ?? {};
   return config.providers
     .filter((provider) => provider.enabled && isProviderAvailable(provider))
     .map((provider): IProviderOption => ({
       InstanceId: provider.instanceId,
       Driver: provider.driver,
       Name: provider.displayName ?? provider.instanceId,
-      Models: provider.models.map((model) => ({
-        Slug: model.slug,
-        Name: model.name,
-        IsDefault: model.isDefault === true,
-      })),
+      ...(provider.supportedRuntimeModes === undefined
+        ? {}
+        : { SupportedRuntimeModes: [...provider.supportedRuntimeModes] }),
+      Models: applyModelPreferences(provider.models, preferences[provider.instanceId]).map(
+        (model) => ({
+          Slug: model.slug,
+          Name: model.name,
+          ...(model.shortName === undefined ? {} : { ShortName: model.shortName }),
+          ...(model.subProvider === undefined ? {} : { SubProvider: model.subProvider }),
+          IsDefault: model.isDefault === true,
+          ...(model.isLegacy === true ? { IsLegacy: true } : {}),
+          ...(model.capabilities == null ? {} : { Capabilities: model.capabilities }),
+        }),
+      ),
     }));
+});
+
+export const modelFavoritesImpl = implementation(modelFavoritesEffect, async (input) => {
+  const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
+  return (config.settings.favorites ?? []).map((favorite) => ({
+    Provider: favorite.provider,
+    Model: favorite.model,
+  }));
+});
+
+export const setModelFavoriteImpl = implementation(setModelFavoriteEffect, async (input) => {
+  await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.serverUpdateSettings, {
+      patch: {
+        setModelFavorites: [
+          {
+            provider: ProviderInstanceId.make(input.Provider),
+            model: input.Model,
+            favorite: input.Favorite,
+          },
+        ],
+      },
+    }),
+  );
 });
