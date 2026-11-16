@@ -236,6 +236,7 @@ export const Sidebar = Shell.provider(() => {
         <div class="sidebar-stage">
           <StageArt />
         </div>
+        <SidebarToggle />
         <span class="brand-mark">
           <T3Mark />
           <span>Code</span>
