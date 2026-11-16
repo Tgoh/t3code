@@ -131,10 +131,10 @@ function ThreadChip(props: { target: ILinkTarget }) {
       }
     >
       {(target) => {
-        const projectName = () => {
+        const project = () => {
           const shell = environment.state.Replica.Shell;
           const projectId = shell.Threads[target().Ref.threadId]?.projectId;
-          return projectId === undefined ? undefined : shell.Projects[projectId]?.title;
+          return projectId === undefined ? undefined : shell.Projects[projectId];
         };
         return (
           <button
@@ -144,8 +144,8 @@ function ThreadChip(props: { target: ILinkTarget }) {
             data-tip="Open thread"
             onClick={() => environment.selectThread(target().Ref.threadId)}
           >
-            <Show when={projectName()} fallback={<MessagesSquare />}>
-              {(name) => <ProjectBadge name={name()} />}
+            <Show when={project()} fallback={<MessagesSquare />}>
+              {(held) => <ProjectBadge project={held()} />}
             </Show>
             <span class="thread-link-label">{target().Title}</span>
           </button>
