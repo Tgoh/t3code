@@ -34,6 +34,8 @@ export default defineConfig(({ mode }) => ({
     host: "localhost",
     port: 5734,
     strictPort: true,
+    // Reached from other devices through Tailscale Serve, which keeps the tailnet hostname.
+    allowedHosts: [".ts.net"],
     proxy: Object.fromEntries(
       DEV_PROXIED_PATH_PREFIXES.map((prefix) => [
         prefix,
