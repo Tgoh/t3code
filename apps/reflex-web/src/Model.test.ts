@@ -15,6 +15,7 @@ import {
   newThread,
   openThread,
   projectCommand,
+  removeProject,
   selectThread,
   threadCommand,
 } from "./Environment";
@@ -100,6 +101,7 @@ import {
   snapshotOf,
   THREAD_ID,
 } from "./testing/threadFixture";
+import { orderFolders } from "./projectOrder";
 import { reconcile } from "./rows";
 
 const ENV = "env-1";
@@ -1246,7 +1248,12 @@ describe("the sidebar", () => {
     };
     const active = [row("m1", "mango", at), row("o1", "old", at), row("b1", "banana", at)];
     active.push(row("m2", "mango", at), row("gone", "missing", at));
-    const folders = projectFolders(active as never, projects as never);
+    const folders = orderFolders(
+      projectFolders(active as never, projects as never),
+      "manual",
+      [],
+      [],
+    );
     expect(folders.map((folder) => [folder.ProjectId, folder.Threads.map((t) => t.id)])).toEqual([
       ["apple", []],
       ["zed", []],
@@ -1836,6 +1843,46 @@ describe("writing to the server", () => {
     const draftId = server.environment().Local.SelectedThreadId!;
     await server.runtime.dispatch(projectCommand, server.envId(), "p-1", { Kind: "delete" });
     expect(server.environment().Local.ThreadSessions[draftId]).toBeUndefined();
+    expect(server.environment().Local.SelectedThreadId).toBeNull();
+  });
+
+  it("removing a project forces the delete and forgets its threads, or keeps them on failure", async () => {
+    let failWith: string | null = "Project is in use";
+    const sent: Array<{ ProjectId: string; Command: object }> = [];
+    const server = await connect(undefined, THREAD_ID, {
+      projectCommand: (effect: { ProjectId: string; Command: object }) => {
+        sent.push(effect);
+        if (failWith !== null) throw new Error(failWith);
+      },
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/1" }],
+        threads: [
+          { id: THREAD_ID, projectId: "project-1", title: "T" },
+          { id: "other", projectId: "project-2", title: "O" },
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "kept");
+
+    const failure = await server.runtime.dispatch(removeProject, server.envId(), "project-1");
+    expect(failure).toBe("Project is in use");
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]?.Draft).toBe("kept");
+    expect(server.environment().Local.SelectedThreadId).toBe(THREAD_ID);
+
+    failWith = null;
+    expect(await server.runtime.dispatch(removeProject, server.envId(), "project-1")).toBeNull();
+    expect(sent.map((effect) => effect.Command)).toEqual([
+      { Kind: "delete", Force: true },
+      { Kind: "delete", Force: true },
+    ]);
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
+    expect(server.environment().Replica.Shell.Threads[THREAD_ID]).toBeUndefined();
+    expect(server.environment().Replica.Shell.Threads.other).toBeDefined();
     expect(server.environment().Local.SelectedThreadId).toBeNull();
   });
 

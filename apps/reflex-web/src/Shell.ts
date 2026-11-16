@@ -435,16 +435,7 @@ export function projectFolders(
     if (project.archivedAt == null) folderOf(project.id);
   }
   for (const thread of active) folderOf(thread.projectId).Threads.push(thread);
-  const rank = (folder: IProjectFolder) =>
-    folder.Project?.archivedAt != null ? 2 : folder.Project?.pinnedAt != null ? 0 : 1;
-  const title = (folder: IProjectFolder) => folder.Project?.title ?? "";
-  return [...folders.values()].sort(
-    (left, right) =>
-      rank(left) - rank(right) ||
-      (rank(left) === 0
-        ? Date.parse(left.Project!.pinnedAt!) - Date.parse(right.Project!.pinnedAt!)
-        : title(left).localeCompare(title(right))),
-  );
+  return [...folders.values()];
 }
 
 // `threads` keeps its order within Active, so the inbox stays on the server's order key.

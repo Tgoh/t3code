@@ -16,6 +16,7 @@ import {
   cloneControlImpl,
   closeTerminalImpl,
   newProjectImpl,
+  openInFileManagerImpl,
   queueCommandImpl,
   respondRequestImpl,
   serverProvidersImpl,
@@ -62,6 +63,7 @@ runtime.registerImplementation(browseFoldersImpl);
 runtime.registerImplementation(startCloneImpl);
 runtime.registerImplementation(cloneControlImpl);
 runtime.registerImplementation(newProjectImpl);
+runtime.registerImplementation(openInFileManagerImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
 runtime.registerImplementation(attachmentUrlImpl);

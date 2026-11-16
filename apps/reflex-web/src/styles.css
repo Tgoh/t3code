@@ -391,6 +391,16 @@ main {
   background: color-mix(in srgb, var(--primary) 90%, var(--background));
 }
 
+.button.destructive {
+  background: var(--destructive);
+  border-color: transparent;
+  color: #fff;
+}
+
+.button.destructive:hover {
+  background: color-mix(in srgb, var(--destructive) 90%, var(--background));
+}
+
 /* A native select stretched invisibly over its styled label, which keeps the native popup. */
 .picker-overlay {
   cursor: pointer;
@@ -534,6 +544,7 @@ main {
   min-height: 0;
   overflow-y: auto;
   padding: 2px 8px 8px;
+  position: relative;
   scrollbar-width: none;
 }
 
@@ -1011,6 +1022,96 @@ main {
 .inbox-clear {
   list-style: none;
   padding: 8px 10px;
+}
+
+.folder-group {
+  list-style: none;
+}
+
+.folder-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.folder-group.dragging {
+  opacity: 0.4;
+}
+
+.folder-drop-line {
+  background: var(--primary);
+  border-radius: 1px;
+  height: 2px;
+  left: 12px;
+  list-style: none;
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+}
+
+.folder-ghost {
+  align-items: center;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 20%);
+  color: var(--foreground);
+  display: flex;
+  font-size: 13px;
+  font-weight: 500;
+  gap: 6px;
+  left: 0;
+  max-width: 16rem;
+  padding: 4px 10px;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  white-space: nowrap;
+  z-index: 140;
+}
+
+.confirm-dialog {
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px -8px rgb(0 0 0 / 25%);
+  color: var(--foreground);
+  max-width: min(32rem, calc(100vw - 32px));
+  padding: 24px;
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 32%);
+  backdrop-filter: blur(2px);
+}
+
+.confirm-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.confirm-description {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  margin: 0;
+  white-space: pre-line;
+}
+
+.confirm-error {
+  color: var(--error-foreground);
+  font-size: 13px;
+  margin: 12px 0 0;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
 }
 
 .thread-menu {
