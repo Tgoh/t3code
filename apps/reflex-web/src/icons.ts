@@ -23,6 +23,7 @@ export { default as File } from "lucide-solid/icons/file";
 export { default as FileDiff } from "lucide-solid/icons/file-diff";
 export { default as FileSearch } from "lucide-solid/icons/file-search";
 export { default as Folder } from "lucide-solid/icons/folder";
+export { default as FolderCode } from "lucide-solid/icons/folder-code";
 export { default as FolderGit2 } from "lucide-solid/icons/folder-git-2";
 export { default as FolderOpen } from "lucide-solid/icons/folder-open";
 export { default as FolderPlus } from "lucide-solid/icons/folder-plus";

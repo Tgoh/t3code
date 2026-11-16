@@ -1,4 +1,28 @@
-import { Show } from "solid-js";
+import type { ProjectIconColor } from "@t3tools/contracts";
+import { useResource } from "treflex-solid";
+import {
+  type Component,
+  createEffect,
+  createMemo,
+  createSignal,
+  Match,
+  on,
+  Show,
+  Switch,
+  untrack,
+} from "solid-js";
+import { Dynamic } from "solid-js/web";
+
+import Environment from "./Environment";
+import { FolderCode } from "./icons";
+import type { IWireProject } from "./Infrastructure/wire";
+import {
+  faviconKey,
+  faviconTarget,
+  projectColor,
+  projectIconFace,
+  projectMonogram,
+} from "./projectIcon";
 
 export function T3Mark() {
   return (
@@ -11,64 +35,33 @@ export function T3Mark() {
   );
 }
 
-// Order and hues copy apps/web/src/projectIconColors.ts: the hash below indexes this list,
-// so a reorder changes every project's colour. Each pair is Tailwind's -600 and -400.
-const PROJECT_COLORS = [
-  "var(--muted-foreground)",
-  "light-dark(oklch(57.7% 0.245 27.325), oklch(70.4% 0.191 22.216))",
-  "light-dark(oklch(64.6% 0.222 41.116), oklch(75% 0.183 55.934))",
-  "light-dark(oklch(66.6% 0.179 58.318), oklch(82.8% 0.189 84.429))",
-  "light-dark(oklch(68.1% 0.162 75.834), oklch(85.2% 0.199 91.936))",
-  "light-dark(oklch(64.8% 0.2 131.684), oklch(84.1% 0.238 128.85))",
-  "light-dark(oklch(62.7% 0.194 149.214), oklch(79.2% 0.209 151.711))",
-  "light-dark(oklch(59.6% 0.145 163.225), oklch(76.5% 0.177 163.223))",
-  "light-dark(oklch(60% 0.118 184.704), oklch(77.7% 0.152 181.912))",
-  "light-dark(oklch(60.9% 0.126 221.723), oklch(78.9% 0.154 211.53))",
-  "light-dark(oklch(58.8% 0.158 241.966), oklch(74.6% 0.16 232.661))",
-  "light-dark(oklch(54.6% 0.245 262.881), oklch(70.7% 0.165 254.624))",
-  "light-dark(oklch(51.1% 0.262 276.966), oklch(67.3% 0.182 276.935))",
-  "light-dark(oklch(54.1% 0.281 293.009), oklch(70.2% 0.183 293.541))",
-  "light-dark(oklch(55.8% 0.288 302.321), oklch(71.4% 0.203 305.504))",
-  "light-dark(oklch(59.1% 0.293 322.896), oklch(74% 0.238 322.16))",
-  "light-dark(oklch(59.2% 0.249 0.584), oklch(71.8% 0.202 349.761))",
-  "light-dark(oklch(58.6% 0.253 17.585), oklch(71.2% 0.194 13.428))",
-];
+// Each pair is Tailwind's -600 and -400, as in apps/web/src/projectIconColors.ts.
+const ICON_COLORS: Record<ProjectIconColor, string> = {
+  gray: "var(--muted-foreground)",
+  red: "light-dark(oklch(57.7% 0.245 27.325), oklch(70.4% 0.191 22.216))",
+  orange: "light-dark(oklch(64.6% 0.222 41.116), oklch(75% 0.183 55.934))",
+  amber: "light-dark(oklch(66.6% 0.179 58.318), oklch(82.8% 0.189 84.429))",
+  yellow: "light-dark(oklch(68.1% 0.162 75.834), oklch(85.2% 0.199 91.936))",
+  lime: "light-dark(oklch(64.8% 0.2 131.684), oklch(84.1% 0.238 128.85))",
+  green: "light-dark(oklch(62.7% 0.194 149.214), oklch(79.2% 0.209 151.711))",
+  emerald: "light-dark(oklch(59.6% 0.145 163.225), oklch(76.5% 0.177 163.223))",
+  teal: "light-dark(oklch(60% 0.118 184.704), oklch(77.7% 0.152 181.912))",
+  cyan: "light-dark(oklch(60.9% 0.126 221.723), oklch(78.9% 0.154 211.53))",
+  sky: "light-dark(oklch(58.8% 0.158 241.966), oklch(74.6% 0.16 232.661))",
+  blue: "light-dark(oklch(54.6% 0.245 262.881), oklch(70.7% 0.165 254.624))",
+  indigo: "light-dark(oklch(51.1% 0.262 276.966), oklch(67.3% 0.182 276.935))",
+  violet: "light-dark(oklch(54.1% 0.281 293.009), oklch(70.2% 0.183 293.541))",
+  purple: "light-dark(oklch(55.8% 0.288 302.321), oklch(71.4% 0.203 305.504))",
+  fuchsia: "light-dark(oklch(59.1% 0.293 322.896), oklch(74% 0.238 322.16))",
+  pink: "light-dark(oklch(59.2% 0.249 0.584), oklch(71.8% 0.202 349.761))",
+  rose: "light-dark(oklch(58.6% 0.253 17.585), oklch(71.2% 0.194 13.428))",
+};
 
-const normalize = (name: string): string => name.normalize("NFKC").trim();
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-// Copies apps/web/src/projectIdentity.ts, so a project has the same badge in both clients.
-function monogram(name: string): string {
-  const words = normalize(name).match(/[\p{L}\p{N}]+/gu) ?? [];
-  const firstWord = words[0];
-  if (!firstWord) return "PR";
-  const glyphs = Array.from(firstWord);
-  const first = glyphs[0] ?? "P";
-  const second =
-    glyphs.slice(1).find((glyph) => /\p{N}/u.test(glyph)) ??
-    (words.length > 1 ? Array.from(words.at(-1) ?? "")[0] : glyphs.at(-1)) ??
-    first;
-  return Array.from(`${first}${second}`.toUpperCase()).slice(0, 2).join("");
-}
-
-function colorOf(name: string): string {
-  const seed = normalize(name).toLocaleLowerCase("en-US") || "project";
-  let index = 0;
-  for (const glyph of seed) {
-    index = (index * 31 + (glyph.codePointAt(0) ?? 0)) % PROJECT_COLORS.length;
-  }
-  return PROJECT_COLORS[index]!;
-}
-
-export function ProjectBadge(props: { name: string; size?: number }) {
+function Monogram(props: { text: string; color: ProjectIconColor }) {
   return (
-    <svg
-      class="project-badge"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      width={props.size ?? 16}
-      height={props.size ?? 16}
-      style={{ color: colorOf(props.name) }}
-    >
+    <svg class="project-monogram" viewBox="0 0 16 16" style={{ color: ICON_COLORS[props.color] }}>
       <text
         x="8"
         y="10.8"
@@ -76,13 +69,111 @@ export function ProjectBadge(props: { name: string; size?: number }) {
         fill="currentColor"
         font-size="8.25"
         font-weight="700"
-        textLength="12"
+        textLength={Array.from(graphemes.segment(props.text)).length === 1 ? 6 : 12}
         lengthAdjust="spacingAndGlyphs"
         text-rendering="geometricPrecision"
       >
-        {monogram(props.name)}
+        {props.text}
       </text>
     </svg>
+  );
+}
+
+type ILucideIcons = Record<string, Component<{ class?: string }> | undefined>;
+const [lucideIcons, setLucideIcons] = createSignal<ILucideIcons>();
+let lucideLoading: Promise<void> | undefined;
+
+// The whole set loads as one chunk, and only once a project uses a lucide override.
+function LucideIcon(props: { name: string; color: ProjectIconColor }) {
+  lucideLoading ??= import("lucide-solid").then((module) => {
+    setLucideIcons(() => module as unknown as ILucideIcons);
+  });
+  const pascal = () =>
+    props.name
+      .split("-")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join("");
+  return (
+    <span class="project-lucide" style={{ color: ICON_COLORS[props.color] }}>
+      <Dynamic component={lucideIcons()?.[pascal()] ?? FolderCode} />
+    </span>
+  );
+}
+
+// Follows ProjectFavicon in apps/web/src/components/ProjectFavicon.tsx. Every face fills the same
+// fixed box, so swapping the monogram for the image, or back on a load error, never shifts layout.
+export function ProjectBadge(props: { project: IWireProject | undefined; size?: number }) {
+  const environment = Environment.use();
+  const favicons = useResource(environment.state, "Project/Favicons");
+  const target = createMemo(() => faviconTarget(environment.state.EnvironmentId, props.project));
+  const key = createMemo(() => {
+    const held = target();
+    return held === null ? null : faviconKey(held);
+  });
+  createEffect(
+    on(key, (held) => {
+      const asked = target();
+      if (held === null || asked === null) return;
+      if (untrack(favicons.value)?.[held] !== undefined) return;
+      environment.requestProjectFavicon(asked);
+    }),
+  );
+  const [failedSrc, setFailedSrc] = createSignal<string | null>(null);
+  const [loadedSrc, setLoadedSrc] = createSignal<string | null>(null);
+  const face = createMemo(() => {
+    const held = key();
+    return projectIconFace(
+      props.project,
+      held === null ? null : favicons.value()?.[held],
+      failedSrc(),
+    );
+  });
+  const title = () => props.project?.title ?? "Unknown project";
+  const monogram = () => <Monogram text={projectMonogram(title())} color={projectColor(title())} />;
+  return (
+    <span
+      class="project-badge"
+      aria-hidden="true"
+      style={{ width: `${props.size ?? 16}px`, height: `${props.size ?? 16}px` }}
+    >
+      <Switch>
+        <Match when={face().Kind === "image" && (face() as { Src: string }).Src} keyed>
+          {(src) => {
+            const shown = () => src.startsWith("data:image/") || loadedSrc() === src;
+            return (
+              <>
+                <Show when={!shown()}>{monogram()}</Show>
+                <img
+                  class="project-image"
+                  classList={{ loading: !shown() }}
+                  src={src}
+                  alt=""
+                  onLoad={() => setLoadedSrc(src)}
+                  onError={() => setFailedSrc(src)}
+                />
+              </>
+            );
+          }}
+        </Match>
+        <Match when={face().Kind === "emoji" && (face() as { Emoji: string }).Emoji}>
+          {(emoji) => (
+            <span class="project-emoji" style={{ "font-size": `${(props.size ?? 16) * 0.8}px` }}>
+              {emoji()}
+            </span>
+          )}
+        </Match>
+        <Match
+          when={face().Kind === "lucide" && (face() as { Name: string; Color: ProjectIconColor })}
+        >
+          {(icon) => <LucideIcon name={icon().Name} color={icon().Color} />}
+        </Match>
+        <Match
+          when={face().Kind === "monogram" && (face() as { Text: string; Color: ProjectIconColor })}
+        >
+          {(mono) => <Monogram text={mono().Text} color={mono().Color} />}
+        </Match>
+      </Switch>
+    </span>
   );
 }
 

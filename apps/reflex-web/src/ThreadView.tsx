@@ -274,7 +274,10 @@ const ThreadBody = ThreadSession.provider(() => {
                       if (projectId !== undefined) environment.newThread(projectId);
                     }}
                   >
-                    <ProjectBadge name={name()} size={14} />
+                    <ProjectBadge
+                      project={environment.state.Replica.Shell.Projects[session.projectId() ?? ""]}
+                      size={14}
+                    />
                     <span class="crumb-project">{name()}</span>
                   </button>
                   <span class="crumb-separator">/</span>
