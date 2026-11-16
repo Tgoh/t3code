@@ -38,7 +38,9 @@ import type {
   IStopThread,
   IThreadCommand,
   IThreadDiff,
+  IWireModelSelection,
 } from "./Infrastructure/commandEffects";
+import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import {
   diffTurnOf,
   fileChangeCounts,
@@ -67,10 +69,12 @@ import {
   workingStartedAt,
 } from "./Shell";
 import {
+  chooseModel,
   closeDiff,
   diffLoading,
   closeTerminal,
   effectiveModel,
+  effectiveRuntimeMode,
   ending,
   endTerminal,
   type IThreadSession,
@@ -82,7 +86,9 @@ import {
   send,
   sending,
   setDraft,
+  setModelSelection,
   setQuestionAnswer,
+  setRuntimeMode,
   stopping,
   stopRun,
   terminalAttachment,
@@ -111,6 +117,7 @@ async function connect(
 ) {
   const address = { thread: initialAddress };
   const terminals = new Map<string, ITerminalLaunch>();
+  const models: IRememberedModels = { Last: null, OptionsByModel: {} };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
     getDefaultRoot("Root"),
@@ -124,6 +131,10 @@ async function connect(
         },
       ],
       generateGuid: () => `guid-${(guid += 1)}`,
+      rememberedModels: () => models,
+      rememberModel: (effect: { Selection: IWireModelSelection }) => {
+        models.Last = effect.Selection;
+      },
       ...commands,
       threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
       addressThread: () => address.thread,
@@ -159,6 +170,7 @@ async function connect(
     runtime,
     address,
     terminals,
+    models,
     environment,
     session,
     thread,
@@ -1472,6 +1484,112 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(newThread, server.envId(), "project-1");
     const draftId = server.environment().Local.SelectedThreadId!;
     expect(model(draftId)).toEqual({ instanceId: "devReplay", model: "showcase" });
+  });
+
+  const codexWithEffort = () => [
+    {
+      InstanceId: "codex",
+      Driver: "codex",
+      Name: "Codex",
+      Models: [
+        {
+          Slug: "gpt-5.4",
+          Name: "GPT-5.4",
+          IsDefault: true,
+          Capabilities: {
+            optionDescriptors: [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning",
+                type: "select",
+                options: [
+                  { id: "medium", label: "Medium" },
+                  { id: "high", label: "High", isDefault: true },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    },
+  ];
+  const medium = {
+    instanceId: "codex",
+    model: "gpt-5.4",
+    options: [{ id: "reasoningEffort", value: "medium" }],
+  } as unknown as IWireModelSelection;
+
+  it("a pick on the thread's own provider saves to the thread at once, and the next turn carries it", async () => {
+    const log: Array<IThreadCommand | IStartTurn> = [];
+    const server = await connect(undefined, null, {
+      serverProviders: codexWithEffort,
+      threadCommand: (effect: { Command: IThreadCommand }) => {
+        log.push(effect.Command);
+      },
+      startTurn: (effect: IStartTurn) => {
+        log.push(effect);
+      },
+    });
+    await server.open();
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    await server.runtime.dispatch(setModelSelection, server.sessionId(), medium);
+    expect(log).toEqual([{ Kind: "modelSelection", Selection: medium }]);
+    expect(server.models.Last).toEqual(medium);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "go");
+    await server.runtime.dispatch(send, server.sessionId());
+    expect((log[1] as IStartTurn).ModelSelection).toEqual(medium);
+  });
+
+  it("refuses another provider on a started thread that can't hand off", async () => {
+    const commands: IThreadCommand[] = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { Command: IThreadCommand }) => {
+        commands.push(effect.Command);
+      },
+    });
+    await server.open();
+    await server.sendThread(snapshotOf({ ...emptyProjection(), runs: [run("run-1", 1)] }, 1));
+    await server.runtime.dispatch(chooseModel, server.sessionId(), "devReplay", "showcase");
+    expect(server.session().ModelError).toMatch(/Start a new thread/);
+    expect(server.session().ModelSelection).toBeNull();
+    expect(commands).toEqual([]);
+  });
+
+  it("a permission change on a started thread applies just before the next turn", async () => {
+    const log: string[] = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { Command: IThreadCommand }) => {
+        log.push(JSON.stringify(effect.Command));
+      },
+      startTurn: (effect: IStartTurn) => {
+        log.push(`turn ${effect.RuntimeMode}`);
+      },
+    });
+    await server.open();
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    await server.runtime.dispatch(setRuntimeMode, server.sessionId(), "approval-required");
+    expect(server.runtime.processSelector(effectiveRuntimeMode, () => server.session())).toBe(
+      "approval-required",
+    );
+    expect(log).toEqual([]);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "careful");
+    await server.runtime.dispatch(send, server.sessionId());
+    expect(log).toEqual([
+      JSON.stringify({ Kind: "runtimeMode", Mode: "approval-required" }),
+      "turn approval-required",
+    ]);
+  });
+
+  it("a new thread starts on the last picked model while its provider still offers it", async () => {
+    const server = await connect(undefined, null, { serverProviders: codexWithEffort });
+    server.models.Last = medium;
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
+    const draftId = server.environment().Local.SelectedThreadId!;
+    expect(server.session(draftId).ModelSelection).toEqual(medium);
+    server.models.Last = { instanceId: "gone", model: "x" } as IWireModelSelection;
+    await server.runtime.dispatch(newThread, server.envId(), "project-2");
+    const otherId = server.environment().Local.SelectedThreadId!;
+    expect(server.session(otherId).ModelSelection).toBeNull();
   });
 
   it("a failed new thread stays a draft with no stream", async () => {

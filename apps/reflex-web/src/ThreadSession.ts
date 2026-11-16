@@ -1,4 +1,5 @@
 import { buildPendingUserInputAnswers } from "@t3tools/client-runtime/state/pending-user-input";
+import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
 import { DEFAULT_TERMINAL_ID } from "@t3tools/contracts";
 import {
   closeResource,
@@ -34,16 +35,29 @@ import {
   queueCommandEffect,
   startTurnEffect,
   stopThreadEffect,
+  threadCommandEffect,
   threadDiffEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
+import {
+  rememberedModelKey,
+  rememberedModelsEffect,
+  rememberModelEffect,
+} from "./Infrastructure/modelMemory";
 import {
   type ITerminalLaunch,
   rememberedTerminalEffect,
   rememberTerminalEffect,
 } from "./Infrastructure/terminalMemory";
 import type { ITerminalStatus } from "./Infrastructure/terminalSession";
+import {
+  compatibleRuntimeMode,
+  dispatchSelection,
+  modelChangeBlock,
+  pickedSelection,
+  providerOf,
+} from "./modelOptions";
 import { type IOpenThread, latestDiffTurn } from "./OpenThread";
 import type { IShell } from "./Shell";
 
@@ -102,7 +116,8 @@ export interface IThreadSession extends IEntity {
   Attachments: IAttachmentDraft[];
   AttachmentError?: string;
   ModelSelection: IWireModelSelection | null;
-  RuntimeMode: IWireRuntimeMode;
+  RuntimeMode: IWireRuntimeMode | null;
+  ModelError?: string;
   SendError?: string;
   StopError?: string;
   QuestionAnswers: Record<string, Record<string, string>>;
@@ -122,7 +137,7 @@ export function getDefaultThreadSession(
     Draft: "",
     Attachments: [],
     ModelSelection: null,
-    RuntimeMode: DEFAULT_RUNTIME_MODE,
+    RuntimeMode: null,
     QuestionAnswers: {},
     Panels: {
       Diff: { Open: false, Scope: "turn", ToTurnCount: null, Text: null },
@@ -165,11 +180,45 @@ export function modelDisplay(
   return { Driver: provider?.Driver, Name: name.replace(/^Claude /, "") };
 }
 
-export const modelKey = (instanceId: string, model: string): string => `${instanceId}\n${model}`;
-
-function* effectiveModelKey(draft: IThreadSession): ISelectorGenerator<string> {
+function* effectiveProvider(
+  draft: IThreadSession,
+): ISelectorGenerator<IProviderOption | undefined> {
   const model = yield* effectiveModel(draft);
-  return model === null ? "" : modelKey(model.instanceId, model.model);
+  const replica = yield* getData(draft, "Replica");
+  return model === null ? undefined : providerOf(replica?.Providers ?? [], model);
+}
+
+function* threadModelSelection(
+  draft: IThreadSession,
+): ISelectorGenerator<IWireModelSelection | null> {
+  const replica = yield* getData(draft, "Replica");
+  return replica?.OpenThreads[draft.ThreadId]?.Thread?.modelSelection ?? null;
+}
+
+export interface IModelSwitch {
+  Started: boolean;
+  SupportsHandoff: boolean;
+  CurrentInstanceId: string | null;
+}
+
+export function* modelSwitch(draft: IThreadSession): ISelectorGenerator<IModelSwitch> {
+  const replica = yield* getData(draft, "Replica");
+  const open = replica?.OpenThreads[draft.ThreadId];
+  if (draft.NewThreadProjectId !== null || open?.Thread == null) {
+    return { Started: false, SupportsHandoff: true, CurrentInstanceId: null };
+  }
+  const runs = Object.values(open.Runs).sort((left, right) => left.ordinal - right.ordinal);
+  const projection = {
+    thread: open.Thread,
+    runs,
+    providerThreads: Object.values(open.ProviderThreads),
+    providerSessions: Object.values(open.ProviderSessions),
+  };
+  return {
+    Started: runs.length > 0,
+    SupportsHandoff: threadSupportsProviderHandoff(projection as never),
+    CurrentInstanceId: open.Thread.modelSelection.instanceId,
+  };
 }
 
 function* effectiveModelDisplay(
@@ -189,9 +238,23 @@ function* effectiveModelName(draft: IThreadSession): ISelectorGenerator<string |
   return (yield* effectiveModelDisplay(draft))?.Name ?? null;
 }
 
-export function* effectiveRuntimeMode(draft: IThreadSession): ISelectorGenerator<IWireRuntimeMode> {
+function* threadRuntimeMode(draft: IThreadSession): ISelectorGenerator<IWireRuntimeMode | null> {
   const replica = yield* getData(draft, "Replica");
-  return replica?.OpenThreads[draft.ThreadId]?.Thread?.runtimeMode ?? draft.RuntimeMode;
+  return replica?.OpenThreads[draft.ThreadId]?.Thread?.runtimeMode ?? null;
+}
+
+function* runtimeModeChoice(draft: IThreadSession) {
+  const provider = yield* effectiveProvider(draft);
+  const held = draft.RuntimeMode ?? (yield* threadRuntimeMode(draft)) ?? DEFAULT_RUNTIME_MODE;
+  return compatibleRuntimeMode(held, provider?.SupportedRuntimeModes);
+}
+
+export function* effectiveRuntimeMode(draft: IThreadSession): ISelectorGenerator<IWireRuntimeMode> {
+  return (yield* runtimeModeChoice(draft)).Mode;
+}
+
+function* runtimeModes(draft: IThreadSession): ISelectorGenerator<ReadonlyArray<IWireRuntimeMode>> {
+  return (yield* runtimeModeChoice(draft)).Modes;
 }
 
 function* interactionMode(draft: IThreadSession): ISelectorGenerator<IWireInteractionMode> {
@@ -242,11 +305,67 @@ export function* setDraft(draft: IThreadSession, text: string): IActionGenerator
   draft.Draft = text;
 }
 
+/** Holds the pick for the next turn, and on a started thread's own provider saves it at once. */
 export function* setModelSelection(
   draft: IThreadSession,
   selection: IWireModelSelection,
-): IActionGenerator {
+): IOpenGenerator {
   draft.ModelSelection = selection;
+  delete draft.ModelError;
+  yield* rememberModelEffect({ Selection: selection });
+  const thread = yield* select(threadModelSelection);
+  if (draft.NewThreadProjectId !== null || thread?.instanceId !== selection.instanceId) return;
+  const provider = yield* select(effectiveProvider);
+  const command = {
+    Kind: "modelSelection" as const,
+    Selection: dispatchSelection(provider, selection),
+  };
+  const environmentId = draft.EnvironmentId;
+  const threadId = draft.ThreadId;
+  try {
+    yield* open(
+      withCommandId((commandId) =>
+        threadCommandEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+          Command: command,
+        }),
+      ),
+    );
+  } catch (error) {
+    draft.ModelError = `This model pick was not saved. ${errorText(error)}`;
+  }
+}
+latest(setModelSelection);
+
+/** A model chosen from the list: re-picking keeps its options, another starts from remembered ones. */
+export function* chooseModel(
+  draft: IThreadSession,
+  instanceId: string,
+  model: string,
+): IOpenGenerator {
+  const blocked = modelChangeBlock({
+    ...(yield* select(modelSwitch)),
+    NextInstanceId: instanceId,
+  });
+  if (blocked !== null) {
+    draft.ModelError = blocked;
+    return;
+  }
+  const current = yield* select(effectiveModel);
+  if (current?.instanceId === instanceId && current.model === model) {
+    yield* setModelSelection(draft, current);
+    return;
+  }
+  const remembered = yield* rememberedModelsEffect();
+  const selection = pickedSelection(
+    instanceId,
+    model,
+    remembered.OptionsByModel[rememberedModelKey(instanceId, model)],
+    yield* select(threadModelSelection),
+  );
+  yield* setModelSelection(draft, selection);
 }
 
 export function* setRuntimeMode(draft: IThreadSession, mode: IWireRuntimeMode): IActionGenerator {
@@ -271,12 +390,23 @@ function* uploadAndStart(
   files: IResourceHandle<"Composer/Files">,
   fileIds: string[],
   turn: Omit<IStartTurn, "CommandId" | "MessageId" | "Attachments">,
+  setRuntimeMode: boolean,
 ): IActionGenerator {
   const attachments: IWireAttachment[] = [];
   for (const id of fileIds) {
     const uploaded = yield* files.upload(id);
     if (uploaded === undefined) throw new Error("An image couldn't be uploaded.");
     attachments.push(uploaded);
+  }
+  if (setRuntimeMode) {
+    yield* withCommandId((commandId) =>
+      threadCommandEffect({
+        EnvironmentId: turn.EnvironmentId,
+        ThreadId: turn.ThreadId,
+        CommandId: commandId,
+        Command: { Kind: "runtimeMode", Mode: turn.RuntimeMode },
+      }),
+    );
   }
   const commandId = yield* generateGuid();
   const messageId = yield* generateGuid();
@@ -294,15 +424,16 @@ export function* send(draft: IThreadSession): IOpenGenerator {
   if (text === "" && fileIds.length === 0) return;
   const projectId = draft.NewThreadProjectId;
   const model = yield* select(effectiveModel);
+  const provider = yield* select(effectiveProvider);
   const runtimeMode = yield* select(effectiveRuntimeMode);
+  const threadMode = yield* select(threadRuntimeMode);
   const interaction = yield* select(interactionMode);
-  const overridden = draft.ModelSelection !== null;
   const files = resource(draft, "Composer/Files");
   const turn = {
     EnvironmentId: draft.EnvironmentId,
     ThreadId: draft.ThreadId,
     Text: text,
-    ModelSelection: projectId !== null || overridden ? model : null,
+    ModelSelection: model === null ? null : dispatchSelection(provider, model),
     RuntimeMode: runtimeMode,
     InteractionMode: interaction,
     NewThread:
@@ -313,7 +444,8 @@ export function* send(draft: IThreadSession): IOpenGenerator {
   delete draft.SendError;
   try {
     if (projectId !== null && model === null) throw new Error("No provider is available.");
-    yield* open(uploadAndStart(files, fileIds, turn));
+    const setsMode = projectId === null && threadMode !== null && threadMode !== runtimeMode;
+    yield* open(uploadAndStart(files, fileIds, turn, setsMode));
   } catch (error) {
     draft.SendError = errorText(error);
     return;
@@ -563,6 +695,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
   {
     setDraft,
     setModelSelection,
+    chooseModel,
     setRuntimeMode,
     addAttachments,
     removeAttachment,
@@ -578,10 +711,12 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     endTerminal,
   },
   {
-    effectiveModelKey,
+    effectiveModel,
     effectiveModelDriver,
     effectiveModelName,
+    modelSwitch,
     effectiveRuntimeMode,
+    runtimeModes,
     projectId,
     projectName,
     stopRequested,

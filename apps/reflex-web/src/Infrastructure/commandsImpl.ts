@@ -12,6 +12,7 @@ import {
   respondToThreadApproval,
   respondToThreadUserInput,
   settleThread,
+  setThreadRuntimeMode,
   snoozeThread,
   startThreadTurn,
   unpinThread,
@@ -192,6 +193,12 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
       return void (await run(markThreadUnread(common)));
     case "delete":
       return void (await run(deleteThread(common)));
+    case "modelSelection":
+      return void (await run(
+        updateThreadMetadata({ ...common, modelSelection: command.Selection as never }),
+      ));
+    case "runtimeMode":
+      return void (await run(setThreadRuntimeMode({ ...common, runtimeMode: command.Mode })));
     default:
       command satisfies never;
   }
@@ -366,10 +373,16 @@ export const serverProvidersImpl = implementation(serverProvidersEffect, async (
       InstanceId: provider.instanceId,
       Driver: provider.driver,
       Name: provider.displayName ?? provider.instanceId,
+      ...(provider.supportedRuntimeModes === undefined
+        ? {}
+        : { SupportedRuntimeModes: [...provider.supportedRuntimeModes] }),
       Models: provider.models.map((model) => ({
         Slug: model.slug,
         Name: model.name,
+        ...(model.shortName === undefined ? {} : { ShortName: model.shortName }),
+        ...(model.subProvider === undefined ? {} : { SubProvider: model.subProvider }),
         IsDefault: model.isDefault === true,
+        ...(model.capabilities == null ? {} : { Capabilities: model.capabilities }),
       })),
     }));
 });

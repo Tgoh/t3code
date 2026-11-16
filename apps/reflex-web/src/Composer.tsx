@@ -1,31 +1,19 @@
 import { useResource } from "treflex-solid";
-import { type Component, For, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { For, Show } from "solid-js";
 
-import { ProviderIcon } from "./brand";
+import { ModelPicker, PermissionsChip } from "./ComposerMenus";
 import Environment from "./Environment";
-import { ArrowUp, Lock, Paperclip, PenLine, ShieldOff, Sparkles, X } from "./icons";
-import type { IWireModelSelection, IWireRuntimeMode } from "./Infrastructure/commandEffects";
+import { ArrowUp, Paperclip, X } from "./icons";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { StageArt } from "./StageArt";
-import ThreadSession, { modelKey } from "./ThreadSession";
-
-// Labels and icons copy apps/web/src/components/chat/runtimeModeConfig.ts.
-const RUNTIME_MODES: Record<string, { Label: string; Icon: Component }> = {
-  "approval-required": { Label: "Supervised", Icon: Lock },
-  "auto-accept-edits": { Label: "Auto-accept edits", Icon: PenLine },
-  auto: { Label: "Auto", Icon: Sparkles },
-  "full-access": { Label: "Full access", Icon: ShieldOff },
-};
+import ThreadSession from "./ThreadSession";
 
 export function Composer(props: { active?: boolean }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
   const held = () => session.state;
   const files = useResource(held, "Composer/Files");
-  const isDraft = () => held().NewThreadProjectId != null;
-  const selection = () => session.effectiveModelKey();
-  const mode = () => RUNTIME_MODES[session.effectiveRuntimeMode()];
+  const noProvider = () => environment.state.Replica.Providers.length === 0;
   const stopping = () => session.stopRequested() || session.stopping();
   const clone = useProjectClone(() => session.projectId());
   const blocked = () => cloneSendBlock(clone());
@@ -41,11 +29,6 @@ export function Composer(props: { active?: boolean }) {
     if (picked.length === 0) return;
     const supplied = await files.supply(picked);
     if (supplied) session.addAttachments(supplied);
-  };
-
-  const pickModel = (value: string) => {
-    const [instanceId, model] = value.split("\n");
-    session.setModelSelection({ instanceId, model } as IWireModelSelection);
   };
 
   return (
@@ -84,7 +67,9 @@ export function Composer(props: { active?: boolean }) {
         </Show>
         <textarea
           rows={2}
-          placeholder="Ask anything."
+          placeholder={
+            noProvider() ? "Enable a provider in Settings to send a message" : "Ask anything."
+          }
           value={held().Draft}
           onInput={(event) => session.setDraft(event.currentTarget.value)}
           onPaste={(event) => {
@@ -105,6 +90,9 @@ export function Composer(props: { active?: boolean }) {
         <Show when={held().StopError}>
           <p class="composer-error">Couldn't stop: {held().StopError}</p>
         </Show>
+        <Show when={held().ModelError}>
+          <p class="composer-error">{held().ModelError}</p>
+        </Show>
         <div class="composer-bar">
           <label class="icon-button attach" data-tip="Attach images">
             <Paperclip />
@@ -120,61 +108,9 @@ export function Composer(props: { active?: boolean }) {
               }}
             />
           </label>
+          <ModelPicker />
+          <PermissionsChip />
           <span class="composer-spacer" />
-          <label class="composer-control picker-overlay">
-            <ProviderIcon driver={session.effectiveModelDriver()} />
-            <span class="control-label">{session.effectiveModelName() ?? "No model"}</span>
-            <select
-              aria-label="Model"
-              value={selection()}
-              onChange={(event) => pickModel(event.currentTarget.value)}
-            >
-              <For each={environment.state.Replica.Providers}>
-                {(provider) => (
-                  <optgroup label={provider.Name}>
-                    <For each={provider.Models}>
-                      {(model) => (
-                        <option
-                          value={modelKey(provider.InstanceId, model.Slug)}
-                          selected={selection() === modelKey(provider.InstanceId, model.Slug)}
-                        >
-                          {model.Name}
-                        </option>
-                      )}
-                    </For>
-                  </optgroup>
-                )}
-              </For>
-            </select>
-          </label>
-          <Show when={mode()}>
-            {(shown) => (
-              <Show
-                when={isDraft()}
-                fallback={
-                  <span class="composer-control">
-                    <Dynamic component={shown().Icon} />
-                    <span class="control-label">{shown().Label}</span>
-                  </span>
-                }
-              >
-                <label class="composer-control picker-overlay">
-                  <Dynamic component={shown().Icon} />
-                  <span class="control-label">{shown().Label}</span>
-                  <select
-                    aria-label="Permissions"
-                    value={held().RuntimeMode}
-                    onChange={(event) =>
-                      session.setRuntimeMode(event.currentTarget.value as IWireRuntimeMode)
-                    }
-                  >
-                    <option value="full-access">Full access</option>
-                    <option value="approval-required">Supervised</option>
-                  </select>
-                </label>
-              </Show>
-            )}
-          </Show>
           <Show when={props.active}>
             <button
               type="button"

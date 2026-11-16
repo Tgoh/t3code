@@ -1,3 +1,4 @@
+import type { ModelCapabilities } from "@t3tools/contracts";
 import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
 import type { IWireProjection, IWireTurnItem } from "./wire";
@@ -55,7 +56,15 @@ export interface IProviderOption {
   InstanceId: string;
   Driver?: string;
   Name: string;
-  Models: Array<{ Slug: string; Name: string; IsDefault: boolean }>;
+  SupportedRuntimeModes?: IWireRuntimeMode[];
+  Models: Array<{
+    Slug: string;
+    Name: string;
+    ShortName?: string;
+    SubProvider?: string;
+    IsDefault: boolean;
+    Capabilities?: ModelCapabilities;
+  }>;
 }
 
 interface IStartTurnEffect extends IEffect, IStartTurn {
@@ -93,7 +102,9 @@ export type IThreadCommand =
   | { Kind: "rename"; Title: string }
   | { Kind: "visit"; VisitedAt: string }
   | { Kind: "markUnread" }
-  | { Kind: "delete" };
+  | { Kind: "delete" }
+  | { Kind: "modelSelection"; Selection: IWireModelSelection }
+  | { Kind: "runtimeMode"; Mode: IWireRuntimeMode };
 
 interface IThreadCommandEffect extends IEffect {
   Type: "threadCommand";

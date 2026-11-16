@@ -34,6 +34,7 @@ import {
   threadCommandEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
+import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import { getDefaultOpenThread, type IOpenThread, openThreadStream } from "./OpenThread";
 import { dropThreadRow, getDefaultShell, type IShell, openShellStream } from "./Shell";
@@ -150,7 +151,16 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
     (session) => session.NewThreadProjectId === projectId,
   );
   const threadId = existing?.ThreadId ?? (yield* generateGuid());
-  yield* sessionOf(draft, threadId, projectId);
+  const session = yield* sessionOf(draft, threadId, projectId);
+  if (existing === undefined) {
+    const last = (yield* rememberedModelsEffect()).Last;
+    const offered = draft.Replica.Providers.some(
+      (provider) =>
+        provider.InstanceId === last?.instanceId &&
+        provider.Models.some((model) => model.Slug === last.model),
+    );
+    if (offered) session.ModelSelection = last;
+  }
   yield* selectThread(draft, threadId);
 }
 
