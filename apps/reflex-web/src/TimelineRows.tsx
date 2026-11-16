@@ -254,14 +254,51 @@ function DiffCounts(props: { additions: number; deletions: number }) {
   );
 }
 
+function checkpointTotals(item: IWireCheckpoint) {
+  return (
+    item.filesTotal ?? {
+      count: item.files.length,
+      additions: item.files.reduce((total, file) => total + file.additions, 0),
+      deletions: item.files.reduce((total, file) => total + file.deletions, 0),
+    }
+  );
+}
+
+function FilesSummary(props: { id: string }) {
+  const { thread, item } = useRow(props);
+  const session = ThreadSession.use();
+  const checkpoint = () => {
+    const held = item();
+    return held?.type === "checkpoint" ? held : null;
+  };
+  return (
+    <Show when={checkpoint()}>
+      {(held) => {
+        const totals = () => checkpointTotals(held());
+        const turn = () => diffTurnOf(thread.state, held());
+        return (
+          <button
+            class="meta-files"
+            data-tip={turn() === null ? undefined : "Open this turn's diff"}
+            disabled={turn() === null}
+            onClick={() => {
+              const at = turn();
+              if (at !== null) session.openDiff("turn", at);
+            }}
+          >
+            <FileDiff />
+            {totals().count} file{totals().count === 1 ? "" : "s"}
+            <DiffCounts additions={totals().additions} deletions={totals().deletions} />
+          </button>
+        );
+      }}
+    </Show>
+  );
+}
+
 function ChangedFiles(props: { item: IWireCheckpoint; turn: number | null }) {
   const session = ThreadSession.use();
-  const totals = () =>
-    props.item.filesTotal ?? {
-      count: props.item.files.length,
-      additions: props.item.files.reduce((total, file) => total + file.additions, 0),
-      deletions: props.item.files.reduce((total, file) => total + file.deletions, 0),
-    };
+  const totals = () => checkpointTotals(props.item);
   return (
     <article class="row changed-files">
       <header>
@@ -480,7 +517,7 @@ function UserRow(props: IRowProps) {
 }
 
 /** A reply's copy and time, shown on the last reply of a settled response. */
-export function MessageMeta(props: IRowProps & { standalone?: boolean }) {
+export function MessageMeta(props: IRowProps & { standalone?: boolean; files?: string | null }) {
   const { item } = useRow(props);
   const text = () => {
     const held = item();
@@ -497,6 +534,7 @@ export function MessageMeta(props: IRowProps & { standalone?: boolean }) {
           </>
         )}
       </Show>
+      <Show when={props.files}>{(id) => <FilesSummary id={id()} />}</Show>
     </div>
   );
 }
