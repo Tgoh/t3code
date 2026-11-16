@@ -102,10 +102,11 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Attachments are images only, and the composer lists them by name with no thumbnail.
 - The queue offers resume and cancel, with no edit, reorder or promote to steer.
 - A send during a run uses the server's `auto` delivery, with no steer or queue choice.
-- The permissions picker is on a new thread only, offering Full access and Supervised, and interaction mode isn't offered.
+- The composer doesn't offer interaction mode (Plan).
 - The provider list is read once at startup, not followed.
 - A sent message appears when the stream delivers it, with no pending row in Local; the gap wasn't noticeable.
-- The default model for a new thread is the first provider's default, as in the stock client, which can be a paid one.
+- A new thread starts on the model and options last picked in this browser, else the project's default, else the first provider's default, which can be a paid one. The last pick and each model's options are kept in this port's `localStorage`, not stock's draft store, so the two clients remember picks separately.
+- A new thread's permission mode defaults to Full access, not the project's `defaultRuntimeMode` setting.
 - A new thread asks the server to generate its title, which uses the server's title provider. On this machine that's Codex, which fails to spawn, so titles fall back to the text.
 - Timeline rows aren't grouped into work groups as in the stock UI.
 - Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
@@ -149,14 +150,15 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Tooltips: no keyboard shortcut hints, because this client has no shortcuts, and a quick move between triggers opens instantly everywhere, where stock does that only inside the sidebar.
 - Timeline: no "Worked for" fold or work-group summary, so tool rows always show; their wording is this client's (`Command: …`), not stock's (`Ran command`).
 - Timeline: no minimap, and the scroll-to-end pill doesn't summarise what's waiting below.
-- Timeline: when the composer grows while the view is stuck to the bottom (queued-turn chips, say), a gap stays below the last row, because the stick-to-bottom observer watches the timeline's content, not its scroller.
 - Message actions: copy and time show on every finished assistant message, where stock shows them only on the last of a response. Where a changed files card follows, they sit above the card, not below it, so that gap is 30px against stock's 16px. There's no edit, fork or prompt link action.
 - Timeline: approvals show every option inline, with no More menu and no decline-by-typing placeholder.
 - Timeline: an expanded image has no next, previous or zoom, images inside markdown don't expand, and an attachment URL isn't refreshed, so a thread left open past its expiry shows a name chip after a reload of the image.
 - Markdown: no syntax highlighting, language icons, run-in-terminal button, file link chips, math or diagrams. A relative link is plain text with its path in a tooltip, not a link that opens the file. A code block's wrap choice resets when its message re-renders during streaming.
 - Changed files card: flat list, not a tree, and its rows don't open a single file's diff.
-- Composer: native select popups, not stock's model and permission menus, and no effort label; the composer is a solid block below the timeline, not glass floating over it.
-- Composer: the permission label is read-only on an existing thread, and the placeholder leaves out `@ files, $ skills, / commands`, which this client doesn't have.
+- Composer: no `@ files`, `$ skills` or `/ commands` menus and no voice input, so the placeholder leaves out their hints. No prompt history, stash, multi-model send or keyboard shortcuts.
+- Model menu: no favorites, number-key jumps, provider setup or update notices, Show more section, custom models from settings or instance badges. Providers other than Claude and Codex show a letter, not their icon. A non-reasoning option such as an agent's mode opens its choices below its row, not in a side menu.
+- Model menu: a typed `ultrathink` doesn't take over the effort label or lock the levels, the effort shows as a word with no bars setting, and the provider's reported selection isn't shown.
+- Permissions: the chip always shows, where stock hides it while the mode matches the default and folds controls into an overflow menu at narrow widths. Modes a managed policy forbids aren't disabled.
 - Diff panel: no tabs, split view, wrap, turn picker, file icons or collapsed unchanged-line markers.
 - Terminal drawer: fixed height with no resize, tabs or splits; the emulator is xterm, so glyph rendering differs from stock's.
 - Layout: no narrow-width sidebar collapse; below 640px only the chat gutter shrinks.
