@@ -789,10 +789,15 @@ main {
 }
 
 .folder-header {
+  background: var(--sidebar-accent);
   color: var(--sidebar-foreground);
   font-size: 13px;
   gap: 6px;
   user-select: none;
+}
+
+.folder-header:hover {
+  background: color-mix(in srgb, var(--sidebar-foreground) 7%, var(--sidebar-accent));
 }
 
 .folder-title {
