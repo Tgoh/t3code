@@ -7,6 +7,7 @@ import "./index.css";
 
 import { App } from "./App";
 import { EnvironmentReceiver } from "./Environment";
+import { openExternalLinksInSafari } from "./externalLinks";
 import {
   addressThreadImpl,
   addressViewImpl,
@@ -169,6 +170,7 @@ document.documentElement.dataset.theme = resolveScheme(
   matchMedia(SYSTEM_DARK_QUERY).matches,
 );
 void runtime.dispatch(load, "Root");
+openExternalLinksInSafari();
 
 render(
   () => (
