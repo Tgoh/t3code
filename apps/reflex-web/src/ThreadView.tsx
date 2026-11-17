@@ -1,4 +1,4 @@
-import { useResource } from "treflex-solid";
+import { useInFlight, useResource } from "treflex-solid";
 import {
   createComputed,
   createEffect,
@@ -16,9 +16,9 @@ import { ProjectBadge } from "./brand";
 import { Composer, COMPOSER_LANE, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
-import HistoryWindow from "./HistoryWindow";
-import { Bug, ChevronDown, PanelBottom, PanelRight, SquareMenu } from "./icons";
-import { withShortcut } from "./keybindings";
+import HistoryWindow, { loadEarlier } from "./HistoryWindow";
+import { type IThreadMenuItem, ThreadMenu, UsageRing } from "./HeaderActions";
+import { ChevronDown } from "./icons";
 import { useNavigation } from "./navigation";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
@@ -46,7 +46,6 @@ import {
 
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
 import { Button } from "./ui/Button";
-import { IconButton } from "./ui/IconButton";
 import { EMPTY_NOTE } from "./ui/notes";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { createMediaQuery, enterPanel, PANEL_SHEET_QUERY } from "./viewport";
@@ -80,15 +79,16 @@ const SCROLL_TO_END =
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
+  const loading = useInFlight(loadEarlier, () => history.state);
   return (
     <>
       <Show when={history.state.HasMore}>
         <Button
           class="mx-auto mb-4 block"
-          disabled={history.loadingEarlier()}
+          disabled={loading()}
           onClick={() => history.loadEarlier()}
         >
-          {history.loadingEarlier() ? "Loading…" : "Load earlier"}
+          {loading() ? "Loading…" : "Load earlier"}
         </Button>
       </Show>
       <Show when={history.state.Error}>
@@ -250,7 +250,41 @@ const ThreadBody = ThreadSession.provider(() => {
   let head!: HTMLDivElement;
   let stage!: HTMLDivElement;
   let lane!: HTMLDivElement;
-  let detailsToggle: HTMLButtonElement | undefined;
+  let menuButton: HTMLButtonElement | undefined;
+  const menuItems = (): IThreadMenuItem[] => [
+    ...(checkout() === null
+      ? []
+      : [
+          {
+            Label: "Details",
+            On: detailsShown(),
+            Shortcut: navigation.shortcut("threadPanel.toggle"),
+            Run: () => void session.toggleDetails(),
+          },
+        ]),
+    ...(thread.state.Thread === null
+      ? []
+      : [
+          {
+            Label: "Terminal",
+            On: terminalOpen(),
+            Shortcut: navigation.shortcut("terminal.toggle"),
+            Run: () => void session.toggleTerminal(),
+          },
+        ]),
+    {
+      Label: "Diff",
+      On: rightPanelOpen(),
+      Shortcut: navigation.shortcut("rightPanel.toggle"),
+      Run: () => void session.toggleRightPanel(),
+    },
+    {
+      Label: "Layout debug",
+      On: environment.state.Local.ViewportDebug,
+      Shortcut: null,
+      Run: () => void environment.toggleViewportDebug(),
+    },
+  ];
   const [stuck, setStuck] = createSignal(true);
   const position = (): IScrollPosition => ({
     Top: scroller.scrollTop,
@@ -429,56 +463,8 @@ const ThreadBody = ThreadSession.provider(() => {
             </Show>
           </div>
           <div class="flex flex-none gap-1">
-            <Show when={checkout() !== null}>
-              <IconButton
-                ref={detailsToggle}
-                pressed={detailsShown()}
-                aria-label="Toggle thread details panel"
-                data-tip={withShortcut(
-                  "Toggle thread details",
-                  navigation.shortcut("threadPanel.toggle"),
-                )}
-                aria-pressed={detailsShown()}
-                onClick={() => session.toggleDetails()}
-              >
-                <SquareMenu />
-              </IconButton>
-            </Show>
-            <Show when={thread.state.Thread !== null}>
-              <IconButton
-                pressed={terminalOpen()}
-                aria-label="Toggle terminal drawer"
-                data-tip={withShortcut(
-                  "Toggle terminal drawer",
-                  navigation.shortcut("terminal.toggle"),
-                )}
-                aria-pressed={terminalOpen()}
-                onClick={() => session.toggleTerminal()}
-              >
-                <PanelBottom />
-              </IconButton>
-            </Show>
-            <IconButton
-              pressed={rightPanelOpen()}
-              aria-label="Toggle right panel"
-              data-tip={withShortcut(
-                "Toggle right panel",
-                navigation.shortcut("rightPanel.toggle"),
-              )}
-              aria-pressed={rightPanelOpen()}
-              onClick={() => session.toggleRightPanel()}
-            >
-              <PanelRight />
-            </IconButton>
-            <IconButton
-              pressed={environment.state.Local.ViewportDebug}
-              aria-label="Toggle layout debug"
-              data-tip="Toggle layout debug"
-              aria-pressed={environment.state.Local.ViewportDebug}
-              onClick={() => void environment.toggleViewportDebug()}
-            >
-              <Bug />
-            </IconButton>
+            <UsageRing />
+            <ThreadMenu ref={(button) => (menuButton = button)} items={menuItems()} />
           </div>
         </PageHeader>
         <Show when={endedReason()}>
@@ -503,7 +489,7 @@ const ThreadBody = ThreadSession.provider(() => {
               <DetailsSurface
                 inline={layout().Inline}
                 shown={detailsShown()}
-                anchor={detailsToggle}
+                anchor={menuButton}
                 onDismiss={() => session.closeDetailsPopover()}
               >
                 <ThreadDetailsCard

@@ -1,7 +1,7 @@
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
-import { useResource } from "treflex-solid";
+import { useInFlight, useResource } from "treflex-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 
 import {
@@ -31,7 +31,12 @@ import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectCl
 import { caretOnEdge, type IPromptHistoryPosition, stepPromptHistory } from "./promptHistory";
 import { advanceLabel, answerPlaceholder, type IAnswering } from "./questions";
 import { StageArt } from "./StageArt";
-import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
+import ThreadSession, {
+  DEFAULT_RUNTIME_MODE,
+  editFromHere,
+  send as sendAction,
+  stopRun,
+} from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { iconButton } from "./ui/IconButton";
 import { composerCollapses, createMediaQuery, PHONE_QUERY, SHORT_TOUCH_QUERY } from "./viewport";
@@ -285,6 +290,9 @@ function AnswerActions(props: { question: IAnswering }) {
 export function Composer(props: { active?: boolean; onSend?: () => void; question?: IAnswering }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
+  const sending = useInFlight(sendAction, () => session.state);
+  const stopInFlight = useInFlight(stopRun, () => session.state);
+  const rewinding = useInFlight(editFromHere, () => session.state);
   const held = () => session.state;
   const intake = useAttachmentIntake();
   const files = intake.files;
@@ -312,12 +320,12 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     );
   };
   const isDraft = () => held().NewThreadProjectId !== null;
-  const stopping = () => session.stopRequested() || session.stopping();
+  const stopping = () => session.stopRequested() || stopInFlight();
   const clone = useProjectClone(() => session.projectId());
   const blocked = () => cloneSendBlock(clone());
   const canSend = () =>
     blocked() === null &&
-    !session.sending() &&
+    !sending() &&
     (held().Draft.trim() !== "" || held().Attachments.length > 0);
   const phone = createMediaQuery(`${PHONE_QUERY}, ${SHORT_TOUCH_QUERY}`);
   const [focused, setFocused] = createSignal(false);
@@ -460,7 +468,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         ref={form}
         class="relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)"
         data-collapsed={collapsed() ? "" : undefined}
-        inert={session.rewinding()}
+        inert={rewinding()}
         onSubmit={(event) => {
           event.preventDefault();
           send();
@@ -492,7 +500,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                 <SendButton
                   running={running()}
                   alternate={alternateHeld()}
-                  sending={session.sending()}
+                  sending={sending()}
                   disabled={!canSend()}
                   blocked={null}
                   class="ml-0"
@@ -650,7 +658,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             <SendButton
               running={running()}
               alternate={alternateHeld()}
-              sending={session.sending()}
+              sending={sending()}
               disabled={!canSend()}
               blocked={blocked()}
               class="ml-[5px]"

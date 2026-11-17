@@ -1,6 +1,6 @@
 import { changeRequestTerminologyFor } from "@t3tools/client-runtime/state/vcs";
 import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
-import { useResource } from "treflex-solid";
+import { useInFlight, useResource } from "treflex-solid";
 import { Dynamic, Portal } from "solid-js/web";
 import {
   type Component,
@@ -47,7 +47,7 @@ import {
   Server,
   X,
 } from "./icons";
-import GitWork, { type IActionContext } from "./GitWork";
+import GitWork, { continueDefaultBranch, type IActionContext, pull, runGitAction } from "./GitWork";
 import {
   type ILineageRelation,
   type ILineageRow,
@@ -58,8 +58,11 @@ import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
   changesTotals,
+  createBranch,
   getDefaultThreadDetails,
   type ICheckout,
+  loadBranches,
+  selectBranch,
 } from "./ThreadDetails";
 import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession from "./ThreadSession";
@@ -173,7 +176,7 @@ function SplitRow(props: {
   label: string;
   icon: JSX.Element;
   disabled?: boolean;
-  tip?: string;
+  tip?: string | undefined;
   menuLabel: string;
   menuDisabled?: boolean;
   onRun: () => void;
@@ -447,6 +450,9 @@ const Body = (props: IDetailsProps) => {
   const session = ThreadSession.use();
   const environment = Environment.use();
   const status = useResource(() => details.state, "Details/Status");
+  const switchingBranch = useInFlight([selectBranch, createBranch], () => details.state);
+  const loadingBranches = useInFlight(loadBranches, () => details.state);
+  const busy = useInFlight([runGitAction, continueDefaultBranch, pull], () => work.state);
   const git = () => status.value()?.Status ?? null;
   const [menu, setMenu] = createSignal<
     | { Kind: "editor" | "git" | "scripts"; Anchor: IMenuAnchor }
@@ -469,7 +475,6 @@ const Body = (props: IDetailsProps) => {
   );
 
   const terminology = () => changeRequestTerminologyFor(git());
-  const busy = () => work.gitBusy();
   const quick = createMemo(() =>
     resolveQuickAction(
       git(),
@@ -618,13 +623,13 @@ const Body = (props: IDetailsProps) => {
           <button
             class={ROW}
             aria-label={`Branch: ${branchName() ?? "detached HEAD"}`}
-            disabled={props.running || details.switchingBranch()}
+            disabled={props.running || switchingBranch()}
             data-tip={props.running ? "Wait for the turn to finish to switch branches." : undefined}
             onClick={(event) => openBranches(menuAt(event.currentTarget))}
           >
             <GitBranch />
             <span class={LABEL}>
-              {details.switchingBranch() ? "Switching…" : (branchName() ?? "Detached HEAD")}
+              {switchingBranch() ? "Switching…" : (branchName() ?? "Detached HEAD")}
             </span>
             <ChevronDown class="ml-auto" />
           </button>
@@ -824,7 +829,7 @@ const Body = (props: IDetailsProps) => {
                     }}
                   />
                   <div class="flex max-h-72 flex-col overflow-y-auto">
-                    <Show when={details.loadingBranches() && details.state.Branches === null}>
+                    <Show when={loadingBranches() && details.state.Branches === null}>
                       <p class={`${NOTE} text-warning-foreground`}>Loading branches…</p>
                     </Show>
                     <For each={details.state.Branches ?? []}>

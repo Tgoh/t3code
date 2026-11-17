@@ -1,17 +1,20 @@
-import { request } from "@t3tools/client-runtime/rpc";
+// oxlint-disable-next-line t3code/no-rpc-permission-bypass -- this client has no atom command boundary (issues.md, "the command path assumes atoms"); the server authorizes the refresh
+import { request, requestGuarded, RpcPermissionGuard } from "@t3tools/client-runtime/rpc";
+import { refreshUsageLimits } from "@t3tools/client-runtime/state/usage";
 import {
   ClientServerSettingsPatch,
   type ClientSettings,
   ClientSettingsSchema,
+  EnvironmentId,
   ORCHESTRATION_V2_WS_METHODS,
   OrchestrationV2ArchivedShellSnapshot,
   ProviderInstanceMutation,
-  ServerConfig,
   ServerSettings,
   UsageSummary,
   UsageSummaryInput,
   WS_METHODS,
 } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { implementation } from "treflex";
 
@@ -20,11 +23,10 @@ import {
   archivedShellEffect,
   type IWireArchivedShell,
   type IWireClientSettings,
-  type IWireServerConfig,
   type IWireServerSettings,
   type IWireUsageSummary,
+  refreshProvidersEffect,
   refreshUsageRatesEffect,
-  serverConfigEffect,
   storeClientSettingsEffect,
   storedClientSettingsEffect,
   updateServerSettingsEffect,
@@ -35,8 +37,6 @@ import {
 const CLIENT_SETTINGS_KEY = "t3code:client-settings:v1";
 
 // The wire types keep brands that the JSON codecs' encoded types drop, hence the casts.
-const encodeConfigJson = Schema.encodeSync(Schema.toCodecJson(ServerConfig));
-const encodeConfig = (value: ServerConfig) => encodeConfigJson(value) as IWireServerConfig;
 const encodeSettingsJson = Schema.encodeSync(Schema.toCodecJson(ServerSettings));
 const encodeSettings = (value: ServerSettings) => encodeSettingsJson(value) as IWireServerSettings;
 const decodePatch = Schema.decodeUnknownSync(Schema.toCodecJson(ClientServerSettingsPatch));
@@ -53,9 +53,23 @@ const decodeUsageInput = Schema.decodeUnknownSync(Schema.toCodecJson(UsageSummar
 const encodeUsageJson = Schema.encodeSync(Schema.toCodecJson(UsageSummary));
 const encodeUsage = (value: UsageSummary) => encodeUsageJson(value) as IWireUsageSummary;
 
-export const serverConfigImpl = implementation(serverConfigEffect, async (input) =>
-  encodeConfig(await onceRegistered(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}))),
-);
+const allowAll = { authorize: () => Effect.void };
+
+export const refreshProvidersImpl = implementation(refreshProvidersEffect, async (input) => {
+  const environmentId = EnvironmentId.make(input.EnvironmentId);
+  await refreshUsageLimits(
+    environmentId,
+    () =>
+      onceRegistered(
+        input.EnvironmentId,
+        requestGuarded(WS_METHODS.serverRefreshProviders, {
+          workspaceSnapshotsOnDemand: true,
+          omitProviders: true,
+        }).pipe(Effect.provideService(RpcPermissionGuard, allowAll)),
+      ),
+    input.Automatic,
+  );
+});
 
 export const updateServerSettingsImpl = implementation(updateServerSettingsEffect, async (input) =>
   encodeSettings(

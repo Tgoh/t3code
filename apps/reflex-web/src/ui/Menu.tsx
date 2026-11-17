@@ -13,7 +13,7 @@ export function MenuItem(
   props: Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onSelect"> & {
     icon: JSX.Element;
     label: string;
-    detail?: string;
+    detail?: string | undefined;
     danger?: boolean;
     /** Cuts a long label to one line, for a menu as wide as its anchor. */
     truncate?: boolean;

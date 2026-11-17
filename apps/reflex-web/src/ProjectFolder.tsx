@@ -1,10 +1,11 @@
 import { planProjectRemoval } from "@t3tools/client-runtime/state/projects";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { useInFlight } from "treflex-solid";
 import { createMemo, createSignal, Show } from "solid-js";
 
 import { ProjectBadge } from "./brand";
 import { copyText } from "./clipboard";
-import Environment from "./Environment";
+import Environment, { removeProject } from "./Environment";
 import {
   ChevronRight,
   Copy,
@@ -98,6 +99,7 @@ export function ProjectMenu(props: {
 // title and description split in apps/web/src/components/ConfirmDialogHost.tsx.
 export function RemoveProjectDialog(props: { project: IWireProject; onClose: () => void }) {
   const environment = Environment.use();
+  const removing = useInFlight(removeProject, () => environment.state);
   const shell = Shell.use();
   const [failure, setFailure] = createSignal<string | null>(null);
   const copy = createMemo(() => {
@@ -141,11 +143,7 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
         <Button autofocus onClick={props.onClose}>
           Cancel
         </Button>
-        <Button
-          variant="destructive"
-          disabled={environment.removingProject()}
-          onClick={() => void confirm()}
-        >
+        <Button variant="destructive" disabled={removing()} onClick={() => void confirm()}>
           Confirm
         </Button>
       </DialogFooter>

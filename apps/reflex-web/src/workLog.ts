@@ -109,19 +109,19 @@ export function providerErrorPresentation(item: Extract<IWireTurnItem, { type: "
 // deriveTimelineEntriesFromVisibleTurnItems there.
 export function workLogEntry(item: IWireTurnItem): IWorkLogEntry {
   const title = item.title?.trim() || null;
-  const common = {
+  const base = {
     id: item.id,
     createdAt: item.startedAt ?? item.updatedAt,
     runId: item.runId,
     tone: tone(item),
     itemType: item.type,
-    toolLifecycleStatus: lifecycleStatus(item),
     structuredPayload: asItem(item),
     ...extractToolActivityPresentation(item),
   } as const;
+  const common = { ...base, toolLifecycleStatus: lifecycleStatus(item) } as const;
   switch (item.type) {
     case "notification":
-      return { ...common, tone: "info", toolLifecycleStatus: undefined, label: item.summary };
+      return { ...base, tone: "info", label: item.summary };
     case "thread_created":
       return { ...common, label: "Created thread" };
     case "compaction":

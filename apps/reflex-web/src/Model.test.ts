@@ -5,6 +5,10 @@ import {
   createTestRuntime,
   EntityReplacedError,
   type IActionGenerator,
+  type IEntity,
+  inFlight,
+  type IRuntime,
+  type ISelectorGenerator,
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
@@ -26,12 +30,14 @@ import {
   threadCommand,
   toggleModelFavorite,
 } from "./Environment";
-import { gitBusy, runGitAction } from "./GitWork";
-import { loadEarlier, loadingEarlier } from "./HistoryWindow";
+import { continueDefaultBranch, pull, runGitAction } from "./GitWork";
+import { loadEarlier } from "./HistoryWindow";
 import {
   archivedThreadCommand,
+  autoRefreshLimits,
   loadUsage,
   openView,
+  refreshUsage,
   updateServerSettings,
   writeSetting,
 } from "./Settings";
@@ -96,13 +102,7 @@ import {
 } from "./OpenThread";
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
-import {
-  answering,
-  answerRequest,
-  canAnswer,
-  dismissRequest,
-  type IRuntimeRequest,
-} from "./RuntimeRequest";
+import { answerRequest, canAnswer, dismissRequest, type IRuntimeRequest } from "./RuntimeRequest";
 import {
   activityAt,
   canSnooze,
@@ -126,28 +126,23 @@ import {
   revertTargets,
   RewindReceiver,
   rewindConfirm,
-  rewinding,
   threadWorking,
   diffLoading,
   closeTerminal,
   effectiveModel,
   effectiveRuntimeMode,
-  ending,
   endTerminal,
   fitDetails,
   type IThreadSession,
   openDiff,
   openTerminal,
   queueAction,
-  queueing,
   send,
-  sending,
   setDraft,
   setModelSelection,
   setQuestionCustomAnswer,
   setQuestionIndex,
   setRuntimeMode,
-  stopping,
   stopRun,
   terminalAttachment,
   TerminalReceiver,
@@ -175,6 +170,15 @@ import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
 
 const ENV = "env-1";
+
+const inFlightOf = (
+  runtime: IRuntime<IRoot>,
+  reading: Parameters<typeof inFlight>[0],
+  owner: () => IEntity,
+) =>
+  runtime.processSelector(function* (draft: IEntity): ISelectorGenerator<boolean> {
+    return yield* inFlight(reading, draft);
+  }, owner);
 
 const storedPreferences: IPreferences = {
   GroupByProject: true,
@@ -343,6 +347,13 @@ async function connect(
         shellId(),
         { Type: "Shell/Stream", Item },
         { publisher: { Id: shellId() } },
+      ),
+    sendConfig: (Item: Record<string, unknown>) =>
+      runtime.dispatch(
+        EnvironmentReceiver.handle,
+        envId(),
+        { Type: "Server/Config", Item: Item as never },
+        { publisher: { Id: envId() } },
       ),
     disposed: (id: string) =>
       new Promise<void>((resolve) => {
@@ -1113,7 +1124,7 @@ describe("history pages", () => {
 
   const historyId = (server: Awaited<ReturnType<typeof connect>>) => server.thread().History!.$Id;
   const loadingOf = (server: Awaited<ReturnType<typeof connect>>) =>
-    server.runtime.processSelector(loadingEarlier, () => server.thread().History!);
+    inFlightOf(server.runtime, loadEarlier, () => server.thread().History!);
 
   it("prepends a page, and a live update made during the wait wins over it", async () => {
     const gate = gated();
@@ -1880,7 +1891,7 @@ describe("writing to the server", () => {
     expect(sent[0]!.CommandId).not.toBe(sent[0]!.MessageId);
     const session = server.environment().Local.ThreadSessions[THREAD_ID]!;
     expect(session.Draft).toBe("");
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
     expect(server.thread().TurnItems).toEqual({});
   });
 
@@ -1899,7 +1910,7 @@ describe("writing to the server", () => {
     expect(attempts).toBe(1);
     expect(session.Draft).toBe("keep me");
     expect(session.SendError).toBe("server said no");
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
   });
 
   it("a second send during the wait is ignored", async () => {
@@ -1918,7 +1929,7 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(setDraft, server.sessionId(), "once");
     const first = server.runtime.dispatch(send, server.sessionId());
     await server.runtime.dispatch(send, server.sessionId());
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(true);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(true);
     release();
     await first;
     expect(sent).toHaveLength(1);
@@ -2119,7 +2130,7 @@ describe("writing to the server", () => {
     await server.open();
     await server.runtime.dispatch(stopRun, server.sessionId());
     expect(stops.map((stop) => stop.ThreadId)).toEqual([THREAD_ID]);
-    expect(server.runtime.processSelector(stopping, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, stopRun, () => server.session())).toBe(false);
     refuse = true;
     await server.runtime.dispatch(stopRun, server.sessionId());
     await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
@@ -2142,7 +2153,7 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
-    const busy = () => server.runtime.processSelector(queueing, () => server.session());
+    const busy = () => inFlightOf(server.runtime, queueAction, () => server.session());
     const press = (runId: string | null) =>
       server.runtime.dispatch(
         queueAction,
@@ -2199,7 +2210,13 @@ describe("writing to the server", () => {
       false,
     );
     await settled();
-    expect(server.runtime.processSelector(gitBusy, () => server.session().Git)).toBe(true);
+    expect(
+      inFlightOf(
+        server.runtime,
+        [runGitAction, continueDefaultBranch, pull],
+        () => server.session().Git,
+      ),
+    ).toBe(true);
     finish();
     await running;
     expect(server.session().Git.Notice).toMatchObject({ Tone: "success", Title: "Pushed" });
@@ -2282,7 +2299,8 @@ describe("writing to the server", () => {
     expect(pendingRequest(server.thread(), "r-1")?.Item?.type).toBe("approval_request");
 
     const node = (id: string) => server.thread().RuntimeRequests[id]!;
-    const busy = (id: string) => server.runtime.processSelector(answering, () => node(id));
+    const busy = (id: string) =>
+      inFlightOf(server.runtime, [answerRequest, dismissRequest], () => node(id));
     const answer = (id: string, decision: "accept" | "decline") =>
       server.runtime.dispatch(answerRequest, node(id).$Id, ENV, THREAD_ID, decision, null);
     const first = answer("r-1", "accept");
@@ -3290,7 +3308,7 @@ describe("the terminal", () => {
     await server.runtime.dispatch(openTerminal, server.sessionId());
     await server.runtime.dispatch(endTerminal, server.sessionId());
     expect(panel(server)).toMatchObject({ Open: true, Error: "server said no" });
-    expect(server.runtime.processSelector(ending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, endTerminal, () => server.session())).toBe(false);
     expect(attached(server)).toHaveLength(1);
     refuse = false;
     await server.runtime.dispatch(endTerminal, server.sessionId());
@@ -3399,9 +3417,11 @@ function settingsServer() {
   let client = { toolCallVisibility: "showAll" } as Record<string, unknown>;
   let refreshing = true;
   const commands = {
-    serverConfig: () => {
-      calls.push({ Type: "serverConfig" });
-      return { settings, providers: [], keybindings: [] };
+    refreshProviders: (effect: { Automatic: boolean }) => {
+      calls.push({ Type: "refreshProviders", Automatic: effect.Automatic });
+    },
+    refreshUsageRates: () => {
+      calls.push({ Type: "refreshUsageRates" });
     },
     updateServerSettings: (effect: { Patch: object; InstanceMutation: unknown }) => {
       calls.push({
@@ -3443,16 +3463,28 @@ function settingsServer() {
   return {
     calls,
     commands,
+    snapshot: () => ({
+      version: 1,
+      type: "snapshot",
+      config: { settings: { ...settings }, providers: [], keybindings: [], issues: [] },
+    }),
     stopRefreshing: () => {
       refreshing = false;
     },
   };
 }
 
+const claude = (left: number) => ({
+  instanceId: "claudeAgent",
+  driver: "claudeAgent",
+  usageLimits: { checkedAt: "2026-11-17T00:00:00.000Z", windows: [{ usedPercent: 100 - left }] },
+});
+
 describe("settings and usage", () => {
   it("open over the thread, keep the address, load both stores, and close on a thread pick", async () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
+    await server.sendConfig(fake.snapshot());
     await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "voice" });
     await settled();
     expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "general" });
@@ -3473,12 +3505,13 @@ describe("settings and usage", () => {
     });
     await settled();
     expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "providers" });
-    expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(true);
+    expect(server.environment().Local.ClientSettings?.toolCallVisibility).toBe("showAll");
   });
 
   it("send a server row's patch and hold what the server returns, and merge a client row into the whole stored object", async () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
+    await server.sendConfig(fake.snapshot());
     await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "threads" });
     await settled();
     await server.runtime.dispatch(writeSetting, server.envId(), {
@@ -3509,20 +3542,55 @@ describe("settings and usage", () => {
       Page: "providers",
     });
     await settled();
-    const configReads = () => fake.calls.filter((call) => call.Type === "serverConfig").length;
-    const before = configReads();
     await server.runtime.dispatch(updateServerSettings, server.envId(), {
       setModelsHidden: [{ provider: "devReplay", model: "showcase", hidden: true }],
     } as never);
     expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
-    expect(configReads()).toBe(before);
     await server.runtime.dispatch(updateServerSettings, server.envId(), {}, {
       operation: "upsert",
       instanceId: "devReplay",
       instance: { driver: "devReplay", enabled: false },
     } as never);
-    expect(configReads()).toBe(before + 1);
     expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
+  });
+
+  it("follow the config stream, so a provider push replaces the limits held since the snapshot", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    const usedPercent = () =>
+      (server.environment().Replica.Config?.providers[0] as ReturnType<typeof claude> | undefined)
+        ?.usageLimits.windows[0]?.usedPercent;
+    const snapshot = fake.snapshot();
+    await server.sendConfig({
+      ...snapshot,
+      config: { ...snapshot.config, providers: [claude(82)] },
+    });
+    expect(usedPercent()).toBe(18);
+    await server.sendConfig({
+      version: 1,
+      type: "providerStatuses",
+      payload: { providers: [claude(61)] },
+    });
+    expect(usedPercent()).toBe(39);
+    await server.sendConfig({
+      version: 1,
+      type: "settingsUpdated",
+      payload: { settings: { favorites: [], sidebarAutoSettleAfterDays: 3 } },
+    });
+    expect(server.environment().Replica.Config?.settings.sidebarAutoSettleAfterDays).toBe(3);
+    expect(usedPercent()).toBe(39);
+  });
+
+  it("refresh limits by asking the server to re-probe its providers, and leave the result to the stream", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    await server.runtime.dispatch(autoRefreshLimits, server.envId());
+    await server.runtime.dispatch(refreshUsage, server.envId(), null);
+    expect(fake.calls.filter((call) => call.Type === "refreshProviders")).toEqual([
+      { Type: "refreshProviders", Automatic: true },
+      { Type: "refreshProviders", Automatic: false },
+    ]);
+    expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(false);
   });
 
   it("unarchive a thread with stock's command and read the archive again", async () => {
@@ -3747,7 +3815,7 @@ describe("rewinding and forking", () => {
       },
     ]);
     expect(rig.recalled).toEqual([["shot.png"]]);
-    expect(server.runtime.processSelector(rewinding, () => server.session())).toBe(true);
+    expect(inFlightOf(server.runtime, editFromHere, () => server.session())).toBe(true);
     expect(server.session().Draft).toBe("half written");
 
     await rig.land(rig.rewinds[0]!.CommandId);
@@ -3755,7 +3823,7 @@ describe("rewinding and forking", () => {
     expect(server.session().Draft).toBe("half written\n\nprompt 2");
     expect(server.session().Attachments.map((file) => file.Name)).toEqual(["shot.png"]);
     expect(server.stored.Drafts.get(THREAD_ID)?.Text).toBe("half written\n\nprompt 2");
-    expect(server.runtime.processSelector(rewinding, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, editFromHere, () => server.session())).toBe(false);
     expect(server.session().RewindError).toBeUndefined();
   });
 

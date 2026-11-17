@@ -185,7 +185,7 @@ export function ProjectBadge(props: { project: IWireProject | undefined; size?: 
 }
 
 // Paths copy OpenAI and ClaudeAI in apps/web/src/components/Icons.tsx.
-export function ProviderIcon(props: { driver: string | undefined; size?: number }) {
+export function ProviderIcon(props: { driver: string | undefined; size?: number | undefined }) {
   const size = () => props.size ?? 16;
   return (
     <>

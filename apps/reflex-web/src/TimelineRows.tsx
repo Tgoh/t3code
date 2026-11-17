@@ -4,7 +4,7 @@ import {
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
 import { type IActionGenerator, type IAskId, type IEntity } from "treflex";
-import { useComponentState } from "treflex-solid";
+import { useComponentState, useInFlight } from "treflex-solid";
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
@@ -49,7 +49,7 @@ import OpenThread, {
 } from "./OpenThread";
 import { focusComposerAtEnd } from "./composerFocus";
 import { canForkItem } from "./rewind";
-import ThreadSession, { type IRewindChoice } from "./ThreadSession";
+import ThreadSession, { editFromHere, forkFromRun, type IRewindChoice } from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
 import { Button } from "./ui/Button";
 import { IconButton, iconButton } from "./ui/IconButton";
@@ -110,7 +110,7 @@ function Body(props: {
   id: string;
   text: string;
   format: "markdown" | "text" | "code";
-  pre?: string;
+  pre?: string | undefined;
 }) {
   return (
     <Show
@@ -585,6 +585,7 @@ function UserRow(props: IRowProps) {
 function EditFromHere(props: IRowProps) {
   const session = ThreadSession.use();
   const turn = () => session.revertTargets()[props.id];
+  const rewinding = useInFlight(editFromHere, () => session.state);
   return (
     <Show when={turn() !== undefined}>
       <IconButton
@@ -592,7 +593,7 @@ function EditFromHere(props: IRowProps) {
         size="sm"
         aria-label="Edit from here"
         data-tip="Edit from here"
-        disabled={session.rewinding() || session.threadWorking()}
+        disabled={rewinding() || session.threadWorking()}
         onClick={() => {
           const at = turn();
           if (at === undefined) return;
@@ -611,6 +612,7 @@ function EditFromHere(props: IRowProps) {
 function ForkFromHere(props: IRowProps) {
   const { thread, item } = useRow(props);
   const session = ThreadSession.use();
+  const forking = useInFlight(forkFromRun, () => session.state);
   const runId = () => {
     const held = item();
     return held === undefined || held.runId === null || !canForkItem(thread.state, held)
@@ -625,7 +627,7 @@ function ForkFromHere(props: IRowProps) {
           size="sm"
           aria-label="Fork from this response"
           data-tip="Fork from this response"
-          disabled={session.forking()}
+          disabled={forking()}
           onClick={() =>
             void session.forkFromRun(
               thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId,

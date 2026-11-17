@@ -3,10 +3,10 @@ import {
   projectCloneProgressSummary,
   type ProjectCloneSnapshot,
 } from "@t3tools/contracts";
-import { useResource } from "treflex-solid";
+import { useInFlight, useResource } from "treflex-solid";
 import { createMemo, Show } from "solid-js";
 
-import Environment from "./Environment";
+import Environment, { cloneControl } from "./Environment";
 import { Download } from "./icons";
 import { Button } from "./ui/Button";
 import { BANNER, BANNER_ACTIONS, BANNER_BODY, BANNER_TITLE } from "./ui/notice";
@@ -31,6 +31,7 @@ export function cloneSendBlock(clone: ProjectCloneSnapshot | null): string | nul
 // Follows useProjectCloneBanner in apps/web/src/components/chat/useProjectCloneBanner.tsx.
 export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
   const environment = Environment.use();
+  const controlling = useInFlight(cloneControl, () => environment.state);
   const name = () => projectCloneDisplayName(props.clone);
   const projectId = () => props.clone.projectId;
   const cancelled = () => props.clone.phase === "cancelled";
@@ -57,7 +58,7 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
                 Remove project
               </Button>
               <Button
-                disabled={environment.cloneControlling()}
+                disabled={controlling()}
                 onClick={() => environment.cloneControl(projectId(), "retry")}
               >
                 Retry
@@ -70,7 +71,7 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
           <Download />
           <strong>Cloning {name()}</strong>
           <Button
-            disabled={environment.cloneControlling()}
+            disabled={controlling()}
             onClick={() => environment.cloneControl(projectId(), "cancel")}
           >
             Cancel

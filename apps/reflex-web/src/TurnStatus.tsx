@@ -1,6 +1,7 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for the working timer, outside any Effect runtime.
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { useInFlight } from "treflex-solid";
 import { type Accessor, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
 
 import {
@@ -16,7 +17,7 @@ import Environment from "./Environment";
 import { ChevronUp, CornerUpRight, PenLine, Square, SquareCheck, X } from "./icons";
 import OpenThread, { isRowVisible, runMessage, timelineItem } from "./OpenThread";
 import { workingStartedAt } from "./Shell";
-import ThreadSession from "./ThreadSession";
+import ThreadSession, { queueAction } from "./ThreadSession";
 import { QueuedMessage } from "./TimelineRows";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
@@ -250,6 +251,7 @@ function Checklist(props: { checklist: IChecklist }) {
 function QueuedRow(props: { runId: string }) {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
+  const queueing = useInFlight(queueAction, () => session.state);
   const [editing, setEditing] = createSignal<string | null>(null);
   const message = () => runMessage(thread.state, props.runId);
   const editable = () => message()?.context?.guest === undefined;
@@ -290,7 +292,7 @@ function QueuedRow(props: { runId: string }) {
           />
           <div class="flex justify-end gap-1.5">
             <Button onClick={() => setEditing(null)}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={session.queueing()}>
+            <Button type="submit" variant="primary" disabled={queueing()}>
               Save
             </Button>
           </div>
@@ -301,7 +303,7 @@ function QueuedRow(props: { runId: string }) {
           <IconButton
             aria-label="Send now"
             data-tip="Send now"
-            disabled={session.queueing() || !canSendNow()}
+            disabled={queueing() || !canSendNow()}
             onClick={() => session.queueAction({ Kind: "sendNow", RunId: props.runId })}
           >
             <CornerUpRight />
@@ -310,7 +312,7 @@ function QueuedRow(props: { runId: string }) {
             <IconButton
               aria-label="Edit queued message"
               data-tip="Edit"
-              disabled={session.queueing()}
+              disabled={queueing()}
               onClick={() => setEditing(message()?.text ?? "")}
             >
               <PenLine />
@@ -319,7 +321,7 @@ function QueuedRow(props: { runId: string }) {
           <IconButton
             aria-label="Remove queued message"
             data-tip="Remove"
-            disabled={session.queueing()}
+            disabled={queueing()}
             onClick={() => session.queueAction({ Kind: "cancel", RunId: props.runId })}
           >
             <X />
@@ -337,6 +339,7 @@ function QueuedPopover(props: {
 }) {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
+  const queueing = useInFlight(queueAction, () => session.state);
   onCleanup(props.onClose);
   return (
     <Popup
@@ -349,10 +352,7 @@ function QueuedPopover(props: {
       <div class={BANNER_TITLE}>
         <strong>Queued</strong>
         <Show when={!props.working}>
-          <Button
-            disabled={session.queueing()}
-            onClick={() => session.queueAction({ Kind: "resume" })}
-          >
+          <Button disabled={queueing()} onClick={() => session.queueAction({ Kind: "resume" })}>
             Resume
           </Button>
         </Show>

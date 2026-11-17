@@ -195,11 +195,15 @@ Settings opens in place of the thread view, not as stock's modal, and keeps the 
 - Archive: one environment, no right-click menu, and a failure goes to the sidebar's error line rather than a toast.
 - About: the server's version, not the client build's, and no update, update track, mobile app or welcome rows.
 - Usage: no environment or provider pickers (this client has one environment), model price overrides, model detail dialog, chart hover tooltip, speed premium note, ChatGPT shared usage, or in-page shortcuts (stock's `c`, `t`, `l` and the period keys). `mod+u` opens it, as in stock.
-- Usage limits: no usage-limit hubs (`usageLimitSources` is stream-only and `server.getConfig` doesn't send it), external usage links, segment popovers or reset credits. Refresh re-reads the config instead of calling `server.refreshProviders`, which is a guarded RPC and fails without the atom command boundary (see "the command path assumes atoms").
+- Usage limits: no usage-limit hubs (the session's config stream isn't opened with `usageLimitSources`), external usage links, segment popovers or reset credits. `server.refreshProviders` is a guarded RPC, so `settingsImpl.ts` supplies an allow-all `RpcPermissionGuard` past the `no-rpc-permission-bypass` lint rule (see "the command path assumes atoms"): a connection without the read scope learns from the server's refusal.
 
 ## Open: reading `packages/` restarts the dev server on Windows
 
 `vp run dev` runs the server under `node --watch` over `src`, `packages` and `package.json`. On this machine a recursive `fs.watch` reports `change` on a directory that is only listed, with nothing written, so any tool that lists a directory under those paths restarts the server and interrupts a running turn. A probe watching `packages/` while the app's gates ran saw one `change` for every package during `tsc --noEmit`, directly or through `vp run typecheck`, and the server's process id changed, sometimes twice. `vp test run`, `vp lint` and `vp fmt` raised no events. A separate directory showed the same event from a plain `ls`, and none from reading a file. Avoid typechecking during a turn. Daily use needs a server run without `--watch`.
+
+## Open: Stop flickers back before the run ends
+
+After a Stop click, the composer's button reads "Stopping", then "Stop generation" for 10 to 20 ms, then the run ends. "Stopping" is the thread row's `latestRunStopRequested` or `stopRun` in flight, and the stop command's reply can land before the shell stream delivers the row with the flag set, so neither holds for that gap. Seen on the driver and on the `useInFlight` branch alike.
 
 ## Open: 502s on the environment descriptor
 

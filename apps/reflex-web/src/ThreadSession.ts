@@ -995,10 +995,6 @@ export function* checkRewind(draft: IThreadSession): IActionGenerator {
   yield* answerLanding(draft, false);
 }
 
-export function* rewinding(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(editFromHere, draft);
-}
-
 export const RewindReceiver = receiver<IThreadSession>("RewindReceiver")({
   *"Rewind/Timeout"(draft) {
     yield* stopTimer(draft, "Rewind/Timeout");
@@ -1046,10 +1042,6 @@ export function* forkFromRun(
   yield* publishToNearest(draft, "Thread/Forked", { ThreadId: targetThreadId });
 }
 leading(forkFromRun);
-
-export function* forking(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(forkFromRun, draft);
-}
 
 function heldDrafts(draft: IThreadSession, requestId: string): Record<string, IQuestionDraft> {
   const held = draft.QuestionAnswers[requestId];
@@ -1339,22 +1331,6 @@ export function* endTerminal(draft: IThreadSession): IOpenGenerator {
 }
 leading(endTerminal);
 
-export function* sending(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(send, draft);
-}
-
-export function* stopping(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(stopRun, draft);
-}
-
-export function* queueing(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(queueAction, draft);
-}
-
-export function* ending(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(endTerminal, draft);
-}
-
 export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
   return draft.Panels.Diff.Open && (yield* inFlight(openDiff, draft));
 }
@@ -1427,15 +1403,9 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     promptHistory,
     fileSearchResult,
     stopRequested,
-    sending,
-    stopping,
-    queueing,
     revertTargets,
     threadWorking,
     rewindConfirm,
-    rewinding,
-    forking,
-    ending,
     diffLoading,
     terminalAttachment,
     expandedTimelineRows,
