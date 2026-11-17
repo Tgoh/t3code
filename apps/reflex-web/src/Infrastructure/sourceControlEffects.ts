@@ -19,6 +19,7 @@ export interface IEditors {
 interface IEditorsEffect extends IEffect {
   Type: "editors";
   EnvironmentId: string;
+  Stored: string | null;
 }
 
 export const editorsEffect = defineEffect<IEditorsEffect, IEditors>("editors");

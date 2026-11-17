@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDate:off globalTimers:off -- View-only ticks for relative times, outside any Effect runtime.
+// @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for working timers, outside any Effect runtime.
 import type { ShownOrder } from "@t3tools/client-runtime/state/thread-search";
 import { useResource } from "treflex-solid";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
@@ -26,37 +26,17 @@ import type { IWireThreadShell } from "./Infrastructure/wire";
 import { withShortcut } from "./keybindings";
 import { useMessageSearch } from "./messageSearch";
 import { useNavigation } from "./navigation";
-import { readStored, readStoredIds, writeStored } from "./storage";
-import {
-  groupResults,
-  type ISearchResult,
-  liveScope,
-  rankMessages,
-  scopeThreads,
-  searchThreads,
-} from "./threadSearch";
+import { groupResults, type ISearchResult, rankMessages, searchThreads } from "./threadSearch";
 import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder";
 import { createProjectDrag } from "./projectDrag";
-import {
-  type IProjectSort,
-  isProjectSort,
-  orderFolders,
-  PROJECT_SORT_LABELS,
-} from "./projectOrder";
+import { isProjectSort, PROJECT_SORT_LABELS } from "./projectOrder";
 import Root from "./Root";
 import { MenuItem, Popup } from "./Menu";
-import Shell, {
-  isBusy,
-  projectFolders,
-  sidebarSections,
-  sidebarStatus,
-  unhiddenThreads,
-} from "./Shell";
+import Shell, { isBusy, sidebarStatus } from "./Shell";
 import { SidebarFooter } from "./SidebarFooter";
 import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
-import { MINUTE } from "./timestamps";
 import { useSidebarSheet } from "./viewport";
 
 const CONNECTION_LABEL: Record<string, string> = {
@@ -69,14 +49,6 @@ const CONNECTION_LABEL: Record<string, string> = {
 };
 
 const SECOND = 1_000;
-const SETTLED_PAGE = 25;
-
-const GROUP_KEY = "reflex-web:group-by-project";
-const CLOSED_FOLDERS_KEY = "reflex-web:closed-folders";
-const PROJECT_SORT_KEY = "reflex-web:project-sort";
-const PROJECT_ORDER_KEY = "reflex-web:project-order";
-const HIDDEN_PROJECTS_KEY = "reflex-web:hidden-projects";
-const PROJECT_SCOPE_KEY = "reflex-web:project-scope";
 const searchResultId = (threadId: string) => `sidebar-search-result-${threadId}`;
 
 function SectionHeader(props: {
@@ -144,20 +116,12 @@ export const Sidebar = Shell.provider(() => {
     const status = stream.status();
     return status.State === "ended" ? status.Reason : null;
   };
-  const [now, setNow] = createSignal(Date.now());
-  const tick = setInterval(() => setNow(Date.now()), MINUTE);
-  onCleanup(() => clearInterval(tick));
+  const local = () => environment.state.Local;
+  const preferences = () => local().Preferences;
+  const layout = createMemo(() => environment.sidebarLayout());
+  const now = () => local().Now;
   const [second, setSecond] = createSignal(Date.now());
-  const [hiddenProjects, setHiddenProjects] = createSignal(
-    new Set(readStoredIds(HIDDEN_PROJECTS_KEY)),
-  );
-  const setProjectHidden = (projectId: string, hide: boolean) => {
-    const next = new Set(hiddenProjects());
-    if (hide) next.add(projectId);
-    else next.delete(projectId);
-    setHiddenProjects(next);
-    writeStored(HIDDEN_PROJECTS_KEY, [...next]);
-  };
+  const hiddenProjects = createMemo(() => new Set(preferences().HiddenProjects));
   const hiddenList = () =>
     Object.values(shell.state.Projects)
       .filter((project) => hiddenProjects().has(project.id))
@@ -167,16 +131,7 @@ export const Sidebar = Shell.provider(() => {
     Object.values(shell.state.Projects).filter(
       (project) => project.archivedAt == null && !hiddenProjects().has(project.id),
     );
-  const [storedScope, setStoredScope] = createSignal(
-    new Set(readStoredIds(PROJECT_SCOPE_KEY)) as ReadonlySet<string>,
-  );
-  const scope = createMemo(() =>
-    liveScope(storedScope(), new Set(projects().map((project) => project.id))),
-  );
-  const setScope = (next: ReadonlySet<string>) => {
-    setStoredScope(next);
-    writeStored(PROJECT_SCOPE_KEY, [...next]);
-  };
+  const scope = createMemo(() => new Set(layout().Scope));
   const [scopeMenu, setScopeMenu] = createSignal<{ X: number; Y: number } | null>(null);
   const scopeLabel = () => {
     const held = [...scope()];
@@ -184,13 +139,7 @@ export const Sidebar = Shell.provider(() => {
     if (held.length === 1) return shell.state.Projects[held[0]!]?.title ?? "1 project";
     return `${held.length} projects`;
   };
-  const visibleThreads = createMemo(() =>
-    scopeThreads(
-      unhiddenThreads(shell.sidebarThreads(), hiddenProjects(), selected()),
-      scope(),
-      selected(),
-    ),
-  );
+  const visibleThreads = () => layout().Visible;
   const anyWorking = createMemo(() =>
     visibleThreads().some((thread) =>
       isBusy(sidebarStatus(thread, shell.subagentRequests()[thread.id])),
@@ -202,57 +151,25 @@ export const Sidebar = Shell.provider(() => {
     const ticking = setInterval(() => setSecond(Date.now()), SECOND);
     onCleanup(() => clearInterval(ticking));
   });
-  const sections = createMemo(() =>
-    sidebarSections(visibleThreads(), now(), shell.subagentRequests()),
-  );
-  const [snoozedOpen, setSnoozedOpen] = createSignal(false);
-  const [settledOpen, setSettledOpen] = createSignal(false);
-  const [settledShown, setSettledShown] = createSignal(SETTLED_PAGE);
+  const sections = () => layout().Sections;
+  const shelves = () => local().Shelves;
   const [renaming, setRenaming] = createSignal<string | null>(null);
   const [menu, setMenu] = createSignal<{ Id: string; X: number; Y: number } | null>(null);
   const menuThread = () => {
     const held = menu();
     return held === null ? undefined : shell.state.Threads[held.Id];
   };
-  const [grouped, setGrouped] = createSignal(readStored(GROUP_KEY, true));
-  const [closedFolders, setClosedFolders] = createSignal(
-    new Set(readStored<string[]>(CLOSED_FOLDERS_KEY, [])),
-  );
-  const toggleFolder = (projectId: string) => {
-    const next = new Set(closedFolders());
-    if (!next.delete(projectId)) next.add(projectId);
-    setClosedFolders(next);
-    writeStored(CLOSED_FOLDERS_KEY, [...next]);
-  };
-  const storedSort = readStored<unknown>(PROJECT_SORT_KEY, "manual");
-  const [projectSort, setProjectSort] = createSignal<IProjectSort>(
-    isProjectSort(storedSort) ? storedSort : "manual",
-  );
-  const [projectOrder, setProjectOrder] = createSignal(readStoredIds(PROJECT_ORDER_KEY));
+  const grouped = () => preferences().GroupByProject;
+  const closedFolders = createMemo(() => new Set(preferences().ClosedFolders));
+  const projectSort = () => preferences().ProjectSort;
   const folders = createMemo(
-    () =>
-      new Map(
-        grouped()
-          ? orderFolders(
-              projectFolders(sections().Active, shell.state.Projects, hiddenProjects()).filter(
-                (folder) =>
-                  scope().size === 0 || scope().has(folder.ProjectId) || folder.Threads.length > 0,
-              ),
-              projectSort(),
-              projectOrder(),
-              visibleThreads(),
-            ).map((folder) => [folder.ProjectId, folder])
-          : [],
-      ),
+    () => new Map(layout().Folders.map((folder) => [folder.ProjectId, folder])),
   );
   const [list, setList] = createSignal<HTMLElement>();
   const drag = createProjectDrag({
     list,
     order: () => [...folders().keys()],
-    onDrop: (order) => {
-      setProjectOrder(order);
-      writeStored(PROJECT_ORDER_KEY, order);
-    },
+    onDrop: (order) => void environment.setPreferences({ ProjectOrder: order }),
   });
   const [removingProject, setRemovingProject] = createSignal<string | null>(null);
   const [renamingProject, setRenamingProject] = createSignal<string | null>(null);
@@ -263,25 +180,9 @@ export const Sidebar = Shell.provider(() => {
     const held = projectMenu();
     return held === null ? undefined : shell.state.Projects[held.Id];
   };
-  // A collapsed shelf still shows the open thread, so its row doesn't vanish on settling it.
   const shelf = (threads: IWireThreadShell[], open: boolean, limit = Infinity) =>
     open ? threads.slice(0, limit) : threads.filter((thread) => thread.id === selected());
   const targetProject = () => environment.currentProjectId() ?? projects()[0]?.id ?? null;
-  const folderThreads = (projectId: string) => {
-    const threads = folders().get(projectId)?.Threads ?? [];
-    return closedFolders().has(projectId)
-      ? threads.filter((thread) => thread.id === selected())
-      : threads;
-  };
-  const threadOrder = createMemo(() =>
-    [
-      ...sections().Pinned,
-      ...(grouped() ? [...folders().keys()].flatMap(folderThreads) : sections().Active),
-      ...shelf(sections().Snoozed, snoozedOpen()),
-      ...shelf(sections().Settled, settledOpen(), settledShown()),
-    ].map((thread) => thread.id),
-  );
-  navigation.setThreadOrder(threadOrder);
 
   const [query, setQuery] = createSignal("");
   const searching = () => query().trim().length > 0;
@@ -535,7 +436,7 @@ export const Sidebar = Shell.provider(() => {
               icon={scope().size === 0 ? <Check /> : <span class="menu-check" />}
               label="All projects"
               onSelect={() => {
-                setScope(new Set());
+                void environment.toggleProjectScope(null);
                 setScopeMenu(null);
               }}
             />
@@ -546,11 +447,7 @@ export const Sidebar = Shell.provider(() => {
                 <MenuItem
                   icon={scope().has(project.id) ? <Check /> : <span class="menu-check" />}
                   label={project.title}
-                  onSelect={() => {
-                    const next = new Set(scope());
-                    if (!next.delete(project.id)) next.add(project.id);
-                    setScope(next);
-                  }}
+                  onSelect={() => void environment.toggleProjectScope(project.id)}
                 />
               )}
             </For>
@@ -568,10 +465,7 @@ export const Sidebar = Shell.provider(() => {
             <MenuItem
               icon={grouped() ? <Check /> : <Folders />}
               label="Group by project"
-              onSelect={() => {
-                setGrouped(!grouped());
-                writeStored(GROUP_KEY, grouped());
-              }}
+              onSelect={() => void environment.setPreferences({ GroupByProject: !grouped() })}
             />
             <Show when={grouped()}>
               <p class="menu-heading">
@@ -584,9 +478,8 @@ export const Sidebar = Shell.provider(() => {
                     icon={projectSort() === value ? <Check /> : <span class="menu-check" />}
                     label={label}
                     onSelect={() => {
-                      if (!isProjectSort(value)) return;
-                      setProjectSort(value);
-                      writeStored(PROJECT_SORT_KEY, value);
+                      if (isProjectSort(value))
+                        void environment.setPreferences({ ProjectSort: value });
                     }}
                   />
                 )}
@@ -603,7 +496,7 @@ export const Sidebar = Shell.provider(() => {
                     icon={<Eye />}
                     label={project.title}
                     detail="Show"
-                    onSelect={() => setProjectHidden(project.id, false)}
+                    onSelect={() => void environment.setProjectHidden(project.id, false)}
                   />
                 )}
               </For>
@@ -720,7 +613,7 @@ export const Sidebar = Shell.provider(() => {
                         renaming={renamingProject() === projectId}
                         draggable={projectSort() === "manual"}
                         onDragStart={(event) => drag.begin(event, projectId)}
-                        onToggle={() => toggleFolder(projectId)}
+                        onToggle={() => void environment.toggleFolder(projectId)}
                         onMenu={(x, y) => setProjectMenu({ Id: projectId, X: x, Y: y })}
                         onRenamed={(title) => {
                           setRenamingProject(null);
@@ -762,10 +655,10 @@ export const Sidebar = Shell.provider(() => {
             <SectionHeader
               label="Snoozed"
               count={sections().Snoozed.length}
-              open={snoozedOpen()}
-              onToggle={() => setSnoozedOpen((held) => !held)}
+              open={shelves().SnoozedOpen}
+              onToggle={() => void environment.toggleShelf("Snoozed")}
             />
-            <For each={shelf(sections().Snoozed, snoozedOpen())}>
+            <For each={shelf(sections().Snoozed, shelves().SnoozedOpen)}>
               {(thread) => card(thread, "snoozed")}
             </For>
           </Show>
@@ -773,18 +666,20 @@ export const Sidebar = Shell.provider(() => {
             <SectionHeader
               label="Settled"
               count={sections().Settled.length}
-              open={settledOpen()}
-              onToggle={() => setSettledOpen((held) => !held)}
+              open={shelves().SettledOpen}
+              onToggle={() => void environment.toggleShelf("Settled")}
             />
-            <For each={shelf(sections().Settled, settledOpen(), settledShown())}>
+            <For each={shelf(sections().Settled, shelves().SettledOpen, shelves().SettledShown)}>
               {(thread) => card(thread, "settled")}
             </For>
-            <Show when={settledOpen() && sections().Settled.length > settledShown()}>
+            <Show
+              when={shelves().SettledOpen && sections().Settled.length > shelves().SettledShown}
+            >
               <li>
                 <button
                   type="button"
                   class="section-more"
-                  onClick={() => setSettledShown((held) => held + SETTLED_PAGE)}
+                  onClick={() => void environment.showMoreSettled()}
                 >
                   Show more
                 </button>
@@ -813,7 +708,7 @@ export const Sidebar = Shell.provider(() => {
             y={projectMenu()?.Y ?? 0}
             onRename={() => setRenamingProject(project.id)}
             onRemove={() => setRemovingProject(project.id)}
-            onHide={() => setProjectHidden(project.id, true)}
+            onHide={() => void environment.setProjectHidden(project.id, true)}
             onClose={() => setProjectMenu(null)}
           />
         )}

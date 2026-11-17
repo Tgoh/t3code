@@ -70,6 +70,7 @@ import {
   rememberTerminalEffect,
 } from "./Infrastructure/terminalMemory";
 import type { ITerminalStatus } from "./Infrastructure/terminalSession";
+import { type IAppearanceMode, type IColorScheme, resolveScheme } from "./colorScheme";
 import {
   compatibleRuntimeMode,
   dispatchSelection,
@@ -117,6 +118,8 @@ export interface IReplica extends IEntity {
 
 export interface ISelection extends IEntity {
   SelectedThreadId: string | null;
+  Preferences: { AppearanceMode: IAppearanceMode };
+  SystemDark: boolean;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -440,6 +443,13 @@ export function* fileSearchResult(draft: IThreadSession) {
 function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
   const selection = yield* getData(draft, "Selection");
   return selection?.SelectedThreadId === draft.ThreadId;
+}
+
+function* terminalScheme(draft: IThreadSession): ISelectorGenerator<IColorScheme> {
+  const selection = yield* getData(draft, "Selection");
+  return selection === undefined
+    ? "light"
+    : resolveScheme(selection.Preferences.AppearanceMode, selection.SystemDark);
 }
 
 function* storeDraft(draft: IThreadSession): IActionGenerator {
@@ -931,6 +941,11 @@ function* attachTerminal(draft: IThreadSession, launch: ITerminalLaunch): IActio
     WorktreePath: launch.WorktreePath,
     ProjectRoot: launch.ProjectRoot,
   });
+  yield* followColorScheme(draft, yield* select(terminalScheme));
+}
+
+export function* followColorScheme(draft: IThreadSession, scheme: IColorScheme): IActionGenerator {
+  yield* resource(draft, "Terminal/Session").setScheme(scheme);
 }
 
 export function* restoreTerminal(draft: IThreadSession): IActionGenerator {

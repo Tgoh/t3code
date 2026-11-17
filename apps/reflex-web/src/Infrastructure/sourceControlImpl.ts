@@ -12,7 +12,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { implementation } from "treflex";
 
-import { inEnvironment, LAST_EDITOR_KEY, preferredEditor } from "./commandsImpl";
+import { inEnvironment, preferredEditor } from "./commandsImpl";
 import { connectionRuntime } from "./connection";
 import { atomRuntime, runCommand } from "./sourceControl";
 import {
@@ -71,16 +71,11 @@ export const editorsImpl = implementation(editorsEffect, async (input) => {
       Id: editor.id,
       Label: editor.id === "file-manager" ? fileManagerName(navigator.platform) : editor.label,
     })),
-    Preferred: preferredEditor(ids),
+    Preferred: preferredEditor(ids, input.Stored),
   };
 });
 
 export const openWithEditorImpl = implementation(openWithEditorEffect, async (input) => {
-  try {
-    localStorage.setItem(LAST_EDITOR_KEY, JSON.stringify(input.Editor));
-  } catch {
-    // Without storage the choice lasts only for this open.
-  }
   await inEnvironment(
     input.EnvironmentId,
     request(WS_METHODS.shellOpenInEditor, { cwd: input.Cwd, editor: input.Editor as EditorId }),

@@ -79,6 +79,8 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - A resource has one `r.status` detail string, and the terminal's connection phase already uses it, so the shell process's status goes through `emit` into a transient.
 - `treflex-eslint`'s rules aren't on. `no-edit-after-write` and `no-hidden-open` need type information, which the repo's oxlint JS plugins don't provide. `no-yield-in-finally` and `no-global-open` don't, but oxlint loads a JS plugin with Node's own import, where the package's extensionless imports don't resolve, and every rule imports `@typescript-eslint/utils`, which the repo doesn't install.
 - "Do not create an entity only so that its removal closes a resource" sits against component state being a documented resource owner: `CommandOutput` mounts an empty `useComponentState` for nothing but owning its subscription.
+- Persistence is whole-runtime only: a snapshot carries the whole tree, and nothing persists one slice, such as `Local`'s preferences, across a reload. Each kind of preference was persisted its own way until it converged on a read effect at creation plus a write effect per change (`Infrastructure/preferences.ts`, `draftMemory.ts`). A persisted slice, read before the first render and written per change, would replace those effects and the pre-paint read of the colour scheme in `index.tsx`.
+- There's no clock in the model. The sidebar's snooze split reads `Local.Now`, which a minute timer writes through an app-side `clockNow` effect.
 
 ## Differences from the immutable reducer
 

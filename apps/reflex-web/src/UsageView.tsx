@@ -85,35 +85,11 @@ const PACE: Record<LimitPace, string> = {
   under: "Under pace: headroom left for the rest of the window",
 };
 
-// Stock's key and shape (apps/web/src/components/usage/usagePagePreferences.ts).
-const PREFERENCES_KEY = "t3code:usage-page-preferences:v1";
+const shownMetric = (held: string): IMetric =>
+  METRICS.find((entry) => entry.Value === held)?.Value ?? "limits";
 
-function readPreferences(): { Metric: IMetric; Days: number } {
-  try {
-    const held = JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? "{}") as {
-      metric?: unknown;
-      windowDays?: unknown;
-    };
-    return {
-      Metric: METRICS.some((entry) => entry.Value === held.metric)
-        ? (held.metric as IMetric)
-        : "limits",
-      Days: WINDOWS.some((entry) => entry.Days === held.windowDays)
-        ? (held.windowDays as number)
-        : 30,
-    };
-  } catch {
-    return { Metric: "limits", Days: 30 };
-  }
-}
-
-function writePreferences(metric: IMetric, days: number) {
-  try {
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ metric, windowDays: days }));
-  } catch {
-    // A preference that can't be saved still applies to this page.
-  }
-}
+const shownDays = (held: number): number =>
+  WINDOWS.some((entry) => entry.Days === held) ? held : 30;
 
 const metricField = (metric: "cost" | "tokens"): "costUsd" | "totalTokens" =>
   metric === "cost" ? "costUsd" : "totalTokens";
@@ -123,22 +99,19 @@ const windowInput = (days: number): IWireUsageInput =>
 
 export function UsageView() {
   const environment = Environment.use();
-  const initial = readPreferences();
-  const [metric, setMetric] = createSignal<IMetric>(initial.Metric);
-  const [days, setDays] = createSignal(initial.Days);
-  const [input, setInput] = createSignal(windowInput(initial.Days));
-  const load = () => {
-    const next = windowInput(days());
+  const metric = () => shownMetric(environment.state.Local.Preferences.Usage.Metric);
+  const days = () => shownDays(environment.state.Local.Preferences.Usage.Days);
+  const [input, setInput] = createSignal(windowInput(days()));
+  const load = (windowDays: number) => {
+    const next = windowInput(windowDays);
     setInput(next);
-    void environment.loadUsage(String(days()), next);
+    void environment.loadUsage(String(windowDays), next);
   };
-  onMount(load);
+  onMount(() => load(days()));
   const choose = (nextMetric: IMetric, nextDays: number) => {
     const daysChanged = nextDays !== days();
-    setMetric(nextMetric);
-    setDays(nextDays);
-    writePreferences(nextMetric, nextDays);
-    if (daysChanged) load();
+    void environment.setPreferences({ Usage: { Metric: nextMetric, Days: nextDays } });
+    if (daysChanged) load(nextDays);
   };
   const shown = () => environment.state.Replica.Usage;
   const merged = createMemo((): MergedUsage | null => {

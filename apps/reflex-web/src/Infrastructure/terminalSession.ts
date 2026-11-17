@@ -14,7 +14,7 @@ import { TERMINAL_PALETTES } from "@t3tools/shared/terminalOutput";
 import * as Effect from "effect/Effect";
 import type { IResourceImplementation } from "treflex";
 
-import { colorScheme, onColorSchemeChange } from "../colorScheme";
+import type { IColorScheme } from "../colorScheme";
 import { connectionRuntime } from "./connection";
 import { failureText, followLive } from "./followItems";
 
@@ -36,6 +36,7 @@ declare module "treflex" {
         ProjectRoot: string;
       };
       Message: { Status: ITerminalStatus; Error: string | null };
+      Methods: { setScheme(scheme: IColorScheme): void };
       Value: ITerminalView;
     };
   }
@@ -52,7 +53,7 @@ function nextChunk(input: string): string {
 }
 
 // The tokens are var() chains, which getPropertyValue returns unresolved and xterm can't parse.
-function terminalTheme() {
+function terminalTheme(scheme: IColorScheme) {
   const probe = document.createElement("div");
   document.body.append(probe);
   const read = (token: string) => {
@@ -76,7 +77,7 @@ function terminalTheme() {
     brightMagenta,
     brightCyan,
     brightWhite,
-  ] = TERMINAL_PALETTES[colorScheme()];
+  ] = TERMINAL_PALETTES[scheme];
   const theme = {
     background: read("--terminal-background"),
     foreground: read("--terminal-foreground"),
@@ -104,6 +105,15 @@ function terminalTheme() {
 }
 
 export const terminalSession: IResourceImplementation<"terminalSession"> = async (params, r) => {
+  // Methods register only before the first await, so a scheme that arrives while xterm loads waits here.
+  let scheme: IColorScheme = "light";
+  let applyScheme = () => {};
+  r.methods({
+    setScheme: (_ctx, next) => {
+      scheme = next;
+      applyScheme();
+    },
+  });
   const [{ Terminal }, { FitAddon }] = await Promise.all([
     import("@xterm/xterm"),
     import("@xterm/addon-fit"),
@@ -115,14 +125,13 @@ export const terminalSession: IResourceImplementation<"terminalSession"> = async
     fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono"),
     fontSize: 12,
     scrollback: 10_000,
-    theme: terminalTheme(),
+    theme: terminalTheme(scheme),
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
-  const stopFollowingScheme = onColorSchemeChange(() => {
-    terminal.options.theme = terminalTheme();
-  });
-  r.signal.addEventListener("abort", stopFollowingScheme);
+  applyScheme = () => {
+    terminal.options.theme = terminalTheme(scheme);
+  };
 
   const ids = { threadId: params.ThreadId, terminalId: params.TerminalId };
   const environmentId = EnvironmentId.make(params.EnvironmentId);

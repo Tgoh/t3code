@@ -4,7 +4,7 @@ import { createMemo, createSignal, For, type JSX, Match, onCleanup, Show, Switch
 import { Dynamic } from "solid-js/web";
 
 import { ProjectBadge, ProviderIcon } from "./brand";
-import { appearanceMode, type IAppearanceMode, setAppearanceMode } from "./colorScheme";
+import type { IAppearanceMode } from "./colorScheme";
 import Environment from "./Environment";
 import * as Icons from "./icons";
 import type { IWireArchivedShell } from "./Infrastructure/settings";
@@ -434,6 +434,7 @@ const APPEARANCE_MODES: Array<{ Mode: IAppearanceMode; Label: string }> = [
 
 // Follows the color scheme tiles in apps/web/src/components/settings/ThemeSettings.tsx.
 function ColorSchemeSection() {
+  const environment = Environment.use();
   return (
     <section class="settings-section">
       <div class="settings-section-head">
@@ -445,8 +446,8 @@ function ColorSchemeSection() {
             <button
               class="scheme-tile"
               role="radio"
-              aria-checked={appearanceMode() === entry.Mode}
-              onClick={() => setAppearanceMode(entry.Mode)}
+              aria-checked={environment.state.Local.Preferences.AppearanceMode === entry.Mode}
+              onClick={() => void environment.setAppearanceMode(entry.Mode)}
             >
               <span class={`scheme-preview ${entry.Mode}`}>
                 <span class="scheme-preview-bar" />

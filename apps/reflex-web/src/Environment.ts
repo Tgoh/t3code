@@ -51,6 +51,26 @@ import {
 } from "./Infrastructure/draftMemory";
 import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
 import { getDefaultGitWork, type IGitWork } from "./GitWork";
+import {
+  clockNowEffect,
+  type IPreferences,
+  storedEditorEffect,
+  storedPreferencesEffect,
+  storeEditorEffect,
+} from "./Infrastructure/preferences";
+import {
+  colorScheme,
+  followDevice,
+  setAppearanceMode,
+  setPreferences,
+  setProjectHidden,
+  showMoreSettled,
+  sidebarLayout,
+  toggleFolder,
+  toggleProjectScope,
+  toggleShelf,
+} from "./Preferences";
+import { type IShelves, SETTLED_PAGE } from "./sidebarLayout";
 import type { IWireClientSettings } from "./Infrastructure/settings";
 import type { IProjectFaviconTarget } from "./projectIcon";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
@@ -100,6 +120,11 @@ export interface IEnvironment extends IEntity {
     ThreadSessions: Record<string, IThreadSession>;
     View: IAddressView | null;
     ClientSettings: IWireClientSettings | null;
+    Preferences: IPreferences;
+    Shelves: IShelves;
+    /** The clock the sidebar reads, a minute at a time. */
+    Now: number;
+    SystemDark: boolean;
   };
 }
 
@@ -123,6 +148,10 @@ export function* newEnvironment(
     ThreadSessions: {},
     View: null,
     ClientSettings: null,
+    Preferences: yield* storedPreferencesEffect(),
+    Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: SETTLED_PAGE },
+    Now: yield* clockNowEffect(),
+    SystemDark: false,
   });
   return yield* entity<IEnvironment>({
     EnvironmentId: environmentId,
@@ -137,6 +166,7 @@ export function* init(draft: IEnvironment): IActionGenerator {
   yield* registerDataSource(draft, "Replica", draft.Replica);
   yield* registerDataSource(draft, "Selection", draft.Local);
   bind(draft, EnvironmentReceiver);
+  yield* followDevice(draft);
   yield* openShellStream(draft.Replica.Shell);
   yield* openResource(draft, "Project/Clones", {
     Type: "projectClones",
@@ -386,13 +416,16 @@ export function* openInEditor(
   path: string,
   projectRoot: string | null,
 ): IOpenGenerator {
-  yield* open(
+  const stored = yield* storedEditorEffect();
+  const opened = yield* open(
     openInEditorEffect({
       EnvironmentId: draft.EnvironmentId,
       Path: path,
       ProjectRoot: projectRoot,
+      Stored: stored,
     }),
   );
+  if (opened !== stored) yield* storeEditorEffect({ Editor: opened });
 }
 
 // Follows handleAddProjectForEnvironment in apps/web/src/components/CommandPalette.tsx.
@@ -573,8 +606,17 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     archivedThreadCommand,
     loadUsage,
     refreshUsage,
+    setPreferences,
+    setProjectHidden,
+    toggleFolder,
+    toggleProjectScope,
+    toggleShelf,
+    showMoreSettled,
+    setAppearanceMode,
   },
   {
+    sidebarLayout,
+    colorScheme,
     selectedOpenThread,
     selectedDraftSession,
     currentProjectId,
