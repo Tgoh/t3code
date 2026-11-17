@@ -4,7 +4,7 @@ import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } fro
 import { Check, ChevronDown, ShieldQuestion, X } from "./icons";
 import type { IApprovalDecision } from "./Infrastructure/commandEffects";
 import { Markdown } from "./Markdown";
-import OpenThread, { pendingRequest } from "./OpenThread";
+import OpenThread from "./OpenThread";
 import { type IAnswering, type IQuestion, questionProgress } from "./questions";
 import RuntimeRequest, { answerRequest, canAnswer, dismissRequest } from "./RuntimeRequest";
 import ThreadSession from "./ThreadSession";
@@ -25,7 +25,7 @@ export const PendingApproval = RuntimeRequest.provider(() => {
   const request = RuntimeRequest.use();
   const responding = useInFlight(RESPONSES, () => request.state);
   const item = createMemo(() => {
-    const held = pendingRequest(thread.state, request.state.id)?.Item;
+    const held = thread.requestItems()[request.state.id];
     return held?.type === "approval_request" ? held : null;
   });
   const options = () => {
@@ -93,7 +93,7 @@ export const UnansweredRequest = RuntimeRequest.provider(() => {
   const thread = OpenThread.use();
   const request = RuntimeRequest.use();
   const view = createMemo(() => {
-    const held = pendingRequest(thread.state, request.state.id)?.Item;
+    const held = thread.requestItems()[request.state.id];
     return held == null ? null : viewOf(held);
   });
   return (
@@ -124,7 +124,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
   const responding = useInFlight(RESPONSES, () => request.state);
   const requestId = request.state.id;
   const item = createMemo(() => {
-    const held = pendingRequest(thread.state, requestId)?.Item;
+    const held = thread.requestItems()[requestId];
     return held?.type === "user_input_request" ? held : null;
   });
   const questions = () => item()?.questions ?? [];

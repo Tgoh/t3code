@@ -14,11 +14,23 @@ import type {
   IWireProjection,
   IWireThreadEvent,
   IWireThreadItem,
+  IWireTurnItem,
 } from "../src/Infrastructure/wire";
-import { type IOpenThread, ThreadReceiver, timelineEntries, timelineIds } from "../src/OpenThread";
+import {
+  type IOpenThread,
+  pendingApprovalIds,
+  pendingOtherIds,
+  pendingQuestionIds,
+  requestItems,
+  ThreadReceiver,
+  timelineEntries,
+  timelineIds,
+} from "../src/OpenThread";
 import { getDefaultRoot, type IRoot, load, RootReceiver } from "../src/Root";
+import { compactionOffer, type IThreadSession, setDraft } from "../src/ThreadSession";
 import {
   assistantItem,
+  commandItem,
   event,
   longThread,
   message,
@@ -86,6 +98,7 @@ async function connected(projection: IWireProjection) {
       setAddressView: () => {},
       rememberTerminal: () => {},
       modelFavorites: () => [],
+      storedClientSettings: () => null,
       rememberedModels: () => ({}),
       rememberModel: () => {},
     },
@@ -109,7 +122,8 @@ async function connected(projection: IWireProjection) {
       { publisher: { Id: openId } },
     );
   await send(snapshotOf(copy(projection), 1));
-  return { runtime, send, thread };
+  const session = () => environment.Local.ThreadSessions[THREAD_ID] as IThreadSession;
+  return { runtime, send, thread, session };
 }
 
 it("per-delta cost", async () => {
@@ -230,6 +244,116 @@ it("a row-adding delta through <For>'s mapping", async () => {
     });
   }
   console.log("(a3) time per row-adding delta through <For>, ms\n" + JSON.stringify(rows, null, 1));
+});
+
+it("a keystroke while compaction is offered", async () => {
+  const claude = { instanceId: "claudeAgent", model: "claude-opus-4-7" };
+  const rows = [];
+  for (const size of SIZES) {
+    const projection = longThread(size);
+    projection.thread = {
+      ...projection.thread,
+      modelSelection: claude,
+      activeProviderThreadId: "provider-thread",
+    } as never;
+    projection.runs = projection.runs.map((held) => ({ ...held, modelSelection: claude }) as never);
+    // The clock reads 0, so this report is two hours old.
+    projection.providerTurns = [
+      {
+        id: "turn-1",
+        providerThreadId: "provider-thread",
+        tokenUsage: { usedTokens: 439_000, updatedAt: "1969-12-31T22:00:00.000Z" },
+      } as never,
+    ];
+    const { runtime, session } = await connected(projection);
+    const environment = runtime.state.Environments[0]!;
+    await runtime.dispatch(
+      EnvironmentReceiver.handle,
+      environment.$Id,
+      {
+        Type: "Server/Config",
+        Item: {
+          version: 1,
+          type: "snapshot",
+          config: {
+            settings: { providerInstances: {}, compactIdleThreads: false },
+            providers: [
+              {
+                instanceId: "claudeAgent",
+                driver: "claudeAgent",
+                slashCommands: [{ name: "compact" }],
+              },
+            ],
+            keybindings: [],
+            issues: [],
+          },
+        } as never,
+      },
+      { publisher: { Id: environment.$Id } },
+    );
+    let offered: number | null = null;
+    const dispose = createRoot((disposeRoot) => {
+      createEffect(() => {
+        offered = runtime.processSelector(compactionOffer, session);
+      });
+      return disposeRoot;
+    });
+    await Promise.resolve();
+    expect(offered).toBe(439_000);
+    const samples: number[] = [];
+    let text = "";
+    for (let index = 0; index < 100; index += 1) {
+      text += "a";
+      samples.push(await timed(() => runtime.dispatch(setDraft, session().$Id, text)));
+    }
+    dispose();
+    rows.push({ items: size, keystroke: summary(samples) });
+  }
+  console.log(
+    "(d) time per keystroke with the compaction offer shown, ms\n" + JSON.stringify(rows, null, 1),
+  );
+});
+
+it("a row-adding delta while a request is pending", async () => {
+  const rows = [];
+  for (const size of SIZES) {
+    const projection = longThread(size);
+    projection.runtimeRequests = [
+      { id: "r-0", kind: "command", status: "pending", responseCapability: { type: "live" } },
+    ] as never;
+    projection.turnItems.push({
+      ...commandItem("approval-r-0", "run-0", size),
+      type: "approval_request",
+      requestId: "r-0",
+      requestKind: "command",
+      prompt: "rm -rf build",
+    } as unknown as IWireTurnItem);
+    const { runtime, send, thread } = await connected(projection);
+    const dispose = createRoot((disposeRoot) => {
+      createEffect(() => void runtime.processSelector(pendingApprovalIds, thread));
+      createEffect(() => void runtime.processSelector(pendingQuestionIds, thread));
+      createEffect(() => void runtime.processSelector(pendingOtherIds, thread));
+      createEffect(() => void runtime.processSelector(requestItems, thread)["r-0"]);
+      return disposeRoot;
+    });
+    await Promise.resolve();
+    expect(runtime.processSelector(pendingApprovalIds, thread)).toEqual(["r-0"]);
+    const samples: number[] = [];
+    for (let index = 0; index < 50; index += 1) {
+      const item = assistantItem(`new-${index}`, "run-0", size + 1 + index, "new");
+      const next = {
+        kind: "event",
+        sequence: index + 2,
+        event: event("turn-item.updated", item),
+      } as IWireThreadItem;
+      samples.push(await timed(() => send(next)));
+    }
+    dispose();
+    rows.push({ items: size, rowAdded: summary(samples) });
+  }
+  console.log(
+    "(e) time per row-adding delta with a request pending, ms\n" + JSON.stringify(rows, null, 1),
+  );
 });
 
 it("reconnect snapshot over a populated thread", async () => {
