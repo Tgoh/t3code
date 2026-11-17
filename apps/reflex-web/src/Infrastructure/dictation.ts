@@ -25,6 +25,7 @@ import * as Schema from "effect/Schema";
 import { defineEffect, type IEffect, implementation, type IResourceImplementation } from "treflex";
 
 import { ServerError, serverFetch } from "./serverError";
+import type { Wire } from "./wire";
 import workletUrl from "./speech/pcmWorklet.ts?worker&url";
 
 export interface IDictationDraft {
@@ -98,15 +99,45 @@ async function voiceJson<T>(path: string, init: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** The server's model catalog, for Voice settings. */
-export const voiceModels = () => voiceJson<EnvironmentSpeechModels>("/api/voice/models", {});
+export type IVoiceModel = Wire<EnvironmentSpeechModels["models"][number]>;
 
-export const voiceModelCommand = (command: "download" | "select" | "cancel", modelId: string) =>
-  voiceJson<EnvironmentSpeechModels>(`/api/voice/models/${command}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ modelId }),
-  });
+interface IVoiceModelsEffect extends IEffect {
+  Type: "voiceModels";
+}
+
+/** The server's model catalog, for Voice settings. */
+export const voiceModelsEffect = defineEffect<IVoiceModelsEffect, IVoiceModel[]>("voiceModels");
+
+export const voiceModelsImpl = implementation(voiceModelsEffect, async (_effect, action) =>
+  modelList(
+    await voiceJson<EnvironmentSpeechModels>("/api/voice/models", {
+      signal: action?.signal ?? null,
+    }),
+  ),
+);
+
+interface IVoiceModelCommandEffect extends IEffect {
+  Type: "voiceModelCommand";
+  Command: "download" | "select" | "cancel";
+  ModelId: string;
+}
+
+/** Answers with the catalog after the command. A download answers once it has finished. */
+export const voiceModelCommandEffect = defineEffect<IVoiceModelCommandEffect, IVoiceModel[]>(
+  "voiceModelCommand",
+);
+
+export const voiceModelCommandImpl = implementation(voiceModelCommandEffect, async (effect) =>
+  modelList(
+    await voiceJson<EnvironmentSpeechModels>(`/api/voice/models/${effect.Command}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ modelId: effect.ModelId }),
+    }),
+  ),
+);
+
+const modelList = (catalog: EnvironmentSpeechModels) => catalog.models as IVoiceModel[];
 
 export interface IDictationHooks {
   request(): IDictationRequest | null;

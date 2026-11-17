@@ -7,6 +7,7 @@ import "./index.css";
 
 import { App } from "./App";
 import { DictationReceiver } from "./Dictation";
+import { VoiceModelsReceiver } from "./VoiceModels";
 import { EnvironmentReceiver } from "./Environment";
 import { openExternalLinksInSafari } from "./externalLinks";
 import {
@@ -54,7 +55,12 @@ import {
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
 import { delayImpl } from "./Infrastructure/delay";
-import { dictation, voiceStatusImpl } from "./Infrastructure/dictation";
+import {
+  dictation,
+  voiceModelCommandImpl,
+  voiceModelsImpl,
+  voiceStatusImpl,
+} from "./Infrastructure/dictation";
 import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
 import {
   storeDraftFilesImpl,
@@ -152,6 +158,8 @@ runtime.registerResourceType("serverConfigStream", serverConfigStream);
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerResourceType("dictation", dictation);
 runtime.registerImplementation(voiceStatusImpl);
+runtime.registerImplementation(voiceModelsImpl);
+runtime.registerImplementation(voiceModelCommandImpl);
 runtime.registerImplementation(delayImpl);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);
@@ -181,6 +189,7 @@ runtime.registerReceiver(RewindReceiver);
 runtime.registerReceiver(GitReceiver);
 runtime.registerReceiver(PreferencesReceiver);
 runtime.registerReceiver(DictationReceiver);
+runtime.registerReceiver(VoiceModelsReceiver);
 // The Environment applies the scheme once it connects; this paints the loading screen in it.
 document.documentElement.dataset.theme = resolveScheme(
   storedAppearanceMode(),
