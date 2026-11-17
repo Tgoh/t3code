@@ -187,6 +187,10 @@ A running turn deliberately doesn't follow stock, so the text on screen stays st
 
 Run everything from the repo root with `./dev-stack.ps1`. It starts the server on 13773 without its file watcher, because a watcher restart interrupts running turns, plus this client on 5734 and the stock UI on 5733, as hidden processes that outlive the terminal. `-Status` shows what's up and `-Stop` stops what it started. State and logs are in `G:\Sorted\Code\t3code-dev-home`.
 
+This client runs as a production build served by `vp preview`, not the dev server: a cold start on a phone takes about a dozen requests instead of hundreds. It has no HMR, so a change reaches it only through `./dev-stack.ps1 -Restart -Only reflex`, which builds into `t3code-dev-home\dev-stack\reflex-next` and swaps that into `apps/reflex-web/dist` only when the build succeeds. A failed build exits 1 and leaves the running client and `dist` alone; its output is in `dev-stack\reflex-build.log`.
+
+Production builds register a service worker (`src/sw.ts`, which `vite.config.ts` writes to `dist/sw.js` with the build's file list). It precaches the shell, caches hashed assets as they load, and fetches `index.html` network-first, falling back to the cached copy offline or after three seconds. It handles only those files and page loads, never `/api`, `/ws`, `/oauth`, `/.well-known`, `/mcp` or another origin. A new build is used from the next launch or reload; the new worker installs in the background and drops the old cache. A page left open on an old build reloads itself if it needs a chunk the rebuild removed. The dev server never registers it.
+
 The server looks for a built web client in `apps/web/dist` once, at startup, and `claude mcp login` needs it for the approval page. Build it with `vp build` in `apps/web`, with no `VITE_HTTP_URL` or `VITE_WS_URL` set, and restart the server if a sign-in says no static directory is configured.
 
 Tailscale Serve exposes this client at `https://my-machine.my-tailnet.ts.net:8443` (port 5734) and that built stock client at `:8444` (the server on 13773). The stock one is Tam's fallback when this client is broken, since no change here can break it; don't remove it or rebuild `apps/web/dist` from a broken checkout.
@@ -203,7 +207,9 @@ The client in the main checkout is the daily driver, so nobody edits files there
 $env:REFLEX_WEB_PORT = 5735; vp run dev
 ```
 
-Keep test clients on 5735: `localStorage` is per port, so choices such as grouping by project stay set there across worktrees. The test client works on the driver's real threads, so a send there runs a real turn. The driver changes only when the branch merges into `reflex-main`.
+Keep test clients on 5735: `localStorage` is per port, so choices such as grouping by project stay set there across worktrees. The test client works on the driver's real threads, so a send there runs a real turn. The driver changes only when the branch merges into `reflex-main` and the driver is rebuilt.
+
+To test what the driver will serve, including the service worker, build and preview on another port: `vp build`, then `vp preview --port 5747 --strictPort`. `localhost` counts as secure, so the worker registers without HTTPS. The worker outlives the server on its port, so unregister it in DevTools before running the dev server there again.
 
 Treflex is pinned to `treflex-public` commit `24aeb08` (treflex 0.1.0) by the tarballs in `vendor/`, so neither work in the reflex repo nor a new export reaches this client. To move it, clone `treflex-public` to a scratch folder, check out the new commit, run `npm ci` and `npm run release:pack`, copy `release/treflex-<version>.tgz` and `release/treflex-solid-<version>.tgz` over the ones in `vendor/`, point `package.json` at them, run `vp i`, and update this line.
 
@@ -261,6 +267,6 @@ git -C t3code remote add upstream https://github.com/pingdotgg/t3code.git
 git -C t3code remote set-url --push upstream no_push
 ```
 
-From `t3code`, run `vp i`, build the stock client with `vp build` in `apps/web`, and start the stack with `./dev-stack.ps1`.
+From `t3code`, run `vp i`, build the stock client with `vp build` in `apps/web`, and start the stack with `./dev-stack.ps1`, which builds this client as it starts it.
 
 The Claude setup lives outside the repo: copy `~/.claude/CLAUDE.md`, `G:\Sorted\Code\CLAUDE.md`, and the `commit`, `build` and `syncupstream` skills from `~/.claude/skills`.
