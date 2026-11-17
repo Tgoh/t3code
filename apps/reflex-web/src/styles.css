@@ -224,6 +224,13 @@ code {
   --composer-gap: 8px;
 }
 
+/* A phone in landscape: SHORT_TOUCH_QUERY in viewport.ts. */
+@media (pointer: coarse) and (max-height: 500px) {
+  :root {
+    --composer-gap: 4px;
+  }
+}
+
 .layout.sidebar-sheet .thread-header {
   gap: 4px;
   padding-left: calc(8px + env(safe-area-inset-left));
