@@ -25,7 +25,7 @@ import { setPreferences } from "./Preferences";
 import { storedClientSettingsEffect } from "./Infrastructure/settings";
 import { serverError } from "./Infrastructure/serverError";
 import { openView } from "./Settings";
-import { send, setDraft } from "./ThreadSession";
+import { applyTranscript } from "./ThreadSession";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -192,6 +192,14 @@ export function* dropDictation(draft: IEnvironment, threadId: string): IActionGe
   if ((yield* held(draft)).ThreadId === threadId) yield* cancelDictation(draft);
 }
 
+/** The controller emits idle after a commit; until then, the refusal's error has to outlast it. */
+export function* refuseTranscript(draft: IEnvironment, threadId: string): IActionGenerator {
+  const { Phase } = yield* held(draft);
+  if (Phase === "preparing" || Phase === "recording") return;
+  yield* fail(draft, threadId, STALE_DRAFT, "retry");
+  (yield* held(draft)).HoldError = Phase !== "idle" && Phase !== "error";
+}
+
 export function* dictation(draft: IEnvironment): ISelectorGenerator<IDictation> {
   return yield* held(draft);
 }
@@ -211,14 +219,10 @@ function* apply(draft: IEnvironment, message: IDictationMessage): IActionGenerat
   const state = yield* held(draft);
   if (message.Kind === "commit") {
     const session = draft.Local.ThreadSessions[message.ThreadId];
-    if (session === undefined || session.Draft !== message.Before) {
-      yield* fail(draft, message.ThreadId, STALE_DRAFT, "retry");
-      (yield* held(draft)).HoldError = true;
-      return;
-    }
-    yield* start(setDraft, session, message.Text);
-    if (state.SubmitMode !== null) yield* start(send, session, state.SubmitMode);
+    const mode = state.SubmitMode;
     state.SubmitMode = null;
+    if (session === undefined) yield* refuseTranscript(draft, message.ThreadId);
+    else yield* start(applyTranscript, session, message.Before, message.Text, mode);
     return;
   }
   if (message.Phase === "idle" && state.HoldError) {

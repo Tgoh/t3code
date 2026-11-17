@@ -99,6 +99,7 @@ import {
   dictation,
   dropDictation,
   openDictation,
+  refuseTranscript,
   sendAfterDictation,
   setVoiceDestination,
   startDictation,
@@ -641,6 +642,9 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   },
   *"Thread/Expired"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);
+  },
+  *"Dictation/TranscriptRefused"(draft, { ThreadId }) {
+    yield* refuseTranscript(draft, ThreadId);
   },
   *"Thread/Started"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) return;

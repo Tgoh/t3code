@@ -11,8 +11,10 @@ import {
 import { createEffect, createMemo, createRoot } from "solid-js";
 import {
   createTestRuntime,
+  defineEffect,
   EntityReplacedError,
   type IActionGenerator,
+  type IEffect,
   type IEntity,
   inFlight,
   type IRuntime,
@@ -4390,11 +4392,40 @@ describe("dictation", () => {
 
   it("refuses a transcript whose draft changed, and keeps saying so", async () => {
     const { server, state, deliver, phase } = await dictating();
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    await phase("recording");
+    await phase("transcribing");
     await server.runtime.dispatch(setDraft, server.sessionId(), "edited");
     await deliver({ Kind: "commit", ThreadId: THREAD_ID, Before: "", Text: "hello" });
     await phase("idle");
+    await settled();
     expect(server.session().Draft).toBe("edited");
     expect(state()).toMatchObject({ Phase: "error", Error: STALE_DRAFT, ErrorAction: "retry" });
+  });
+
+  it("refuses a transcript when a keystroke queued on the session lands before it", async () => {
+    const wait = defineEffect<{ Type: "Test/Wait" } & IEffect, void>("Test/Wait");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { server, state, deliver, phase } = await dictating(READY, { "Test/Wait": () => gate });
+    function* holdSession(_draft: IThreadSession): IActionGenerator {
+      yield* wait();
+    }
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    await phase("recording");
+    await phase("transcribing");
+    const holding = server.runtime.dispatch(holdSession, server.sessionId());
+    const typing = server.runtime.dispatch(setDraft, server.sessionId(), "typed");
+    await deliver({ Kind: "commit", ThreadId: THREAD_ID, Before: "", Text: "spoken" });
+    await phase("idle");
+    release();
+    await holding;
+    await typing;
+    await settled();
+    expect(server.session().Draft).toBe("typed");
+    expect(state()).toMatchObject({ Phase: "error", Error: STALE_DRAFT });
   });
 
   it("a send while recording stops it and sends once the transcript is in", async () => {

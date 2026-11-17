@@ -136,6 +136,7 @@ declare module "treflex" {
     "Thread/Started": { ThreadId: string };
     "Thread/Forked": { ThreadId: string };
     "Thread/MergedBack": { ThreadId: string };
+    "Dictation/TranscriptRefused": { ThreadId: string };
   }
   interface ITimerRegistry {
     "Rewind/Timeout": {};
@@ -586,6 +587,24 @@ export function* restoreFiles(draft: IThreadSession): IOpenGenerator {
 export function* setDraft(draft: IThreadSession, text: string): IActionGenerator {
   draft.Draft = text;
   yield* storeDraft(draft);
+}
+
+/**
+ * A dictation's transcript, the whole draft made against `before`. The check and the write are
+ * one action, so no write queued on the session can land between them.
+ */
+export function* applyTranscript(
+  draft: IThreadSession,
+  before: string,
+  text: string,
+  mode: IDispatchMode | null,
+): IActionGenerator {
+  if (draft.Draft !== before) {
+    yield* publishToNearest(draft, "Dictation/TranscriptRefused", { ThreadId: draft.ThreadId });
+    return;
+  }
+  yield* setDraft(draft, text);
+  if (mode !== null) yield* start(send, draft, mode);
 }
 
 /** Holds the pick for the next turn, and on a started thread's own provider saves it at once. */
