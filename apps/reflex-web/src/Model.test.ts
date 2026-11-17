@@ -1280,6 +1280,18 @@ describe("the sidebar", () => {
     expect(await rowOf("task")).toBe("parent");
     expect(await rowOf("orphan-task")).toBe("orphan-task");
     expect(await rowOf("orphan")).toBe("orphan");
+    // The shell omits an idle subagent, so its row comes from the open thread.
+    expect(await rowOf(THREAD_ID)).toBe(THREAD_ID);
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          thread: { ...emptyProjection().thread, ...under("subagent", "subagent") } as never,
+        },
+        1,
+      ),
+    );
+    expect(await rowOf(THREAD_ID)).toBe("parent");
   });
 
   it("lists top-level threads and leaves subagents out, live", async () => {

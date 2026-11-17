@@ -259,7 +259,14 @@ export function* sidebarRowThreadId(draft: IShell): ISelectorGenerator<string | 
   const selected = yield* selectedThreadId(draft);
   if (selected === null) return null;
   const environmentId = draft.EnvironmentId;
-  const threads = Object.values(draft.Threads).map((thread) => ({
+  const rows: Array<Pick<IWireThreadShell, "id" | "lineage" | "delegatedFrom" | "archivedAt">> =
+    Object.values(draft.Threads);
+  // The shell omits idle subagents, so an open one is known only from its own thread.
+  if (draft.Threads[selected] === undefined) {
+    const open = (yield* getData(draft, "Replica"))?.OpenThreads[selected]?.Thread;
+    if (open != null) rows.push(open);
+  }
+  const threads = rows.map((thread) => ({
     id: thread.id,
     environmentId,
     lineage: thread.lineage,
