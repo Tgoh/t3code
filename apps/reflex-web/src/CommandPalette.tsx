@@ -12,9 +12,9 @@ import {
   paletteRows,
   rootGroups,
 } from "./paletteRanking";
-import { stepHighlight } from "./addProjectPalette";
 import { ProjectBadge, ProviderIcon } from "./brand";
 import Environment from "./Environment";
+import { arrowStep, stepHighlight } from "./listNavigation";
 import { Highlighted } from "./Highlighted";
 import { Folder, FolderGit2 } from "./icons";
 import { STATUS_LABEL } from "./ThreadCard";
@@ -295,12 +295,11 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
     } else if (event.key === "Backspace" && query() === "" && submenu() !== null) {
       event.preventDefault();
       back();
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    } else if (arrowStep(event.key) !== null) {
       event.preventDefault();
+      const step = arrowStep(event.key)!;
       if (rows().length === 0) return;
-      setHighlight(
-        (held) => stepHighlight(held, rows().length, event.key === "ArrowDown" ? 1 : -1) ?? 0,
-      );
+      setHighlight((held) => stepHighlight(held, rows().length, step) ?? 0);
     } else if (event.key === "Enter") {
       event.preventDefault();
       choose(rows()[highlight()]);

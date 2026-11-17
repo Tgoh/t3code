@@ -1,15 +1,6 @@
 import { selectableProviderOptionChoices } from "@t3tools/client-runtime/model-traits";
-import {
-  type Component,
-  createMemo,
-  createSignal,
-  For,
-  type JSX,
-  onCleanup,
-  onMount,
-  Show,
-} from "solid-js";
-import { Dynamic, Portal } from "solid-js/web";
+import { type Component, createMemo, createSignal, For, type JSX, onMount, Show } from "solid-js";
+import { Dynamic } from "solid-js/web";
 
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
@@ -27,6 +18,8 @@ import {
   Zap,
 } from "./icons";
 import type { IWireRuntimeMode } from "./Infrastructure/commandEffects";
+import { arrowStep, focusStep } from "./listNavigation";
+import { Popup } from "./Menu";
 import {
   FAVORITES_TAB,
   type IBooleanDescriptor,
@@ -86,54 +79,29 @@ function Anchored(props: {
   onClose: () => void;
   children: JSX.Element;
 }) {
-  const [element, setElement] = createSignal<HTMLDivElement>();
-  onMount(() => {
-    const popup = element();
-    if (popup === undefined) return;
-    const place = () => {
-      const rect = props.anchor.getBoundingClientRect();
-      const width = popup.offsetWidth;
-      const left = props.align === "start" ? rect.left : rect.right - width;
-      popup.style.left = `${Math.max(MARGIN, Math.min(left, window.innerWidth - width - MARGIN))}px`;
-      popup.style.bottom = `${window.innerHeight - rect.top + GAP}px`;
-      popup.style.maxHeight = `${rect.top - GAP - MARGIN}px`;
-    };
-    place();
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Element;
-      // A popup opened from this one portals outside it, so it counts as inside.
-      if (target.closest("[data-popup]") !== null || props.anchor.contains(target)) return;
-      props.onClose();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      const popups = document.querySelectorAll("[data-popup]");
-      if (popups[popups.length - 1] !== popup) return;
-      event.preventDefault();
-      props.onClose();
-      props.anchor.focus();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", place);
-    onCleanup(() => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", place);
-    });
-  });
+  const place = (popup: HTMLElement) => {
+    const rect = props.anchor.getBoundingClientRect();
+    const width = popup.offsetWidth;
+    const left = props.align === "start" ? rect.left : rect.right - width;
+    popup.style.left = `${Math.max(MARGIN, Math.min(left, window.innerWidth - width - MARGIN))}px`;
+    popup.style.bottom = `${window.innerHeight - rect.top + GAP}px`;
+    popup.style.maxHeight = `${rect.top - GAP - MARGIN}px`;
+  };
   return (
-    <Portal>
-      <div
-        class={`composer-popup ${props.class}`}
-        role="dialog"
-        aria-label={props.label}
-        data-popup
-        ref={setElement}
-      >
-        {props.children}
-      </div>
-    </Portal>
+    <Popup
+      portal
+      role="dialog"
+      class={`composer-popup ${props.class}`}
+      label={props.label}
+      anchor={props.anchor}
+      place={place}
+      onClose={(reason) => {
+        props.onClose();
+        if (reason === "escape") props.anchor.focus();
+      }}
+    >
+      {props.children}
+    </Popup>
   );
 }
 
@@ -459,16 +427,9 @@ function PickerContent(props: { traits: ITraits | null }) {
             search()?.focus();
             return;
           }
-          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-          const buttons = railButtons();
-          const index = buttons.findIndex((button) => button === document.activeElement);
-          const next =
-            buttons[
-              (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length
-            ];
-          if (next === undefined) return;
-          event.preventDefault();
-          next.focus();
+          const step = arrowStep(event.key);
+          if (step === null) return;
+          if (focusStep(railButtons(), step, "wrap") !== undefined) event.preventDefault();
         }}
       >
         <button
@@ -529,9 +490,9 @@ function PickerContent(props: { traits: ITraits | null }) {
               ) {
                 event.preventDefault();
                 focusRail();
-              } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              } else if (arrowStep(event.key) !== null) {
                 event.preventDefault();
-                moveHighlight(event.key === "ArrowDown" ? 1 : -1);
+                moveHighlight(arrowStep(event.key)!);
               } else if (event.key === "Enter") {
                 event.preventDefault();
                 chooseRow(highlight());
@@ -662,16 +623,14 @@ function moveBetweenRows(event: KeyboardEvent & { currentTarget: HTMLElement }) 
     event.preventDefault();
     return;
   }
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const step = arrowStep(event.key);
+  if (step === null) return;
   const rows = Array.from(
     event.currentTarget.querySelectorAll<HTMLElement>("[data-effort-row]:not(:disabled)"),
   );
-  const index = rows.findIndex((row) => row === document.activeElement);
-  const next =
-    rows[Math.min(rows.length - 1, Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1)))];
+  const next = focusStep(rows, step, "clamp");
   if (next === undefined) return;
   event.preventDefault();
-  next.focus();
   next.scrollIntoView({ block: "nearest" });
 }
 

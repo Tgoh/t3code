@@ -8,7 +8,6 @@ import {
   menuTrigger,
   skillItems,
   slashItems,
-  stepHighlight,
 } from "./composerMenu";
 
 const skill = (name: string, extra: Partial<ServerProviderSkill> = {}) =>
@@ -92,11 +91,5 @@ describe("inserting a pick", () => {
     });
     const slash = menuTrigger("/re", 3) as IMenuTrigger;
     expect(applyMenuItem("/re", slash, "/review ")).toEqual({ Text: "/review ", Cursor: 8 });
-  });
-
-  it("wraps the highlight at both ends", () => {
-    expect(stepHighlight(2, 3, 1)).toBe(0);
-    expect(stepHighlight(0, 3, -1)).toBe(2);
-    expect(stepHighlight(0, 0, 1)).toBe(0);
   });
 });

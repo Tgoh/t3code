@@ -1,10 +1,10 @@
 import { X } from "./icons";
+import { Modal } from "./Modal";
 
 export function ImageDialog(props: { src: string; alt: string; onClose: () => void }) {
   return (
-    <dialog
+    <Modal
       class="image-dialog"
-      ref={(dialog) => queueMicrotask(() => dialog.showModal())}
       onClose={() => props.onClose()}
       onClick={(event) => event.currentTarget.close()}
     >
@@ -12,6 +12,6 @@ export function ImageDialog(props: { src: string; alt: string; onClose: () => vo
       <button class="icon-button image-dialog-close" aria-label="Close preview">
         <X />
       </button>
-    </dialog>
+    </Modal>
   );
 }

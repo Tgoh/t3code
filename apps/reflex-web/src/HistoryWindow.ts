@@ -8,6 +8,7 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
+import { errorText } from "./errorText";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type { IWireHistoryPage } from "./Infrastructure/wire";
 
@@ -42,7 +43,7 @@ export function* loadEarlier(draft: IHistoryWindow): IActionGenerator {
       cursor = page.nextCursor;
     }
   } catch (error) {
-    draft.Error = error instanceof Error ? error.message : String(error);
+    draft.Error = errorText(error);
   }
 }
 leading(loadEarlier);

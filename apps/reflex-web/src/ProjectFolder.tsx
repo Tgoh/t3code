@@ -20,6 +20,7 @@ import {
 import type { IProjectCommand } from "./Infrastructure/commandEffects";
 import type { IWireProject } from "./Infrastructure/wire";
 import { MenuItem, Popup } from "./Menu";
+import { Modal } from "./Modal";
 import Shell, { type IProjectFolder, isBusy, sidebarStatus } from "./Shell";
 import { RenameInput } from "./ThreadCard";
 
@@ -122,12 +123,7 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
     else setFailure(`Failed to remove "${props.project.title}": ${error}`);
   };
   return (
-    <dialog
-      class="confirm-dialog"
-      aria-labelledby="remove-project-title"
-      ref={(dialog) => queueMicrotask(() => dialog.showModal())}
-      onClose={props.onClose}
-    >
+    <Modal class="confirm-dialog" aria-labelledby="remove-project-title" onClose={props.onClose}>
       <div class="confirm-header">
         <h2 id="remove-project-title" class="confirm-title">
           {copy().Title}
@@ -147,7 +143,7 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
           Confirm
         </button>
       </div>
-    </dialog>
+    </Modal>
   );
 }
 

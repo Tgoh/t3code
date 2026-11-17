@@ -254,9 +254,3 @@ export const MENU_EMPTY: Record<IMenuTrigger["kind"], string> = {
   "slash-command": "No matching command.",
   skill: "No skills found. Try / to browse provider commands.",
 };
-
-/** The highlight after an arrow key, wrapping at both ends. */
-export function stepHighlight(index: number, count: number, direction: 1 | -1): number {
-  if (count === 0) return 0;
-  return (index + direction + count) % count;
-}

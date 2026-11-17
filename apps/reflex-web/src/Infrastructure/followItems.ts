@@ -7,6 +7,7 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
+import { errorText } from "../errorText";
 import { connectionRuntime } from "./connection";
 
 interface ILiveSurface {
@@ -19,8 +20,7 @@ interface IStreamSurface<Item> extends ILiveSurface {
 }
 
 export function failureText(cause: Cause.Cause<unknown>): string {
-  const failure = Cause.squash(cause);
-  return failure instanceof Error ? failure.message : String(failure);
+  return errorText(Cause.squash(cause));
 }
 
 export function followLive<Item, E, EE>(

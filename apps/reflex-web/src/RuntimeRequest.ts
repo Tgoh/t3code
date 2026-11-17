@@ -9,6 +9,7 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
+import { errorText } from "./errorText";
 import {
   type IApprovalDecision,
   type IRespondRequest,
@@ -50,7 +51,7 @@ function* respond(
       ),
     );
   } catch (error) {
-    (yield* outcome(draft)).Error = error instanceof Error ? error.message : String(error);
+    (yield* outcome(draft)).Error = errorText(error);
   }
 }
 

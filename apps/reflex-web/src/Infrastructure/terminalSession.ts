@@ -15,6 +15,7 @@ import * as Effect from "effect/Effect";
 import type { IResourceImplementation } from "treflex";
 
 import type { IColorScheme } from "../colorScheme";
+import { errorText } from "../errorText";
 import { connectionRuntime } from "./connection";
 import { failureText, followLive } from "./followItems";
 
@@ -170,7 +171,7 @@ export const terminalSession: IResourceImplementation<"terminalSession"> = async
       await sendNext().catch((error: unknown) => {
         void r.emit({
           Status: status,
-          Error: error instanceof Error ? error.message : String(error),
+          Error: errorText(error),
         });
       });
     }

@@ -1,4 +1,7 @@
 import { createSignal, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { Portal } from "solid-js/web";
+
+import { type ICloseReason, useOverlay } from "./overlays";
 
 export function MenuItem(props: {
   icon: JSX.Element;
@@ -24,36 +27,61 @@ export function MenuItem(props: {
   );
 }
 
+const MARGIN = 8;
+
+/** Places a popup at a point, kept inside the window. */
+function placeAt(popup: HTMLElement, x: number, y: number) {
+  popup.style.left = `${Math.min(x, window.innerWidth - popup.offsetWidth - MARGIN)}px`;
+  popup.style.top = `${Math.max(MARGIN, Math.min(y, window.innerHeight - popup.offsetHeight - MARGIN))}px`;
+}
+
+/**
+ * A menu or popover on the overlay stack, which closes it on Escape when it's on top and on a
+ * press outside it and its anchor.
+ */
 export function Popup(props: {
-  x: number;
-  y: number;
   label: string;
-  onClose: () => void;
+  onClose: (reason: ICloseReason) => void;
   children: JSX.Element;
+  /** Opens at this point, as a context menu does. */
+  x?: number;
+  y?: number;
+  /** Places it on mount and on every resize, for a popup that follows its anchor. */
+  place?: (popup: HTMLElement) => void;
+  anchor?: HTMLElement;
+  class?: string;
+  role?: "menu" | "dialog";
+  portal?: boolean;
 }) {
-  const [menuElement, setMenuElement] = createSignal<HTMLDivElement>();
-  onMount(() => {
-    const menu = menuElement();
-    if (menu === undefined) return;
-    const margin = 8;
-    menu.style.left = `${Math.min(props.x, window.innerWidth - menu.offsetWidth - margin)}px`;
-    menu.style.top = `${Math.max(margin, Math.min(props.y, window.innerHeight - menu.offsetHeight - margin))}px`;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!menu.contains(event.target as Node)) props.onClose();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    onCleanup(() => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-    });
+  const [element, setElement] = createSignal<HTMLDivElement>();
+  useOverlay({
+    close: (reason) => props.onClose(reason),
+    contains: (node) => element()?.contains(node) === true || props.anchor?.contains(node) === true,
   });
-  return (
-    <div class="thread-menu" role="menu" aria-label={props.label} ref={setMenuElement}>
+  onMount(() => {
+    const popup = element();
+    if (popup === undefined) return;
+    if (props.x !== undefined && props.y !== undefined) placeAt(popup, props.x, props.y);
+    const place = props.place;
+    if (place === undefined) return;
+    const replace = () => place(popup);
+    replace();
+    window.addEventListener("resize", replace);
+    onCleanup(() => window.removeEventListener("resize", replace));
+  });
+  const body = () => (
+    <div
+      class={props.class ?? "thread-menu"}
+      role={props.role ?? "menu"}
+      aria-label={props.label}
+      ref={setElement}
+    >
       {props.children}
     </div>
+  );
+  return (
+    <Show when={props.portal} fallback={body()}>
+      <Portal>{body()}</Portal>
+    </Show>
   );
 }

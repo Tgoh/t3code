@@ -47,14 +47,6 @@ export function filterSources(
   );
 }
 
-// Moves the highlight through `count` rows, wrapping at the ends. With nothing highlighted,
-// down starts at the first row and up at the last.
-export function stepHighlight(current: number | null, count: number, delta: 1 | -1): number | null {
-  if (count === 0) return null;
-  if (current === null) return delta === 1 ? 0 : count - 1;
-  return (current + delta + count) % count;
-}
-
 // Follows willCreateProjectPath in apps/web/src/components/CommandPalette.tsx.
 export function willCreateFolder(input: {
   query: string;

@@ -88,6 +88,7 @@ import type {
   IWireUsageSummary,
 } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
+import { errorText } from "./errorText";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -157,6 +158,15 @@ const expandedRows = (owner: IThreadSession) =>
 const unwrappedCode = (owner: IThreadSession) =>
   transient(owner, "Timeline/Unwrapped", { Blocks: {} as Record<string, true> });
 
+export interface IDetailsPanel {
+  /** Shown pinned beside the chat while the card fits there. */
+  Open: boolean;
+  /** Shown as a popover under its toggle while the card doesn't fit. */
+  Popover: boolean;
+  /** Whether the thread view has room to pin the card, as its layout last measured. */
+  Fits: boolean;
+}
+
 export interface IThreadSession extends IEntity {
   EnvironmentId: string;
   ThreadId: string;
@@ -174,7 +184,7 @@ export interface IThreadSession extends IEntity {
   QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
   QuestionIndex: Record<string, number>;
   QuestionNotice?: string;
-  Panels: { Diff: IDiffPanel; Details: { Open: boolean }; Launcher: { Open: boolean } };
+  Panels: { Diff: IDiffPanel; Details: IDetailsPanel; Launcher: { Open: boolean } };
   Terminal: ITerminalPanel;
   Git: IGitWork;
 }
@@ -197,15 +207,12 @@ export function getDefaultThreadSession(
     Panels: {
       Diff: { Open: false, Scope: "turn", ToTurnCount: null, Text: null },
       // Follows DEFAULT_THREAD_PANEL_VISIBILITY in apps/web/src/rightPanelStore.ts.
-      Details: { Open: true },
+      Details: { Open: true, Popover: false, Fits: false },
       Launcher: { Open: false },
     },
     Terminal: { Open: false, TerminalId: DEFAULT_TERMINAL_ID },
   };
 }
-
-const errorText = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 export function* effectiveModel(
   draft: IThreadSession,
@@ -914,8 +921,19 @@ export function* closeDiff(draft: IThreadSession): IActionGenerator {
   delete panel.Error;
 }
 
+/** Pins or unpins the card where it fits, else opens or closes it as a popover. */
 export function* toggleDetails(draft: IThreadSession): IActionGenerator {
-  draft.Panels.Details.Open = !draft.Panels.Details.Open;
+  const details = draft.Panels.Details;
+  if (details.Fits) details.Open = !details.Open;
+  else details.Popover = !details.Popover;
+}
+
+export function* closeDetailsPopover(draft: IThreadSession): IActionGenerator {
+  draft.Panels.Details.Popover = false;
+}
+
+export function* fitDetails(draft: IThreadSession, fits: boolean): IActionGenerator {
+  draft.Panels.Details.Fits = fits;
 }
 
 /** The header's right-panel toggle: closes whichever surface is open, or shows the launcher. */
@@ -929,6 +947,16 @@ export function* toggleRightPanel(draft: IThreadSession): IActionGenerator {
 
 export function* closeLauncher(draft: IThreadSession): IActionGenerator {
   draft.Panels.Launcher.Open = false;
+}
+
+export function* closeRightPanel(draft: IThreadSession): IActionGenerator {
+  if (draft.Panels.Diff.Open) yield* closeDiff(draft);
+  else draft.Panels.Launcher.Open = false;
+}
+
+export function* toggleTerminal(draft: IThreadSession): IActionGenerator {
+  if (draft.Terminal.Open) yield* closeTerminal(draft);
+  else yield* openTerminal(draft);
 }
 
 function* attachTerminal(draft: IThreadSession, launch: ITerminalLaunch): IActionGenerator {
@@ -1062,10 +1090,14 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     openDiff,
     closeDiff,
     toggleDetails,
+    closeDetailsPopover,
+    fitDetails,
     toggleRightPanel,
+    closeRightPanel,
     closeLauncher,
     openTerminal,
     closeTerminal,
+    toggleTerminal,
     endTerminal,
   },
   {

@@ -4,7 +4,6 @@ import {
   addProjectSources,
   browseSubmitLabel,
   filterSources,
-  stepHighlight,
   willCreateFolder,
 } from "./addProjectPalette";
 
@@ -21,24 +20,6 @@ describe("add project sources", () => {
     expect(filterSources(sources, "fold").map((source) => source.Id)).toEqual(["local"]);
     expect(filterSources(sources, "repo").map((source) => source.Id)).toEqual(["new", "url"]);
     expect(filterSources(sources, "nothing")).toEqual([]);
-  });
-});
-
-describe("highlight steps", () => {
-  it("start at an end when nothing is highlighted", () => {
-    expect(stepHighlight(null, 3, 1)).toBe(0);
-    expect(stepHighlight(null, 3, -1)).toBe(2);
-  });
-
-  it("wrap at both ends", () => {
-    expect(stepHighlight(2, 3, 1)).toBe(0);
-    expect(stepHighlight(0, 3, -1)).toBe(2);
-    expect(stepHighlight(1, 3, 1)).toBe(2);
-  });
-
-  it("have nowhere to go in an empty list", () => {
-    expect(stepHighlight(null, 0, 1)).toBeNull();
-    expect(stepHighlight(4, 0, -1)).toBeNull();
   });
 });
 

@@ -18,9 +18,6 @@ export interface IShortcutContext {
 
 const BASE_CONTEXT = { isWeb: true, isDesktop: false };
 
-/** A panel shortcut for the open thread's view, which cancels the event when it handled it. */
-export const THREAD_SHORTCUT_EVENT = "reflex-thread-shortcut";
-
 function evaluateWhen(node: KeybindingWhenNode, context: Record<string, boolean>): boolean {
   switch (node.type) {
     case "identifier":

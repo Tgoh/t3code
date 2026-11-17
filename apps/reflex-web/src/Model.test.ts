@@ -1,5 +1,5 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
-import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import type { KeybindingCommand, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 import { createEffect, createMemo, createRoot } from "solid-js";
 import {
   createTestRuntime,
@@ -19,6 +19,7 @@ import {
   newProject,
   newThread,
   openThread,
+  panelShortcuts,
   projectCommand,
   removeProject,
   selectThread,
@@ -121,6 +122,7 @@ import {
   effectiveRuntimeMode,
   ending,
   endTerminal,
+  fitDetails,
   type IThreadSession,
   openDiff,
   openTerminal,
@@ -157,6 +159,7 @@ import {
   THREAD_ID,
 } from "./testing/threadFixture";
 import { orderFolders } from "./projectOrder";
+import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
 
 const ENV = "env-1";
@@ -3072,6 +3075,46 @@ describe("diffs", () => {
     await server.runtime.dispatch(toggleRightPanel, server.sessionId());
     expect(panels().Diff).toMatchObject({ Open: false, Text: null });
     expect(panels().Launcher.Open).toBe(false);
+  });
+
+  it("runs the panel shortcuts on the shown thread's session, toggling details by fit", async () => {
+    const server = await connect();
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/repo" }],
+        threads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.open();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    const shown = () => server.runtime.processSelector(panelShortcuts, server.environment);
+    const run = async (command: KeybindingCommand) => {
+      const applied = runPanelShortcut(command, shown(), (action, target, ...args) =>
+        server.runtime.dispatch(action, target, ...args),
+      );
+      await settled();
+      return applied;
+    };
+    const panels = () => server.session().Panels;
+    expect(shown()?.SessionId).toBe(server.sessionId());
+
+    expect(await run("rightPanel.toggle")).toBe(true);
+    expect(panels().Launcher.Open).toBe(true);
+    expect(await run("diff.toggle")).toBe(false);
+
+    expect(await run("threadPanel.toggle")).toBe(true);
+    expect(panels().Details).toMatchObject({ Open: true, Popover: true });
+    await server.runtime.dispatch(fitDetails, server.sessionId(), true);
+    expect(await run("threadPanel.toggle")).toBe(true);
+    expect(panels().Details).toMatchObject({ Open: false, Popover: true });
+
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "general" });
+    expect(shown()).toBeNull();
+    expect(await run("rightPanel.toggle")).toBe(false);
+    expect(panels().Launcher.Open).toBe(true);
   });
 
   it("takes a file change's counts from its run's checkpoint when the item has none", async () => {

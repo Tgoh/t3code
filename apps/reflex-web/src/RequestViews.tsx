@@ -97,7 +97,7 @@ export const UnansweredRequest = RuntimeRequest.provider(() => {
 });
 
 const SHORTCUT_BLOCKERS =
-  'select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [aria-modal="true"], [role="menu"], [role="combobox"], [data-popup]';
+  'select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [aria-modal="true"], [role="menu"], [role="combobox"]';
 
 // Follows ComposerPendingUserInputCard in apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
 // and the question callbacks in apps/web/src/components/chat/usePendingThreadRequests.ts.

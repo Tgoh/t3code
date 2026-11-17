@@ -40,10 +40,11 @@ import {
   browseSubmitLabel,
   filterSources,
   type IAddProjectSourceId,
-  stepHighlight,
   willCreateFolder,
 } from "./addProjectPalette";
 import Environment from "./Environment";
+import { errorText } from "./errorText";
+import { arrowStep, stepHighlight } from "./listNavigation";
 import { ArrowLeft, CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
 import {
   addProjectSettingsEffect,
@@ -51,8 +52,6 @@ import {
   type IAddProjectSettings,
   type IFolderListing,
 } from "./Infrastructure/commandEffects";
-
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const UNKNOWN_SETTINGS: IAddProjectSettings = {
   BaseDirectory: "",
@@ -341,10 +340,11 @@ export function AddProjectPalette(props: { onClose: () => void }) {
       back();
       return;
     }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    const step = arrowStep(event.key);
+    if (step !== null) {
       if (rowCount() === 0) return;
       event.preventDefault();
-      setHighlight((held) => stepHighlight(held, rowCount(), event.key === "ArrowDown" ? 1 : -1));
+      setHighlight((held) => stepHighlight(held, rowCount(), step));
       return;
     }
     if (event.key === "Enter") {

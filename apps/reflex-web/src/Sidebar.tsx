@@ -31,6 +31,7 @@ import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder"
 import { createProjectDrag } from "./projectDrag";
 import { isProjectSort, PROJECT_SORT_LABELS } from "./projectOrder";
 import Root from "./Root";
+import { arrowStep, stepHighlight } from "./listNavigation";
 import { MenuItem, Popup } from "./Menu";
 import Shell, { isBusy, sidebarStatus } from "./Shell";
 import { SidebarFooter } from "./SidebarFooter";
@@ -248,10 +249,10 @@ export const Sidebar = Shell.provider(() => {
     }
     const count = results().length;
     if (count === 0) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    const step = arrowStep(event.key);
+    if (step !== null) {
       event.preventDefault();
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      const next = results()[(highlightIndex() + step + count) % count]!;
+      const next = results()[stepHighlight(highlightIndex(), count, step)!]!;
       setHighlightId(next.Thread.id);
       document.getElementById(searchResultId(next.Thread.id))?.scrollIntoView({ block: "nearest" });
     } else if (event.key === "Enter") {

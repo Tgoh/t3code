@@ -1,6 +1,6 @@
 import type { KeybindingCommand } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
-import { useResource } from "treflex-solid";
+import { useDispatch, useResource } from "treflex-solid";
 import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 
 import { AddProjectPalette } from "./AddProject";
@@ -8,13 +8,7 @@ import { ProjectBadge } from "./brand";
 import { CommandPalette } from "./CommandPalette";
 import { Composer, FileDropSection } from "./Composer";
 import Environment from "./Environment";
-import {
-  adjacentThread,
-  isEditable,
-  resolveShortcutCommand,
-  shortcutLabel,
-  THREAD_SHORTCUT_EVENT,
-} from "./keybindings";
+import { adjacentThread, isEditable, resolveShortcutCommand, shortcutLabel } from "./keybindings";
 import {
   COMPOSER_SELECTOR,
   type INavigation,
@@ -22,16 +16,19 @@ import {
   NavigationContext,
   SEARCH_SELECTOR,
 } from "./navigation";
+import { createOverlayStack, OverlayContext } from "./overlays";
 import Root from "./Root";
 import { SettingsView } from "./SettingsView";
+import { createKeyDispatcher, runPanelShortcut } from "./shortcuts";
 import { Sidebar, SidebarToggle } from "./Sidebar";
-import ThreadSession from "./ThreadSession";
+import ThreadSession, { closeRightPanel } from "./ThreadSession";
 import { ThreadView } from "./ThreadView";
 import { TooltipHost } from "./tooltip";
 import { UsageView } from "./UsageView";
 import {
   createMediaQuery,
   createSidebarSheet,
+  PANEL_SHEET_QUERY,
   SIDEBAR_SHEET_QUERY,
   SidebarSheetContext,
   trackVisualViewport,
@@ -81,6 +78,7 @@ const EnvironmentView = Environment.provider(() => {
   const keybindingsResource = useResource(environment.state, "Server/Keybindings");
   const keybindings = () => keybindingsResource.value() ?? DEFAULT_RESOLVED_KEYBINDINGS;
   const platform = navigator.platform;
+  const dispatch = useDispatch();
   const [palette, setPalette] = createSignal<IPaletteView | null>(null);
   // The on-screen keyboard would cover a phone's thread, so the sheet layout leaves focus alone.
   const focusComposer = () => {
@@ -143,44 +141,47 @@ const EnvironmentView = Environment.provider(() => {
       case "usage.open":
         void environment.openView({ Kind: "usage" });
         return true;
-      case "threadPanel.toggle":
-      case "terminal.toggle":
-      case "rightPanel.toggle":
-      case "diff.toggle": {
-        const handed = new CustomEvent<KeybindingCommand>(THREAD_SHORTCUT_EVENT, {
-          detail: command,
-          cancelable: true,
-        });
-        return !window.dispatchEvent(handed);
-      }
       default:
-        return false;
+        return runPanelShortcut(command, environment.panelShortcuts(), dispatch);
     }
   };
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && sidebar.open()) {
+  const overlays = createOverlayStack();
+  const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
+  const keys = createKeyDispatcher({
+    overlays,
+    paletteOpen: () => palette() !== null,
+    resolve: (event) =>
+      resolveShortcutCommand(
+        event,
+        keybindings(),
+        {
+          terminalFocus:
+            event.target instanceof Element && event.target.closest(".terminal-drawer") !== null,
+          editableFocus: isEditable(event.target),
+        },
+        platform,
+      ),
+    run: runCommand,
+    closeSheet: () => {
+      const panels = environment.panelShortcuts();
+      if (panelSheet() && panels?.RightPanelOpen === true) {
+        void dispatch(closeRightPanel, panels.SessionId);
+        return true;
+      }
+      if (!sidebar.open()) return false;
       sidebar.setOpen(false);
-      return;
-    }
-    if (event.defaultPrevented || event.repeat) return;
-    const command = resolveShortcutCommand(
-      event,
-      keybindings(),
-      {
-        terminalFocus:
-          event.target instanceof Element && event.target.closest(".terminal-drawer") !== null,
-        editableFocus: isEditable(event.target),
-      },
-      platform,
-    );
-    if (command === null) return;
-    if (palette() !== null && command !== "commandPalette.toggle") return;
-    if (!runCommand(command)) return;
-    event.preventDefault();
-    event.stopPropagation();
+      return true;
+    },
+  });
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.target instanceof Node) overlays.press(event.target);
   };
-  document.addEventListener("keydown", onKeyDown);
-  onCleanup(() => document.removeEventListener("keydown", onKeyDown));
+  window.addEventListener("keydown", keys.onKeyDown);
+  document.addEventListener("pointerdown", onPointerDown, true);
+  onCleanup(() => {
+    window.removeEventListener("keydown", keys.onKeyDown);
+    document.removeEventListener("pointerdown", onPointerDown, true);
+  });
   const navigation: INavigation = {
     keybindings,
     shortcut: (command) => shortcutLabel(keybindings(), command, platform),
@@ -189,6 +190,7 @@ const EnvironmentView = Environment.provider(() => {
     goToThread,
     focusComposer,
     focusSearch,
+    takeLetters: keys.takeLetters,
   };
   return (
     <div
@@ -200,23 +202,25 @@ const EnvironmentView = Environment.provider(() => {
       }}
     >
       <SidebarSheetContext.Provider value={sidebar}>
-        <NavigationContext.Provider value={navigation}>
-          <Sidebar state={environment.state.Replica.Shell} />
-          <Show when={sidebar.open()}>
-            <div
-              class="sidebar-backdrop"
-              aria-hidden="true"
-              onClick={() => sidebar.setOpen(false)}
-            />
-          </Show>
-          <EnvironmentMain />
-          <Show when={palette() === "add-project"}>
-            <AddProjectPalette onClose={() => setPalette(null)} />
-          </Show>
-          <Show when={palette() === "add-project" ? null : palette()} keyed>
-            {(view) => <CommandPalette state={environment.state.Replica.Shell} view={view} />}
-          </Show>
-        </NavigationContext.Provider>
+        <OverlayContext.Provider value={overlays}>
+          <NavigationContext.Provider value={navigation}>
+            <Sidebar state={environment.state.Replica.Shell} />
+            <Show when={sidebar.open()}>
+              <div
+                class="sidebar-backdrop"
+                aria-hidden="true"
+                onClick={() => sidebar.setOpen(false)}
+              />
+            </Show>
+            <EnvironmentMain />
+            <Show when={palette() === "add-project"}>
+              <AddProjectPalette onClose={() => setPalette(null)} />
+            </Show>
+            <Show when={palette() === "add-project" ? null : palette()} keyed>
+              {(view) => <CommandPalette state={environment.state.Replica.Shell} view={view} />}
+            </Show>
+          </NavigationContext.Provider>
+        </OverlayContext.Provider>
       </SidebarSheetContext.Provider>
     </div>
   );

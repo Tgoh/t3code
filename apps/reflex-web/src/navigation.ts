@@ -2,6 +2,8 @@ import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/cont
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { type Accessor, createContext, useContext } from "solid-js";
 
+import type { ILetterKeys } from "./shortcuts";
+
 export type IPaletteView = "root" | "new-thread-in" | "add-project";
 
 export interface INavigation {
@@ -14,6 +16,8 @@ export interface INavigation {
   goToThread: (threadId: string) => void;
   focusComposer: () => void;
   focusSearch: () => void;
+  /** Hands plain keys to a handler until the returned release, while nothing is open over it. */
+  takeLetters: (handler: ILetterKeys) => () => void;
 }
 
 export const NavigationContext = createContext<INavigation>({
@@ -24,6 +28,7 @@ export const NavigationContext = createContext<INavigation>({
   goToThread: () => {},
   focusComposer: () => {},
   focusSearch: () => {},
+  takeLetters: () => () => {},
 });
 
 export const useNavigation = () => useContext(NavigationContext);

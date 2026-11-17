@@ -10,9 +10,9 @@ import {
   menuTrigger,
   skillItems,
   slashItems,
-  stepHighlight,
 } from "./composerMenu";
 import { File as FileIcon, Folder } from "./icons";
+import { stepHighlight } from "./listNavigation";
 import ThreadSession from "./ThreadSession";
 
 const FILE_SEARCH_DEBOUNCE_MS = 120;
@@ -67,7 +67,7 @@ export function useComposerMenu(text: () => string, cursor: () => number) {
     searching,
     highlight,
     move: (direction: 1 | -1) =>
-      setHighlight((index) => stepHighlight(index, items().length, direction)),
+      setHighlight((index) => stepHighlight(index, items().length, direction) ?? 0),
     highlighted: () => items()[Math.min(highlight(), items().length - 1)],
     dismiss: () => setDismissedAt(trigger()?.rangeStart ?? null),
   };

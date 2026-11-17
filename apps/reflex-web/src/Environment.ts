@@ -77,6 +77,7 @@ import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import {
   getDefaultOpenThread,
   type IOpenThread,
+  latestDiffTurn,
   openThreadStream,
   resumeThread,
   retainThread,
@@ -91,6 +92,7 @@ import {
   updateServerSettings,
   writeSetting,
 } from "./Settings";
+import { errorText } from "./errorText";
 import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
 import {
   detachTerminal,
@@ -370,8 +372,6 @@ export function* projectCommand(
   for (const threadId of drafts) yield* forgetSession(draft, threadId);
 }
 
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
 // Follows removeMembers in apps/web/src/components/settings/ProjectSettingsPanel.tsx.
 export function* removeProject(
   draft: IEnvironment,
@@ -549,6 +549,35 @@ export function* selectedDraftSession(
   return session?.NewThreadProjectId == null ? null : session;
 }
 
+export interface IPanelShortcuts {
+  SessionId: string;
+  /** The details card has a checkout to show. */
+  Details: boolean;
+  Terminal: boolean;
+  /** The thread has a turn to diff. */
+  Diff: boolean;
+  DiffOpen: boolean;
+  RightPanelOpen: boolean;
+}
+
+/** The thread view's panels, for the panel shortcuts; null while no thread view is on screen. */
+export function* panelShortcuts(draft: IEnvironment): ISelectorGenerator<IPanelShortcuts | null> {
+  const id = draft.Local.SelectedThreadId;
+  if (draft.Local.View !== null || id === null) return null;
+  const thread = draft.Replica.OpenThreads[id];
+  const session = draft.Local.ThreadSessions[id];
+  if (thread === undefined || session === undefined) return null;
+  const row = thread.Thread;
+  return {
+    SessionId: session.$Id,
+    Details: row != null && draft.Replica.Shell.Projects[row.projectId] !== undefined,
+    Terminal: row !== null,
+    Diff: latestDiffTurn(thread) !== null,
+    DiffOpen: session.Panels.Diff.Open,
+    RightPanelOpen: session.Panels.Diff.Open || session.Panels.Launcher.Open,
+  };
+}
+
 export function* currentProjectId(draft: IEnvironment): ISelectorGenerator<string | null> {
   const id = draft.Local.SelectedThreadId;
   if (id === null) return null;
@@ -619,6 +648,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     colorScheme,
     selectedOpenThread,
     selectedDraftSession,
+    panelShortcuts,
     currentProjectId,
     currentProjectRoot,
     addingProject,

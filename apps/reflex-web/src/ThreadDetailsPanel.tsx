@@ -3,6 +3,7 @@ import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
 import { useResource } from "treflex-solid";
 import { Dynamic, Portal } from "solid-js/web";
 import {
+  createEffect,
   createMemo,
   createSignal,
   For,
@@ -43,6 +44,8 @@ import {
 } from "./icons";
 import GitWork, { type IActionContext } from "./GitWork";
 import { Popup } from "./Menu";
+import { Modal } from "./Modal";
+import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
   changesTotals,
@@ -199,10 +202,9 @@ function CommitDialog(props: {
       return next;
     });
   return (
-    <dialog
+    <Modal
       class="confirm-dialog commit-dialog"
       aria-labelledby="commit-dialog-title"
-      ref={(dialog) => queueMicrotask(() => dialog.showModal())}
       onClose={props.onClose}
     >
       <div class="confirm-header">
@@ -276,7 +278,7 @@ function CommitDialog(props: {
           Commit
         </button>
       </div>
-    </dialog>
+    </Modal>
   );
 }
 
@@ -288,12 +290,7 @@ function AddScriptDialog(props: {
   const [command, setCommand] = createSignal("");
   const ready = () => name().trim() !== "" && command().trim() !== "";
   return (
-    <dialog
-      class="confirm-dialog"
-      aria-labelledby="add-script-title"
-      ref={(dialog) => queueMicrotask(() => dialog.showModal())}
-      onClose={props.onClose}
-    >
+    <Modal class="confirm-dialog" aria-labelledby="add-script-title" onClose={props.onClose}>
       <form
         method="dialog"
         onSubmit={(event) => {
@@ -339,7 +336,7 @@ function AddScriptDialog(props: {
           </button>
         </div>
       </form>
-    </dialog>
+    </Modal>
   );
 }
 
@@ -834,10 +831,9 @@ const Body = (props: IDetailsProps) => {
 
       <Show when={pendingCopy()}>
         {(copy) => (
-          <dialog
+          <Modal
             class="confirm-dialog branch-confirm"
             aria-labelledby="default-branch-title"
-            ref={(dialog) => queueMicrotask(() => dialog.showModal())}
             onClose={() => void work.cancelDefaultBranch()}
           >
             <div class="confirm-header">
@@ -871,7 +867,7 @@ const Body = (props: IDetailsProps) => {
                 Check out feature branch & continue
               </button>
             </div>
-          </dialog>
+          </Modal>
         )}
       </Show>
     </div>
@@ -902,28 +898,21 @@ export function DetailsSurface(props: {
     setPlace({ Top: rect.bottom + 8, Right: Math.max(8, window.innerWidth - rect.right - 4) });
   };
   const [card, setCard] = createSignal<HTMLElement>();
+  const overlays = useOverlays();
+  createEffect(() => {
+    if (props.inline) return;
+    onCleanup(
+      overlays.push({
+        close: () => props.onDismiss(),
+        contains: (node) =>
+          card()?.contains(node) === true || props.anchor?.contains(node) === true,
+      }),
+    );
+  });
   onMount(() => {
     measure();
-    const onPointerDown = (event: PointerEvent) => {
-      if (props.inline) return;
-      const target = event.target;
-      if (!(target instanceof Node) || card()?.contains(target) || props.anchor?.contains(target))
-        return;
-      if (target instanceof Element && target.closest("dialog, .thread-menu, .tooltip")) return;
-      props.onDismiss();
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.key !== "Escape" || props.inline) return;
-      if (!document.querySelector("dialog[open]")) props.onDismiss();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKey);
     window.addEventListener("resize", measure);
-    onCleanup(() => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", measure);
-    });
+    onCleanup(() => window.removeEventListener("resize", measure));
   });
   return (
     <aside

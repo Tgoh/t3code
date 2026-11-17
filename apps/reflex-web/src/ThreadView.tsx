@@ -12,15 +12,14 @@ import {
   untrack,
 } from "solid-js";
 
-import type { KeybindingCommand } from "@t3tools/contracts";
-
 import { ProjectBadge } from "./brand";
 import { Composer, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
 import { ChevronDown, PanelBottom, PanelRight, SquareMenu } from "./icons";
-import { THREAD_SHORTCUT_EVENT } from "./keybindings";
+import { withShortcut } from "./keybindings";
+import { useNavigation } from "./navigation";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
 import { runStatus } from "./Shell";
@@ -159,49 +158,27 @@ const ThreadBody = ThreadSession.provider(() => {
   const launcherOpen = () => session.state.Panels.Launcher.Open && !diffOpen();
   const rightPanelOpen = () => diffOpen() || launcherOpen();
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
-  const closeRightPanel = () => (diffOpen() ? session.closeDiff() : session.closeLauncher());
-  const closeTopSheet = () => (rightPanelOpen() ? closeRightPanel() : session.closeTerminal());
-  // Escape stays with the shell while the terminal sheet is the one on top.
-  const onSheetKey = (event: KeyboardEvent) => {
-    if (event.key !== "Escape" || !panelSheet() || !rightPanelOpen()) return;
-    event.preventDefault();
-    closeRightPanel();
-  };
+  const closeTopSheet = () =>
+    rightPanelOpen() ? session.closeRightPanel() : session.closeTerminal();
   const [stageSize, setStageSize] = createSignal({ Width: 0, Height: 0 });
-  const [detailsPopover, setDetailsPopover] = createSignal(false);
+  const details = () => session.state.Panels.Details;
   const layout = createMemo(() =>
     detailsLayout({
       ...stageSize(),
       Padding: 48,
       MaxChatWidth: 736,
-      Open: session.state.Panels.Details.Open,
+      Open: details().Open,
     }),
   );
-  const detailsInline = () => layout().Inline && session.state.Panels.Details.Open;
-  const toggleDetails = () => {
-    if (layout().Inline) session.toggleDetails();
-    else setDetailsPopover((open) => !open);
-  };
-  const toggleTerminal = () => (terminalOpen() ? session.closeTerminal() : session.openTerminal());
-  const onShortcut = (event: Event) => {
-    const command = (event as CustomEvent<KeybindingCommand>).detail;
-    if (command === "threadPanel.toggle") {
-      if (checkout() === null) return;
-      toggleDetails();
-    } else if (command === "terminal.toggle") {
-      if (thread.state.Thread === null) return;
-      void toggleTerminal();
-    } else if (command === "rightPanel.toggle") {
-      void session.toggleRightPanel();
-    } else if (command === "diff.toggle") {
-      if (diffOpen()) void session.closeDiff();
-      else if (latestDiffTurn(thread.state) !== null) void session.openDiff("thread", null);
-      else return;
-    } else return;
-    event.preventDefault();
-  };
-  window.addEventListener(THREAD_SHORTCUT_EVENT, onShortcut);
-  onCleanup(() => window.removeEventListener(THREAD_SHORTCUT_EVENT, onShortcut));
+  // The session toggles the card by whether it fits, which only this view can measure.
+  createEffect(() => {
+    const fits = layout().Inline;
+    if (untrack(() => details().Fits) !== fits) void session.fitDetails(fits);
+  });
+  onCleanup(() => void session.closeDetailsPopover());
+  const detailsInline = () => layout().Inline && details().Open;
+  const detailsShown = () => detailsInline() || details().Popover;
+  const navigation = useNavigation();
   const checkout = createMemo<ICheckout | null>((previous) => {
     const held = thread.state.Thread;
     const project =
@@ -236,8 +213,6 @@ const ThreadBody = ThreadSession.provider(() => {
       void session.openDiff(latestDiffTurn(thread.state) === null ? "branch" : "thread", null);
     }
   };
-  document.addEventListener("keydown", onSheetKey);
-  onCleanup(() => document.removeEventListener("keydown", onSheetKey));
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
   let head!: HTMLDivElement;
@@ -420,11 +395,14 @@ const ThreadBody = ThreadSession.provider(() => {
               <button
                 ref={detailsToggle}
                 class="icon-button toggle"
-                classList={{ pressed: detailsInline() || detailsPopover() }}
+                classList={{ pressed: detailsShown() }}
                 aria-label="Toggle thread details panel"
-                data-tip="Toggle thread details"
-                aria-pressed={detailsInline() || detailsPopover()}
-                onClick={toggleDetails}
+                data-tip={withShortcut(
+                  "Toggle thread details",
+                  navigation.shortcut("threadPanel.toggle"),
+                )}
+                aria-pressed={detailsShown()}
+                onClick={() => session.toggleDetails()}
               >
                 <SquareMenu />
               </button>
@@ -434,9 +412,12 @@ const ThreadBody = ThreadSession.provider(() => {
                 class="icon-button toggle"
                 classList={{ pressed: terminalOpen() }}
                 aria-label="Toggle terminal drawer"
-                data-tip="Toggle terminal drawer"
+                data-tip={withShortcut(
+                  "Toggle terminal drawer",
+                  navigation.shortcut("terminal.toggle"),
+                )}
                 aria-pressed={terminalOpen()}
-                onClick={toggleTerminal}
+                onClick={() => session.toggleTerminal()}
               >
                 <PanelBottom />
               </button>
@@ -445,7 +426,10 @@ const ThreadBody = ThreadSession.provider(() => {
               class="icon-button toggle"
               classList={{ pressed: rightPanelOpen() }}
               aria-label="Toggle right panel"
-              data-tip="Toggle right panel"
+              data-tip={withShortcut(
+                "Toggle right panel",
+                navigation.shortcut("rightPanel.toggle"),
+              )}
               aria-pressed={rightPanelOpen()}
               onClick={() => session.toggleRightPanel()}
             >
@@ -471,11 +455,11 @@ const ThreadBody = ThreadSession.provider(() => {
         >
           <Show when={checkout()} keyed>
             {(held) => (
-              <Show when={detailsInline() || detailsPopover()}>
+              <Show when={detailsShown()}>
                 <DetailsSurface
                   inline={detailsInline()}
                   anchor={detailsToggle}
-                  onDismiss={() => setDetailsPopover(false)}
+                  onDismiss={() => session.closeDetailsPopover()}
                 >
                   <ThreadDetailsCard
                     state={session.state.Git}

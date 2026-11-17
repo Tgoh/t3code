@@ -18,6 +18,7 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
+import { errorText } from "./errorText";
 import { threadCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
 import {
   gitActionEffect,
@@ -74,9 +75,6 @@ export interface IGitWork extends IEntity {
 export function getDefaultGitWork(): Omit<IGitWork, "$Id"> {
   return { Notice: null, PendingDefaultBranch: null, BranchError: null };
 }
-
-const errorText = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 const includesCommit = (ask: IGitActionAsk, context: IActionContext) =>
   (ask.Action === "commit" || ask.Action === "commit_push" || ask.Action === "commit_push_pr") &&

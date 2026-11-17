@@ -11,6 +11,8 @@ import {
   SquareTerminal,
   X,
 } from "./icons";
+import { arrowStep, stepHighlight } from "./listNavigation";
+import { useNavigation } from "./navigation";
 import { type ISurfaceAction, type ISurfaceKind, shortcutAction } from "./surfaces";
 
 const ICONS: Record<ISurfaceKind, () => JSX.Element> = {
@@ -31,26 +33,26 @@ export function SurfaceLauncher(props: {
 }) {
   const available = () => props.actions.filter((action) => action.Unavailable === null);
   const [highlight, setHighlight] = createSignal(-1);
-  const onShortcut = (event: KeyboardEvent) => {
-    if (document.querySelector("dialog[open], .thread-menu")) return;
-    const target = event.composedPath()[0] ?? event.target;
-    const action = shortcutAction(props.actions, event, target instanceof Element ? target : null);
-    if (action === null) return;
-    event.preventDefault();
-    event.stopPropagation();
-    props.onRun(action.Kind);
-  };
-  window.addEventListener("keydown", onShortcut, true);
-  onCleanup(() => window.removeEventListener("keydown", onShortcut, true));
+  onCleanup(
+    useNavigation().takeLetters((event) => {
+      const target = event.composedPath()[0] ?? event.target;
+      const action = shortcutAction(
+        props.actions,
+        event,
+        target instanceof Element ? target : null,
+      );
+      if (action === null) return false;
+      props.onRun(action.Kind);
+      return true;
+    }),
+  );
   const onKeyDown = (event: KeyboardEvent) => {
     const count = available().length;
     if (count === 0 || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+    const step = arrowStep(event.key, true);
+    if (step !== null) {
       event.preventDefault();
-      setHighlight((held) => (held + 1) % count);
-    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-      event.preventDefault();
-      setHighlight((held) => (held === -1 ? count - 1 : (held - 1 + count) % count));
+      setHighlight((held) => stepHighlight(held, count, step)!);
     } else if (event.key === "Enter" && event.target === event.currentTarget) {
       const action = available()[highlight()];
       if (action === undefined) return;

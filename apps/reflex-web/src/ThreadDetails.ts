@@ -12,6 +12,7 @@ import {
 } from "treflex";
 import { createComponentFeature } from "treflex-solid";
 
+import { errorText } from "./errorText";
 import { sendThreadBranch } from "./GitWork";
 import { projectCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
 import { storedEditorEffect, storeEditorEffect } from "./Infrastructure/preferences";
@@ -85,9 +86,6 @@ export function changesTotals(status: VcsStatusResult | null): IChangesTotals | 
     BaseRef: selected.baseRef,
   };
 }
-
-const errorText = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 const samePath = (left: string, right: string) => {
   const normal = (path: string) => path.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();

@@ -10,6 +10,8 @@ import * as Icons from "./icons";
 import type { IWireArchivedShell } from "./Infrastructure/settings";
 import type { IWireProject } from "./Infrastructure/wire";
 import { keybindingGroups, keyCaps } from "./keybindingRows";
+import { arrowStep, stepHighlight } from "./listNavigation";
+import { Modal } from "./Modal";
 import { RemoveProjectDialog } from "./ProjectFolder";
 import {
   allBuiltInHidden,
@@ -158,11 +160,10 @@ function SettingsNav(props: { page: string }) {
           onKeyDown={(event) => {
             if (event.key === "Escape") setQuery("");
             if (!searching()) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            const step = arrowStep(event.key);
+            if (step !== null) {
               event.preventDefault();
-              const step = event.key === "ArrowDown" ? 1 : -1;
-              const count = results().length;
-              if (count > 0) setActive((active() + step + count) % count);
+              setActive(stepHighlight(active(), results().length, step) ?? active());
             }
             if (event.key === "Enter") {
               const item = results()[active()];
@@ -951,10 +952,9 @@ function ArchivedPage() {
           </For>
           <Show when={deleting()} keyed>
             {(thread) => (
-              <dialog
+              <Modal
                 class="confirm-dialog"
                 aria-labelledby="delete-archived-title"
-                ref={(dialog) => queueMicrotask(() => dialog.showModal())}
                 onClose={() => setDeleting(null)}
               >
                 <div class="confirm-header">
@@ -979,7 +979,7 @@ function ArchivedPage() {
                     Delete
                   </button>
                 </div>
-              </dialog>
+              </Modal>
             )}
           </Show>
         </Show>

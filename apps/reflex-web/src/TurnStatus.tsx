@@ -1,16 +1,7 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for the working timer, outside any Effect runtime.
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
-import {
-  type Accessor,
-  createMemo,
-  createSignal,
-  For,
-  Index,
-  onCleanup,
-  onMount,
-  Show,
-} from "solid-js";
+import { type Accessor, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
 
 import {
   activeStepIndex,
@@ -23,6 +14,7 @@ import {
 } from "./checklist";
 import Environment from "./Environment";
 import { ChevronUp, CornerUpRight, PenLine, Square, SquareCheck, X } from "./icons";
+import { Popup } from "./Menu";
 import OpenThread, { isRowVisible, runMessage, timelineItem } from "./OpenThread";
 import { workingStartedAt } from "./Shell";
 import ThreadSession from "./ThreadSession";
@@ -136,29 +128,6 @@ export function useChecklist(running: Accessor<boolean>): Accessor<IChecklist | 
 export const checklistRows = (checklist: IChecklist | null): number =>
   checklist === null ? 0 : Math.min(checklist.Steps.length, CHECKLIST_ROWS);
 
-function closeOnOutside(
-  popover: HTMLElement | undefined,
-  toggle: HTMLElement,
-  onClose: () => void,
-): void {
-  if (popover === undefined) return;
-  const onPointerDown = (event: PointerEvent) => {
-    const target = event.target as Node;
-    if (!popover.contains(target) && !toggle.contains(target)) onClose();
-  };
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && !event.defaultPrevented) onClose();
-  };
-  document.addEventListener("pointerdown", onPointerDown, true);
-  document.addEventListener("keydown", onKeyDown);
-  onCleanup(() => {
-    document.removeEventListener("pointerdown", onPointerDown, true);
-    document.removeEventListener("keydown", onKeyDown);
-    // An emptied list unmounts the popover, and the next one shouldn't reopen it.
-    onClose();
-  });
-}
-
 function ChecklistStep(props: { step: IChecklistStep; active: boolean }) {
   return (
     <li
@@ -191,12 +160,18 @@ function ChecklistPopover(props: {
   toggle: HTMLButtonElement;
   onClose: () => void;
 }) {
-  const [popover, setPopover] = createSignal<HTMLDivElement>();
-  onMount(() => closeOnOutside(popover(), props.toggle, props.onClose));
+  // An emptied list unmounts the popover, and the next one shouldn't reopen it.
+  onCleanup(props.onClose);
   return (
-    <div class="queued-popover" role="dialog" aria-label="To-do list" ref={setPopover}>
+    <Popup
+      class="queued-popover"
+      role="dialog"
+      label="To-do list"
+      anchor={props.toggle}
+      onClose={props.onClose}
+    >
       <ChecklistSteps checklist={props.checklist} start={0} end={props.checklist.Steps.length} />
-    </div>
+    </Popup>
   );
 }
 
@@ -330,10 +305,15 @@ function QueuedPopover(props: {
 }) {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
-  const [popover, setPopover] = createSignal<HTMLDivElement>();
-  onMount(() => closeOnOutside(popover(), props.toggle, props.onClose));
+  onCleanup(props.onClose);
   return (
-    <div class="queued-popover" role="dialog" aria-label="Queued messages" ref={setPopover}>
+    <Popup
+      class="queued-popover"
+      role="dialog"
+      label="Queued messages"
+      anchor={props.toggle}
+      onClose={props.onClose}
+    >
       <div class="banner-title">
         <strong>Queued</strong>
         <Show when={!props.working}>
@@ -347,7 +327,7 @@ function QueuedPopover(props: {
         </Show>
       </div>
       <For each={thread.queuedRunIds()}>{(runId) => <QueuedRow runId={runId} />}</For>
-    </div>
+    </Popup>
   );
 }
 

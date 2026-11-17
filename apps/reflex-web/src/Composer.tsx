@@ -24,6 +24,8 @@ import {
   Paperclip,
   X,
 } from "./icons";
+import { arrowStep } from "./listNavigation";
+import { useOverlays } from "./overlays";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { caretOnEdge, type IPromptHistoryPosition, stepPromptHistory } from "./promptHistory";
 import { advanceLabel, answerPlaceholder, type IAnswering } from "./questions";
@@ -292,6 +294,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     (held().Draft.trim() !== "" || held().Attachments.length > 0);
   const phone = createMediaQuery(PHONE_QUERY);
   const [focused, setFocused] = createSignal(false);
+  const overlays = useOverlays();
   const collapsed = () =>
     !answering() &&
     composerCollapses({
@@ -348,7 +351,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       case "ArrowDown":
       case "ArrowUp":
         if (menu.items().length === 0) return false;
-        menu.move(event.key === "ArrowDown" ? 1 : -1);
+        menu.move(arrowStep(event.key)!);
         return true;
       case "Enter":
       case "Tab": {
@@ -438,7 +441,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           const next = event.relatedTarget;
           if (next instanceof Node && form.contains(next)) return;
           // Menus portal out of the form, and an open one still belongs to the composer.
-          if (document.querySelector("[data-popup]") !== null) return;
+          if (overlays.open()) return;
           setFocused(false);
         }}
       >
