@@ -128,8 +128,6 @@ export interface IEnvironment extends IEntity {
     ClientSettings: IWireClientSettings | null;
     Preferences: IPreferences;
     Shelves: IShelves;
-    /** The clock the sidebar reads, a minute at a time. */
-    Now: number;
     SystemDark: boolean;
     ViewportDebug: boolean;
   };

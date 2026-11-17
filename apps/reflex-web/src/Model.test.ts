@@ -129,6 +129,7 @@ import {
   threadWorking,
   diffLoading,
   closeTerminal,
+  compactionOffer,
   effectiveModel,
   effectiveRuntimeMode,
   endTerminal,
@@ -147,6 +148,7 @@ import {
   terminalAttachment,
   TerminalReceiver,
   toggleCodeWrap,
+  toggleKeepFullHistory,
   toggleQuestionOption,
   toggleRightPanel,
   unwrappedCodeBlocks,
@@ -2265,6 +2267,90 @@ describe("writing to the server", () => {
       ["steer", "steer"],
       ["queue", "queue"],
     ]);
+  });
+
+  describe("compacting before a send", () => {
+    const CLAUDE = { instanceId: "claudeAgent", model: "claude-opus-4-7" };
+    async function staleClaudeThread() {
+      const sent: IStartTurn[] = [];
+      const server = await connect(undefined, null, {
+        startTurn: (effect: IStartTurn) => void sent.push(effect),
+      });
+      await server.sendConfig({
+        version: 1,
+        type: "snapshot",
+        config: {
+          settings: { providerInstances: {}, compactIdleThreads: false },
+          providers: [
+            {
+              instanceId: "claudeAgent",
+              driver: "claudeAgent",
+              slashCommands: [{ name: "compact" }],
+            },
+          ],
+          keybindings: [],
+          issues: [],
+        },
+      });
+      await server.open();
+      const projection = emptyProjection();
+      projection.thread = {
+        ...projection.thread,
+        modelSelection: CLAUDE,
+        activeProviderThreadId: "provider-thread",
+      } as never;
+      projection.runs = [{ ...run("run-1", 1), modelSelection: CLAUDE } as never];
+      // The test clock reads 0, so this report is two hours old.
+      projection.providerTurns = [
+        {
+          id: "turn-1",
+          providerThreadId: "provider-thread",
+          tokenUsage: { usedTokens: 439_000, updatedAt: "1969-12-31T22:00:00.000Z" },
+        } as never,
+      ];
+      await server.sendThread(snapshotOf(projection, 1));
+      return { server, sent };
+    }
+    const offer = (server: Awaited<ReturnType<typeof connect>>) =>
+      server.runtime.processSelector(compactionOffer, () => server.session());
+
+    it("sends /compact marked onReturn, then queues the message behind it", async () => {
+      const { server, sent } = await staleClaudeThread();
+      expect(offer(server)).toBe(439_000);
+      await server.runtime.dispatch(setDraft, server.sessionId(), "carry on");
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(
+        sent.map((turn) => [
+          turn.Text,
+          turn.DispatchMode,
+          turn.IdleCompaction,
+          turn.ModelSelection,
+        ]),
+      ).toEqual([
+        ["/compact", "auto", "onReturn", CLAUDE],
+        ["carry on", "queue", undefined, CLAUDE],
+      ]);
+      expect(new Set(sent.flatMap((turn) => [turn.CommandId, turn.MessageId])).size).toBe(4);
+    });
+
+    it("keeps the full history for one send when toggled, then offers again", async () => {
+      const { server, sent } = await staleClaudeThread();
+      await server.runtime.dispatch(toggleKeepFullHistory, server.sessionId());
+      await server.runtime.dispatch(setDraft, server.sessionId(), "carry on");
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(sent.map((turn) => [turn.Text, turn.DispatchMode])).toEqual([["carry on", "auto"]]);
+      expect(server.session().KeepFullHistory).toBe(false);
+    });
+
+    it("a typed /compact is the compaction, so it sends alone", async () => {
+      const { server, sent } = await staleClaudeThread();
+      await server.runtime.dispatch(setDraft, server.sessionId(), "/compact");
+      expect(offer(server)).toBeNull();
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(sent.map((turn) => [turn.Text, turn.IdleCompaction])).toEqual([
+        ["/compact", undefined],
+      ]);
+    });
   });
 
   it("answering marks only its own request, and the stream or another device clears it", async () => {

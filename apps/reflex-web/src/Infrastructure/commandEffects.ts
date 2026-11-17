@@ -38,6 +38,8 @@ export interface IStartTurn {
   InteractionMode: IWireInteractionMode;
   DispatchMode: IDispatchMode;
   NewThread: { ProjectId: string; Title: string } | null;
+  /** Marks a `/compact` this client sent on its own before the user's message. */
+  IdleCompaction?: "onReturn";
 }
 
 export interface IStopThread {

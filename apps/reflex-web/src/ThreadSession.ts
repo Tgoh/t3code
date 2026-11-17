@@ -88,7 +88,14 @@ import {
   providerOf,
 } from "./modelOptions";
 import { FILE_SEARCH_LIMIT, type IProjectEntry } from "./composerMenu";
-import { type IOpenThread, latestDiffTurn, newestRun, timelineItem } from "./OpenThread";
+import { compactBeforeSendTokens } from "./compaction";
+import {
+  type IOpenThread,
+  isRowVisible,
+  latestDiffTurn,
+  newestRun,
+  timelineItem,
+} from "./OpenThread";
 import { type IPromptHistoryEntry, promptHistoryEntries, recallablePrompt } from "./promptHistory";
 import {
   availableRevertTurnCounts,
@@ -145,6 +152,8 @@ export interface ISelection extends IEntity {
   SelectedThreadId: string | null;
   Preferences: { AppearanceMode: IAppearanceMode };
   SystemDark: boolean;
+  /** The device clock, a minute at a time. */
+  Now: number;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -201,6 +210,8 @@ export interface IThreadSession extends IEntity {
   AttachmentNotice?: string;
   ModelSelection: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode | null;
+  /** The next send skips the compaction the composer offers. */
+  KeepFullHistory: boolean;
   ModelError?: string;
   SendError?: string;
   StopError?: string;
@@ -228,6 +239,7 @@ export function getDefaultThreadSession(
     Attachments: [],
     ModelSelection: null,
     RuntimeMode: null,
+    KeepFullHistory: false,
     QuestionAnswers: {},
     QuestionIndex: {},
     Panels: {
@@ -635,6 +647,7 @@ function* uploadAndStart(
   fileIds: string[],
   turn: Omit<IStartTurn, "CommandId" | "MessageId" | "Attachments">,
   setRuntimeMode: boolean,
+  compactFirst: boolean,
 ): IActionGenerator {
   const attachments: IWireAttachment[] = [];
   for (const id of fileIds) {
@@ -652,6 +665,17 @@ function* uploadAndStart(
       }),
     );
   }
+  if (compactFirst) {
+    yield* startTurnEffect({
+      ...turn,
+      CommandId: yield* generateGuid(),
+      MessageId: yield* generateGuid(),
+      Text: "/compact",
+      Attachments: [],
+      DispatchMode: "auto",
+      IdleCompaction: "onReturn",
+    });
+  }
   const commandId = yield* generateGuid();
   const messageId = yield* generateGuid();
   yield* startTurnEffect({
@@ -659,7 +683,39 @@ function* uploadAndStart(
     CommandId: commandId,
     MessageId: messageId,
     Attachments: attachments,
+    // Steering into the compaction is rejected, so the message waits behind it.
+    DispatchMode: compactFirst ? "queue" : turn.DispatchMode,
   });
+}
+
+/**
+ * The tokens the next send compacts first, or null when it sends as is.
+ * Follows `resumeCompactionTokens` in apps/web/src/components/ChatView.tsx.
+ */
+export function* compactionOffer(draft: IThreadSession): ISelectorGenerator<number | null> {
+  if (draft.NewThreadProjectId !== null) return null;
+  const replica = yield* getData(draft, "Replica");
+  const open = replica?.OpenThreads[draft.ThreadId];
+  const config = replica?.Config;
+  const selection = yield* effectiveModel(draft);
+  if (open?.Thread == null || config == null || selection === null) return null;
+  const clock = yield* getData(draft, "Selection");
+  return compactBeforeSendTokens({
+    Thread: open,
+    Items: () =>
+      open.Timeline.filter((id) => isRowVisible(open, id)).map((id) => timelineItem(open, id)!),
+    Selection: selection,
+    Config: config,
+    Text: draft.Draft.trim(),
+    Idle: Object.values(open.Runs).every(
+      (run) => !ACTIVE_RUN.has(run.status) && run.status !== "queued",
+    ),
+    Now: clock?.Now ?? 0,
+  });
+}
+
+export function* toggleKeepFullHistory(draft: IThreadSession): IActionGenerator {
+  draft.KeepFullHistory = !draft.KeepFullHistory;
 }
 
 /** `auto` lets the server choose; during a run the composer asks for `steer` or `queue`. */
@@ -673,6 +729,7 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
   const runtimeMode = yield* select(effectiveRuntimeMode);
   const threadMode = yield* select(threadRuntimeMode);
   const interaction = yield* select(interactionMode);
+  const compactFirst = !draft.KeepFullHistory && (yield* select(compactionOffer)) !== null;
   const files = resource(draft, "Composer/Files");
   const turn = {
     EnvironmentId: draft.EnvironmentId,
@@ -691,11 +748,12 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
   try {
     if (projectId !== null && model === null) throw new Error("No provider is available.");
     const setsMode = projectId === null && threadMode !== null && threadMode !== runtimeMode;
-    yield* open(uploadAndStart(files, fileIds, turn, setsMode));
+    yield* open(uploadAndStart(files, fileIds, turn, setsMode, compactFirst));
   } catch (error) {
     draft.SendError = errorText(error);
     return;
   }
+  draft.KeepFullHistory = false;
   if (draft.Draft.trim() === text) draft.Draft = "";
   draft.Attachments = draft.Attachments.filter((file) => !fileIds.includes(file.Id));
   delete draft.AttachmentNotice;
@@ -1366,6 +1424,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     addAttachments,
     removeAttachment,
     send,
+    toggleKeepFullHistory,
     stopRun,
     queueAction,
     editFromHere,
@@ -1399,6 +1458,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     projectId,
     projectName,
     queueWorkflow,
+    compactionOffer,
     menuCatalog,
     promptHistory,
     fileSearchResult,

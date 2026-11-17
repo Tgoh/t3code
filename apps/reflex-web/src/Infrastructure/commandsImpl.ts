@@ -112,6 +112,7 @@ export const startTurnImpl = implementation(startTurnEffect, async (input) => {
       role: "user" as const,
       text: input.Text,
       attachments: input.Attachments as never,
+      ...(input.IdleCompaction === undefined ? {} : { idleCompaction: input.IdleCompaction }),
     },
     ...(input.ModelSelection === null ? {} : { modelSelection }),
     runtimeMode: input.RuntimeMode,

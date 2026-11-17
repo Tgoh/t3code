@@ -10,6 +10,7 @@ import { Dynamic } from "solid-js/web";
 
 import { attachmentDetail } from "./attachmentIntake";
 import { CommandOutput, WORK_PRE } from "./CommandOutput";
+import { compactionLabel, compactionReason } from "./compaction";
 import { CopyButton } from "./CopyButton";
 import {
   Bot,
@@ -29,6 +30,7 @@ import {
   ListTodo,
   MessageCircleQuestion,
   MessagesSquare,
+  Minimize2,
   Pencil,
   Redo2,
   ShieldQuestion,
@@ -145,6 +147,7 @@ const ROW_ICONS: Record<string, Component> = {
   link_request: Link,
   error: CircleAlert,
   fork: GitFork,
+  compaction: Minimize2,
 };
 
 export function RowIcon(props: { type: string }) {
@@ -764,7 +767,6 @@ const EVENT_TYPES = new Set<IWireTurnItem["type"]>([
   "link_request",
   "subagent",
   "checkpoint",
-  "compaction",
 ]);
 
 export function WorkRow(props: IRowProps & { single?: boolean }) {
@@ -778,6 +780,13 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
       held,
       held.type === "file_change" ? fileChangeCounts(thread.state, held) : null,
     );
+    if (held.type === "compaction") {
+      return {
+        ...base,
+        Label: compactionLabel(held, compactionReason(thread.state, held)),
+        Failed: false,
+      };
+    }
     if (EVENT_TYPES.has(held.type)) return { ...base, Failed: false };
     const entry = workLogEntry(held);
     const label = !props.single
