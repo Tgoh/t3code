@@ -9,7 +9,6 @@ import {
   generateGuid,
   type IActionGenerator,
   type IEntity,
-  inFlight,
   isEnded,
   type IOpenGenerator,
   type ISelectorGenerator,
@@ -90,12 +89,12 @@ import {
   autoRefreshLimits,
   loadUsage,
   openView,
-  refreshingUsage,
   refreshUsage,
   updateServerSettings,
   writeSetting,
 } from "./Settings";
 import { errorText } from "./errorText";
+import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
 import {
   detachTerminal,
@@ -406,10 +405,6 @@ export function* removeProject(
 }
 leading(removeProject);
 
-export function* removingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight(removeProject, draft);
-}
-
 export function* requestProjectFavicon(
   draft: IEnvironment,
   target: IProjectFaviconTarget,
@@ -469,10 +464,7 @@ export function* addFolder(
     project === undefined || created
       ? null
       : getLatestThreadForProject(
-          Object.values(draft.Replica.Shell.Threads).map((thread) => ({
-            ...thread,
-            archivedAt: thread.archivedAt ?? null,
-          })),
+          Object.values(draft.Replica.Shell.Threads).map(toSortableThread),
           project.id,
           "updated_at",
         );
@@ -537,14 +529,6 @@ export function* cloneControl(
   );
 }
 leading(cloneControl);
-
-export function* addingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight([addFolder, cloneProject, newProject], draft);
-}
-
-export function* cloneControlling(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight(cloneControl, draft);
-}
 
 export function* selectedOpenThread(draft: IEnvironment): ISelectorGenerator<IOpenThread | null> {
   const id = draft.Local.SelectedThreadId;
@@ -666,9 +650,5 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     panelShortcuts,
     currentProjectId,
     currentProjectRoot,
-    addingProject,
-    cloneControlling,
-    removingProject,
-    refreshingUsage,
   },
 );

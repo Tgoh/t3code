@@ -1,12 +1,4 @@
-import {
-  type IActionGenerator,
-  inFlight,
-  type IOpenGenerator,
-  type ISelectorGenerator,
-  latest,
-  open,
-  start,
-} from "treflex";
+import { type IActionGenerator, type IOpenGenerator, latest, open, start } from "treflex";
 
 import type { IEnvironment } from "./Environment";
 import { loadProviders, threadCommand } from "./Environment";
@@ -161,8 +153,4 @@ export function* refreshUsage(
 export function* autoRefreshLimits(draft: IEnvironment): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
   yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: true }));
-}
-
-export function* refreshingUsage(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight([refreshUsage, loadUsage], draft);
 }

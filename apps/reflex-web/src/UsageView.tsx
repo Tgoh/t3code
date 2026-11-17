@@ -34,12 +34,14 @@ import {
   type MergedUsage,
   mergeUsage,
 } from "@t3tools/shared/usageMerge";
+import { useInFlight } from "treflex-solid";
 import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
 
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
 import { ChartNoAxesColumn, RefreshCw, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
+import { loadUsage, refreshUsage } from "./Settings";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
 import { IconButton } from "./ui/IconButton";
@@ -123,6 +125,7 @@ const windowInput = (days: number): IWireUsageInput =>
 
 export function UsageView() {
   const environment = Environment.use();
+  const refreshing = useInFlight([refreshUsage, loadUsage], () => environment.state);
   const metric = () => shownMetric(environment.state.Local.Preferences.Usage.Metric);
   const days = () => shownDays(environment.state.Local.Preferences.Usage.Days);
   const [input, setInput] = createSignal(windowInput(days()));
@@ -207,14 +210,14 @@ export function UsageView() {
           <IconButton
             aria-label={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             data-tip={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
-            disabled={environment.refreshingUsage()}
+            disabled={refreshing()}
             onClick={() =>
               void environment.refreshUsage(
                 metric() === "limits" ? null : { Key: String(days()), Input: input() },
               )
             }
           >
-            <RefreshCw classList={{ "animate-spin": environment.refreshingUsage() }} />
+            <RefreshCw classList={{ "animate-spin": refreshing() }} />
           </IconButton>
           <IconButton
             aria-label="Close usage"

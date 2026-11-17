@@ -1,11 +1,4 @@
-import {
-  type IActionGenerator,
-  type IEntity,
-  type ISelectorGenerator,
-  inFlight,
-  leading,
-  publishToNearest,
-} from "treflex";
+import { type IActionGenerator, type IEntity, leading, publishToNearest } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
 import { errorText } from "./errorText";
@@ -48,11 +41,4 @@ export function* loadEarlier(draft: IHistoryWindow): IActionGenerator {
 }
 leading(loadEarlier);
 
-export function* loadingEarlier(draft: IHistoryWindow): ISelectorGenerator<boolean> {
-  return yield* inFlight(loadEarlier, draft);
-}
-
-export default createEntityFeature<IHistoryWindow>(import.meta.url)(
-  { loadEarlier },
-  { loadingEarlier },
-);
+export default createEntityFeature<IHistoryWindow>(import.meta.url)({ loadEarlier }, {});

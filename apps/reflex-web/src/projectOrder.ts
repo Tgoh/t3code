@@ -20,6 +20,19 @@ export function isProjectSort(value: unknown): value is IProjectSort {
   return typeof value === "string" && Object.hasOwn(PROJECT_SORT_LABELS, value);
 }
 
+// An absent latestUserAuthoredMessageAt (older server) sorts differently from null, so it
+// is left out rather than defaulted. Follows presentThreadShell in client-runtime.
+export const toSortableThread = <
+  T extends Pick<IWireThreadShell, "archivedAt" | "latestUserAuthoredMessageAt">,
+>({
+  latestUserAuthoredMessageAt,
+  ...thread
+}: T) => ({
+  ...thread,
+  archivedAt: thread.archivedAt ?? null,
+  ...(latestUserAuthoredMessageAt === undefined ? {} : { latestUserAuthoredMessageAt }),
+});
+
 const title = (folder: IProjectFolder) => folder.Project?.title ?? "";
 
 // Archived projects with active threads sit last in every order.
@@ -41,7 +54,7 @@ function projectTimestamp(
 ): number {
   if (threads.length > 0) {
     return threads.reduce(
-      (latest, thread) => Math.max(latest, getThreadSortTimestamp(thread, sort)),
+      (latest, thread) => Math.max(latest, getThreadSortTimestamp(toSortableThread(thread), sort)),
       Number.NEGATIVE_INFINITY,
     );
   }

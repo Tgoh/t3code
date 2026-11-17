@@ -10,7 +10,7 @@ import {
   isExplicitRelativeProjectPath,
 } from "@t3tools/client-runtime/state/projects";
 import { type IActionGenerator, type IEntity, latest } from "treflex";
-import { useComponentState } from "treflex-solid";
+import { useComponentState, useInFlight } from "treflex-solid";
 import {
   createEffect,
   createMemo,
@@ -42,7 +42,7 @@ import {
   type IAddProjectSourceId,
   willCreateFolder,
 } from "./addProjectPalette";
-import Environment from "./Environment";
+import Environment, { addFolder, cloneProject, newProject } from "./Environment";
 import { errorText } from "./errorText";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { ArrowLeft, CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
@@ -159,7 +159,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     palette.state.Settings ?? (palette.state.SettingsError === null ? null : UNKNOWN_SETTINGS);
   const cwd = () => environment.currentProjectRoot();
   const platform = () => browsePlatform(settings()?.Os ?? "");
-  const busy = () => environment.addingProject();
+  const busy = useInFlight([addFolder, cloneProject, newProject], () => environment.state);
 
   const [stack, setStack] = createSignal<IView[]>([{ Kind: "sources" }]);
   const view = () => stack().at(-1)!;

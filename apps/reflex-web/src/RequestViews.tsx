@@ -1,3 +1,4 @@
+import { useInFlight } from "treflex-solid";
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 
 import { Check, ChevronDown, ShieldQuestion, X } from "./icons";
@@ -5,7 +6,7 @@ import type { IApprovalDecision } from "./Infrastructure/commandEffects";
 import { Markdown } from "./Markdown";
 import OpenThread, { pendingRequest } from "./OpenThread";
 import { type IAnswering, type IQuestion, questionProgress } from "./questions";
-import RuntimeRequest, { canAnswer } from "./RuntimeRequest";
+import RuntimeRequest, { answerRequest, canAnswer, dismissRequest } from "./RuntimeRequest";
 import ThreadSession from "./ThreadSession";
 import { RowIcon, workLine } from "./TimelineRows";
 import { viewOf } from "./turnItemView";
@@ -13,6 +14,7 @@ import { BANNER, BANNER_BODY, BANNER_FRAME, BANNER_TITLE, ERROR_TEXT } from "./u
 
 const APPROVAL_STATE = "inline-flex items-center gap-1 text-warning-foreground [&>svg]:size-3.5";
 
+const RESPONSES = [answerRequest, dismissRequest];
 const QUESTION_MARK = "flex h-5 flex-none items-center justify-center";
 const OPTION_MARK =
   "inline-flex size-4 items-center justify-center border border-[color-mix(in_srgb,var(--foreground)_55%,transparent)] bg-background data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground";
@@ -21,6 +23,7 @@ const QUESTION_NOTE = "mx-0 mt-1.5 mb-0 text-[12px]";
 export const PendingApproval = RuntimeRequest.provider(() => {
   const thread = OpenThread.use();
   const request = RuntimeRequest.use();
+  const responding = useInFlight(RESPONSES, () => request.state);
   const item = createMemo(() => {
     const held = pendingRequest(thread.state, request.state.id)?.Item;
     return held?.type === "approval_request" ? held : null;
@@ -62,7 +65,7 @@ export const PendingApproval = RuntimeRequest.provider(() => {
                 <button
                   class="cursor-pointer border-0 bg-transparent p-0 text-[12px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-64 data-strong:font-medium data-strong:text-foreground"
                   data-strong={option.decision === "accept" || undefined}
-                  disabled={request.answering()}
+                  disabled={responding()}
                   onClick={() =>
                     request.answerRequest(
                       thread.state.EnvironmentId,
@@ -118,6 +121,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
   const thread = OpenThread.use();
   const session = ThreadSession.use();
   const request = RuntimeRequest.use();
+  const responding = useInFlight(RESPONSES, () => request.state);
   const requestId = request.state.id;
   const item = createMemo(() => {
     const held = pendingRequest(thread.state, requestId)?.Item;
@@ -132,7 +136,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
     ),
   );
   const canRespond = () => canAnswer(request.state);
-  const locked = () => !canRespond() || request.answering();
+  const locked = () => !canRespond() || responding();
   const dismissible = () =>
     item()?.responseMode === "message" || request.state.responseCapability.type === "message";
   const [collapsedId, setCollapsedId] = createSignal<string | null>(null);
@@ -143,7 +147,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
 
   const advance = () => {
     const current = progress();
-    if (!canRespond() || request.answering()) return;
+    if (!canRespond() || responding()) return;
     if (current.IsLastQuestion) {
       if (current.Answers !== null)
         request.answerRequest(
@@ -158,7 +162,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
   };
   const answering: IAnswering = {
     progress,
-    responding: () => request.answering(),
+    responding,
     canRespond,
     setCustomAnswer: (text) => {
       const question = progress().Question;
@@ -245,17 +249,17 @@ export const PendingQuestion = RuntimeRequest.provider<{
                     class="inline-flex size-6 items-center justify-center rounded-[6px] hover:bg-accent hover:text-foreground"
                     aria-label="Dismiss question without answering"
                     data-tip="Dismiss question without answering"
-                    aria-disabled={request.answering()}
+                    aria-disabled={responding()}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (!request.answering())
+                      if (!responding())
                         request.dismissRequest(thread.state.EnvironmentId, thread.state.ThreadId);
                     }}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
                       event.stopPropagation();
-                      if (!request.answering())
+                      if (!responding())
                         request.dismissRequest(thread.state.EnvironmentId, thread.state.ThreadId);
                     }}
                   >

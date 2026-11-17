@@ -2,7 +2,6 @@ import {
   type IOpenGenerator,
   type ISelectorGenerator,
   type IWithId,
-  inFlight,
   leading,
   open,
   transient,
@@ -77,15 +76,11 @@ export function* dismissRequest(
 }
 leading(dismissRequest);
 
-export function* answering(draft: IRuntimeRequest): ISelectorGenerator<boolean> {
-  return yield* inFlight([answerRequest, dismissRequest], draft);
-}
-
 export function* answerError(draft: IRuntimeRequest): ISelectorGenerator<string | null> {
   return (yield* outcome(draft)).Error;
 }
 
 export default createEntityFeature<IRuntimeRequest>(import.meta.url)(
   { answerRequest, dismissRequest },
-  { answering, answerError },
+  { answerError },
 );

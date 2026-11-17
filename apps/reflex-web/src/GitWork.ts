@@ -8,8 +8,6 @@ import {
   type IActionGenerator,
   type IEntity,
   type IOpenGenerator,
-  type ISelectorGenerator,
-  inFlight,
   leading,
   open,
   receiver,
@@ -261,10 +259,6 @@ export function* pull(draft: IGitWork, checkout: ICheckout): IOpenGenerator {
 }
 leading(pull);
 
-export function* gitBusy(draft: IGitWork): ISelectorGenerator<boolean> {
-  return yield* inFlight([runGitAction, continueDefaultBranch, pull], draft);
-}
-
 export const GitReceiver = receiver<IGitWork>("GitReceiver")({
   *"Git/Notice"(draft) {
     yield* stopTimer(draft, "Git/Notice");
@@ -281,5 +275,5 @@ export default createEntityFeature<IGitWork>(import.meta.url)(
     cancelDefaultBranch,
     pull,
   },
-  { gitBusy },
+  {},
 );

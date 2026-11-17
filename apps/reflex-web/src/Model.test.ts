@@ -5,6 +5,10 @@ import {
   createTestRuntime,
   EntityReplacedError,
   type IActionGenerator,
+  type IEntity,
+  inFlight,
+  type IRuntime,
+  type ISelectorGenerator,
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
@@ -26,8 +30,8 @@ import {
   threadCommand,
   toggleModelFavorite,
 } from "./Environment";
-import { gitBusy, runGitAction } from "./GitWork";
-import { loadEarlier, loadingEarlier } from "./HistoryWindow";
+import { continueDefaultBranch, pull, runGitAction } from "./GitWork";
+import { loadEarlier } from "./HistoryWindow";
 import {
   archivedThreadCommand,
   autoRefreshLimits,
@@ -95,13 +99,7 @@ import {
 } from "./OpenThread";
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
-import {
-  answering,
-  answerRequest,
-  canAnswer,
-  dismissRequest,
-  type IRuntimeRequest,
-} from "./RuntimeRequest";
+import { answerRequest, canAnswer, dismissRequest, type IRuntimeRequest } from "./RuntimeRequest";
 import {
   activityAt,
   canSnooze,
@@ -122,22 +120,18 @@ import {
   closeTerminal,
   effectiveModel,
   effectiveRuntimeMode,
-  ending,
   endTerminal,
   fitDetails,
   type IThreadSession,
   openDiff,
   openTerminal,
   queueAction,
-  queueing,
   send,
-  sending,
   setDraft,
   setModelSelection,
   setQuestionCustomAnswer,
   setQuestionIndex,
   setRuntimeMode,
-  stopping,
   stopRun,
   terminalAttachment,
   TerminalReceiver,
@@ -165,6 +159,15 @@ import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
 
 const ENV = "env-1";
+
+const inFlightOf = (
+  runtime: IRuntime<IRoot>,
+  reading: Parameters<typeof inFlight>[0],
+  owner: () => IEntity,
+) =>
+  runtime.processSelector(function* (draft: IEntity): ISelectorGenerator<boolean> {
+    return yield* inFlight(reading, draft);
+  }, owner);
 
 const storedPreferences: IPreferences = {
   GroupByProject: true,
@@ -1109,7 +1112,7 @@ describe("history pages", () => {
 
   const historyId = (server: Awaited<ReturnType<typeof connect>>) => server.thread().History!.$Id;
   const loadingOf = (server: Awaited<ReturnType<typeof connect>>) =>
-    server.runtime.processSelector(loadingEarlier, () => server.thread().History!);
+    inFlightOf(server.runtime, loadEarlier, () => server.thread().History!);
 
   it("prepends a page, and a live update made during the wait wins over it", async () => {
     const gate = gated();
@@ -1876,7 +1879,7 @@ describe("writing to the server", () => {
     expect(sent[0]!.CommandId).not.toBe(sent[0]!.MessageId);
     const session = server.environment().Local.ThreadSessions[THREAD_ID]!;
     expect(session.Draft).toBe("");
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
     expect(server.thread().TurnItems).toEqual({});
   });
 
@@ -1895,7 +1898,7 @@ describe("writing to the server", () => {
     expect(attempts).toBe(1);
     expect(session.Draft).toBe("keep me");
     expect(session.SendError).toBe("server said no");
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
   });
 
   it("a second send during the wait is ignored", async () => {
@@ -1914,7 +1917,7 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(setDraft, server.sessionId(), "once");
     const first = server.runtime.dispatch(send, server.sessionId());
     await server.runtime.dispatch(send, server.sessionId());
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(true);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(true);
     release();
     await first;
     expect(sent).toHaveLength(1);
@@ -2115,7 +2118,7 @@ describe("writing to the server", () => {
     await server.open();
     await server.runtime.dispatch(stopRun, server.sessionId());
     expect(stops.map((stop) => stop.ThreadId)).toEqual([THREAD_ID]);
-    expect(server.runtime.processSelector(stopping, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, stopRun, () => server.session())).toBe(false);
     refuse = true;
     await server.runtime.dispatch(stopRun, server.sessionId());
     await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
@@ -2138,7 +2141,7 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
-    const busy = () => server.runtime.processSelector(queueing, () => server.session());
+    const busy = () => inFlightOf(server.runtime, queueAction, () => server.session());
     const press = (runId: string | null) =>
       server.runtime.dispatch(
         queueAction,
@@ -2195,7 +2198,13 @@ describe("writing to the server", () => {
       false,
     );
     await settled();
-    expect(server.runtime.processSelector(gitBusy, () => server.session().Git)).toBe(true);
+    expect(
+      inFlightOf(
+        server.runtime,
+        [runGitAction, continueDefaultBranch, pull],
+        () => server.session().Git,
+      ),
+    ).toBe(true);
     finish();
     await running;
     expect(server.session().Git.Notice).toMatchObject({ Tone: "success", Title: "Pushed" });
@@ -2278,7 +2287,8 @@ describe("writing to the server", () => {
     expect(pendingRequest(server.thread(), "r-1")?.Item?.type).toBe("approval_request");
 
     const node = (id: string) => server.thread().RuntimeRequests[id]!;
-    const busy = (id: string) => server.runtime.processSelector(answering, () => node(id));
+    const busy = (id: string) =>
+      inFlightOf(server.runtime, [answerRequest, dismissRequest], () => node(id));
     const answer = (id: string, decision: "accept" | "decline") =>
       server.runtime.dispatch(answerRequest, node(id).$Id, ENV, THREAD_ID, decision, null);
     const first = answer("r-1", "accept");
@@ -3286,7 +3296,7 @@ describe("the terminal", () => {
     await server.runtime.dispatch(openTerminal, server.sessionId());
     await server.runtime.dispatch(endTerminal, server.sessionId());
     expect(panel(server)).toMatchObject({ Open: true, Error: "server said no" });
-    expect(server.runtime.processSelector(ending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, endTerminal, () => server.session())).toBe(false);
     expect(attached(server)).toHaveLength(1);
     refuse = false;
     await server.runtime.dispatch(endTerminal, server.sessionId());
