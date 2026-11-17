@@ -231,7 +231,7 @@ export function PermissionsChip(props: { context?: boolean }) {
         class={
           props.context
             ? `inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-0 text-[12px] text-muted-foreground ${OPEN_HOVER} [&_svg]:size-3.5`
-            : `${COMPOSER_CONTROL} in-[.composer.collapsed]:hidden`
+            : `${COMPOSER_CONTROL} in-data-collapsed:hidden`
         }
         ref={setTrigger}
         aria-label={`Permissions: ${mode().Label}`}

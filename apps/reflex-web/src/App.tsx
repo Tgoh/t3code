@@ -6,7 +6,7 @@ import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "soli
 import { AddProjectPalette } from "./AddProject";
 import { ProjectBadge } from "./brand";
 import { CommandPalette } from "./CommandPalette";
-import { Composer, FileDropSection } from "./Composer";
+import { Composer, COMPOSER_LANE, FileDropSection } from "./Composer";
 import Environment from "./Environment";
 import { adjacentThread, isEditable, resolveShortcutCommand, shortcutLabel } from "./keybindings";
 import {
@@ -56,7 +56,7 @@ const NewThreadView = ThreadSession.provider(() => {
       </header>
       <div class="chat-stage">
         <div class="timeline" />
-        <div class="composer-lane">
+        <div class={COMPOSER_LANE}>
           <Composer />
         </div>
       </div>
@@ -136,7 +136,7 @@ const EnvironmentView = Environment.provider(() => {
       }
       case "workspace.focusNext":
       case "workspace.focusPrevious":
-        if (document.activeElement?.closest(".sidebar")) focusComposer();
+        if (document.activeElement?.closest("[data-sidebar]")) focusComposer();
         else focusSearch();
         return true;
       case "usage.open":
@@ -195,7 +195,7 @@ const EnvironmentView = Environment.provider(() => {
   };
   return (
     <div
-      class="layout"
+      class="layout fixed inset-x-0 top-[var(--viewport-top,0)] grid h-[var(--viewport-height,100%)] grid-cols-[16rem_minmax(0,1fr)] pt-[env(safe-area-inset-top)] [&:is(.sidebar-sheet,.sidebar-collapsed)]:grid-cols-[minmax(0,1fr)]"
       classList={{
         "sidebar-sheet": sidebar.sheet(),
         "sidebar-open": sidebar.open(),
@@ -208,7 +208,7 @@ const EnvironmentView = Environment.provider(() => {
             <Sidebar state={environment.state.Replica.Shell} />
             <Show when={sidebar.open()}>
               <div
-                class="sidebar-backdrop"
+                class="absolute inset-0 z-49 bg-(--dialog-backdrop) backdrop-blur-[4px]"
                 aria-hidden="true"
                 onClick={() => sidebar.setOpen(false)}
               />
