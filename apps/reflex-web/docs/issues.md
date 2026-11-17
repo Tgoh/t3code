@@ -101,9 +101,9 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - A command row doesn't check the server's `commandOutputStreaming` capability, so an older server shows the subscription's error.
 - Secret and link requests are shown but can only be answered in the stock client.
 - Drafts live in this port's `localStorage`, not stock's draft store, so the two clients keep separate drafts. A file whose upload hadn't finished when the page closed is dropped, where stock keeps it as a row to attach again. Images are kept as data URLs, as stock keeps them, so a few large ones can fill the store, and the write is then dropped.
-- Steer or queue during a run always defaults to steer: there's no settings page for stock's follow-up behaviour. A send during a compaction that can't take a steer isn't forced to queue, and Enter on an empty composer doesn't resume a held queue.
+- A send during a run follows the Follow-up behavior setting, but not stock's override to steer while approvals are shown. A send during a compaction that can't take a steer isn't forced to queue, and Enter on an empty composer doesn't resume a held queue.
 - The queue popover has no keyboard shortcuts for send now or edit, and an edit changes only the text, not attachments. Stock has no reorder either.
-- The provider list and the hidden-model and model-order settings are read once at startup, not followed. Model favorites are read at startup and after this client's own toggle, so one changed in stock shows after a reload.
+- The provider list and the hidden-model and model-order settings are read once at startup, not followed. The picker keeps a runtime-catalog driver's active model listed as Unavailable when the catalog drops it, but only for a provider that's ready. Model favorites are read at startup and after this client's own toggle, so one changed in stock shows after a reload.
 - A sent message appears when the stream delivers it, with no pending row in Local; the gap wasn't noticeable.
 - A new thread starts on the model and options last picked in this browser, else the project's default, else the first provider's default, which can be a paid one. The last pick and each model's options are kept in this port's `localStorage`, not stock's draft store, so the two clients remember picks separately.
 - A new thread's permission mode defaults to Full access, not the project's `defaultRuntimeMode` setting.
@@ -207,7 +207,7 @@ Dictation transcribes on this client's own server with a local model, as stock's
 - No transcript cleanup, dictionary (personal or project), correction cue, language select, microphone order or test, hardware or unload settings, model compare, linking or removal. The project's name is still sent as a recognition hint.
 - The shortcut toggles; stock's "hold to talk" mode isn't built. Escape cancels a recording.
 - No dictating into a question's custom answer, the timeline's comment editors or the preview annotator.
-- Tested in desktop Chromium with `getUserMedia` stubbed to play a recorded WAV through Web Audio. A real iPhone isn't tested. iOS needs the HTTPS (Tailscale) address, may ask for the microphone again in each home-screen app session, and ends the capture when the app goes to the background, which shows as "Mic disconnected" with Record again.
+- Tested in desktop Chromium with `getUserMedia` stubbed to play a recorded WAV through Web Audio, on the dev server and on the production build with its service worker in control, both streaming and buffered. A real iPhone isn't tested. iOS needs the HTTPS (Tailscale) address, may ask for the microphone again in each home-screen app session, and ends the capture when the app goes to the background, which shows as "Mic disconnected" with Record again.
 
 ## Open: reading `packages/` restarts the dev server on Windows
 

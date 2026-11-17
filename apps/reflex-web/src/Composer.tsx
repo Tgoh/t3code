@@ -1,5 +1,9 @@
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
+import {
+  type ActiveTurnComposerAction,
+  alternateComposerDispatchAction,
+  resolveComposerDispatchMode,
+} from "@t3tools/client-runtime/state/composer-dispatch";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useInFlight, useResource } from "treflex-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
@@ -13,7 +17,8 @@ import {
 } from "./attachmentIntake";
 import { ComposerCommandMenu, useComposerMenu } from "./ComposerCommandMenu";
 import { FOCUS_COMPOSER_EVENT, TOGGLE_DICTATION_EVENT } from "./composerFocus";
-import { ModelPicker, PermissionsChip } from "./ComposerMenus";
+import { formatContextTokens } from "./compaction";
+import { CompactToggle, ModelPicker, PermissionsChip } from "./ComposerMenus";
 import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
 import { dictationBusy } from "./Dictation";
 import { DictationPill, DictationPreview, MicButton, useVoiceOffered } from "./DictationControls";
@@ -45,9 +50,10 @@ import { iconButton } from "./ui/IconButton";
 import { composerCollapses, createMediaQuery, PHONE_QUERY, SHORT_TOUCH_QUERY } from "./viewport";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
-const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
+export const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
 
-const isAlternate = (event: MouseEvent | KeyboardEvent) => (IS_MAC ? event.metaKey : event.ctrlKey);
+export const isAlternate = (event: MouseEvent | KeyboardEvent) =>
+  IS_MAC ? event.metaKey : event.ctrlKey;
 
 /** The strip at the foot of a thread that holds the composer, measured as --composer-height.
  * navigation.ts and ViewportDebug.tsx find it by `composer-lane`, which has no rule. */
@@ -102,27 +108,41 @@ function useAlternateHeld() {
 function SendButton(props: {
   running: boolean;
   alternate: boolean;
+  followUp: ActiveTurnComposerAction;
   sending: boolean;
   disabled: boolean;
   blocked: string | null;
+  /** The tokens this send compacts first, already formatted. */
+  compacts: string | null;
+  label?: string | undefined;
   class: string;
   onSend: (alternate: boolean) => void;
 }) {
   const mode = () =>
-    resolveComposerDispatchMode({ running: props.running, alternateModifier: props.alternate });
+    resolveComposerDispatchMode({
+      running: props.running,
+      alternateModifier: props.alternate,
+      activeTurnDefault: props.followUp,
+    });
+  const alternateAction = () => alternateComposerDispatchAction(props.followUp);
   const label = () =>
     props.sending
       ? "Sending"
-      : mode() === "queue"
-        ? "Queue message"
-        : mode() === "steer"
-          ? "Steer message"
-          : "Submit message";
+      : (props.label ??
+        (props.compacts !== null
+          ? "Compact and send"
+          : mode() === "queue"
+            ? "Queue message"
+            : mode() === "steer"
+              ? "Steer message"
+              : "Submit message"));
   const tip = () =>
     props.blocked ??
-    (props.running
-      ? `Click to steer, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to queue`
-      : undefined);
+    (props.compacts !== null
+      ? `Summarize ${props.compacts} tokens of history, then send`
+      : props.running
+        ? `Click to ${props.followUp}, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to ${alternateAction()}`
+        : undefined);
   return (
     <button
       type="submit"
@@ -374,6 +394,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   };
   const alternateHeld = useAlternateHeld();
   const running = () => props.active === true;
+  const compactTokens = () => (answering() ? null : session.compactionOffer());
+  const compacts = () => {
+    const tokens = compactTokens();
+    return tokens === null || held().KeepFullHistory ? null : formatContextTokens(tokens);
+  };
   const send = (alternate = false) => {
     const question = answering();
     if (question !== undefined) {
@@ -381,7 +406,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       return;
     }
     if (blocked() !== null) return;
-    const mode = resolveComposerDispatchMode({ running: running(), alternateModifier: alternate });
+    const mode = resolveComposerDispatchMode({
+      running: running(),
+      alternateModifier: alternate,
+      activeTurnDefault: session.followUpBehavior(),
+    });
     if (dictating()) {
       props.onSend?.();
       void environment.sendAfterDictation(held().ThreadId, mode);
@@ -552,11 +581,15 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                 <SendButton
                   running={running()}
                   alternate={alternateHeld()}
+                  followUp={session.followUpBehavior()}
                   sending={sending()}
                   disabled={!canSend()}
                   blocked={null}
+                  compacts={compacts()}
+                  // The collapsed composer hides the compact toggle, so it opens rather than sends.
+                  label={compacts() === null ? undefined : "Open composer to compact and send"}
                   class="ml-0"
-                  onSend={send}
+                  onSend={(alternate) => (compacts() === null ? send(alternate) : expand())}
                 />
               }
             >
@@ -704,6 +737,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           <span class="flex-1" />
           <Show when={!(phone() && ownsVoice())}>
             <ModelPicker />
+            <Show when={compactTokens()}>{(tokens) => <CompactToggle tokens={tokens()} />}</Show>
             <Show when={!isDraft() && session.effectiveRuntimeMode() !== DEFAULT_RUNTIME_MODE}>
               <PermissionsChip />
             </Show>
@@ -730,9 +764,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             <SendButton
               running={running()}
               alternate={alternateHeld()}
+              followUp={session.followUpBehavior()}
               sending={sending()}
               disabled={!canSend() && !(dictating() && voice().Phase !== "preparing")}
               blocked={blocked()}
+              compacts={compacts()}
               class="ml-[5px]"
               onSend={send}
             />

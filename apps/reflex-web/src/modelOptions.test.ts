@@ -216,8 +216,33 @@ describe("the model list", () => {
       Tab: "claudeAgent",
       Query: "",
       LegacyExpanded: false,
+      Active: null,
       ...input,
     });
+
+  it("keeps a runtime-catalog driver's active model listed, as unavailable, when its catalog drops it", () => {
+    const runtime = (driver: string): IProviderOption => ({
+      InstanceId: driver,
+      Driver: driver,
+      Name: driver,
+      Models: [model("listed")],
+    });
+    const catalog = [anthropic, runtime("pi"), runtime("acpRegistry")];
+    const active = (instanceId: string, slug: string) => ({
+      Providers: catalog,
+      Tab: instanceId,
+      Active: { instanceId, model: slug } as IWireModelSelection,
+    });
+    const pi = list(active("pi", "gone"));
+    expect(slugs(pi)).toEqual(["listed", "gone"]);
+    expect(pi.Models.map((held) => held.IsUnavailable === true)).toEqual([false, true]);
+    expect(slugs(list({ ...active("pi", "gone"), Tab: "acpRegistry" }))).toEqual(["listed"]);
+    expect(slugs(list(active("pi", "listed")))).toEqual(["listed"]);
+    expect(slugs(list(active("claudeAgent", "gone")))).not.toContain("gone");
+    expect(slugs(list(active("acpRegistry", "default")))).toEqual(["listed"]);
+    const hidden = { ...runtime("pi"), HiddenModels: ["gone"] };
+    expect(slugs(list({ ...active("pi", "gone"), Providers: [hidden] }))).toEqual(["listed"]);
+  });
 
   it("puts a provider's older models behind Show more, after its current ones", () => {
     const collapsed = list({});

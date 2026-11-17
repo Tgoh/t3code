@@ -115,6 +115,7 @@ export const startTurnImpl = implementation(startTurnEffect, async (input) => {
       role: "user" as const,
       text: input.Text,
       attachments: input.Attachments as never,
+      ...(input.IdleCompaction === undefined ? {} : { idleCompaction: input.IdleCompaction }),
     },
     ...(input.ModelSelection === null ? {} : { modelSelection }),
     runtimeMode: input.RuntimeMode,
@@ -572,6 +573,9 @@ export const serverProvidersImpl = implementation(serverProvidersEffect, async (
         ? {}
         : { SlashCommands: plainCopy(provider.slashCommands) }),
       ...(provider.skills.length === 0 ? {} : { Skills: plainCopy(provider.skills) }),
+      ...((preferences[provider.instanceId]?.hiddenModels.length ?? 0) === 0
+        ? {}
+        : { HiddenModels: [...preferences[provider.instanceId]!.hiddenModels] }),
       Models: applyModelPreferences(provider.models, preferences[provider.instanceId]).map(
         (model) => ({
           Slug: model.slug,

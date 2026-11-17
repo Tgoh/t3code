@@ -72,7 +72,7 @@ import {
   toggleViewportDebug,
 } from "./Preferences";
 import { type IShelves, SETTLED_PAGE } from "./sidebarLayout";
-import type { IWireClientSettings } from "./Infrastructure/settings";
+import { type IWireClientSettings, storedClientSettingsEffect } from "./Infrastructure/settings";
 import type { IProjectFaviconTarget } from "./projectIcon";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import {
@@ -93,6 +93,7 @@ import {
   updateServerSettings,
   writeSetting,
 } from "./Settings";
+import { compactionDismissalKey, dismissedIn } from "./compaction";
 import {
   cancelDictation,
   dictation,
@@ -138,8 +139,6 @@ export interface IEnvironment extends IEntity {
     ClientSettings: IWireClientSettings | null;
     Preferences: IPreferences;
     Shelves: IShelves;
-    /** The clock the sidebar reads, a minute at a time. */
-    Now: number;
     SystemDark: boolean;
     ViewportDebug: boolean;
   };
@@ -164,7 +163,7 @@ export function* newEnvironment(
     SelectedThreadId: null,
     ThreadSessions: {},
     View: null,
-    ClientSettings: null,
+    ClientSettings: yield* storedClientSettingsEffect(),
     Preferences: yield* storedPreferencesEffect(),
     Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: SETTLED_PAGE },
     Now: yield* clockNowEffect(),
@@ -178,6 +177,21 @@ export function* newEnvironment(
     Replica: replica,
     Local: local,
   });
+}
+
+// Follows the effect in apps/web/src/components/ChatView.tsx that persists a resume compaction's
+// "Don't ask again" answer, so the offer stays off for that provider in every thread.
+function* rememberCompactionDismissal(draft: IEnvironment, threadId: string): IActionGenerator {
+  const open = draft.Replica.OpenThreads[threadId];
+  if (open?.Thread == null || !dismissedIn(open)) return;
+  const activeId = open.Thread.activeProviderThreadId;
+  const instanceId =
+    (activeId == null ? undefined : open.ProviderThreads[activeId]?.providerInstanceId) ??
+    open.Thread.modelSelection.instanceId;
+  const key = compactionDismissalKey(draft.EnvironmentId, instanceId);
+  const held = draft.Local.Preferences.CompactionDismissed;
+  if (held.includes(key)) return;
+  yield* setPreferences(draft, { CompactionDismissed: [...held, key] });
 }
 
 export function* init(draft: IEnvironment): IActionGenerator {
@@ -613,6 +627,7 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Thread/RequestsSettled"(draft, { ThreadId, PendingIds, UnansweredIds }) {
     const session = draft.Local.ThreadSessions[ThreadId];
     if (session !== undefined) yield* start(settleQuestions, session, PendingIds, UnansweredIds);
+    yield* rememberCompactionDismissal(draft, ThreadId);
   },
   *"Thread/RewindProgress"(draft, { ThreadId }) {
     const session = draft.Local.ThreadSessions[ThreadId];

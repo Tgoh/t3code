@@ -120,7 +120,7 @@ export const Sidebar = Shell.provider(() => {
   const environment = Environment.use();
   const shell = Shell.use();
   const navigation = useNavigation();
-  const selected = () => environment.state.Local.SelectedThreadId;
+  const selected = () => shell.sidebarRowThreadId();
   const providers = () => environment.state.Replica.Providers;
   const providerName = (instanceId: string) =>
     providers().find((provider) => provider.InstanceId === instanceId)?.Name ?? instanceId;

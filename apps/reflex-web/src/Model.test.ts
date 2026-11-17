@@ -4,6 +4,10 @@ import {
   type KeybindingCommand,
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
+import {
+  CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
+  formatClaudeResumeCompactionQuestion,
+} from "@t3tools/shared/claudeCompaction";
 import { createEffect, createMemo, createRoot } from "solid-js";
 import {
   createTestRuntime,
@@ -125,6 +129,7 @@ import {
   projectFolders,
   ShellReceiver,
   sidebarSections,
+  sidebarRowThreadId,
   sidebarStatus,
   sidebarThreads,
   subagentRequests,
@@ -146,6 +151,7 @@ import {
   threadWorking,
   diffLoading,
   closeTerminal,
+  compactionOffer,
   effectiveModel,
   effectiveRuntimeMode,
   endTerminal,
@@ -164,6 +170,7 @@ import {
   terminalAttachment,
   TerminalReceiver,
   toggleCodeWrap,
+  toggleKeepFullHistory,
   toggleQuestionOption,
   toggleRightPanel,
   unwrappedCodeBlocks,
@@ -205,6 +212,7 @@ const storedPreferences: IPreferences = {
   HiddenProjects: [],
   ProjectScope: [],
   SidebarCollapsed: false,
+  CompactionDismissed: [],
   AppearanceMode: "system",
   Usage: { Metric: "limits", Days: 30 },
   VoiceDestination: "server",
@@ -259,6 +267,7 @@ async function connect(
       setAddressView: (effect: { View: IAddressView | null }) => {
         address.view = effect.View;
       },
+      storedClientSettings: () => null,
       rememberedModels: () => models,
       rememberModel: (effect: { Selection: IWireModelSelection }) => {
         models.Last = effect.Selection;
@@ -1248,6 +1257,68 @@ describe("the sidebar", () => {
     pendingRuntimeRequest: null,
     lineage: { rootThreadId: id, parentThreadId: null, relationshipToParent: null },
     ...extra,
+  });
+
+  it("an open thread without a row marks its nearest listed ancestor's row", async () => {
+    const server = await connect();
+    const under = (parentId: string, relationship: "subagent" | null, sideChat = false) => ({
+      archivedAt: null,
+      lineage: {
+        rootThreadId: "parent",
+        parentThreadId: parentId,
+        relationshipToParent: relationship,
+        ...(sideChat ? { sideChat } : {}),
+      },
+    });
+    const delegated = (parentId: string, archivedAt: string | null = null) => ({
+      archivedAt,
+      delegatedFrom: { environmentId: ENV, threadId: parentId, title: parentId },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "p-1", title: "One", workspaceRoot: "/1" }],
+        threads: [
+          row("parent", "p-1", at, { archivedAt: null }),
+          row("subagent", "p-1", at, under("parent", "subagent")),
+          row("nested", "p-1", at, under("subagent", "subagent")),
+          row("side", "p-1", at, under("parent", null, true)),
+          row("task", "p-1", at, delegated("parent")),
+          row("archived", "p-1", at, { archivedAt: at }),
+          row("orphan-task", "p-1", at, delegated("archived")),
+          row("orphan", "p-1", at, under("missing", "subagent")),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const rowOf = async (threadId: string) => {
+      await server.runtime.dispatch(selectThread, server.envId(), threadId);
+      return server.runtime.processSelector(
+        sidebarRowThreadId,
+        () => server.environment().Replica.Shell,
+      );
+    };
+    expect(await rowOf("parent")).toBe("parent");
+    expect(await rowOf("subagent")).toBe("parent");
+    expect(await rowOf("nested")).toBe("parent");
+    expect(await rowOf("side")).toBe("parent");
+    expect(await rowOf("task")).toBe("parent");
+    expect(await rowOf("orphan-task")).toBe("orphan-task");
+    expect(await rowOf("orphan")).toBe("orphan");
+    // The shell omits an idle subagent, so its row comes from the open thread.
+    expect(await rowOf(THREAD_ID)).toBe(THREAD_ID);
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          thread: { ...emptyProjection().thread, ...under("subagent", "subagent") } as never,
+        },
+        1,
+      ),
+    );
+    expect(await rowOf(THREAD_ID)).toBe("parent");
   });
 
   it("lists top-level threads and leaves subagents out, live", async () => {
@@ -2269,6 +2340,71 @@ describe("writing to the server", () => {
     ]);
   });
 
+  it("an edit saved with the modifier while Steer is the follow-up default stays queued", async () => {
+    const commands: IQueueCommand[] = [];
+    const server = await connect(undefined, null, {
+      queueCommand: (effect: IQueueCommand) => void commands.push(effect),
+      storedClientSettings: () => ({ followUpBehavior: "steer" }),
+    });
+    await server.open();
+    await server.sendThread(
+      snapshotOf(
+        { ...emptyProjection(), runs: [run("run-1", 1, "starting"), run("run-2", 2, "queued")] },
+        1,
+      ),
+    );
+    await server.runtime.dispatch(queueAction, server.sessionId(), {
+      Kind: "edit",
+      RunId: "run-2",
+      Text: "changed",
+      Alternate: true,
+    });
+    expect(commands.map((command) => command.Operation.Kind)).toEqual(["edit"]);
+  });
+
+  it("an edit saved with the modifier while Queue is the follow-up default is saved, then steered while a run can take it", async () => {
+    const commands: IQueueCommand[] = [];
+    const server = await connect(undefined, null, {
+      queueCommand: (effect: IQueueCommand) => void commands.push(effect),
+      storedClientSettings: () => ({ followUpBehavior: "queue" }),
+    });
+    await server.open();
+    const save = (runId: string, alternate: boolean) =>
+      server.runtime.dispatch(queueAction, server.sessionId(), {
+        Kind: "edit",
+        RunId: runId,
+        Text: "changed",
+        Alternate: alternate,
+      });
+    await server.sendThread(
+      snapshotOf({ ...emptyProjection(), runs: [run("run-2", 2, "queued")] }, 1),
+    );
+    await save("run-2", true);
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [
+            run("run-1", 1, "starting"),
+            run("run-2", 2, "queued"),
+            { ...run("run-3", 3, "queued"), freshContext: true },
+          ],
+        },
+        2,
+      ),
+    );
+    await save("run-2", false);
+    await save("run-2", true);
+    await save("run-3", true);
+    expect(commands.map((command) => command.Operation)).toEqual([
+      { Kind: "edit", RunId: "run-2", Text: "changed" },
+      { Kind: "edit", RunId: "run-2", Text: "changed" },
+      { Kind: "edit", RunId: "run-2", Text: "changed" },
+      { Kind: "steer", RunId: "run-2", TargetRunId: "run-1" },
+      { Kind: "edit", RunId: "run-3", Text: "changed" },
+    ]);
+  });
+
   it("a send carries the delivery the composer chose", async () => {
     const sent: IStartTurn[] = [];
     const server = await connect(undefined, null, {
@@ -2284,6 +2420,117 @@ describe("writing to the server", () => {
       ["steer", "steer"],
       ["queue", "queue"],
     ]);
+  });
+
+  describe("compacting before a send", () => {
+    const CLAUDE = { instanceId: "claudeAgent", model: "claude-opus-4-7" };
+    async function staleClaudeThread() {
+      const sent: IStartTurn[] = [];
+      const server = await connect(undefined, null, {
+        startTurn: (effect: IStartTurn) => void sent.push(effect),
+      });
+      await server.sendConfig({
+        version: 1,
+        type: "snapshot",
+        config: {
+          settings: { providerInstances: {}, compactIdleThreads: false },
+          providers: [
+            {
+              instanceId: "claudeAgent",
+              driver: "claudeAgent",
+              slashCommands: [{ name: "compact" }],
+            },
+          ],
+          keybindings: [],
+          issues: [],
+        },
+      });
+      await server.open();
+      await server.sendThread(snapshotOf(staleProjection(), 1));
+      return { server, sent };
+    }
+    function staleProjection() {
+      const projection = emptyProjection();
+      projection.thread = {
+        ...projection.thread,
+        modelSelection: CLAUDE,
+        activeProviderThreadId: "provider-thread",
+      } as never;
+      projection.runs = [{ ...run("run-1", 1), modelSelection: CLAUDE } as never];
+      // The test clock reads 0, so this report is two hours old.
+      projection.providerTurns = [
+        {
+          id: "turn-1",
+          providerThreadId: "provider-thread",
+          tokenUsage: { usedTokens: 439_000, updatedAt: "1969-12-31T22:00:00.000Z" },
+        } as never,
+      ];
+      return projection;
+    }
+    const offer = (server: Awaited<ReturnType<typeof connect>>) =>
+      server.runtime.processSelector(compactionOffer, () => server.session());
+
+    it("sends /compact marked onReturn, then queues the message behind it", async () => {
+      const { server, sent } = await staleClaudeThread();
+      expect(offer(server)).toBe(439_000);
+      await server.runtime.dispatch(setDraft, server.sessionId(), "carry on");
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(
+        sent.map((turn) => [
+          turn.Text,
+          turn.DispatchMode,
+          turn.IdleCompaction,
+          turn.ModelSelection,
+        ]),
+      ).toEqual([
+        ["/compact", "auto", "onReturn", CLAUDE],
+        ["carry on", "queue", undefined, CLAUDE],
+      ]);
+      expect(new Set(sent.flatMap((turn) => [turn.CommandId, turn.MessageId])).size).toBe(4);
+    });
+
+    it("keeps the full history for one send when toggled, then offers again", async () => {
+      const { server, sent } = await staleClaudeThread();
+      await server.runtime.dispatch(toggleKeepFullHistory, server.sessionId());
+      await server.runtime.dispatch(setDraft, server.sessionId(), "carry on");
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(sent.map((turn) => [turn.Text, turn.DispatchMode])).toEqual([["carry on", "auto"]]);
+      expect(server.session().KeepFullHistory).toBe(false);
+    });
+
+    it("a never-ask-again answer stops the offer for that provider on this device, in every thread", async () => {
+      const { server } = await staleClaudeThread();
+      const question = formatClaudeResumeCompactionQuestion({
+        ageMinutes: 120,
+        estimatedTokens: 439_000,
+      });
+      const answered = staleProjection();
+      answered.runtimeRequests = [
+        {
+          id: "request-1",
+          kind: "user_input",
+          status: "resolved",
+          answers: { [question]: CLAUDE_RESUME_COMPACTION_NEVER_ANSWER },
+          responseCapability: { type: "live" },
+        } as never,
+      ];
+      await server.sendThread(snapshotOf(answered, 2));
+      await settled();
+      expect(server.device.Preferences.CompactionDismissed).toEqual([`${ENV}:claudeAgent`]);
+      // Another thread, or this one without the answered question in view, stays quiet.
+      await server.sendThread(snapshotOf(staleProjection(), 3));
+      expect(offer(server)).toBeNull();
+    });
+
+    it("a typed /compact is the compaction, so it sends alone", async () => {
+      const { server, sent } = await staleClaudeThread();
+      await server.runtime.dispatch(setDraft, server.sessionId(), "/compact");
+      expect(offer(server)).toBeNull();
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(sent.map((turn) => [turn.Text, turn.IdleCompaction])).toEqual([
+        ["/compact", undefined],
+      ]);
+    });
   });
 
   it("answering marks only its own request, and the stream or another device clears it", async () => {

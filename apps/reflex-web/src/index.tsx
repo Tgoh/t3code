@@ -64,6 +64,7 @@ import {
   storedNewThreadImpl,
 } from "./Infrastructure/draftMemory";
 import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelMemory";
+import { registerServiceWorker } from "./Infrastructure/serviceWorker";
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
 import { projectFavicons } from "./Infrastructure/projectFavicons";
@@ -187,6 +188,7 @@ document.documentElement.dataset.theme = resolveScheme(
 );
 void runtime.dispatch(load, "Root");
 openExternalLinksInSafari();
+registerServiceWorker();
 
 render(
   () => (

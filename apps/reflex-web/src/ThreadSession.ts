@@ -1,4 +1,8 @@
 import {
+  type ActiveTurnComposerAction,
+  resolveComposerDispatchMode,
+} from "@t3tools/client-runtime/state/composer-dispatch";
+import {
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
 } from "@t3tools/client-runtime/state/pending-user-input";
@@ -90,7 +94,14 @@ import {
   providerOf,
 } from "./modelOptions";
 import { FILE_SEARCH_LIMIT, type IProjectEntry } from "./composerMenu";
-import { type IOpenThread, latestDiffTurn, newestRun, timelineItem } from "./OpenThread";
+import { compactBeforeSendTokens } from "./compaction";
+import {
+  type IOpenThread,
+  isRowVisible,
+  latestDiffTurn,
+  newestRun,
+  timelineItem,
+} from "./OpenThread";
 import { type IPromptHistoryEntry, promptHistoryEntries, recallablePrompt } from "./promptHistory";
 import {
   availableRevertTurnCounts,
@@ -146,8 +157,11 @@ export interface IReplica extends IEntity {
 
 export interface ISelection extends IEntity {
   SelectedThreadId: string | null;
-  Preferences: { AppearanceMode: IAppearanceMode };
+  Preferences: { AppearanceMode: IAppearanceMode; CompactionDismissed: string[] };
   SystemDark: boolean;
+  ClientSettings: { followUpBehavior: ActiveTurnComposerAction } | null;
+  /** The device clock, a minute at a time. */
+  Now: number;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -204,6 +218,8 @@ export interface IThreadSession extends IEntity {
   AttachmentNotice?: string;
   ModelSelection: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode | null;
+  /** The next send skips the compaction the composer offers. */
+  KeepFullHistory: boolean;
   ModelError?: string;
   SendError?: string;
   StopError?: string;
@@ -232,6 +248,7 @@ export function getDefaultThreadSession(
     Attachments: [],
     ModelSelection: null,
     RuntimeMode: null,
+    KeepFullHistory: false,
     QuestionAnswers: {},
     QuestionIndex: {},
     Panels: {
@@ -319,13 +336,16 @@ export function* modelSwitch(draft: IThreadSession): ISelectorGenerator<IModelSw
 export interface IQueueWorkflow {
   CanSendNow: boolean;
   CanSteer: boolean;
+  PromoteSkipsCompaction: boolean;
   ActiveRunId: string | null;
 }
 
 export function* queueWorkflow(draft: IThreadSession): ISelectorGenerator<IQueueWorkflow> {
   const replica = yield* getData(draft, "Replica");
   const open = replica?.OpenThreads[draft.ThreadId];
-  if (open?.Thread == null) return { CanSendNow: false, CanSteer: false, ActiveRunId: null };
+  if (open?.Thread == null) {
+    return { CanSendNow: false, CanSteer: false, PromoteSkipsCompaction: false, ActiveRunId: null };
+  }
   const byOrdinal = <T extends { ordinal: number }>(rows: T[]) =>
     rows.sort((left, right) => left.ordinal - right.ordinal);
   const state = deriveThreadQueueWorkflowState({
@@ -339,8 +359,23 @@ export function* queueWorkflow(draft: IThreadSession): ISelectorGenerator<IQueue
   return {
     CanSendNow: state.canSendNow,
     CanSteer: state.canPromoteToSteer,
+    PromoteSkipsCompaction: state.promoteSkipsCompaction,
     ActiveRunId: state.activeRun?.id ?? null,
   };
+}
+
+// Follows canSendRun in apps/web/src/components/chat/QueuedRunsControl.tsx: a fresh-context
+// message starts its own turn, so it can skip a compaction but never steer into a turn.
+function* steerOperation(
+  draft: IThreadSession,
+  runId: string,
+): ISelectorGenerator<IQueueOperation | null> {
+  const workflow = yield* queueWorkflow(draft);
+  if (workflow.ActiveRunId === null || !workflow.CanSteer) return null;
+  const replica = yield* getData(draft, "Replica");
+  const freshContext = replica?.OpenThreads[draft.ThreadId]?.Runs[runId]?.freshContext === true;
+  if (freshContext && !workflow.PromoteSkipsCompaction) return null;
+  return { Kind: "steer", RunId: runId, TargetRunId: workflow.ActiveRunId };
 }
 
 function* effectiveModelDisplay(
@@ -480,6 +515,14 @@ export function* fileSearchResult(draft: IThreadSession) {
 function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
   const selection = yield* getData(draft, "Selection");
   return selection?.SelectedThreadId === draft.ThreadId;
+}
+
+/** Stock's Follow-up behavior setting: what a send does while a turn runs. */
+export function* followUpBehavior(
+  draft: IThreadSession,
+): ISelectorGenerator<ActiveTurnComposerAction> {
+  const selection = yield* getData(draft, "Selection");
+  return selection?.ClientSettings?.followUpBehavior ?? "steer";
 }
 
 function* terminalScheme(draft: IThreadSession): ISelectorGenerator<IColorScheme> {
@@ -639,6 +682,7 @@ function* uploadAndStart(
   fileIds: string[],
   turn: Omit<IStartTurn, "CommandId" | "MessageId" | "Attachments">,
   setRuntimeMode: boolean,
+  compactFirst: boolean,
 ): IActionGenerator {
   const attachments: IWireAttachment[] = [];
   for (const id of fileIds) {
@@ -656,6 +700,17 @@ function* uploadAndStart(
       }),
     );
   }
+  if (compactFirst) {
+    yield* startTurnEffect({
+      ...turn,
+      CommandId: yield* generateGuid(),
+      MessageId: yield* generateGuid(),
+      Text: "/compact",
+      Attachments: [],
+      DispatchMode: "auto",
+      IdleCompaction: "onReturn",
+    });
+  }
   const commandId = yield* generateGuid();
   const messageId = yield* generateGuid();
   yield* startTurnEffect({
@@ -663,7 +718,41 @@ function* uploadAndStart(
     CommandId: commandId,
     MessageId: messageId,
     Attachments: attachments,
+    // Steering into the compaction is rejected, so the message waits behind it.
+    DispatchMode: compactFirst ? "queue" : turn.DispatchMode,
   });
+}
+
+/**
+ * The tokens the next send compacts first, or null when it sends as is.
+ * Follows `resumeCompactionTokens` in apps/web/src/components/ChatView.tsx.
+ */
+export function* compactionOffer(draft: IThreadSession): ISelectorGenerator<number | null> {
+  if (draft.NewThreadProjectId !== null) return null;
+  const replica = yield* getData(draft, "Replica");
+  const open = replica?.OpenThreads[draft.ThreadId];
+  const config = replica?.Config;
+  const selection = yield* effectiveModel(draft);
+  if (open?.Thread == null || config == null || selection === null) return null;
+  const local = yield* getData(draft, "Selection");
+  return compactBeforeSendTokens({
+    Thread: open,
+    Items: () =>
+      open.Timeline.filter((id) => isRowVisible(open, id)).map((id) => timelineItem(open, id)!),
+    Selection: selection,
+    Config: config,
+    Text: draft.Draft.trim(),
+    Idle: Object.values(open.Runs).every(
+      (run) => !ACTIVE_RUN.has(run.status) && run.status !== "queued",
+    ),
+    Now: local?.Now ?? 0,
+    EnvironmentId: draft.EnvironmentId,
+    Dismissed: local?.Preferences.CompactionDismissed ?? [],
+  });
+}
+
+export function* toggleKeepFullHistory(draft: IThreadSession): IActionGenerator {
+  draft.KeepFullHistory = !draft.KeepFullHistory;
 }
 
 /** `auto` lets the server choose; during a run the composer asks for `steer` or `queue`. */
@@ -677,6 +766,7 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
   const runtimeMode = yield* select(effectiveRuntimeMode);
   const threadMode = yield* select(threadRuntimeMode);
   const interaction = yield* select(interactionMode);
+  const compactFirst = !draft.KeepFullHistory && (yield* select(compactionOffer)) !== null;
   const files = resource(draft, "Composer/Files");
   const turn = {
     EnvironmentId: draft.EnvironmentId,
@@ -695,11 +785,12 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
   try {
     if (projectId !== null && model === null) throw new Error("No provider is available.");
     const setsMode = projectId === null && threadMode !== null && threadMode !== runtimeMode;
-    yield* open(uploadAndStart(files, fileIds, turn, setsMode));
+    yield* open(uploadAndStart(files, fileIds, turn, setsMode, compactFirst));
   } catch (error) {
     draft.SendError = errorText(error);
     return;
   }
+  draft.KeepFullHistory = false;
   if (draft.Draft.trim() === text) draft.Draft = "";
   draft.Attachments = draft.Attachments.filter((file) => !fileIds.includes(file.Id));
   delete draft.AttachmentNotice;
@@ -737,25 +828,25 @@ export function* stopRun(draft: IThreadSession): IOpenGenerator {
 leading(stopRun);
 
 export type IQueuePress =
-  | Exclude<IQueueOperation, { Kind: "start" | "steer" }>
+  | Exclude<IQueueOperation, { Kind: "start" | "steer" | "edit" }>
+  | { Kind: "edit"; RunId: string; Text: string; Alternate: boolean }
   | { Kind: "sendNow"; RunId: string };
 
-// Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx.
+// Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx, and saveEdit's
+// steer in apps/web/src/components/chat/useQueuedRunEdit.ts.
 export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGenerator {
   delete draft.QueueError;
-  let operation: IQueueOperation;
-  if (press.Kind !== "sendNow") operation = press;
-  else {
-    const workflow = yield* select(queueWorkflow);
-    if (workflow.CanSendNow) operation = { Kind: "start", RunId: press.RunId };
-    else if (workflow.ActiveRunId !== null && workflow.CanSteer) {
-      operation = { Kind: "steer", RunId: press.RunId, TargetRunId: workflow.ActiveRunId };
-    } else return;
-  }
+  let operation: IQueueOperation | null;
+  if (press.Kind === "edit") {
+    operation = { Kind: "edit", RunId: press.RunId, Text: press.Text };
+  } else if (press.Kind !== "sendNow") operation = press;
+  else if ((yield* select(queueWorkflow)).CanSendNow) {
+    operation = { Kind: "start", RunId: press.RunId };
+  } else operation = yield* select((held: IThreadSession) => steerOperation(held, press.RunId));
   const environmentId = draft.EnvironmentId;
   const threadId = draft.ThreadId;
-  try {
-    yield* open(
+  const run = (operation: IQueueOperation) =>
+    open(
       withCommandId((commandId) =>
         queueCommandEffect({
           EnvironmentId: environmentId,
@@ -765,6 +856,20 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
         }),
       ),
     );
+  try {
+    if (operation === null) return;
+    yield* run(operation);
+    // Only the opposite of the follow-up default asks to steer, as it does for a new follow-up.
+    if (press.Kind !== "edit" || !press.Alternate) return;
+    const followUp = yield* select(followUpBehavior);
+    const mode = resolveComposerDispatchMode({
+      running: true,
+      alternateModifier: true,
+      activeTurnDefault: followUp,
+    });
+    if (mode !== "steer") return;
+    const steer = yield* select((held: IThreadSession) => steerOperation(held, press.RunId));
+    if (steer !== null) yield* run(steer);
   } catch (error) {
     draft.QueueError = errorText(error);
   }
@@ -1403,6 +1508,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     addAttachments,
     removeAttachment,
     send,
+    toggleKeepFullHistory,
     stopRun,
     queueAction,
     editFromHere,
@@ -1437,6 +1543,8 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     projectId,
     projectName,
     queueWorkflow,
+    followUpBehavior,
+    compactionOffer,
     menuCatalog,
     promptHistory,
     fileSearchResult,
