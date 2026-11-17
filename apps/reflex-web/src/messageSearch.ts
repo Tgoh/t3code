@@ -8,6 +8,7 @@ import { type Accessor, createEffect, createMemo } from "solid-js";
 import Environment from "./Environment";
 import { searchThreadsEffect } from "./Infrastructure/commandEffects";
 import { delay } from "./Infrastructure/delay";
+import { serverError } from "./Infrastructure/serverError";
 import type { IThreadSearchMatch } from "./threadSearch";
 
 const DEBOUNCE_MS = 120;
@@ -30,7 +31,8 @@ export function* searchMessages(
       EnvironmentId: environmentId,
       Query: query,
     })).Matches;
-  } catch {
+  } catch (error) {
+    serverError(error);
     draft.Matches = [];
   }
   draft.Query = query;

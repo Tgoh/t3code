@@ -23,7 +23,7 @@ import {
 import { clockNowEffect, type IVoiceDestination } from "./Infrastructure/preferences";
 import { setPreferences } from "./Preferences";
 import { storedClientSettingsEffect } from "./Infrastructure/settings";
-import { errorText } from "./errorText";
+import { serverError } from "./Infrastructure/serverError";
 import { openView } from "./Settings";
 import { send, setDraft } from "./ThreadSession";
 
@@ -131,8 +131,8 @@ export function* startDictation(draft: IEnvironment, threadId: string, text: IDi
   try {
     status = yield* open(voiceStatusEffect());
   } catch (error) {
-    if (yield* stillPreparing(draft, threadId))
-      yield* fail(draft, threadId, errorText(error), "retry");
+    const { message } = serverError(error);
+    if (yield* stillPreparing(draft, threadId)) yield* fail(draft, threadId, message, "retry");
     return;
   }
   if (!(yield* stillPreparing(draft, threadId))) return;

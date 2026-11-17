@@ -16,7 +16,7 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { errorText } from "./errorText";
+import { serverError } from "./Infrastructure/serverError";
 import { threadCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
 import {
   gitActionEffect,
@@ -131,7 +131,7 @@ export function* openEditor(
     yield* showNotice(draft, {
       Tone: "error",
       Title: "Unable to open editor",
-      Description: errorText(error),
+      Description: serverError(error).message,
       Url: null,
     });
   }
@@ -186,7 +186,7 @@ export function* runGitAction(
     yield* showNotice(draft, {
       Tone: "error",
       Title: "Action failed",
-      Description: errorText(error),
+      Description: serverError(error).message,
       Url: null,
     });
     return;
@@ -195,7 +195,7 @@ export function* runGitAction(
     try {
       yield* sendThreadBranch(checkout, outcome.Branch);
     } catch (error) {
-      draft.BranchError = errorText(error);
+      draft.BranchError = serverError(error).message;
     }
   }
   yield* showNotice(draft, {
@@ -252,7 +252,7 @@ export function* pull(draft: IGitWork, checkout: ICheckout): IOpenGenerator {
     yield* showNotice(draft, {
       Tone: "error",
       Title: "Pull failed",
-      Description: errorText(error),
+      Description: serverError(error).message,
       Url: null,
     });
   }

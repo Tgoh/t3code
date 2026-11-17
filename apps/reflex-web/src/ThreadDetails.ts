@@ -10,7 +10,7 @@ import {
 } from "treflex";
 import { createComponentFeature } from "treflex-solid";
 
-import { errorText } from "./errorText";
+import { serverError } from "./Infrastructure/serverError";
 import { sendThreadBranch } from "./GitWork";
 import { projectCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
 import { storedEditorEffect, storeEditorEffect } from "./Infrastructure/preferences";
@@ -103,7 +103,8 @@ export function* attach(draft: IThreadDetails, checkout: ICheckout): IOpenGenera
     draft.Editors = yield* open(
       editorsEffect({ EnvironmentId: checkout.EnvironmentId, Stored: stored }),
     );
-  } catch {
+  } catch (error) {
+    serverError(error);
     draft.Editors = { Available: [], Preferred: null };
   }
   const preferred = draft.Editors.Preferred;
@@ -118,8 +119,9 @@ export function* refreshStatus(draft: IThreadDetails): IOpenGenerator {
     yield* open(
       refreshVcsStatusEffect({ EnvironmentId: checkout.EnvironmentId, Cwd: checkout.Cwd }),
     );
-  } catch {
+  } catch (error) {
     // The status stream reports its own failure.
+    serverError(error);
   }
 }
 leading(refreshStatus);
@@ -143,7 +145,7 @@ export function* loadBranches(draft: IThreadDetails, query: string): IOpenGenera
     );
   } catch (error) {
     draft.Branches = [];
-    draft.BranchError = errorText(error);
+    draft.BranchError = serverError(error).message;
   }
 }
 latest(loadBranches);
@@ -163,13 +165,13 @@ function* checkout(draft: IThreadDetails, refName: string, create: boolean): IOp
       }),
     );
   } catch (error) {
-    draft.BranchError = errorText(error);
+    draft.BranchError = serverError(error).message;
     return;
   }
   try {
     yield* sendThreadBranch(held, switched ?? refName);
   } catch (error) {
-    draft.BranchError = errorText(error);
+    draft.BranchError = serverError(error).message;
   }
   yield* refreshStatus(draft);
 }
@@ -217,7 +219,7 @@ export function* runScript(
       }),
     );
   } catch (error) {
-    draft.ScriptError = errorText(error);
+    draft.ScriptError = serverError(error).message;
   }
 }
 
@@ -238,7 +240,7 @@ export function* saveScripts(draft: IThreadDetails, scripts: ProjectScript[]): I
       ),
     );
   } catch (error) {
-    draft.ScriptError = errorText(error);
+    draft.ScriptError = serverError(error).message;
   }
 }
 leading(saveScripts);

@@ -24,6 +24,7 @@ import { effectiveSpeechLanguage, encodeSpeechPcmRequest } from "@t3tools/shared
 import * as Schema from "effect/Schema";
 import { defineEffect, type IEffect, implementation, type IResourceImplementation } from "treflex";
 
+import { ServerError, serverFetch } from "./serverError";
 import workletUrl from "./speech/pcmWorklet.ts?worker&url";
 
 export interface IDictationDraft {
@@ -85,10 +86,10 @@ export const voiceStatusImpl = implementation(voiceStatusEffect, (_effect, actio
 );
 
 async function voiceJson<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, redirect: "error" });
+  const response = await serverFetch(path, { ...init, redirect: "error" });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { message?: unknown } | null;
-    throw new Error(
+    throw new ServerError(
       typeof body?.message === "string" && body.message.trim() !== ""
         ? body.message
         : `Voice request failed with HTTP ${response.status}.`,

@@ -43,7 +43,7 @@ import {
   willCreateFolder,
 } from "./addProjectPalette";
 import Environment, { addFolder, cloneProject, newProject } from "./Environment";
-import { errorText } from "./errorText";
+import { serverError } from "./Infrastructure/serverError";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { ArrowLeft, CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
 import {
@@ -97,7 +97,7 @@ function* loadSettings(draft: IAddProjectPalette, environmentId: string): IActio
   try {
     draft.Settings = yield* addProjectSettingsEffect({ EnvironmentId: environmentId });
   } catch (error) {
-    draft.SettingsError = errorText(error);
+    draft.SettingsError = serverError(error).message;
   }
 }
 
@@ -123,7 +123,7 @@ function* browse(
       Cwd: cwd,
     });
   } catch (error) {
-    draft.Error = errorText(error);
+    draft.Error = serverError(error).message;
   }
 }
 latest(browse);

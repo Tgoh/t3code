@@ -4,6 +4,7 @@ import { type Accessor, createEffect } from "solid-js";
 
 import Environment from "./Environment";
 import { threadTitlesEffect } from "./Infrastructure/commandEffects";
+import { serverError } from "./Infrastructure/serverError";
 
 interface ILineageTitles extends IEntity {
   Key: string;
@@ -25,7 +26,8 @@ export function* lookUpTitles(
       EnvironmentId: environmentId,
       ThreadIds: threadIds,
     })).Titles;
-  } catch {
+  } catch (error) {
+    serverError(error);
     draft.Titles = null;
   }
 }

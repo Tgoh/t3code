@@ -19,6 +19,7 @@ import {
   selectBranch,
 } from "./ThreadDetails";
 import { detailsLayout } from "./threadDetailsLayout";
+import { ServerError } from "./Infrastructure/serverError";
 import { watchRuntime } from "./testing/watchRuntime";
 import { shortcutAction, surfaceActions } from "./surfaces";
 
@@ -144,7 +145,7 @@ describe("runGitAction", () => {
 
   it("shows a failure as an error notice", async () => {
     const { runtime } = details(() => {
-      throw new Error("nothing to commit");
+      throw new ServerError("nothing to commit");
     });
     await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("commit"), ON_FEATURE, false);
     expect(runtime.state.Git.Notice).toEqual({

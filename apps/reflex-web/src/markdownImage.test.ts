@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { IAssetUrl } from "./Infrastructure/commandEffects";
 import { type IMarkdownImageUrl, loadImageUrl, markdownImageTarget } from "./markdownImage";
 import { createMarkdownLexer } from "./markdownTokens";
+import { ServerError } from "./Infrastructure/serverError";
 import { watchRuntime } from "./testing/watchRuntime";
 
 const THREAD = "thread-1";
@@ -86,7 +87,7 @@ describe("loadImageUrl", () => {
 
   it("marks a file the server refuses as failed", async () => {
     const { state } = await load(() => {
-      throw new Error("not found");
+      throw new ServerError("not found");
     });
     expect(state).toMatchObject({ Url: null, Failed: true });
   });

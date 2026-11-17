@@ -26,6 +26,7 @@ import {
 import { createEntityFeature } from "treflex-solid";
 
 import { threadCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
+import { serverError } from "./Infrastructure/serverError";
 import type {
   IWireProject,
   IWireShellItem,
@@ -183,8 +184,9 @@ export function* visitThread(draft: IShell, threadId: string, again: boolean): I
         }),
       ),
     );
-  } catch {
+  } catch (error) {
     // A visit is bookkeeping the user didn't ask for, and the next one covers it.
+    serverError(error);
   }
 }
 

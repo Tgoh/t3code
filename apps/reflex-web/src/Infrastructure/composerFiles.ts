@@ -16,6 +16,7 @@ import type { IAdmittedFile, IAttachmentKind } from "../attachmentIntake";
 import type { IWireAttachment } from "./commandEffects";
 import type { IStoredAttachment } from "./draftMemory";
 import { connectionRuntime } from "./connection";
+import { ServerError, serverFetch, settle } from "./serverError";
 
 export interface IPickedFile {
   Id: string;
@@ -81,9 +82,11 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   let active = 0;
   const waiting: Array<() => void> = [];
   const rpc = <A, E>(effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>) =>
-    connectionRuntime.runPromise(
-      EnvironmentRegistry.EnvironmentRegistry.pipe(
-        Effect.flatMap((registry) => registry.run(environmentId, effect)),
+    settle(
+      connectionRuntime.runPromiseExit(
+        EnvironmentRegistry.EnvironmentRegistry.pipe(
+          Effect.flatMap((registry) => registry.run(environmentId, effect)),
+        ),
       ),
     );
   const deleteUpload = (attachmentId: string) =>
@@ -109,13 +112,13 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
         entry.Abort.signal.throwIfAborted();
       }
       entry.Minted = minted.attachmentId;
-      const response = await fetch(minted.relativeUrl, {
+      const response = await serverFetch(minted.relativeUrl, {
         method: "POST",
         headers: { "Content-Type": file.type },
         body: file,
         signal: entry.Abort.signal,
       });
-      if (!response.ok) throw new Error(`Upload rejected (${response.status}).`);
+      if (!response.ok) throw new ServerError(`Upload rejected (${response.status}).`);
       return minted.attachmentId;
     } finally {
       active -= 1;
@@ -125,7 +128,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
 
   const startUpload = (entry: IHeldFile) => {
     const file = entry.File;
-    if (file === null) throw new Error(`Attach ${entry.Name} again.`);
+    if (file === null) throw new ServerError(`Attach ${entry.Name} again.`);
     if (entry.Minted !== null) deleteUpload(entry.Minted);
     entry.Minted = null;
     entry.Upload = transfer(entry, file);
@@ -201,7 +204,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   // Follows prepareRevertedMessageAttachments in apps/web/src/components/ChatView.logic.ts.
   const download = async (attachment: IWireAttachment): Promise<IHeldFile> => {
     if (attachment.type !== "image" && attachment.type !== "file") {
-      throw new Error("This message has an attachment that cannot be restored.");
+      throw new ServerError("This message has an attachment that cannot be restored.");
     }
     const { relativeUrl } = await rpc(
       request(WS_METHODS.assetsCreateUrl, {
@@ -213,8 +216,8 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
         },
       }),
     );
-    const response = await fetch(relativeUrl, { signal: AbortSignal.timeout(30_000) });
-    if (!response.ok) throw new Error(`Could not restore attachment: ${attachment.name}`);
+    const response = await serverFetch(relativeUrl, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new ServerError(`Could not restore attachment: ${attachment.name}`);
     const file = new File([await response.blob()], attachment.name, {
       type: attachment.mimeType,
     });
@@ -261,12 +264,14 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   r.methods({
     upload: async (_ctx, id) => {
       const entry = held.get(id);
-      if (entry === undefined) throw new Error("That file is no longer held. Attach it again.");
+      if (entry === undefined) {
+        throw new ServerError("That file is no longer held. Attach it again.");
+      }
       let attachmentId: string;
       try {
         attachmentId = await entry.Upload;
       } catch {
-        if (!held.has(id)) throw new Error("That file was removed during its upload.");
+        if (!held.has(id)) throw new ServerError("That file was removed during its upload.");
         startUpload(entry);
         attachmentId = await entry.Upload;
       }

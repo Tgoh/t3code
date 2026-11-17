@@ -68,6 +68,7 @@ import {
   steerLabel,
 } from "./userMessage";
 import { ImageDialog } from "./ImageDialog";
+import { serverError } from "./Infrastructure/serverError";
 import { singleToolCallLabel, workEntryDisplayLabel, workLogEntry } from "./workLog";
 import { useWorkspaceRoot } from "./workspaceRoot";
 
@@ -182,7 +183,8 @@ function* loadAttachmentUrl(
       },
     });
     draft.Url = asset.Url;
-  } catch {
+  } catch (error) {
+    serverError(error);
     draft.Failed = true;
   }
 }

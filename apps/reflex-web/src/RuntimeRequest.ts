@@ -8,7 +8,7 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { errorText } from "./errorText";
+import { serverError } from "./Infrastructure/serverError";
 import {
   type IApprovalDecision,
   type IRespondRequest,
@@ -50,7 +50,7 @@ function* respond(
       ),
     );
   } catch (error) {
-    (yield* outcome(draft)).Error = errorText(error);
+    (yield* outcome(draft)).Error = serverError(error).message;
   }
 }
 

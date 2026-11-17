@@ -14,6 +14,7 @@ import { implementation } from "treflex";
 
 import { inEnvironment, preferredEditor } from "./commandsImpl";
 import { connectionRuntime } from "./connection";
+import { settle } from "./serverError";
 import { atomRuntime, runCommand } from "./sourceControl";
 import {
   branchDiffEffect,
@@ -34,17 +35,19 @@ const BRANCH_LIMIT = 100;
 
 // A thread can open before its environment registers, and followStream waits for that.
 const configOnceReady = (environmentId: string) =>
-  connectionRuntime.runPromise(
-    EnvironmentRegistry.EnvironmentRegistry.pipe(
-      Effect.flatMap((registry) =>
-        registry
-          .followStream(
-            EnvironmentId.make(environmentId),
-            Stream.fromEffect(getInitialServerConfig()),
-          )
-          .pipe(Stream.runHead),
+  settle(
+    connectionRuntime.runPromiseExit(
+      EnvironmentRegistry.EnvironmentRegistry.pipe(
+        Effect.flatMap((registry) =>
+          registry
+            .followStream(
+              EnvironmentId.make(environmentId),
+              Stream.fromEffect(getInitialServerConfig()),
+            )
+            .pipe(Stream.runHead),
+        ),
+        Effect.map(Option.getOrThrow),
       ),
-      Effect.map(Option.getOrThrow),
     ),
   );
 

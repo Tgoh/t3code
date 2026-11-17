@@ -1,7 +1,7 @@
 import { type IActionGenerator, type IEntity, leading, publishToNearest } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { errorText } from "./errorText";
+import { ServerError, serverError } from "./Infrastructure/serverError";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type { IWireHistoryPage } from "./Infrastructure/wire";
 
@@ -32,11 +32,11 @@ export function* loadEarlier(draft: IHistoryWindow): IActionGenerator {
         ({ item }) => item.type === "user_message" && item.createdBy === "user",
       );
       if (!page.hasMoreHistory || reachedUser || page.nextCursor === null) break;
-      if (page.nextCursor === cursor) throw new Error("History did not advance.");
+      if (page.nextCursor === cursor) throw new ServerError("History did not advance.");
       cursor = page.nextCursor;
     }
   } catch (error) {
-    draft.Error = errorText(error);
+    draft.Error = serverError(error).message;
   }
 }
 leading(loadEarlier);

@@ -82,6 +82,7 @@ import {
 } from "./commandEffects";
 import { applyModelPreferences } from "../modelOptions";
 import { connectionRuntime } from "./connection";
+import { ServerError, settle } from "./serverError";
 import { runCommand, sourceControl } from "./sourceControl";
 
 export const inEnvironment = <A, E>(
@@ -93,16 +94,18 @@ export const inEnvironment = <A, E>(
   >,
   signal?: AbortSignal,
 ) =>
-  connectionRuntime.runPromise(
-    EnvironmentRegistry.EnvironmentRegistry.pipe(
-      Effect.flatMap((registry) =>
-        registry.run(
-          EnvironmentId.make(environmentId),
-          effect.pipe(Effect.provide(SecureRandom.layerWebCrypto)),
+  settle(
+    connectionRuntime.runPromiseExit(
+      EnvironmentRegistry.EnvironmentRegistry.pipe(
+        Effect.flatMap((registry) =>
+          registry.run(
+            EnvironmentId.make(environmentId),
+            effect.pipe(Effect.provide(SecureRandom.layerWebCrypto)),
+          ),
         ),
       ),
+      { signal },
     ),
-    { signal },
   );
 
 export const startTurnImpl = implementation(startTurnEffect, async (input) => {
@@ -459,7 +462,7 @@ export function preferredEditor(
 export const openInEditorImpl = implementation(openInEditorEffect, async (input) => {
   const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
   const editor = preferredEditor(config.availableEditors, input.Stored);
-  if (editor === null) throw new Error(`No editor on this machine can open ${input.Path}.`);
+  if (editor === null) throw new ServerError(`No editor on this machine can open ${input.Path}.`);
   await inEnvironment(
     input.EnvironmentId,
     request(WS_METHODS.shellOpenInEditor, {
@@ -527,14 +530,16 @@ const followOnce = <A, E>(
   environmentId: string,
   effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>,
 ) =>
-  connectionRuntime.runPromise(
-    EnvironmentRegistry.EnvironmentRegistry.pipe(
-      Effect.flatMap((registry) =>
-        registry
-          .followStream(EnvironmentId.make(environmentId), Stream.fromEffect(effect))
-          .pipe(Stream.runHead),
+  settle(
+    connectionRuntime.runPromiseExit(
+      EnvironmentRegistry.EnvironmentRegistry.pipe(
+        Effect.flatMap((registry) =>
+          registry
+            .followStream(EnvironmentId.make(environmentId), Stream.fromEffect(effect))
+            .pipe(Stream.runHead),
+        ),
+        Effect.map(Option.getOrThrow),
       ),
-      Effect.map(Option.getOrThrow),
     ),
   );
 

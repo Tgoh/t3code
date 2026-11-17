@@ -90,6 +90,7 @@ import type {
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
+import { ServerError } from "./Infrastructure/serverError";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import type { IPreferences } from "./Infrastructure/preferences";
 import {
@@ -1205,7 +1206,7 @@ describe("history pages", () => {
     expect(server.thread().Timeline).toEqual(["c-9"]);
     expect(server.thread().History!.Cursor).toBe("fresher");
 
-    fetchPage = () => Promise.reject(new Error("socket closed"));
+    fetchPage = () => Promise.reject(new ServerError("socket closed"));
     await server.runtime.dispatch(loadEarlier, historyId(server));
     expect(server.thread().History!.Error).toBe("socket closed");
     await server.sendThread({ ...window(), snapshotSequence: 7, historyCursor: "fresher" });
@@ -1995,7 +1996,7 @@ describe("writing to the server", () => {
     const server = await connect(undefined, null, {
       startTurn: () => {
         attempts += 1;
-        throw new Error("server said no");
+        throw new ServerError("server said no");
       },
     });
     await server.open();
@@ -2006,6 +2007,20 @@ describe("writing to the server", () => {
     expect(session.Draft).toBe("keep me");
     expect(session.SendError).toBe("server said no");
     expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
+  });
+
+  it("a bug under a send fails on the route instead of showing as the send's error", async () => {
+    const server = await connect(undefined, null, {
+      startTurn: () => {
+        throw new TypeError("Cannot read properties of undefined");
+      },
+    });
+    await server.open();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "keep me");
+    await expect(server.runtime.dispatch(send, server.sessionId())).rejects.toThrow(TypeError);
+    expect(server.session().SendError).toBeUndefined();
+    expect(server.runtime.state.Failure).toBe("Cannot read properties of undefined");
+    expect(server.takeFailures()).toMatchObject([{ ActionName: "send", Taken: true }]);
   });
 
   it("a second send during the wait is ignored", async () => {
@@ -2197,7 +2212,7 @@ describe("writing to the server", () => {
   it("a failed new thread stays a draft with no stream", async () => {
     const server = await connect(undefined, null, {
       startTurn: () => {
-        throw new Error("no");
+        throw new ServerError("no");
       },
     });
     await server.runtime.dispatch(newThread, server.envId(), "project-1");
@@ -2216,10 +2231,10 @@ describe("writing to the server", () => {
     const server = await connect(undefined, null, {
       stopThread: (effect: IStopThread) => {
         stops.push(effect);
-        if (refuse) throw new Error("no run");
+        if (refuse) throw new ServerError("no run");
       },
       queueCommand: () => {
-        if (refuse) throw new Error("queue moved on");
+        if (refuse) throw new ServerError("queue moved on");
       },
     });
     await server.open();
@@ -2804,7 +2819,7 @@ describe("writing to the server", () => {
     let refusal: string | null = null;
     const server = await connect(undefined, null, {
       threadCommand: (effect: { ThreadId: string; Command: object }) => {
-        if (refusal !== null) throw new Error(refusal);
+        if (refusal !== null) throw new ServerError(refusal);
         commands.push(effect);
       },
     });
@@ -2834,7 +2849,7 @@ describe("writing to the server", () => {
       threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
         if (effect.Command.Kind !== "visit") return;
         visits.push(effect.ThreadId);
-        if (refuse) throw new Error("visit refused");
+        if (refuse) throw new ServerError("visit refused");
       },
     });
     let sequence = 1;
@@ -2894,7 +2909,7 @@ describe("writing to the server", () => {
     let refuse = false;
     const server = await connect(undefined, null, {
       projectCommand: (effect: { ProjectId: string; Command: object }) => {
-        if (refuse) throw new Error("no such folder");
+        if (refuse) throw new ServerError("no such folder");
         sent.push(effect);
       },
     });
@@ -2998,7 +3013,7 @@ describe("writing to the server", () => {
     let refuse = false;
     const server = await connect(undefined, null, {
       startClone: (effect: IStartClone) => {
-        if (refuse) throw new Error("destination exists");
+        if (refuse) throw new ServerError("destination exists");
         clones.push(effect);
       },
     });
@@ -3047,7 +3062,7 @@ describe("writing to the server", () => {
     const server = await connect(undefined, THREAD_ID, {
       projectCommand: (effect: { ProjectId: string; Command: object }) => {
         sent.push(effect);
-        if (failWith !== null) throw new Error(failWith);
+        if (failWith !== null) throw new ServerError(failWith);
       },
     });
     await server.sendShell({
@@ -3340,7 +3355,7 @@ describe("diffs", () => {
   it("shows a failed fetch and an empty turn", async () => {
     const server = await connect(undefined, null, {
       threadDiff: () => {
-        throw new Error("checkpoint is missing");
+        throw new ServerError("checkpoint is missing");
       },
     });
     await server.open();
@@ -3573,7 +3588,7 @@ describe("the terminal", () => {
     let refuse = true;
     const server = await connect(undefined, null, {
       closeTerminal: (effect: { TerminalId: string }) => {
-        if (refuse) throw new Error("server said no");
+        if (refuse) throw new ServerError("server said no");
         closes.push(effect);
       },
     });
@@ -4199,7 +4214,7 @@ describe("rewinding and forking", () => {
     const { server } = await rewindServer(undefined, {
       mergeBack: (effect: IMergeBack) => {
         merges.push(effect);
-        if (fail) throw new Error("No checkpoint yet");
+        if (fail) throw new ServerError("No checkpoint yet");
       },
     });
     await server.runtime.dispatch(mergeBack, server.sessionId(), "parent-1");

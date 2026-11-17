@@ -104,7 +104,7 @@ import {
   startDictation,
   stopDictation,
 } from "./Dictation";
-import { errorText } from "./errorText";
+import { serverError } from "./Infrastructure/serverError";
 import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
 import {
@@ -425,7 +425,7 @@ export function* removeProject(
   try {
     yield* sendProjectCommand(draft.EnvironmentId, projectId, { Kind: "delete", Force: true });
   } catch (error) {
-    return errorText(error);
+    return serverError(error).message;
   }
   for (const threadId of threadIds) yield* forgetSession(draft, threadId);
   return null;
@@ -481,7 +481,7 @@ export function* addFolder(
       yield* sendProjectCommand(environmentId, projectId, { Kind: "unarchive" });
     }
   } catch (error) {
-    return errorText(error);
+    return serverError(error).message;
   }
   const project = draft.Replica.Shell.Projects[projectId];
   if (!created && project === undefined) {
@@ -521,7 +521,7 @@ export function* cloneProject(
       }),
     );
   } catch (error) {
-    return errorText(error);
+    return serverError(error).message;
   }
   yield* newThread(draft, projectId);
   return null;
@@ -538,7 +538,7 @@ export function* newProject(
   try {
     created = yield* open(newProjectEffect({ EnvironmentId: environmentId, Name: name }));
   } catch (error) {
-    return { Error: errorText(error) };
+    return { Error: serverError(error).message };
   }
   yield* newThread(draft, created.ProjectId);
   return created;

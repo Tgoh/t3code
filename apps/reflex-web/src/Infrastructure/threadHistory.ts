@@ -4,6 +4,7 @@ import {
 } from "@t3tools/contracts";
 import { defineEffect, type IEffect, implementation } from "treflex";
 
+import { ServerError, serverFetch } from "./serverError";
 import type { IWireHistoryPage } from "./wire";
 
 interface IThreadHistoryPageEffect extends IEffect {
@@ -19,13 +20,13 @@ export const threadHistoryPage = (threadId: string, cursor: string) =>
 
 export const threadHistoryPageImpl = implementation(declared, async (effect, action) => {
   const query = new URLSearchParams({ cursor: effect.Cursor });
-  const response = await fetch(
+  const response = await serverFetch(
     `/api/orchestration/threads/${encodeURIComponent(effect.ThreadId)}/history?${query}`,
     {
       headers: { [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT },
       signal: action?.signal ?? null,
     },
   );
-  if (!response.ok) throw new Error(`History request failed with HTTP ${response.status}.`);
+  if (!response.ok) throw new ServerError(`History request failed with HTTP ${response.status}.`);
   return (await response.json()) as IWireHistoryPage;
 });

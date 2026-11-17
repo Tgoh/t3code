@@ -4,6 +4,7 @@ import type { JSX } from "solid-js";
 import type { IActionGenerator, IEntity } from "treflex";
 
 import { assetUrlEffect, type IAssetUrl } from "./Infrastructure/commandEffects";
+import { serverError } from "./Infrastructure/serverError";
 
 export interface IMarkdownImageUrl extends IEntity {
   Url: string | null;
@@ -20,7 +21,8 @@ export function* loadImageUrl(
     const asset = yield* assetUrlEffect({ EnvironmentId: environmentId, Resource: resource });
     draft.Url = asset.Url;
     draft.Size = asset.Size ?? null;
-  } catch {
+  } catch (error) {
+    serverError(error);
     draft.Failed = true;
   }
 }

@@ -121,7 +121,7 @@ import type {
   IWireUsageSummary,
 } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
-import { errorText } from "./errorText";
+import { ServerError, serverError } from "./Infrastructure/serverError";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -499,7 +499,8 @@ export function* searchFiles(draft: IThreadSession, query: string): IOpenGenerat
   let entries: IProjectEntry[] = [];
   try {
     entries = (yield* open(searchEntriesEffect(request))).Entries;
-  } catch {
+  } catch (error) {
+    serverError(error);
     entries = [];
   }
   const held = yield* fileSearch(draft);
@@ -617,7 +618,7 @@ export function* setModelSelection(
       ),
     );
   } catch (error) {
-    draft.ModelError = `This model pick was not saved. ${errorText(error)}`;
+    draft.ModelError = `This model pick was not saved. ${serverError(error).message}`;
   }
 }
 latest(setModelSelection);
@@ -687,7 +688,7 @@ function* uploadAndStart(
   const attachments: IWireAttachment[] = [];
   for (const id of fileIds) {
     const uploaded = yield* files.upload(id);
-    if (uploaded === undefined) throw new Error("An attachment couldn't be uploaded.");
+    if (uploaded === undefined) throw new ServerError("An attachment couldn't be uploaded.");
     attachments.push(uploaded);
   }
   if (setRuntimeMode) {
@@ -783,11 +784,11 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
   };
   delete draft.SendError;
   try {
-    if (projectId !== null && model === null) throw new Error("No provider is available.");
+    if (projectId !== null && model === null) throw new ServerError("No provider is available.");
     const setsMode = projectId === null && threadMode !== null && threadMode !== runtimeMode;
     yield* open(uploadAndStart(files, fileIds, turn, setsMode, compactFirst));
   } catch (error) {
-    draft.SendError = errorText(error);
+    draft.SendError = serverError(error).message;
     return;
   }
   draft.KeepFullHistory = false;
@@ -822,7 +823,7 @@ export function* stopRun(draft: IThreadSession): IOpenGenerator {
       ),
     );
   } catch (error) {
-    draft.StopError = errorText(error);
+    draft.StopError = serverError(error).message;
   }
 }
 leading(stopRun);
@@ -871,7 +872,7 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
     const steer = yield* select((held: IThreadSession) => steerOperation(held, press.RunId));
     if (steer !== null) yield* run(steer);
   } catch (error) {
-    draft.QueueError = errorText(error);
+    draft.QueueError = serverError(error).message;
   }
 }
 leading(queueAction);
@@ -975,7 +976,8 @@ function* sendRewind(
   request: Parameters<typeof rewindEffect>[0],
 ): IActionGenerator<IPickedFile[]> {
   const recalled = attachments.length === 0 ? [] : yield* files.recall(attachments);
-  if (recalled === undefined) throw new Error("The composer closed before its files came back.");
+  if (recalled === undefined)
+    throw new ServerError("The composer closed before its files came back.");
   try {
     yield* rewindEffect(request);
   } catch (error) {
@@ -1038,7 +1040,7 @@ export function* editFromHere(
   try {
     recalled = yield* open(sendRewind(files, plan.Attachments, request));
   } catch (error) {
-    draft.RewindError = errorText(error);
+    draft.RewindError = serverError(error).message;
     return false;
   }
   // The stream may have delivered the rollback while the command was in flight.
@@ -1145,7 +1147,7 @@ export function* forkFromRun(
       ),
     );
   } catch (error) {
-    draft.ForkError = errorText(error);
+    draft.ForkError = serverError(error).message;
     return;
   }
   yield* publishToNearest(draft, "Thread/Forked", { ThreadId: targetThreadId });
@@ -1178,7 +1180,7 @@ export function* mergeBack(draft: IThreadSession, targetThreadId: string): IOpen
       ),
     );
   } catch (error) {
-    draft.MergeError = errorText(error);
+    draft.MergeError = serverError(error).message;
     return;
   }
   yield* publishToNearest(draft, "Thread/MergedBack", { ThreadId: targetThreadId });
@@ -1319,7 +1321,7 @@ export function* openDiff(
   try {
     text = yield* open(threadDiffEffect(request));
   } catch (error) {
-    failure = errorText(error);
+    failure = serverError(error).message;
   }
   const current = draft.Panels.Diff;
   if (!current.Open) return;
@@ -1346,7 +1348,7 @@ function* openBranchDiff(draft: IThreadSession): IOpenGenerator {
   try {
     diff = yield* open(branchDiffEffect({ EnvironmentId: draft.EnvironmentId, Cwd: cwd }));
   } catch (error) {
-    failure = errorText(error);
+    failure = serverError(error).message;
   }
   const current = draft.Panels.Diff;
   if (!current.Open || current.Scope !== "branch") return;
@@ -1466,7 +1468,7 @@ export function* endTerminal(draft: IThreadSession): IOpenGenerator {
   try {
     yield* open(closeTerminalEffect(request));
   } catch (error) {
-    draft.Terminal.Error = errorText(error);
+    draft.Terminal.Error = serverError(error).message;
     return;
   }
   yield* closeTerminal(draft);
