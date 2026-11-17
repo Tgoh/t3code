@@ -345,9 +345,11 @@ const ThreadBody = ThreadSession.provider(() => {
       if (stuck()) scrollToEnd();
     });
     laneObserver.observe(lane);
-    const stageObserver = new ResizeObserver(() =>
-      setStageSize({ Width: stage.clientWidth, Height: stage.clientHeight }),
-    );
+    // The stage shrinks under an opening keyboard with no change to the content or the lane.
+    const stageObserver = new ResizeObserver(() => {
+      setStageSize({ Width: stage.clientWidth, Height: stage.clientHeight });
+      if (stuck()) scrollToEnd();
+    });
     stageObserver.observe(stage);
     onCleanup(() => {
       observer.disconnect();

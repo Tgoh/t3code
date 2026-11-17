@@ -32,9 +32,14 @@ export function createMediaQuery(
   return matches;
 }
 
+// Longer than iOS's keyboard animation, which reports its final size only when it ends, if at all.
+const KEYBOARD_SETTLE_MS = 1_000;
+
 /**
  * Sizes the app to the visual viewport, which iOS Safari shrinks for the on-screen keyboard while
  * the layout viewport stays full height. Pinch zoom also shrinks it, so a zoomed page is left alone.
+ * iOS can deliver the viewport's events late around a focus change, so the size is also polled for
+ * a moment then.
  */
 export function trackVisualViewport(target: HTMLElement) {
   const viewport = window.visualViewport;
@@ -48,12 +53,29 @@ export function trackVisualViewport(target: HTMLElement) {
     target.style.setProperty("--viewport-height", `${viewport.height}px`);
     target.style.setProperty("--viewport-top", `${viewport.offsetTop}px`);
   };
+  let frame = 0;
+  const follow = () => {
+    cancelAnimationFrame(frame);
+    const until = performance.now() + KEYBOARD_SETTLE_MS;
+    const step = () => {
+      update();
+      frame = performance.now() < until ? requestAnimationFrame(step) : 0;
+    };
+    step();
+  };
   update();
   viewport.addEventListener("resize", update);
   viewport.addEventListener("scroll", update);
+  window.addEventListener("scroll", update);
+  document.addEventListener("focusin", follow);
+  document.addEventListener("focusout", follow);
   onCleanup(() => {
+    cancelAnimationFrame(frame);
     viewport.removeEventListener("resize", update);
     viewport.removeEventListener("scroll", update);
+    window.removeEventListener("scroll", update);
+    document.removeEventListener("focusin", follow);
+    document.removeEventListener("focusout", follow);
   });
 }
 
