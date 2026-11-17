@@ -929,11 +929,7 @@ export function DetailsSurface(props: {
       }),
     );
   });
-  // A card already pinned open on a thread switch appears once the stage is measured, without
-  // sliding in, so motion starts two frames after mount.
-  const [motion, setMotion] = createSignal(false);
   onMount(() => {
-    requestAnimationFrame(() => requestAnimationFrame(() => setMotion(true)));
     measure();
     window.addEventListener("resize", measure);
     onCleanup(() => window.removeEventListener("resize", measure));
@@ -941,11 +937,10 @@ export function DetailsSurface(props: {
   return (
     <aside
       ref={setCard}
-      class={`w-[280px] overflow-y-auto rounded-[16px] data-[shown=false]:invisible data-[shown=false]:-translate-y-2 data-[shown=false]:opacity-0 data-motion:motion-safe:transition-[translate,opacity,visibility] data-motion:motion-safe:duration-200 data-motion:motion-safe:ease-in-out border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--popover)_var(--glass-opacity),transparent)] shadow-[0_10px_25px_-5px_rgb(0_0_0/12%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) ${props.inline ? "absolute top-3 right-3 z-30 max-h-[calc(100%-24px)]" : "fixed z-70 max-h-[min(calc(100dvh-6.5rem),32rem)] max-w-[calc(100vw-16px)]"}`}
+      class={`w-[280px] overflow-y-auto rounded-[16px] data-[shown=false]:invisible data-[shown=false]:-translate-y-2 data-[shown=false]:opacity-0 in-[.panel-motion]:motion-safe:transition-[translate,opacity,visibility] in-[.panel-motion]:motion-safe:duration-200 in-[.panel-motion]:motion-safe:ease-in-out border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--popover)_var(--glass-opacity),transparent)] shadow-[0_10px_25px_-5px_rgb(0_0_0/12%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) ${props.inline ? "absolute top-3 right-3 z-30 max-h-[calc(100%-24px)]" : "fixed z-70 max-h-[min(calc(100dvh-6.5rem),32rem)] max-w-[calc(100vw-16px)]"}`}
       role="region"
       aria-label="Thread details"
       data-shown={props.shown}
-      data-motion={motion() ? "" : undefined}
       inert={!props.shown}
       style={props.inline ? undefined : { top: `${place().Top}px`, right: `${place().Right}px` }}
     >
