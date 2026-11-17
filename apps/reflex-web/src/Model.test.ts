@@ -1,5 +1,9 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
 import type { KeybindingCommand, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import {
+  CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
+  formatClaudeResumeCompactionQuestion,
+} from "@t3tools/shared/claudeCompaction";
 import { createEffect, createMemo, createRoot } from "solid-js";
 import {
   createTestRuntime,
@@ -58,6 +62,7 @@ import type { Tokens } from "marked";
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import type {
   IForkThread,
+  IMergeBack,
   IQueueCommand,
   IRespondRequest,
   IRewind,
@@ -124,12 +129,14 @@ import {
   editFromHere,
   forkFromRun,
   type IRewindChoice,
+  mergeBack,
   revertTargets,
   RewindReceiver,
   rewindConfirm,
   threadWorking,
   diffLoading,
   closeTerminal,
+  compactionOffer,
   effectiveModel,
   effectiveRuntimeMode,
   endTerminal,
@@ -148,6 +155,7 @@ import {
   terminalAttachment,
   TerminalReceiver,
   toggleCodeWrap,
+  toggleKeepFullHistory,
   toggleQuestionOption,
   toggleRightPanel,
   unwrappedCodeBlocks,
@@ -189,6 +197,7 @@ const storedPreferences: IPreferences = {
   HiddenProjects: [],
   ProjectScope: [],
   SidebarCollapsed: false,
+  CompactionDismissed: [],
   AppearanceMode: "system",
   Usage: { Metric: "limits", Days: 30 },
 };
@@ -2396,6 +2405,117 @@ describe("writing to the server", () => {
     ]);
   });
 
+  describe("compacting before a send", () => {
+    const CLAUDE = { instanceId: "claudeAgent", model: "claude-opus-4-7" };
+    async function staleClaudeThread() {
+      const sent: IStartTurn[] = [];
+      const server = await connect(undefined, null, {
+        startTurn: (effect: IStartTurn) => void sent.push(effect),
+      });
+      await server.sendConfig({
+        version: 1,
+        type: "snapshot",
+        config: {
+          settings: { providerInstances: {}, compactIdleThreads: false },
+          providers: [
+            {
+              instanceId: "claudeAgent",
+              driver: "claudeAgent",
+              slashCommands: [{ name: "compact" }],
+            },
+          ],
+          keybindings: [],
+          issues: [],
+        },
+      });
+      await server.open();
+      await server.sendThread(snapshotOf(staleProjection(), 1));
+      return { server, sent };
+    }
+    function staleProjection() {
+      const projection = emptyProjection();
+      projection.thread = {
+        ...projection.thread,
+        modelSelection: CLAUDE,
+        activeProviderThreadId: "provider-thread",
+      } as never;
+      projection.runs = [{ ...run("run-1", 1), modelSelection: CLAUDE } as never];
+      // The test clock reads 0, so this report is two hours old.
+      projection.providerTurns = [
+        {
+          id: "turn-1",
+          providerThreadId: "provider-thread",
+          tokenUsage: { usedTokens: 439_000, updatedAt: "1969-12-31T22:00:00.000Z" },
+        } as never,
+      ];
+      return projection;
+    }
+    const offer = (server: Awaited<ReturnType<typeof connect>>) =>
+      server.runtime.processSelector(compactionOffer, () => server.session());
+
+    it("sends /compact marked onReturn, then queues the message behind it", async () => {
+      const { server, sent } = await staleClaudeThread();
+      expect(offer(server)).toBe(439_000);
+      await server.runtime.dispatch(setDraft, server.sessionId(), "carry on");
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(
+        sent.map((turn) => [
+          turn.Text,
+          turn.DispatchMode,
+          turn.IdleCompaction,
+          turn.ModelSelection,
+        ]),
+      ).toEqual([
+        ["/compact", "auto", "onReturn", CLAUDE],
+        ["carry on", "queue", undefined, CLAUDE],
+      ]);
+      expect(new Set(sent.flatMap((turn) => [turn.CommandId, turn.MessageId])).size).toBe(4);
+    });
+
+    it("keeps the full history for one send when toggled, then offers again", async () => {
+      const { server, sent } = await staleClaudeThread();
+      await server.runtime.dispatch(toggleKeepFullHistory, server.sessionId());
+      await server.runtime.dispatch(setDraft, server.sessionId(), "carry on");
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(sent.map((turn) => [turn.Text, turn.DispatchMode])).toEqual([["carry on", "auto"]]);
+      expect(server.session().KeepFullHistory).toBe(false);
+    });
+
+    it("a never-ask-again answer stops the offer for that provider on this device, in every thread", async () => {
+      const { server } = await staleClaudeThread();
+      const question = formatClaudeResumeCompactionQuestion({
+        ageMinutes: 120,
+        estimatedTokens: 439_000,
+      });
+      const answered = staleProjection();
+      answered.runtimeRequests = [
+        {
+          id: "request-1",
+          kind: "user_input",
+          status: "resolved",
+          answers: { [question]: CLAUDE_RESUME_COMPACTION_NEVER_ANSWER },
+          responseCapability: { type: "live" },
+        } as never,
+      ];
+      await server.sendThread(snapshotOf(answered, 2));
+      await settled();
+      expect(server.device.Preferences.CompactionDismissed).toEqual([`${ENV}:claudeAgent`]);
+      // Another thread, or this one without the answered question in view, stays quiet.
+      await server.sendThread(snapshotOf(staleProjection(), 3));
+      expect(offer(server)).toBeNull();
+    });
+
+    it("a typed /compact is the compaction, so it sends alone", async () => {
+      const { server, sent } = await staleClaudeThread();
+      await server.runtime.dispatch(setDraft, server.sessionId(), "/compact");
+      expect(offer(server)).toBeNull();
+      await server.runtime.dispatch(send, server.sessionId());
+      expect(sent.map((turn) => [turn.Text, turn.IdleCompaction])).toEqual([
+        ["/compact", undefined],
+      ]);
+    });
+  });
+
   it("answering marks only its own request, and the stream or another device clears it", async () => {
     const answers: IRespondRequest[] = [];
     const releases: (() => void)[] = [];
@@ -4033,5 +4153,32 @@ describe("rewinding and forking", () => {
     ]);
     expect(server.environment().Local.SelectedThreadId).toBe(rig.forks[0]!.TargetThreadId);
     expect(server.environment().Replica.OpenThreads[rig.forks[0]!.TargetThreadId]).toBeDefined();
+  });
+
+  it("merge back sends the latest finished run to the parent and opens it, keeping a failure", async () => {
+    const merges: IMergeBack[] = [];
+    let fail = true;
+    const { server } = await rewindServer(undefined, {
+      mergeBack: (effect: IMergeBack) => {
+        merges.push(effect);
+        if (fail) throw new Error("No checkpoint yet");
+      },
+    });
+    await server.runtime.dispatch(mergeBack, server.sessionId(), "parent-1");
+    await settled();
+    expect(server.session().MergeError).toBe("No checkpoint yet");
+    expect(server.environment().Local.SelectedThreadId).not.toBe("parent-1");
+
+    fail = false;
+    await server.runtime.dispatch(mergeBack, server.sessionId(), "parent-1");
+    await settled();
+    expect(merges.at(-1)).toMatchObject({
+      EnvironmentId: ENV,
+      SourceThreadId: THREAD_ID,
+      TargetThreadId: "parent-1",
+      RunId: "run-2",
+    });
+    expect(server.session().MergeError).toBeUndefined();
+    expect(server.environment().Local.SelectedThreadId).toBe("parent-1");
   });
 });

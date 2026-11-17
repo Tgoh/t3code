@@ -3,12 +3,14 @@ import { type Component, createMemo, createSignal, For, type JSX, onMount, Show 
 import { Dynamic } from "solid-js/web";
 
 import { ProviderIcon } from "./brand";
+import { formatContextTokens } from "./compaction";
 import Environment from "./Environment";
 import {
   Check,
   ChevronRight,
   ChevronUp,
   Lock,
+  Minimize2,
   PenLine,
   Search,
   ShieldCheck,
@@ -216,6 +218,31 @@ function PermissionsPopup(props: {
         }}
       />
     </Anchored>
+  );
+}
+
+// Follows the compact-before-send toggle in apps/web/src/components/chat/ComposerPrimaryActions.tsx.
+export function CompactToggle(props: { tokens: number }) {
+  const session = ThreadSession.use();
+  const keep = () => session.state.KeepFullHistory;
+  const tokens = () => formatContextTokens(props.tokens);
+  return (
+    <button
+      type="button"
+      class={`${COMPOSER_CONTROL} tabular-nums aria-pressed:bg-foreground/9 aria-pressed:text-foreground [&>svg]:text-muted-foreground`}
+      aria-pressed={!keep()}
+      aria-label={`Compact ${tokens()} tokens of history before sending`}
+      data-tip={
+        keep()
+          ? `Next send keeps all ${tokens()} tokens. Click to compact first`
+          : `Next send compacts ${tokens()} tokens first. Click to keep full history`
+      }
+      onClick={() => session.toggleKeepFullHistory()}
+    >
+      <Minimize2 />
+      <span class="max-sm:hidden">{keep() ? "Keep" : "Compact"}</span>
+      <span class="text-muted-foreground">{tokens()}</span>
+    </button>
   );
 }
 

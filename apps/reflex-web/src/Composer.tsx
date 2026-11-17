@@ -17,7 +17,8 @@ import {
 } from "./attachmentIntake";
 import { ComposerCommandMenu, useComposerMenu } from "./ComposerCommandMenu";
 import { FOCUS_COMPOSER_EVENT } from "./composerFocus";
-import { ModelPicker, PermissionsChip } from "./ComposerMenus";
+import { formatContextTokens } from "./compaction";
+import { CompactToggle, ModelPicker, PermissionsChip } from "./ComposerMenus";
 import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
 import Environment from "./Environment";
 import {
@@ -97,6 +98,9 @@ function SendButton(props: {
   sending: boolean;
   disabled: boolean;
   blocked: string | null;
+  /** The tokens this send compacts first, already formatted. */
+  compacts: string | null;
+  label?: string | undefined;
   class: string;
   onSend: (alternate: boolean) => void;
 }) {
@@ -110,16 +114,21 @@ function SendButton(props: {
   const label = () =>
     props.sending
       ? "Sending"
-      : mode() === "queue"
-        ? "Queue message"
-        : mode() === "steer"
-          ? "Steer message"
-          : "Submit message";
+      : (props.label ??
+        (props.compacts !== null
+          ? "Compact and send"
+          : mode() === "queue"
+            ? "Queue message"
+            : mode() === "steer"
+              ? "Steer message"
+              : "Submit message"));
   const tip = () =>
     props.blocked ??
-    (props.running
-      ? `Click to ${props.followUp}, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to ${alternateAction()}`
-      : undefined);
+    (props.compacts !== null
+      ? `Summarize ${props.compacts} tokens of history, then send`
+      : props.running
+        ? `Click to ${props.followUp}, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to ${alternateAction()}`
+        : undefined);
   return (
     <button
       type="submit"
@@ -364,6 +373,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   };
   const alternateHeld = useAlternateHeld();
   const running = () => props.active === true;
+  const compactTokens = () => (answering() ? null : session.compactionOffer());
+  const compacts = () => {
+    const tokens = compactTokens();
+    return tokens === null || held().KeepFullHistory ? null : formatContextTokens(tokens);
+  };
   const send = (alternate = false) => {
     const question = answering();
     if (question !== undefined) {
@@ -521,8 +535,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                   sending={sending()}
                   disabled={!canSend()}
                   blocked={null}
+                  compacts={compacts()}
+                  // The collapsed composer hides the compact toggle, so it opens rather than sends.
+                  label={compacts() === null ? undefined : "Open composer to compact and send"}
                   class="ml-0"
-                  onSend={send}
+                  onSend={(alternate) => (compacts() === null ? send(alternate) : expand())}
                 />
               }
             >
@@ -665,6 +682,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           </Show>
           <span class="flex-1" />
           <ModelPicker />
+          <Show when={compactTokens()}>{(tokens) => <CompactToggle tokens={tokens()} />}</Show>
           <Show when={!isDraft() && session.effectiveRuntimeMode() !== DEFAULT_RUNTIME_MODE}>
             <PermissionsChip />
           </Show>
@@ -680,6 +698,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               sending={sending()}
               disabled={!canSend()}
               blocked={blocked()}
+              compacts={compacts()}
               class="ml-[5px]"
               onSend={send}
             />

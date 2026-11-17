@@ -35,6 +35,8 @@ import {
   openInFileManagerImpl,
   queueCommandImpl,
   forkThreadImpl,
+  mergeBackImpl,
+  threadTitlesImpl,
   respondRequestImpl,
   rewindImpl,
   searchEntriesImpl,
@@ -105,6 +107,8 @@ runtime.registerImplementation(stopThreadImpl);
 runtime.registerImplementation(respondRequestImpl);
 runtime.registerImplementation(rewindImpl);
 runtime.registerImplementation(forkThreadImpl);
+runtime.registerImplementation(mergeBackImpl);
+runtime.registerImplementation(threadTitlesImpl);
 runtime.registerImplementation(serverProvidersImpl);
 runtime.registerImplementation(modelFavoritesImpl);
 runtime.registerImplementation(setModelFavoriteImpl);

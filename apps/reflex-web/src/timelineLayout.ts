@@ -4,6 +4,7 @@ import { isOrchestrationV2WorkActive, type OrchestrationV2TurnItem } from "@t3to
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 
+import { isCompactPrompt } from "./compaction";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { workEntryIsVisibleInGroup, workLogEntryIsToolLike, workLogEntry } from "./workLog";
 
@@ -91,7 +92,7 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
   };
   switch (item.type) {
     case "user_message":
-      return { ...base, Kind: isSteer(item) ? "steer" : "user" };
+      return { ...base, Kind: isSteer(item) ? "steer" : "user", Compaction: isCompactPrompt(item) };
     case "assistant_message":
       return {
         ...base,
@@ -452,6 +453,10 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
     (runId) => ![...folds.values()].some((fold) => fold.RunId === runId),
   );
 
+  // Follows deriveMessagesTimelineRows: the compaction row stands in for a bare `/compact` prompt.
+  const compactedRuns = new Set(
+    entries.flatMap((entry) => (entry.Kind === "work" && entry.Compaction ? [entry.RunId] : [])),
+  );
   const rows: ILayoutRow[] = [];
   const rowRuns: IRowRun[] = [];
   const push = (row: ILayoutRow, runId: string | null = null, trail: ITrail = "other") => {
@@ -487,6 +492,7 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
       });
     }
     if (collapsed.has(entry.Id)) continue;
+    if (entry.Kind === "user" && entry.Compaction && compactedRuns.has(entry.RunId)) continue;
 
     if (entry.Kind !== "work") {
       const meta =

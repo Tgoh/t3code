@@ -216,6 +216,25 @@ describe("the timeline's turn folds", () => {
   });
 });
 
+describe("a compaction", () => {
+  const compactPrompt = user("u", 0, { runId: "run-1", text: "/compact", attachments: [] });
+  const compaction = item("compaction", "k", 1, { beforeTokenCount: 64_800, afterTokenCount: 1 });
+
+  it("stands in for its bare /compact prompt once the provider reports it", () => {
+    expect(shape(layout([compactPrompt, compaction]))).toEqual(["k"]);
+  });
+
+  it("leaves the prompt in place until then, or when it carries a file", () => {
+    expect(shape(layout([compactPrompt]))).toEqual(["u"]);
+    const withFile = user("u", 0, {
+      runId: "run-1",
+      text: "/compact",
+      attachments: [{ id: "file" }],
+    });
+    expect(shape(layout([withFile, compaction]))).toEqual(["u", "k"]);
+  });
+});
+
 describe("a running turn", () => {
   const live = { run: running, working: true };
   const runningCommand = (id: string, second: number) =>

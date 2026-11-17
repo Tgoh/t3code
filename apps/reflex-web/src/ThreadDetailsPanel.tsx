@@ -30,6 +30,7 @@ import {
 } from "./gitActions";
 import {
   ArrowRight,
+  Bot,
   ChevronDown,
   CloudDownload,
   CloudUpload,
@@ -41,6 +42,7 @@ import {
   GitBranchPlus,
   GitCommitHorizontal,
   GitFork,
+  GitMerge,
   Info,
   Play,
   Plus,
@@ -49,11 +51,13 @@ import {
 } from "./icons";
 import GitWork, { continueDefaultBranch, type IActionContext, pull, runGitAction } from "./GitWork";
 import {
+  type ILineage,
   type ILineageRelation,
   type ILineageRow,
   lineageStatusLabel,
   threadLineage,
 } from "./lineage";
+import { useLineageTitles } from "./lineageTitles";
 import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
@@ -65,7 +69,8 @@ import ThreadDetails, {
   selectBranch,
 } from "./ThreadDetails";
 import { SourceControlIcon } from "./sourceControlIcon";
-import ThreadSession from "./ThreadSession";
+import ThreadSession, { mergeBack } from "./ThreadSession";
+import { AgentElapsed } from "./TurnStatus";
 import { Button } from "./ui/Button";
 import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
@@ -379,57 +384,225 @@ const newScriptId = (name: string, scripts: readonly ProjectScript[]) => {
 
 const RELATIONS: Record<ILineageRelation, { Icon: Component; Name: string; Untitled: string }> = {
   parent: { Icon: CornerLeftUp, Name: "parent thread", Untitled: "Parent thread" },
+  parentAgent: { Icon: CornerLeftUp, Name: "parent agent", Untitled: "Parent agent" },
   fork: { Icon: GitFork, Name: "fork", Untitled: "Fork" },
+  transfer: { Icon: GitFork, Name: "context transfer", Untitled: "Context transfer" },
+  subagent: { Icon: Bot, Name: "subagent", Untitled: "Subagent" },
+  remote: { Icon: Bot, Name: "subagent", Untitled: "Subagent" },
 };
 
-function LineageRow(props: { row: ILineageRow }) {
+const LINEAGE_INITIAL_COUNT = 6;
+const LINEAGE_PAGE_COUNT = 12;
+const STATUS_TEXT =
+  "flex-none text-[11px] font-normal text-muted-foreground tabular-nums group-data-failed/lineage:text-destructive";
+
+const isFailed = (status: string | null) => status === "failed" || status === "error";
+
+function LineageRow(props: {
+  row: ILineageRow;
+  onMerge?: (() => void) | undefined;
+  merging?: boolean;
+}) {
   const environment = Environment.use();
+  const session = ThreadSession.use();
   const relation = () => RELATIONS[props.row.Relation];
   const title = () => props.row.Title ?? relation().Untitled;
+  const remote = () => props.row.Remote;
+  const agent = () => {
+    const held = props.row.Agent;
+    return held !== null && !isFailed(props.row.Status) && held.StartedAt !== null ? held : null;
+  };
+  const canMerge = () => session.mergeBackRunId() !== null;
   return (
-    <li>
+    <li
+      class="group/lineage flex items-center"
+      data-failed={isFailed(props.row.Status) ? "" : undefined}
+    >
       <button
-        class={`group/lineage ${ROW}`}
-        data-tip={`Open ${relation().Name}: ${title()}`}
-        data-failed={props.row.Status === "failed" || props.row.Status === "error" ? "" : undefined}
-        onClick={() => void environment.selectThread(props.row.ThreadId)}
+        class={ROW}
+        aria-disabled={remote() !== null || undefined}
+        data-tip={
+          remote() !== null
+            ? `${title()}: runs on ${remote()}`
+            : `Open ${relation().Name}: ${title()}`
+        }
+        onClick={() => {
+          if (remote() === null) void environment.selectThread(props.row.ThreadId);
+        }}
       >
         <Dynamic component={relation().Icon} />
         <span class={LABEL}>{title()}</span>
-        <ArrowRight class="size-3! flex-none opacity-0 group-hover/lineage:opacity-100" />
-        <span class="flex-none text-[11px] font-normal text-muted-foreground group-data-failed/lineage:text-destructive">
-          {lineageStatusLabel(props.row.Status)}
-        </span>
+        <Show when={remote() === null && props.row.Agent === null}>
+          <ArrowRight class="size-3! flex-none opacity-0 group-hover/lineage:opacity-100" />
+        </Show>
+        <Show when={remote()}>
+          {(label) => (
+            <span class="max-w-1/2 flex-none truncate text-[11px] font-normal text-muted-foreground">
+              on {label()}
+            </span>
+          )}
+        </Show>
+        <Show when={!props.onMerge}>
+          <span class={STATUS_TEXT}>
+            <Show when={agent()} fallback={lineageStatusLabel(props.row.Status)}>
+              {(held) => <AgentElapsed agent={held()} />}
+            </Show>
+          </span>
+        </Show>
       </button>
+      <Show when={props.onMerge}>
+        {(onMerge) => (
+          <>
+            <button
+              class={ICON_ACTION}
+              aria-label={`Merge back to ${title()}`}
+              aria-disabled={!canMerge() || props.merging || undefined}
+              data-tip={
+                canMerge()
+                  ? `Merge this conversation back into ${title()}`
+                  : "Complete a run in this fork before merging it back"
+              }
+              onClick={() => {
+                if (canMerge() && !props.merging) onMerge()();
+              }}
+            >
+              <GitMerge />
+            </button>
+            <span class={`${STATUS_TEXT} pr-2.5 pl-2`}>{lineageStatusLabel(props.row.Status)}</span>
+          </>
+        )}
+      </Show>
     </li>
+  );
+}
+
+function LineageList(props: { rows: ILineageRow[]; label: string }) {
+  const session = ThreadSession.use();
+  const merging = useInFlight(mergeBack, () => session.state);
+  const [shown, setShown] = createSignal(LINEAGE_INITIAL_COUNT);
+  const hidden = () => props.rows.length - Math.min(shown(), props.rows.length);
+  return (
+    <Show when={props.rows.length > 0}>
+      <ul class="m-0 max-h-[13.5rem] list-none overflow-y-auto p-0" aria-label={props.label}>
+        <For each={props.rows.slice(0, shown())}>
+          {(row) => (
+            <LineageRow
+              row={row}
+              merging={merging()}
+              onMerge={row.MergeTarget ? () => void session.mergeBack(row.ThreadId) : undefined}
+            />
+          )}
+        </For>
+      </ul>
+      <Show when={hidden() > 0}>
+        <button class={ROW} onClick={() => setShown((count) => count + LINEAGE_PAGE_COUNT)}>
+          <Plus />
+          <span class="text-muted-foreground">
+            Show {Math.min(hidden(), LINEAGE_PAGE_COUNT)} more
+          </span>
+        </button>
+      </Show>
+    </Show>
+  );
+}
+
+function LineageGroups(props: { lineage: ILineage }) {
+  const [previousOpen, setPreviousOpen] = createSignal(false);
+  const previousFailed = () => props.lineage.Previous.filter((row) => isFailed(row.Status)).length;
+  return (
+    <>
+      <LineageList
+        rows={[...props.lineage.Related, ...props.lineage.Active]}
+        label="Related threads"
+      />
+      <Show when={props.lineage.Previous.length > 0}>
+        <button
+          class={ROW}
+          aria-expanded={previousOpen()}
+          onClick={() => setPreviousOpen(!previousOpen())}
+        >
+          <Bot />
+          <span class={LABEL}>Previous agents</span>
+          <Show when={previousFailed() > 0}>
+            <span class="flex-none text-[11px] font-normal text-destructive">
+              {previousFailed()} failed
+            </span>
+          </Show>
+          <Show when={!previousOpen()}>
+            <span class="flex-none text-[11px] font-normal text-muted-foreground tabular-nums">
+              {props.lineage.Previous.length}
+            </span>
+          </Show>
+          <ChevronDown
+            class={`size-3.5! transition-transform ${previousOpen() ? "" : "-rotate-90"}`}
+          />
+        </button>
+        <Show when={previousOpen()}>
+          <LineageList rows={props.lineage.Previous} label="Previous agents" />
+        </Show>
+      </Show>
+    </>
   );
 }
 
 // Follows ThreadRelationshipsPanel in apps/web/src/components/chat/ThreadRelationshipsControl.tsx.
 function LineageSection(props: { threadId: string }) {
   const environment = Environment.use();
-  const rows = createMemo(() => {
-    const thread = environment.state.Replica.OpenThreads[props.threadId]?.Thread;
-    return thread == null
-      ? []
-      : threadLineage(thread, Object.values(environment.state.Replica.Shell.Threads));
+  const session = ThreadSession.use();
+  const input = createMemo(() => {
+    const open = environment.state.Replica.OpenThreads[props.threadId];
+    if (open?.Thread == null) return null;
+    return {
+      thread: open.Thread,
+      subagents: Object.values(open.Subagents),
+      contextTransfers: Object.values(open.ContextTransfers),
+      shells: Object.values(environment.state.Replica.Shell.Threads),
+    };
   });
+  const untitled = createMemo(
+    () => {
+      const held = input();
+      return held === null ? [] : threadLineage({ ...held, titles: null }).Lookup;
+    },
+    [],
+    { equals: (left, right) => left.join(",") === right.join(",") },
+  );
+  const titles = useLineageTitles(untitled);
+  const lineage = createMemo(() => {
+    const held = input();
+    return held === null ? null : threadLineage({ ...held, titles: titles() });
+  });
+  const visible = () => {
+    const held = lineage();
+    return (
+      held !== null &&
+      (held.Related.length > 0 ||
+        held.Active.length > 0 ||
+        held.Previous.length > 0 ||
+        held.Running > 0)
+    );
+  };
   return (
-    <Show when={rows().length > 0}>
-      <section
-        class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
-        aria-labelledby="thread-details-lineage-heading"
-      >
-        <h3
-          id="thread-details-lineage-heading"
-          class="m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none"
+    <Show when={visible() && lineage()}>
+      {(held) => (
+        <section
+          class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
+          aria-label="Lineage"
         >
-          Lineage
-        </h3>
-        <ul class="m-0 list-none p-0" aria-label="Related threads">
-          <For each={rows()}>{(row) => <LineageRow row={row} />}</For>
-        </ul>
-      </section>
+          {/* A lone "Previous agents" row names itself, as stock's does. */}
+          <Show when={held().Running > 0 || held().Related.length > 0 || held().Active.length > 0}>
+            <h3 class="m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none">
+              {held().Running > 0 ? `Lineage · ${held().Running} running` : "Lineage"}
+            </h3>
+          </Show>
+          <Show when={session.state.MergeError}>
+            {(error) => <p class={ERROR}>Couldn't merge back: {error()}</p>}
+          </Show>
+          <Show when={props.threadId} keyed>
+            {(_threadId: string) => <LineageGroups lineage={held()} />}
+          </Show>
+        </section>
+      )}
     </Show>
   );
 }
