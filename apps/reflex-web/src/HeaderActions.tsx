@@ -27,7 +27,7 @@ const placeBelow = (anchor: HTMLElement) => (popup: HTMLElement) => {
 };
 
 const TONE: Record<ILimitTone, string> = {
-  normal: "text-muted-foreground",
+  normal: "text-foreground",
   warning: "text-warning",
   danger: "text-destructive",
 };
@@ -72,7 +72,11 @@ export function UsageRing() {
         data-tip={label()}
         on:pointerover={freshTip}
         on:focusin={freshTip}
-        onClick={() => setOpen((held) => (held === null ? clockNow() : null))}
+        onClick={() => {
+          if (open() !== null) return setOpen(null);
+          setOpen(clockNow());
+          void environment.autoRefreshLimits();
+        }}
       >
         <svg viewBox="0 0 16 16" class={`size-4 -rotate-90 ${TONE[weekly()?.Tone ?? "normal"]}`}>
           <circle
