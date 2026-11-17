@@ -1,4 +1,4 @@
-import { useResource } from "treflex-solid";
+import { useInFlight, useResource } from "treflex-solid";
 import {
   createComputed,
   createEffect,
@@ -16,7 +16,7 @@ import { ProjectBadge } from "./brand";
 import { Composer, COMPOSER_LANE, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
-import HistoryWindow from "./HistoryWindow";
+import HistoryWindow, { loadEarlier } from "./HistoryWindow";
 import { Bug, ChevronDown, PanelBottom, PanelRight, SquareMenu } from "./icons";
 import { withShortcut } from "./keybindings";
 import { useNavigation } from "./navigation";
@@ -79,15 +79,16 @@ const SCROLL_TO_END =
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
+  const loading = useInFlight(loadEarlier, () => history.state);
   return (
     <>
       <Show when={history.state.HasMore}>
         <Button
           class="mx-auto mb-4 block"
-          disabled={history.loadingEarlier()}
+          disabled={loading()}
           onClick={() => history.loadEarlier()}
         >
-          {history.loadingEarlier() ? "Loading…" : "Load earlier"}
+          {loading() ? "Loading…" : "Load earlier"}
         </Button>
       </Show>
       <Show when={history.state.Error}>

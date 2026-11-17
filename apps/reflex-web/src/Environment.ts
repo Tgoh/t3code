@@ -9,7 +9,6 @@ import {
   generateGuid,
   type IActionGenerator,
   type IEntity,
-  inFlight,
   type IOpenGenerator,
   type ISelectorGenerator,
   leading,
@@ -87,7 +86,6 @@ import {
   archivedThreadCommand,
   loadUsage,
   openView,
-  refreshingUsage,
   refreshUsage,
   updateServerSettings,
   writeSetting,
@@ -398,10 +396,6 @@ export function* removeProject(
 }
 leading(removeProject);
 
-export function* removingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight(removeProject, draft);
-}
-
 export function* requestProjectFavicon(
   draft: IEnvironment,
   target: IProjectFaviconTarget,
@@ -530,14 +524,6 @@ export function* cloneControl(
 }
 leading(cloneControl);
 
-export function* addingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight([addFolder, cloneProject, newProject], draft);
-}
-
-export function* cloneControlling(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight(cloneControl, draft);
-}
-
 export function* selectedOpenThread(draft: IEnvironment): ISelectorGenerator<IOpenThread | null> {
   const id = draft.Local.SelectedThreadId;
   return id === null ? null : (draft.Replica.OpenThreads[id] ?? null);
@@ -654,9 +640,5 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     panelShortcuts,
     currentProjectId,
     currentProjectRoot,
-    addingProject,
-    cloneControlling,
-    removingProject,
-    refreshingUsage,
   },
 );

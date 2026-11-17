@@ -1029,22 +1029,6 @@ export function* endTerminal(draft: IThreadSession): IOpenGenerator {
 }
 leading(endTerminal);
 
-export function* sending(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(send, draft);
-}
-
-export function* stopping(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(stopRun, draft);
-}
-
-export function* queueing(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(queueAction, draft);
-}
-
-export function* ending(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(endTerminal, draft);
-}
-
 export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
   return draft.Panels.Diff.Open && (yield* inFlight(openDiff, draft));
 }
@@ -1114,10 +1098,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     promptHistory,
     fileSearchResult,
     stopRequested,
-    sending,
-    stopping,
-    queueing,
-    ending,
     diffLoading,
     terminalAttachment,
     expandedTimelineRows,
