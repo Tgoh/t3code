@@ -96,8 +96,10 @@ function Anchored(props: {
       anchor={props.anchor}
       place={place}
       onClose={(reason) => {
+        // Closing unmounts the <Show> the anchor comes from, so it's read first.
+        const anchor = props.anchor;
         props.onClose();
-        if (reason === "escape") props.anchor.focus();
+        if (reason === "escape") anchor.focus();
       }}
     >
       {props.children}
@@ -185,8 +187,9 @@ function PermissionsPopup(props: {
         modes={session.runtimeModes()}
         onPick={(picked) => {
           session.setRuntimeMode(picked);
+          const anchor = props.anchor;
           props.onClose();
-          props.anchor.focus();
+          anchor.focus();
         }}
       />
     </Anchored>
