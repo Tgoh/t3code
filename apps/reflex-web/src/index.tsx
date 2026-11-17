@@ -16,8 +16,8 @@ import {
 } from "./Infrastructure/address";
 import {
   archivedShellImpl,
+  refreshProvidersImpl,
   refreshUsageRatesImpl,
-  serverConfigImpl,
   storeClientSettingsImpl,
   storedClientSettingsImpl,
   updateServerSettingsImpl,
@@ -34,7 +34,9 @@ import {
   openInEditorImpl,
   openInFileManagerImpl,
   queueCommandImpl,
+  forkThreadImpl,
   respondRequestImpl,
+  rewindImpl,
   searchEntriesImpl,
   searchThreadsImpl,
   modelFavoritesImpl,
@@ -61,6 +63,7 @@ import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelM
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
 import { projectFavicons } from "./Infrastructure/projectFavicons";
+import { serverConfigStream } from "./Infrastructure/serverConfigStream";
 import { serverKeybindings } from "./Infrastructure/serverKeybindings";
 import { shellStream } from "./Infrastructure/shellStream";
 import { rememberedTerminalImpl, rememberTerminalImpl } from "./Infrastructure/terminalMemory";
@@ -84,7 +87,7 @@ import { ThreadReceiver } from "./OpenThread";
 import { getDefaultRoot, load, RootReceiver } from "./Root";
 import { ShellReceiver } from "./Shell";
 import { GitReceiver } from "./GitWork";
-import { TerminalReceiver } from "./ThreadSession";
+import { RewindReceiver, TerminalReceiver } from "./ThreadSession";
 
 await pairFromUrl();
 
@@ -100,6 +103,8 @@ runtime.registerImplementation(threadHistoryPageImpl);
 runtime.registerImplementation(startTurnImpl);
 runtime.registerImplementation(stopThreadImpl);
 runtime.registerImplementation(respondRequestImpl);
+runtime.registerImplementation(rewindImpl);
+runtime.registerImplementation(forkThreadImpl);
 runtime.registerImplementation(serverProvidersImpl);
 runtime.registerImplementation(modelFavoritesImpl);
 runtime.registerImplementation(setModelFavoriteImpl);
@@ -136,13 +141,14 @@ runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);
 runtime.registerResourceType("projectFavicons", projectFavicons);
 runtime.registerResourceType("serverKeybindings", serverKeybindings);
+runtime.registerResourceType("serverConfigStream", serverConfigStream);
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerImplementation(delayImpl);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);
 runtime.registerImplementation(addressViewImpl);
 runtime.registerImplementation(setAddressViewImpl);
-runtime.registerImplementation(serverConfigImpl);
+runtime.registerImplementation(refreshProvidersImpl);
 runtime.registerImplementation(updateServerSettingsImpl);
 runtime.registerImplementation(storedClientSettingsImpl);
 runtime.registerImplementation(storeClientSettingsImpl);
@@ -162,6 +168,7 @@ runtime.registerReceiver(EnvironmentReceiver);
 runtime.registerReceiver(ShellReceiver);
 runtime.registerReceiver(ThreadReceiver);
 runtime.registerReceiver(TerminalReceiver);
+runtime.registerReceiver(RewindReceiver);
 runtime.registerReceiver(GitReceiver);
 runtime.registerReceiver(PreferencesReceiver);
 // The Environment applies the scheme once it connects; this paints the loading screen in it.

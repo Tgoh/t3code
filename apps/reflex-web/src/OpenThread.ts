@@ -45,6 +45,7 @@ declare module "treflex" {
   interface IMessageRegistry {
     "Thread/Deleted": { ThreadId: string };
     "Thread/Expired": { ThreadId: string };
+    "Thread/RewindProgress": { ThreadId: string };
     "Thread/RequestsSettled": {
       ThreadId: string;
       PendingIds: string[];
@@ -503,6 +504,7 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     yield* reconcileEntities(draft.RuntimeRequests, item.projection.runtimeRequests);
     applySnapshot(draft, item, history);
     yield* announceSettled(draft);
+    yield* announceRewind(draft);
     return;
   }
   if (item.sequence <= draft.LastSequence) return;
@@ -518,7 +520,22 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
   if (item.event.type === "runtime-request.updated") {
     yield* putEntity(draft.RuntimeRequests, item.event.payload);
     if (item.event.payload.status !== "pending") yield* announceSettled(draft);
-  } else applyEvent(draft, item.event);
+    return;
+  }
+  applyEvent(draft, item.event);
+  if (REWIND_EVENTS.has(item.event.type)) yield* announceRewind(draft);
+}
+
+// What rewindOutcome in rewind.ts reads.
+const REWIND_EVENTS = new Set<IWireThreadEvent["type"]>([
+  "thread.metadata-updated",
+  "run.updated",
+  "provider-thread.updated",
+]);
+
+function* announceRewind(draft: IOpenThread): IActionGenerator {
+  if (draft.Thread?.rollbackRequestId == null) return;
+  yield* publishToNearest(draft, "Thread/RewindProgress", { ThreadId: draft.ThreadId });
 }
 
 // Follows makeThreadRequestsResolvedAnnouncer in packages/client-runtime/src/state/threadRequests.ts.
@@ -668,8 +685,12 @@ export function* timelineIds(draft: IOpenThread): ISelectorGenerator<string[]> {
 
 const ACTIVE_RUN = new Set(["preparing", "starting", "running", "waiting"]);
 
-// A cancelled queued run keeps its later ordinal, so the active run has to be looked for first.
 export function* latestRun(draft: IOpenThread): ISelectorGenerator<IWireRun | null> {
+  return newestRun(draft);
+}
+
+// A cancelled queued run keeps its later ordinal, so the active run has to be looked for first.
+export function newestRun(draft: IOpenThread): IWireRun | null {
   let latest: IWireRun | null = null;
   let active: IWireRun | null = null;
   for (const run of Object.values(draft.Runs)) {

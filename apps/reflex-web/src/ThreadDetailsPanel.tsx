@@ -1,8 +1,9 @@
 import { changeRequestTerminologyFor } from "@t3tools/client-runtime/state/vcs";
 import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
-import { useResource } from "treflex-solid";
+import { useInFlight, useResource } from "treflex-solid";
 import { Dynamic, Portal } from "solid-js/web";
 import {
+  type Component,
   createEffect,
   createMemo,
   createSignal,
@@ -28,28 +29,40 @@ import {
   resolveQuickAction,
 } from "./gitActions";
 import {
+  ArrowRight,
   ChevronDown,
   CloudDownload,
   CloudUpload,
+  CornerLeftUp,
   ExternalLink,
   FileDiff,
   Folder,
   GitBranch,
   GitBranchPlus,
   GitCommitHorizontal,
+  GitFork,
   Info,
   Play,
   Plus,
   Server,
   X,
 } from "./icons";
-import GitWork, { type IActionContext } from "./GitWork";
+import GitWork, { continueDefaultBranch, type IActionContext, pull, runGitAction } from "./GitWork";
+import {
+  type ILineageRelation,
+  type ILineageRow,
+  lineageStatusLabel,
+  threadLineage,
+} from "./lineage";
 import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
   changesTotals,
+  createBranch,
   getDefaultThreadDetails,
   type ICheckout,
+  loadBranches,
+  selectBranch,
 } from "./ThreadDetails";
 import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession from "./ThreadSession";
@@ -163,7 +176,7 @@ function SplitRow(props: {
   label: string;
   icon: JSX.Element;
   disabled?: boolean;
-  tip?: string;
+  tip?: string | undefined;
   menuLabel: string;
   menuDisabled?: boolean;
   onRun: () => void;
@@ -364,6 +377,63 @@ const newScriptId = (name: string, scripts: readonly ProjectScript[]) => {
   return id;
 };
 
+const RELATIONS: Record<ILineageRelation, { Icon: Component; Name: string; Untitled: string }> = {
+  parent: { Icon: CornerLeftUp, Name: "parent thread", Untitled: "Parent thread" },
+  fork: { Icon: GitFork, Name: "fork", Untitled: "Fork" },
+};
+
+function LineageRow(props: { row: ILineageRow }) {
+  const environment = Environment.use();
+  const relation = () => RELATIONS[props.row.Relation];
+  const title = () => props.row.Title ?? relation().Untitled;
+  return (
+    <li>
+      <button
+        class={`group/lineage ${ROW}`}
+        data-tip={`Open ${relation().Name}: ${title()}`}
+        data-failed={props.row.Status === "failed" || props.row.Status === "error" ? "" : undefined}
+        onClick={() => void environment.selectThread(props.row.ThreadId)}
+      >
+        <Dynamic component={relation().Icon} />
+        <span class={LABEL}>{title()}</span>
+        <ArrowRight class="size-3! flex-none opacity-0 group-hover/lineage:opacity-100" />
+        <span class="flex-none text-[11px] font-normal text-muted-foreground group-data-failed/lineage:text-destructive">
+          {lineageStatusLabel(props.row.Status)}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+// Follows ThreadRelationshipsPanel in apps/web/src/components/chat/ThreadRelationshipsControl.tsx.
+function LineageSection(props: { threadId: string }) {
+  const environment = Environment.use();
+  const rows = createMemo(() => {
+    const thread = environment.state.Replica.OpenThreads[props.threadId]?.Thread;
+    return thread == null
+      ? []
+      : threadLineage(thread, Object.values(environment.state.Replica.Shell.Threads));
+  });
+  return (
+    <Show when={rows().length > 0}>
+      <section
+        class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
+        aria-labelledby="thread-details-lineage-heading"
+      >
+        <h3
+          id="thread-details-lineage-heading"
+          class="m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none"
+        >
+          Lineage
+        </h3>
+        <ul class="m-0 list-none p-0" aria-label="Related threads">
+          <For each={rows()}>{(row) => <LineageRow row={row} />}</For>
+        </ul>
+      </section>
+    </Show>
+  );
+}
+
 interface IDetailsProps {
   checkout: ICheckout;
   /** The thread's branch, which stands in for git status until status arrives. */
@@ -380,6 +450,9 @@ const Body = (props: IDetailsProps) => {
   const session = ThreadSession.use();
   const environment = Environment.use();
   const status = useResource(() => details.state, "Details/Status");
+  const switchingBranch = useInFlight([selectBranch, createBranch], () => details.state);
+  const loadingBranches = useInFlight(loadBranches, () => details.state);
+  const busy = useInFlight([runGitAction, continueDefaultBranch, pull], () => work.state);
   const git = () => status.value()?.Status ?? null;
   const [menu, setMenu] = createSignal<
     | { Kind: "editor" | "git" | "scripts"; Anchor: IMenuAnchor }
@@ -402,7 +475,6 @@ const Body = (props: IDetailsProps) => {
   );
 
   const terminology = () => changeRequestTerminologyFor(git());
-  const busy = () => work.gitBusy();
   const quick = createMemo(() =>
     resolveQuickAction(
       git(),
@@ -551,13 +623,13 @@ const Body = (props: IDetailsProps) => {
           <button
             class={ROW}
             aria-label={`Branch: ${branchName() ?? "detached HEAD"}`}
-            disabled={props.running || details.switchingBranch()}
+            disabled={props.running || switchingBranch()}
             data-tip={props.running ? "Wait for the turn to finish to switch branches." : undefined}
             onClick={(event) => openBranches(menuAt(event.currentTarget))}
           >
             <GitBranch />
             <span class={LABEL}>
-              {details.switchingBranch() ? "Switching…" : (branchName() ?? "Detached HEAD")}
+              {switchingBranch() ? "Switching…" : (branchName() ?? "Detached HEAD")}
             </span>
             <ChevronDown class="ml-auto" />
           </button>
@@ -644,6 +716,8 @@ const Body = (props: IDetailsProps) => {
           </button>
         </section>
       </Show>
+
+      <LineageSection threadId={session.state.ThreadId} />
 
       <Show when={menu()}>
         {(open) => (
@@ -755,7 +829,7 @@ const Body = (props: IDetailsProps) => {
                     }}
                   />
                   <div class="flex max-h-72 flex-col overflow-y-auto">
-                    <Show when={details.loadingBranches() && details.state.Branches === null}>
+                    <Show when={loadingBranches() && details.state.Branches === null}>
                       <p class={`${NOTE} text-warning-foreground`}>Loading branches…</p>
                     </Show>
                     <For each={details.state.Branches ?? []}>

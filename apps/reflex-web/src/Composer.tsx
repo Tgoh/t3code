@@ -1,7 +1,7 @@
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
-import { useResource } from "treflex-solid";
+import { useInFlight, useResource } from "treflex-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 
 import {
@@ -12,6 +12,7 @@ import {
   splitTransferredFiles,
 } from "./attachmentIntake";
 import { ComposerCommandMenu, useComposerMenu } from "./ComposerCommandMenu";
+import { FOCUS_COMPOSER_EVENT } from "./composerFocus";
 import { ModelPicker, PermissionsChip } from "./ComposerMenus";
 import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
 import Environment from "./Environment";
@@ -30,7 +31,12 @@ import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectCl
 import { caretOnEdge, type IPromptHistoryPosition, stepPromptHistory } from "./promptHistory";
 import { advanceLabel, answerPlaceholder, type IAnswering } from "./questions";
 import { StageArt } from "./StageArt";
-import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
+import ThreadSession, {
+  DEFAULT_RUNTIME_MODE,
+  editFromHere,
+  send as sendAction,
+  stopRun,
+} from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { iconButton } from "./ui/IconButton";
 import { composerCollapses, createMediaQuery, PHONE_QUERY, SHORT_TOUCH_QUERY } from "./viewport";
@@ -52,6 +58,13 @@ const NOTE = "mx-4 my-1 text-[12px]";
 const ERROR = `${NOTE} text-error-foreground ${HIDDEN_COLLAPSED}`;
 const REMOVE_ATTACHMENT =
   "inline-flex cursor-pointer items-center rounded-full border-0 p-0.5 [&_svg]:size-3.5";
+
+function useFocusRequests(focus: () => void) {
+  onMount(() => {
+    window.addEventListener(FOCUS_COMPOSER_EVENT, focus);
+    onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, focus));
+  });
+}
 
 /** Holds whether ⌘ or Ctrl is down, so the send button can show what a click would do. */
 function useAlternateHeld() {
@@ -277,6 +290,9 @@ function AnswerActions(props: { question: IAnswering }) {
 export function Composer(props: { active?: boolean; onSend?: () => void; question?: IAnswering }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
+  const sending = useInFlight(sendAction, () => session.state);
+  const stopInFlight = useInFlight(stopRun, () => session.state);
+  const rewinding = useInFlight(editFromHere, () => session.state);
   const held = () => session.state;
   const intake = useAttachmentIntake();
   const files = intake.files;
@@ -304,12 +320,12 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     );
   };
   const isDraft = () => held().NewThreadProjectId !== null;
-  const stopping = () => session.stopRequested() || session.stopping();
+  const stopping = () => session.stopRequested() || stopInFlight();
   const clone = useProjectClone(() => session.projectId());
   const blocked = () => cloneSendBlock(clone());
   const canSend = () =>
     blocked() === null &&
-    !session.sending() &&
+    !sending() &&
     (held().Draft.trim() !== "" || held().Attachments.length > 0);
   const phone = createMediaQuery(`${PHONE_QUERY}, ${SHORT_TOUCH_QUERY}`);
   const [focused, setFocused] = createSignal(false);
@@ -330,6 +346,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   };
+  useFocusRequests(expand);
   // A tap on a control would take focus from the prompt and drop the on-screen keyboard.
   const keepPromptFocus = (event: PointerEvent) => {
     if (phone() && event.target !== textarea) event.preventDefault();
@@ -451,6 +468,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         ref={form}
         class="relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)"
         data-collapsed={collapsed() ? "" : undefined}
+        inert={rewinding()}
         onSubmit={(event) => {
           event.preventDefault();
           send();
@@ -482,7 +500,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                 <SendButton
                   running={running()}
                   alternate={alternateHeld()}
-                  sending={session.sending()}
+                  sending={sending()}
                   disabled={!canSend()}
                   blocked={null}
                   class="ml-0"
@@ -601,6 +619,12 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         <Show when={held().ModelError}>
           <p class={ERROR}>{held().ModelError}</p>
         </Show>
+        <Show when={held().RewindError}>
+          <p class={ERROR}>{held().RewindError}</p>
+        </Show>
+        <Show when={held().ForkError}>
+          <p class={ERROR}>Couldn't fork this response: {held().ForkError}</p>
+        </Show>
         <div
           class="flex min-h-8 items-center gap-1 px-2 pt-px pb-[7px] in-data-collapsed:pt-0 in-data-collapsed:[&>:not(.model-trigger)]:hidden"
           onPointerDown={keepPromptFocus}
@@ -634,7 +658,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             <SendButton
               running={running()}
               alternate={alternateHeld()}
-              sending={session.sending()}
+              sending={sending()}
               disabled={!canSend()}
               blocked={blocked()}
               class="ml-[5px]"

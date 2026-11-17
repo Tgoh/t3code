@@ -23,7 +23,7 @@ export const threadHistoryPageImpl = implementation(declared, async (effect, act
     `/api/orchestration/threads/${encodeURIComponent(effect.ThreadId)}/history?${query}`,
     {
       headers: { [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT },
-      signal: action?.signal,
+      signal: action?.signal ?? null,
     },
   );
   if (!response.ok) throw new Error(`History request failed with HTTP ${response.status}.`);

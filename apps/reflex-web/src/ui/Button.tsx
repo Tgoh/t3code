@@ -9,6 +9,8 @@ const VARIANTS = {
     "border-transparent bg-primary text-[14px] text-primary-foreground hover:bg-[color-mix(in_srgb,var(--primary)_90%,var(--background))]",
   destructive:
     "border-transparent bg-destructive text-[14px] text-white hover:bg-[color-mix(in_srgb,var(--destructive)_90%,var(--background))]",
+  "destructive-outline":
+    "border-input bg-popover text-[14px] text-error-foreground enabled:hover:border-[color-mix(in_srgb,var(--destructive)_32%,transparent)] enabled:hover:bg-[color-mix(in_srgb,var(--destructive)_4%,var(--popover))]",
   ghost:
     "border-transparent bg-transparent text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground",
 };

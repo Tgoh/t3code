@@ -5,6 +5,10 @@ import {
   createTestRuntime,
   EntityReplacedError,
   type IActionGenerator,
+  type IEntity,
+  inFlight,
+  type IRuntime,
+  type ISelectorGenerator,
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
@@ -26,12 +30,14 @@ import {
   threadCommand,
   toggleModelFavorite,
 } from "./Environment";
-import { gitBusy, runGitAction } from "./GitWork";
-import { loadEarlier, loadingEarlier } from "./HistoryWindow";
+import { continueDefaultBranch, pull, runGitAction } from "./GitWork";
+import { loadEarlier } from "./HistoryWindow";
 import {
   archivedThreadCommand,
+  autoRefreshLimits,
   loadUsage,
   openView,
+  refreshUsage,
   updateServerSettings,
   writeSetting,
 } from "./Settings";
@@ -42,6 +48,7 @@ import type {
   IWireHistoryPage,
   IWireProjection,
   IWireShellItem,
+  IWireThreadEvent,
   IWireThreadItem,
   IWireTurnItem,
 } from "./Infrastructure/wire";
@@ -50,8 +57,10 @@ import type { Tokens } from "marked";
 
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import type {
+  IForkThread,
   IQueueCommand,
   IRespondRequest,
+  IRewind,
   IStartClone,
   IStartTurn,
   IStopThread,
@@ -93,13 +102,7 @@ import {
 } from "./OpenThread";
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
-import {
-  answering,
-  answerRequest,
-  canAnswer,
-  dismissRequest,
-  type IRuntimeRequest,
-} from "./RuntimeRequest";
+import { answerRequest, canAnswer, dismissRequest, type IRuntimeRequest } from "./RuntimeRequest";
 import {
   activityAt,
   canSnooze,
@@ -115,27 +118,31 @@ import {
 import {
   addAttachments,
   chooseModel,
+  chooseRewind,
   closeDiff,
+  editFromHere,
+  forkFromRun,
+  type IRewindChoice,
+  revertTargets,
+  RewindReceiver,
+  rewindConfirm,
+  threadWorking,
   diffLoading,
   closeTerminal,
   effectiveModel,
   effectiveRuntimeMode,
-  ending,
   endTerminal,
   fitDetails,
   type IThreadSession,
   openDiff,
   openTerminal,
   queueAction,
-  queueing,
   send,
-  sending,
   setDraft,
   setModelSelection,
   setQuestionCustomAnswer,
   setQuestionIndex,
   setRuntimeMode,
-  stopping,
   stopRun,
   terminalAttachment,
   TerminalReceiver,
@@ -163,6 +170,15 @@ import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
 
 const ENV = "env-1";
+
+const inFlightOf = (
+  runtime: IRuntime<IRoot>,
+  reading: Parameters<typeof inFlight>[0],
+  owner: () => IEntity,
+) =>
+  runtime.processSelector(function* (draft: IEntity): ISelectorGenerator<boolean> {
+    return yield* inFlight(reading, draft);
+  }, owner);
 
 const storedPreferences: IPreferences = {
   GroupByProject: true,
@@ -289,6 +305,7 @@ async function connect(
   runtime.registerReceiver(ShellReceiver);
   runtime.registerReceiver(ThreadReceiver);
   runtime.registerReceiver(TerminalReceiver);
+  runtime.registerReceiver(RewindReceiver);
   runtime.registerReceiver(PreferencesReceiver);
   await runtime.dispatch(load, "Root");
   await settled();
@@ -330,6 +347,13 @@ async function connect(
         shellId(),
         { Type: "Shell/Stream", Item },
         { publisher: { Id: shellId() } },
+      ),
+    sendConfig: (Item: Record<string, unknown>) =>
+      runtime.dispatch(
+        EnvironmentReceiver.handle,
+        envId(),
+        { Type: "Server/Config", Item: Item as never },
+        { publisher: { Id: envId() } },
       ),
     disposed: (id: string) =>
       new Promise<void>((resolve) => {
@@ -1100,7 +1124,7 @@ describe("history pages", () => {
 
   const historyId = (server: Awaited<ReturnType<typeof connect>>) => server.thread().History!.$Id;
   const loadingOf = (server: Awaited<ReturnType<typeof connect>>) =>
-    server.runtime.processSelector(loadingEarlier, () => server.thread().History!);
+    inFlightOf(server.runtime, loadEarlier, () => server.thread().History!);
 
   it("prepends a page, and a live update made during the wait wins over it", async () => {
     const gate = gated();
@@ -1867,7 +1891,7 @@ describe("writing to the server", () => {
     expect(sent[0]!.CommandId).not.toBe(sent[0]!.MessageId);
     const session = server.environment().Local.ThreadSessions[THREAD_ID]!;
     expect(session.Draft).toBe("");
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
     expect(server.thread().TurnItems).toEqual({});
   });
 
@@ -1886,7 +1910,7 @@ describe("writing to the server", () => {
     expect(attempts).toBe(1);
     expect(session.Draft).toBe("keep me");
     expect(session.SendError).toBe("server said no");
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
   });
 
   it("a second send during the wait is ignored", async () => {
@@ -1905,7 +1929,7 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(setDraft, server.sessionId(), "once");
     const first = server.runtime.dispatch(send, server.sessionId());
     await server.runtime.dispatch(send, server.sessionId());
-    expect(server.runtime.processSelector(sending, () => server.session())).toBe(true);
+    expect(inFlightOf(server.runtime, send, () => server.session())).toBe(true);
     release();
     await first;
     expect(sent).toHaveLength(1);
@@ -2106,7 +2130,7 @@ describe("writing to the server", () => {
     await server.open();
     await server.runtime.dispatch(stopRun, server.sessionId());
     expect(stops.map((stop) => stop.ThreadId)).toEqual([THREAD_ID]);
-    expect(server.runtime.processSelector(stopping, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, stopRun, () => server.session())).toBe(false);
     refuse = true;
     await server.runtime.dispatch(stopRun, server.sessionId());
     await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
@@ -2129,7 +2153,7 @@ describe("writing to the server", () => {
       },
     });
     await server.open();
-    const busy = () => server.runtime.processSelector(queueing, () => server.session());
+    const busy = () => inFlightOf(server.runtime, queueAction, () => server.session());
     const press = (runId: string | null) =>
       server.runtime.dispatch(
         queueAction,
@@ -2186,7 +2210,13 @@ describe("writing to the server", () => {
       false,
     );
     await settled();
-    expect(server.runtime.processSelector(gitBusy, () => server.session().Git)).toBe(true);
+    expect(
+      inFlightOf(
+        server.runtime,
+        [runGitAction, continueDefaultBranch, pull],
+        () => server.session().Git,
+      ),
+    ).toBe(true);
     finish();
     await running;
     expect(server.session().Git.Notice).toMatchObject({ Tone: "success", Title: "Pushed" });
@@ -2269,7 +2299,8 @@ describe("writing to the server", () => {
     expect(pendingRequest(server.thread(), "r-1")?.Item?.type).toBe("approval_request");
 
     const node = (id: string) => server.thread().RuntimeRequests[id]!;
-    const busy = (id: string) => server.runtime.processSelector(answering, () => node(id));
+    const busy = (id: string) =>
+      inFlightOf(server.runtime, [answerRequest, dismissRequest], () => node(id));
     const answer = (id: string, decision: "accept" | "decline") =>
       server.runtime.dispatch(answerRequest, node(id).$Id, ENV, THREAD_ID, decision, null);
     const first = answer("r-1", "accept");
@@ -3277,7 +3308,7 @@ describe("the terminal", () => {
     await server.runtime.dispatch(openTerminal, server.sessionId());
     await server.runtime.dispatch(endTerminal, server.sessionId());
     expect(panel(server)).toMatchObject({ Open: true, Error: "server said no" });
-    expect(server.runtime.processSelector(ending, () => server.session())).toBe(false);
+    expect(inFlightOf(server.runtime, endTerminal, () => server.session())).toBe(false);
     expect(attached(server)).toHaveLength(1);
     refuse = false;
     await server.runtime.dispatch(endTerminal, server.sessionId());
@@ -3386,9 +3417,11 @@ function settingsServer() {
   let client = { toolCallVisibility: "showAll" } as Record<string, unknown>;
   let refreshing = true;
   const commands = {
-    serverConfig: () => {
-      calls.push({ Type: "serverConfig" });
-      return { settings, providers: [], keybindings: [] };
+    refreshProviders: (effect: { Automatic: boolean }) => {
+      calls.push({ Type: "refreshProviders", Automatic: effect.Automatic });
+    },
+    refreshUsageRates: () => {
+      calls.push({ Type: "refreshUsageRates" });
     },
     updateServerSettings: (effect: { Patch: object; InstanceMutation: unknown }) => {
       calls.push({
@@ -3430,16 +3463,28 @@ function settingsServer() {
   return {
     calls,
     commands,
+    snapshot: () => ({
+      version: 1,
+      type: "snapshot",
+      config: { settings: { ...settings }, providers: [], keybindings: [], issues: [] },
+    }),
     stopRefreshing: () => {
       refreshing = false;
     },
   };
 }
 
+const claude = (left: number) => ({
+  instanceId: "claudeAgent",
+  driver: "claudeAgent",
+  usageLimits: { checkedAt: "2026-11-17T00:00:00.000Z", windows: [{ usedPercent: 100 - left }] },
+});
+
 describe("settings and usage", () => {
   it("open over the thread, keep the address, load both stores, and close on a thread pick", async () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
+    await server.sendConfig(fake.snapshot());
     await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "voice" });
     await settled();
     expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "general" });
@@ -3460,12 +3505,13 @@ describe("settings and usage", () => {
     });
     await settled();
     expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "providers" });
-    expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(true);
+    expect(server.environment().Local.ClientSettings?.toolCallVisibility).toBe("showAll");
   });
 
   it("send a server row's patch and hold what the server returns, and merge a client row into the whole stored object", async () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
+    await server.sendConfig(fake.snapshot());
     await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "threads" });
     await settled();
     await server.runtime.dispatch(writeSetting, server.envId(), {
@@ -3496,20 +3542,55 @@ describe("settings and usage", () => {
       Page: "providers",
     });
     await settled();
-    const configReads = () => fake.calls.filter((call) => call.Type === "serverConfig").length;
-    const before = configReads();
     await server.runtime.dispatch(updateServerSettings, server.envId(), {
       setModelsHidden: [{ provider: "devReplay", model: "showcase", hidden: true }],
     } as never);
     expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
-    expect(configReads()).toBe(before);
     await server.runtime.dispatch(updateServerSettings, server.envId(), {}, {
       operation: "upsert",
       instanceId: "devReplay",
       instance: { driver: "devReplay", enabled: false },
     } as never);
-    expect(configReads()).toBe(before + 1);
     expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
+  });
+
+  it("follow the config stream, so a provider push replaces the limits held since the snapshot", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    const usedPercent = () =>
+      (server.environment().Replica.Config?.providers[0] as ReturnType<typeof claude> | undefined)
+        ?.usageLimits.windows[0]?.usedPercent;
+    const snapshot = fake.snapshot();
+    await server.sendConfig({
+      ...snapshot,
+      config: { ...snapshot.config, providers: [claude(82)] },
+    });
+    expect(usedPercent()).toBe(18);
+    await server.sendConfig({
+      version: 1,
+      type: "providerStatuses",
+      payload: { providers: [claude(61)] },
+    });
+    expect(usedPercent()).toBe(39);
+    await server.sendConfig({
+      version: 1,
+      type: "settingsUpdated",
+      payload: { settings: { favorites: [], sidebarAutoSettleAfterDays: 3 } },
+    });
+    expect(server.environment().Replica.Config?.settings.sidebarAutoSettleAfterDays).toBe(3);
+    expect(usedPercent()).toBe(39);
+  });
+
+  it("refresh limits by asking the server to re-probe its providers, and leave the result to the stream", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    await server.runtime.dispatch(autoRefreshLimits, server.envId());
+    await server.runtime.dispatch(refreshUsage, server.envId(), null);
+    expect(fake.calls.filter((call) => call.Type === "refreshProviders")).toEqual([
+      { Type: "refreshProviders", Automatic: true },
+      { Type: "refreshProviders", Automatic: false },
+    ]);
+    expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(false);
   });
 
   it("unarchive a thread with stock's command and read the archive again", async () => {
@@ -3540,5 +3621,288 @@ describe("settings and usage", () => {
     fake.stopRefreshing();
     await server.runtime.dispatch(loadUsage, server.envId(), "7", input as never);
     expect(fake.calls.filter((call) => call.Type === "usageSummary")).toHaveLength(3);
+  });
+});
+
+describe("rewinding and forking", () => {
+  const INSTANCE = "devReplay";
+  const ATTACHMENT = { type: "image", id: "a-1", name: "shot.png", mimeType: "image/png" };
+
+  const userTurn = (ordinal: number, text: string, attachments: unknown[] = []) =>
+    ({
+      ...commandItem(`user-${ordinal}`, `run-${ordinal}`, ordinal * 2),
+      type: "user_message",
+      messageId: `message-user-${ordinal}`,
+      text,
+      inputIntent: "turn_start",
+      attachments,
+    }) as unknown as IWireTurnItem;
+
+  const providerThread = (lastRunOrdinal: number) => ({
+    id: "pt-1",
+    driver: "acp",
+    providerInstanceId: INSTANCE,
+    providerSessionId: "session-1",
+    appThreadId: THREAD_ID,
+    ownerNodeId: null,
+    status: "idle",
+    firstRunOrdinal: 1,
+    lastRunOrdinal,
+    handoffIds: [],
+    forkedFrom: null,
+  });
+
+  function twoTurns(): IWireProjection {
+    const projection = emptyProjection();
+    projection.thread = {
+      ...projection.thread,
+      modelSelection: { instanceId: INSTANCE, model: "showcase" },
+      activeProviderThreadId: "pt-1",
+    } as never;
+    const items: IWireTurnItem[] = [];
+    for (const ordinal of [1, 2]) {
+      projection.runs.push({
+        ...run(`run-${ordinal}`, ordinal),
+        activeAttemptId: `at-${ordinal}`,
+      } as never);
+      projection.attempts.push({ id: `at-${ordinal}`, runId: `run-${ordinal}` } as never);
+      projection.providerTurns.push({
+        id: `turn-${ordinal}`,
+        runAttemptId: `at-${ordinal}`,
+        ordinal: 1,
+        providerThreadId: "pt-1",
+      } as never);
+      projection.checkpoints.push({
+        id: `cp-${ordinal}`,
+        scopeId: "scope-1",
+        runId: `run-${ordinal}`,
+        appRunOrdinal: ordinal,
+        ordinalWithinScope: ordinal,
+        status: "ready",
+        files: [],
+      } as never);
+      items.push(
+        userTurn(ordinal, `prompt ${ordinal}`, ordinal === 2 ? [ATTACHMENT] : []),
+        assistantItem(`assistant-${ordinal}`, `run-${ordinal}`, ordinal * 2 + 1, "done"),
+      );
+    }
+    projection.checkpoints.unshift({
+      id: "cp-start",
+      scopeId: "scope-1",
+      runId: null,
+      appRunOrdinal: null,
+      ordinalWithinScope: 0,
+      status: "ready",
+      files: [],
+    } as never);
+    projection.providerThreads.push(providerThread(2) as never);
+    projection.turnItems = items;
+    projection.visibleTurnItems = items.map((item, index) => localRow(item, index));
+    return projection;
+  }
+
+  async function rewindServer(
+    rewind?: (effect: IRewind) => unknown,
+    commands: Record<string, (effect: never) => unknown> = {},
+  ) {
+    const rewinds: IRewind[] = [];
+    const forks: IForkThread[] = [];
+    const recalled: string[][] = [];
+    const removed: string[] = [];
+    const server = await connect(
+      undefined,
+      null,
+      {
+        rewind: (effect: IRewind) => {
+          rewinds.push(effect);
+          return rewind?.(effect);
+        },
+        forkThread: (effect: IForkThread) => void forks.push(effect),
+        ...commands,
+      },
+      undefined,
+      {
+        methods: {
+          "Composer/Files": {
+            recall: (_ctx: unknown, attachments: Array<{ name: string }>) => {
+              recalled.push(attachments.map((file) => file.name));
+              return attachments.map((file, index) => ({
+                Id: `recalled-${index}`,
+                Kind: "image",
+                Name: file.name,
+                MimeType: "image/png",
+                SizeBytes: 4,
+                PastedText: false,
+                PreviewUrl: null,
+              }));
+            },
+            remove: (_ctx: unknown, id: string) => void removed.push(id),
+          },
+        },
+      },
+    );
+    await server.open();
+    await server.sendThread(snapshotOf(twoTurns(), 1));
+    let sequence = 1;
+    // An effect stub can't wait for settled(), which waits for that effect.
+    const deliver = async (type: IWireThreadEvent["type"], payload: unknown, settle = true) => {
+      sequence += 1;
+      await server.sendThread({ kind: "event", sequence, event: event(type, payload) } as never);
+      if (settle) await settled();
+    };
+    const thread = () => server.thread().Thread!;
+    const confirm = () => server.runtime.processSelector(rewindConfirm, () => server.session());
+    const editFrom = (itemId: string, turnCount: number) =>
+      server.runtime.dispatch(editFromHere, server.sessionId(), itemId, turnCount);
+    const choose = async (choice?: IRewindChoice) => {
+      const entry = confirm();
+      expect(entry).not.toBeNull();
+      await server.runtime.dispatch(chooseRewind, server.sessionId(), entry!.Id as never, choice);
+      await settled();
+    };
+    const land = async (commandId: string, settle = true) => {
+      await deliver(
+        "thread.metadata-updated",
+        { ...thread(), rollbackRequestId: commandId },
+        settle,
+      );
+      await deliver("run.updated", run("run-2", 2, "rolled_back"), settle);
+      await deliver("provider-thread.updated", providerThread(1), settle);
+    };
+    return {
+      server,
+      rewinds,
+      forks,
+      recalled,
+      removed,
+      deliver,
+      thread,
+      confirm,
+      editFrom,
+      choose,
+      land,
+    };
+  }
+
+  it("offers each settled turn-start message the checkpoint before it", async () => {
+    const { server, deliver } = await rewindServer();
+    const targets = () => server.runtime.processSelector(revertTargets, () => server.session());
+    expect(targets()).toEqual({ "user-1": 0, "user-2": 1 });
+    await deliver("run.created", { ...run("run-3", 3, "running"), completedAt: null });
+    expect(targets()).toEqual({ "user-1": 0, "user-2": 1 });
+    expect(server.runtime.processSelector(threadWorking, () => server.session())).toBe(true);
+  });
+
+  it("edit from here rolls back, then returns the message and its files to the composer", async () => {
+    const rig = await rewindServer();
+    const { server } = rig;
+    await server.runtime.dispatch(setDraft, server.sessionId(), "half written");
+    const editing = rig.editFrom("user-2", 1);
+    await settled();
+    expect(rig.confirm()?.Request).toEqual({
+      Path: "Rewind/Confirm",
+      TurnCount: 1,
+      CanRestoreFiles: false,
+    });
+    await rig.choose("keepChanges");
+    expect(rig.rewinds).toMatchObject([
+      {
+        EnvironmentId: ENV,
+        ThreadId: THREAD_ID,
+        TurnCount: 1,
+        RestoreFiles: false,
+        Checkpoint: { Id: "cp-1", ScopeId: "scope-1" },
+      },
+    ]);
+    expect(rig.recalled).toEqual([["shot.png"]]);
+    expect(inFlightOf(server.runtime, editFromHere, () => server.session())).toBe(true);
+    expect(server.session().Draft).toBe("half written");
+
+    await rig.land(rig.rewinds[0]!.CommandId);
+    expect(await editing).toBe(true);
+    expect(server.session().Draft).toBe("half written\n\nprompt 2");
+    expect(server.session().Attachments.map((file) => file.Name)).toEqual(["shot.png"]);
+    expect(server.stored.Drafts.get(THREAD_ID)?.Text).toBe("half written\n\nprompt 2");
+    expect(inFlightOf(server.runtime, editFromHere, () => server.session())).toBe(false);
+    expect(server.session().RewindError).toBeUndefined();
+  });
+
+  it("a rollback the stream delivers before the command returns still lands", async () => {
+    let rig!: Awaited<ReturnType<typeof rewindServer>>;
+    rig = await rewindServer((effect) => rig.land(effect.CommandId, false));
+    const editing = rig.editFrom("user-2", 1);
+    await settled();
+    await rig.choose("keepChanges");
+    expect(await editing).toBe(true);
+    expect(rig.server.session().Draft).toBe("prompt 2");
+  });
+
+  it("a refused rollback keeps the draft and drops the recalled files", async () => {
+    const rig = await rewindServer();
+    const { server } = rig;
+    const editing = rig.editFrom("user-2", 1);
+    await settled();
+    await rig.choose("keepChanges");
+    const commandId = rig.rewinds[0]!.CommandId;
+    await rig.deliver("thread.metadata-updated", {
+      ...rig.thread(),
+      rollbackRequestId: commandId,
+      rollbackFailure: { requestId: commandId, message: "The provider refused." },
+    });
+    expect(await editing).toBe(false);
+    expect(server.session()).toMatchObject({ Draft: "", RewindError: "The provider refused." });
+    expect(server.session().Attachments).toEqual([]);
+    expect(rig.removed).toEqual(["recalled-0"]);
+  });
+
+  it("cancelling sends nothing, and a running turn or an unsupported provider refuses first", async () => {
+    const rig = await rewindServer();
+    const { server } = rig;
+    const cancelled = rig.editFrom("user-1", 0);
+    await settled();
+    await rig.choose();
+    expect(await cancelled).toBe(false);
+    expect(rig.rewinds).toEqual([]);
+
+    await rig.deliver("run.created", { ...run("run-3", 3, "running"), completedAt: null });
+    expect(await rig.editFrom("user-1", 0)).toBe(false);
+    expect(rig.confirm()).toBeNull();
+    expect(server.session().RewindError).toBe(
+      "Interrupt the current turn before reverting checkpoints.",
+    );
+
+    const unsupported = await rewindServer(undefined, {
+      serverProviders: () => [
+        {
+          InstanceId: INSTANCE,
+          Name: "Replay",
+          SupportsRollback: false,
+          Models: [{ Slug: "showcase", Name: "Showcase", IsDefault: true }],
+        },
+      ],
+    });
+    const session = () => unsupported.server.session();
+    expect(unsupported.server.runtime.processSelector(revertTargets, session)).toEqual({});
+    expect(await unsupported.editFrom("user-1", 0)).toBe(false);
+    expect(session().RewindError).toBe(
+      "This provider does not support reverting conversation history. Start a new thread instead.",
+    );
+  });
+
+  it("fork from a response creates the fork and opens it", async () => {
+    const rig = await rewindServer();
+    const { server } = rig;
+    await server.runtime.dispatch(forkFromRun, server.sessionId(), THREAD_ID, "run-1");
+    await settled();
+    expect(rig.forks).toMatchObject([
+      {
+        EnvironmentId: ENV,
+        SourceThreadId: THREAD_ID,
+        RunId: "run-1",
+        Title: "Fixture fork",
+      },
+    ]);
+    expect(server.environment().Local.SelectedThreadId).toBe(rig.forks[0]!.TargetThreadId);
+    expect(server.environment().Replica.OpenThreads[rig.forks[0]!.TargetThreadId]).toBeDefined();
   });
 });

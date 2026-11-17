@@ -21,7 +21,7 @@ export interface IPromptHistoryStep {
 }
 
 // Follows recallableComposerPrompt in apps/web/src/components/chat/composerPromptHistory.ts.
-function recallable(text: string): string {
+export function recallablePrompt(text: string): string {
   let prompt = text.trim();
   if (prompt.startsWith(ULTRATHINK_PREFIX)) prompt = prompt.slice(ULTRATHINK_PREFIX.length).trim();
   if (prompt === ATTACHMENT_ONLY_BOOTSTRAP_PROMPT || prompt.startsWith(PLAN_IMPLEMENTATION_PREFIX))
@@ -40,7 +40,7 @@ export function promptHistoryEntries(
   );
   for (const message of ordered) {
     if (message.role !== "user" || attribution(message) !== null) continue;
-    const prompt = recallable(message.text);
+    const prompt = recallablePrompt(message.text);
     if (prompt === "") continue;
     const entry = { Id: message.id, Prompt: prompt };
     if (entries.at(-1)?.Prompt === prompt) entries[entries.length - 1] = entry;

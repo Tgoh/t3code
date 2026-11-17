@@ -3,8 +3,6 @@ import {
   type IActionGenerator,
   type IEntity,
   type IOpenGenerator,
-  type ISelectorGenerator,
-  inFlight,
   latest,
   leading,
   open,
@@ -245,14 +243,6 @@ export function* saveScripts(draft: IThreadDetails, scripts: ProjectScript[]): I
 }
 leading(saveScripts);
 
-export function* switchingBranch(draft: IThreadDetails): ISelectorGenerator<boolean> {
-  return yield* inFlight([selectBranch, createBranch], draft);
-}
-
-export function* loadingBranches(draft: IThreadDetails): ISelectorGenerator<boolean> {
-  return yield* inFlight(loadBranches, draft);
-}
-
 export default createComponentFeature<IThreadDetails>(import.meta.url)(
   {
     attach,
@@ -264,5 +254,5 @@ export default createComponentFeature<IThreadDetails>(import.meta.url)(
     runScript,
     saveScripts,
   },
-  { switchingBranch, loadingBranches },
+  {},
 );

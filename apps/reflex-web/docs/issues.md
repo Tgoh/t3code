@@ -150,7 +150,8 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Sidebar and composer: only Claude and OpenAI provider icons are copied; Replay, Cursor, Grok, OpenCode, Antigravity and Kiro show none, and instance badges aren't drawn.
 - New thread: a pen button targets the current project, and a small native select beside it picks another, where stock has one button.
 - Header: no title menu.
-- Thread details: no environment or worktree pickers (the machine row only names it), no usage, context, servers, automations, lineage, side chats or linked pull request rows, no "Choose what to show" menu, and no compact or essential density for a short window. Only an open thread has the card; a new-thread draft doesn't. Its open state is per thread and resets on reload, where stock keeps it.
+- Thread details: no environment or worktree pickers (the machine row only names it), no usage, context, servers, automations, side chats or linked pull request rows, no "Choose what to show" menu, and no compact or essential density for a short window. Only an open thread has the card; a new-thread draft doesn't. Its open state is per thread and resets on reload, where stock keeps it.
+- Thread details, lineage: only the fork parent and forks, with no subagents, context transfers, delegated-from row, merge back or disconnect. A parent the shell has dropped (an older settled thread) shows as "Parent thread" with no title, where stock looks titles up, and the rows have no hover card.
 - Thread details, git: no progress phases or hook output while an action runs (the row says Working…), no View PR for a branch with an open pull request, no Publish repository dialog or Initialize Git, and no live branch sync for drafts. The commit dialog lists files without opening them in the editor. Changes counts come from status alone, not the diff preview stock reads, and status refreshes when the menu opens, not when the window regains focus.
 - Thread details, branches: the picker lists the first 100 refs with a server-side search, with no remote refs, pull request checkout, worktree moves or context menu; a branch checked out in another worktree is refused.
 - Thread details, scripts: a script runs in the thread's one drawer terminal, where stock opens a new terminal. Scripts can be added but not edited or removed, and `t3.json` file scripts aren't imported. Scripts have no keyboard shortcuts, and `editor.openFavorite` isn't handled.
@@ -160,7 +161,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Timeline: an expanded work entry's body is this client's (`viewOf`), not stock's per-tool detail.
 - Timeline: no minimap, and the scroll-to-end pill doesn't summarise what's waiting below.
 - Running turn (a deliberate divergence, see the README): a turn that did no work drops its fold when it settles, as stock's does, so its reply moves up a row then. A stopped or failed turn unfolds its work, as stock's does. The status line keeps its row above the composer while idle, and the queue is a popover rather than stock's control above the composer.
-- Message actions: no edit, fork, reply or prompt link action.
+- Message actions: no reply or prompt link action. Fork shows only on a settled response's last reply, where stock offers it on every finished reply, including in a running turn. Edit from here doesn't wait for attachments still being read in (stock refuses while they prepare), restores a message's text without its thread and environment mention records, and doesn't check the environment's operate scope (see "the command path assumes atoms"). Stock's busy fork button pulses; this one only disables.
 - Timeline: approvals show every option inline, with no More menu and no decline-by-typing placeholder.
 - Attachments: images aren't resized or recompressed, so an image over 10 MB is refused and HEIC is refused rather than converted to JPEG. Uploads show no progress or retry button; a failed upload retries at send. Duplicate images aren't dropped, the 80 MB total for images is left to the server, and the text has no inline chips referring to attachments.
 - Attachments: no preview pane. A file card opens the server's URL in a new tab, and the server serves Markdown and other types it won't show inline as a download. A file card looks the same with or without message text, where stock lists files as rows above the text.
@@ -194,11 +195,15 @@ Settings opens in place of the thread view, not as stock's modal, and keeps the 
 - Archive: one environment, no right-click menu, and a failure goes to the sidebar's error line rather than a toast.
 - About: the server's version, not the client build's, and no update, update track, mobile app or welcome rows.
 - Usage: no environment or provider pickers (this client has one environment), model price overrides, model detail dialog, chart hover tooltip, speed premium note, ChatGPT shared usage, or in-page shortcuts (stock's `c`, `t`, `l` and the period keys). `mod+u` opens it, as in stock.
-- Usage limits: no usage-limit hubs (`usageLimitSources` is stream-only and `server.getConfig` doesn't send it), external usage links, segment popovers or reset credits. Refresh re-reads the config instead of calling `server.refreshProviders`, which is a guarded RPC and fails without the atom command boundary (see "the command path assumes atoms").
+- Usage limits: no usage-limit hubs (the session's config stream isn't opened with `usageLimitSources`), external usage links, segment popovers or reset credits. `server.refreshProviders` is a guarded RPC, so `settingsImpl.ts` supplies an allow-all `RpcPermissionGuard` past the `no-rpc-permission-bypass` lint rule (see "the command path assumes atoms"): a connection without the read scope learns from the server's refusal.
 
 ## Open: reading `packages/` restarts the dev server on Windows
 
 `vp run dev` runs the server under `node --watch` over `src`, `packages` and `package.json`. On this machine a recursive `fs.watch` reports `change` on a directory that is only listed, with nothing written, so any tool that lists a directory under those paths restarts the server and interrupts a running turn. A probe watching `packages/` while the app's gates ran saw one `change` for every package during `tsc --noEmit`, directly or through `vp run typecheck`, and the server's process id changed, sometimes twice. `vp test run`, `vp lint` and `vp fmt` raised no events. A separate directory showed the same event from a plain `ls`, and none from reading a file. Avoid typechecking during a turn. Daily use needs a server run without `--watch`.
+
+## Open: Stop flickers back before the run ends
+
+After a Stop click, the composer's button reads "Stopping", then "Stop generation" for 10 to 20 ms, then the run ends. "Stopping" is the thread row's `latestRunStopRequested` or `stopRun` in flight, and the stop command's reply can land before the shell stream delivers the row with the flag set, so neither holds for that gap. Seen on the driver and on the `useInFlight` branch alike.
 
 ## Open: 502s on the environment descriptor
 

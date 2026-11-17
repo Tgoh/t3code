@@ -1,8 +1,8 @@
-import { useResource } from "treflex-solid";
+import { useInFlight, useResource } from "treflex-solid";
 import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 
 import { Trash2, X } from "./icons";
-import ThreadSession from "./ThreadSession";
+import ThreadSession, { endTerminal } from "./ThreadSession";
 import { IconButton } from "./ui/IconButton";
 import { ERROR_TEXT } from "./ui/notice";
 import { enterPanel } from "./viewport";
@@ -20,6 +20,7 @@ export function TerminalPanel() {
   const session = ThreadSession.use();
   const panel = () => session.state.Terminal;
   const live = useResource(() => session.state, "Terminal/Session");
+  const ending = useInFlight(endTerminal, () => session.state);
   const state = () => {
     const status = live.status();
     if (status.State === "ended") return "error";
@@ -52,7 +53,7 @@ export function TerminalPanel() {
           size="sm"
           aria-label="End shell"
           data-tip="End shell"
-          disabled={session.ending()}
+          disabled={ending()}
           onClick={() => session.endTerminal()}
         >
           <Trash2 />

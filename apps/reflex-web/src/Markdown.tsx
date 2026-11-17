@@ -783,7 +783,7 @@ function TopBlock(props: { token: Token; fromUser: boolean; key: string | null }
 export function Markdown(props: {
   text: string;
   fromUser: boolean;
-  message?: ISentMessage;
+  message?: ISentMessage | undefined;
   // The row the text belongs to, which keys state its blocks keep across remounts.
   id?: string;
 }) {

@@ -6,12 +6,16 @@ import {
   deriveThreadQueueWorkflowState,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
-import { DEFAULT_TERMINAL_ID } from "@t3tools/contracts";
+import { DEFAULT_TERMINAL_ID, PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
 import {
+  answer,
+  ask,
   closeResource,
   generateGuid,
   getData,
   type IActionGenerator,
+  type IAskEntry,
+  type IAskId,
   type IEntity,
   type IOpenGenerator,
   type IResourceHandle,
@@ -22,17 +26,21 @@ import {
   leading,
   open,
   openResource,
+  pendingAsks,
   publishToNearest,
   receiver,
   resource,
   select,
   start,
+  startTimer,
+  stopTimer,
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
 import {
   closeTerminalEffect,
+  forkThreadEffect,
   type IDispatchMode,
   type IModelFavorite,
   type IProviderOption,
@@ -43,6 +51,7 @@ import {
   type IWireModelSelection,
   type IWireRuntimeMode,
   queueCommandEffect,
+  rewindEffect,
   searchEntriesEffect,
   startTurnEffect,
   stopThreadEffect,
@@ -79,8 +88,19 @@ import {
   providerOf,
 } from "./modelOptions";
 import { FILE_SEARCH_LIMIT, type IProjectEntry } from "./composerMenu";
-import { type IOpenThread, latestDiffTurn } from "./OpenThread";
-import { type IPromptHistoryEntry, promptHistoryEntries } from "./promptHistory";
+import { type IOpenThread, latestDiffTurn, newestRun, timelineItem } from "./OpenThread";
+import { type IPromptHistoryEntry, promptHistoryEntries, recallablePrompt } from "./promptHistory";
+import {
+  availableRevertTurnCounts,
+  findRevertCheckpoint,
+  type IRewindWatch,
+  revertTurnCounts,
+  rewindOutcome,
+  rewindWatch,
+  rewoundPrompt,
+  threadStartAvailable,
+  unsettledRunId,
+} from "./rewind";
 import { carryIntoPrompt, type IQuestion, type IQuestionDraft, seededDrafts } from "./questions";
 import type {
   IWireArchivedShell,
@@ -101,6 +121,10 @@ declare module "treflex" {
   }
   interface IMessageRegistry {
     "Thread/Started": { ThreadId: string };
+    "Thread/Forked": { ThreadId: string };
+  }
+  interface ITimerRegistry {
+    "Rewind/Timeout": {};
   }
 }
 
@@ -181,6 +205,8 @@ export interface IThreadSession extends IEntity {
   SendError?: string;
   StopError?: string;
   QueueError?: string;
+  RewindError?: string;
+  ForkError?: string;
   QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
   QuestionIndex: Record<string, number>;
   QuestionNotice?: string;
@@ -640,7 +666,7 @@ function* uploadAndStart(
 export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpenGenerator {
   const text = draft.Draft.trim();
   const fileIds = draft.Attachments.map((file) => file.Id);
-  if (text === "" && fileIds.length === 0) return;
+  if ((text === "" && fileIds.length === 0) || (yield* inFlight(editFromHere, draft))) return;
   const projectId = draft.NewThreadProjectId;
   const model = yield* select(effectiveModel);
   const provider = yield* select(effectiveProvider);
@@ -740,6 +766,282 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
   }
 }
 leading(queueAction);
+
+const ACTIVE_RUN = new Set(["preparing", "starting", "running", "waiting"]);
+const REWIND_TIMEOUT_MS = 120_000;
+const EMPTY_TARGETS: Record<string, number> = {};
+
+export type IRewindChoice = "keepChanges" | "restoreFiles";
+
+export interface IRewindConfirm {
+  Path: "Rewind/Confirm";
+  TurnCount: number;
+  CanRestoreFiles: boolean;
+}
+
+interface IRewindLanding {
+  Path: "Rewind/Landing";
+  Watch: IRewindWatch;
+}
+
+function* openThreadOf(draft: IThreadSession): ISelectorGenerator<IOpenThread | undefined> {
+  const replica = yield* getData(draft, "Replica");
+  return replica?.OpenThreads[draft.ThreadId];
+}
+
+// Follows supportsConversationRollback in apps/web/src/components/ChatView.tsx.
+function* rollbackSupported(draft: IThreadSession): ISelectorGenerator<boolean> {
+  const replica = yield* getData(draft, "Replica");
+  const thread = replica?.OpenThreads[draft.ThreadId];
+  if (replica === undefined || thread?.Thread == null) return false;
+  const activeId = thread.Thread.activeProviderThreadId;
+  const instanceId =
+    (activeId == null ? undefined : thread.ProviderThreads[activeId]?.providerInstanceId) ??
+    thread.Thread.modelSelection.instanceId;
+  const provider = replica.Providers.find((option) => option.InstanceId === instanceId);
+  return provider !== undefined && provider.SupportsRollback !== false;
+}
+
+export function* threadWorking(draft: IThreadSession): ISelectorGenerator<boolean> {
+  const thread = yield* openThreadOf(draft);
+  const run = thread === undefined ? null : newestRun(thread);
+  return run !== null && ACTIVE_RUN.has(run.status);
+}
+
+/** The turn count each user row's "Edit from here" rewinds to, by row id. */
+export function* revertTargets(draft: IThreadSession): ISelectorGenerator<Record<string, number>> {
+  const thread = yield* openThreadOf(draft);
+  if (thread === undefined || !(yield* rollbackSupported(draft))) return EMPTY_TARGETS;
+  return revertTurnCounts(thread, {
+    ThreadStart: threadStartAvailable(thread),
+    UnsettledRunId: unsettledRunId(thread),
+    Available: availableRevertTurnCounts(thread),
+  });
+}
+
+// Follows RevertConfirmHost in apps/web/src/components/chat/ChatOverlayHosts.tsx: the server
+// refuses file restore outside an isolated worktree.
+function* canRestoreFiles(draft: IThreadSession, turnCount: number): ISelectorGenerator<boolean> {
+  const thread = yield* openThreadOf(draft);
+  if (thread?.Thread == null || thread.Thread.worktreePath === null) return false;
+  return findRevertCheckpoint(Object.values(thread.Checkpoints), turnCount)?.status === "ready";
+}
+
+interface IRewindPlan {
+  Prompt: string;
+  Attachments: IWireAttachment[];
+  Watch: IRewindWatch;
+  Checkpoint: { Id: string; ScopeId: string } | null;
+}
+
+function* rewindPlan(
+  draft: IThreadSession,
+  itemId: string,
+  turnCount: number,
+  commandId: string,
+): ISelectorGenerator<IRewindPlan | null> {
+  const thread = yield* openThreadOf(draft);
+  if (thread === undefined) return null;
+  const item = timelineItem(thread, itemId);
+  const watch = rewindWatch(thread, turnCount, commandId);
+  if (item?.type !== "user_message" || watch === null) return null;
+  const checkpoint = findRevertCheckpoint(Object.values(thread.Checkpoints), turnCount);
+  return {
+    Prompt: recallablePrompt(item.text),
+    Attachments: item.attachments ?? [],
+    Watch: watch,
+    Checkpoint:
+      checkpoint === undefined ? null : { Id: checkpoint.id, ScopeId: checkpoint.scopeId },
+  };
+}
+
+function* rewindLanded(draft: IThreadSession, watch: IRewindWatch) {
+  const thread = yield* openThreadOf(draft);
+  return thread === undefined ? null : rewindOutcome(thread, watch);
+}
+
+function* sendRewind(
+  files: IResourceHandle<"Composer/Files">,
+  attachments: IWireAttachment[],
+  request: Parameters<typeof rewindEffect>[0],
+): IActionGenerator<IPickedFile[]> {
+  const recalled = attachments.length === 0 ? [] : yield* files.recall(attachments);
+  if (recalled === undefined) throw new Error("The composer closed before its files came back.");
+  try {
+    yield* rewindEffect(request);
+  } catch (error) {
+    for (const file of recalled) yield* files.remove(file.Id);
+    throw error;
+  }
+  return recalled;
+}
+
+/**
+ * Rewinds the thread to before a user message and puts that message back in the composer, after
+ * the person confirms. Follows onRevertToTurnCount in useTimelineRewind.ts and rewindToMessage in
+ * chatViewSend.ts, both in apps/web/src/components/chat. Answers whether the composer was filled.
+ */
+export function* editFromHere(
+  draft: IThreadSession,
+  itemId: string,
+  turnCount: number,
+): IOpenGenerator<boolean> {
+  if (!(yield* select(rollbackSupported))) {
+    draft.RewindError =
+      "This provider does not support reverting conversation history. Start a new thread instead.";
+    return false;
+  }
+  if ((yield* select(threadWorking)) || (yield* inFlight(send, draft))) {
+    draft.RewindError = "Interrupt the current turn before reverting checkpoints.";
+    return false;
+  }
+  const confirm: IRewindConfirm = {
+    Path: "Rewind/Confirm",
+    TurnCount: turnCount,
+    CanRestoreFiles: yield* select((held: IThreadSession) => canRestoreFiles(held, turnCount)),
+  };
+  const choice = yield* open(ask<IRewindChoice>(draft, confirm));
+  if (choice === undefined) return false;
+  delete draft.RewindError;
+  const commandId = yield* generateGuid();
+  const plan = yield* select((held: IThreadSession) =>
+    rewindPlan(held, itemId, turnCount, commandId),
+  );
+  if (plan === null) {
+    draft.RewindError = "The thread has changed. Select a message to rewind again.";
+    return false;
+  }
+  if (draft.Attachments.length + plan.Attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
+    draft.RewindError =
+      "Make room for this message's attachments in the composer before rewinding.";
+    return false;
+  }
+  const files = resource(draft, "Composer/Files");
+  const request = {
+    EnvironmentId: draft.EnvironmentId,
+    ThreadId: draft.ThreadId,
+    CommandId: commandId,
+    TurnCount: turnCount,
+    RestoreFiles: choice === "restoreFiles",
+    Checkpoint: plan.Checkpoint,
+  };
+  let recalled: IPickedFile[];
+  try {
+    recalled = yield* open(sendRewind(files, plan.Attachments, request));
+  } catch (error) {
+    draft.RewindError = errorText(error);
+    return false;
+  }
+  // The stream may have delivered the rollback while the command was in flight.
+  let outcome = yield* select((held: IThreadSession) => rewindLanded(held, plan.Watch));
+  if (outcome === null) {
+    yield* startTimer(draft, "Rewind/Timeout", RewindReceiver, REWIND_TIMEOUT_MS);
+    const landing: IRewindLanding = { Path: "Rewind/Landing", Watch: plan.Watch };
+    const failure = yield* open(ask<string | null>(draft, landing));
+    if (failure === undefined) return false;
+    yield* stopTimer(draft, "Rewind/Timeout");
+    outcome = failure === null ? { Done: true } : { Error: failure };
+  }
+  if ("Error" in outcome) {
+    for (const file of recalled) yield* files.remove(file.Id);
+    draft.RewindError = outcome.Error;
+    return false;
+  }
+  draft.Draft = rewoundPrompt(draft.Draft, plan.Prompt);
+  yield* storeDraft(draft);
+  if (recalled.length > 0) {
+    draft.Attachments.push(...recalled);
+    yield* start(storeFiles, draft);
+  }
+  return true;
+}
+leading(editFromHere);
+
+const isAsk = (entry: IAskEntry, path: string) =>
+  (entry.Request as { Path?: string }).Path === path;
+
+export function* rewindConfirm(
+  draft: IThreadSession,
+): ISelectorGenerator<(IAskEntry & { Request: IRewindConfirm }) | null> {
+  const entry = (yield* pendingAsks(draft)).find((held) => isAsk(held, "Rewind/Confirm"));
+  return (entry as (IAskEntry & { Request: IRewindConfirm }) | undefined) ?? null;
+}
+
+/** The confirm dialog's answer; no choice cancels. */
+export function* chooseRewind(
+  _draft: IThreadSession,
+  askId: IAskId<IRewindChoice>,
+  choice?: IRewindChoice,
+): IActionGenerator {
+  yield* answer(askId, choice);
+}
+
+function* answerLanding(draft: IThreadSession, timedOut: boolean): IActionGenerator {
+  for (const entry of yield* pendingAsks(draft)) {
+    if (!isAsk(entry, "Rewind/Landing")) continue;
+    const { Watch } = entry.Request as IRewindLanding;
+    const id = entry.Id as IAskId<string | null>;
+    if (timedOut) {
+      yield* answer(id, "Timed out waiting for the thread to rewind.");
+      continue;
+    }
+    const outcome = yield* select((held: IThreadSession) => rewindLanded(held, Watch));
+    if (outcome !== null) yield* answer(id, "Error" in outcome ? outcome.Error : null);
+  }
+}
+
+/** Run when the thread's stream moves a rollback along. */
+export function* checkRewind(draft: IThreadSession): IActionGenerator {
+  yield* answerLanding(draft, false);
+}
+
+export const RewindReceiver = receiver<IThreadSession>("RewindReceiver")({
+  *"Rewind/Timeout"(draft) {
+    yield* stopTimer(draft, "Rewind/Timeout");
+    yield* answerLanding(draft, true);
+  },
+});
+
+function* threadTitle(draft: IThreadSession): ISelectorGenerator<string | null> {
+  const replica = yield* getData(draft, "Replica");
+  return (
+    replica?.OpenThreads[draft.ThreadId]?.Thread?.title ??
+    replica?.Shell.Threads[draft.ThreadId]?.title ??
+    null
+  );
+}
+
+// Follows onForkFromRun in apps/web/src/components/chat/useTimelineRewind.ts.
+export function* forkFromRun(
+  draft: IThreadSession,
+  sourceThreadId: string,
+  runId: string,
+): IOpenGenerator {
+  delete draft.ForkError;
+  const title = yield* select(threadTitle);
+  if (title === null) return;
+  const targetThreadId = yield* generateGuid();
+  const environmentId = draft.EnvironmentId;
+  try {
+    yield* open(
+      withCommandId((commandId) =>
+        forkThreadEffect({
+          EnvironmentId: environmentId,
+          CommandId: commandId,
+          SourceThreadId: sourceThreadId,
+          TargetThreadId: targetThreadId,
+          RunId: runId,
+          Title: `${title} fork`,
+        }),
+      ),
+    );
+  } catch (error) {
+    draft.ForkError = errorText(error);
+    return;
+  }
+  yield* publishToNearest(draft, "Thread/Forked", { ThreadId: targetThreadId });
+}
+leading(forkFromRun);
 
 function heldDrafts(draft: IThreadSession, requestId: string): Record<string, IQuestionDraft> {
   const held = draft.QuestionAnswers[requestId];
@@ -1029,22 +1331,6 @@ export function* endTerminal(draft: IThreadSession): IOpenGenerator {
 }
 leading(endTerminal);
 
-export function* sending(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(send, draft);
-}
-
-export function* stopping(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(stopRun, draft);
-}
-
-export function* queueing(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(queueAction, draft);
-}
-
-export function* ending(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return yield* inFlight(endTerminal, draft);
-}
-
 export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
   return draft.Panels.Diff.Open && (yield* inFlight(openDiff, draft));
 }
@@ -1082,6 +1368,9 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     send,
     stopRun,
     queueAction,
+    editFromHere,
+    chooseRewind,
+    forkFromRun,
     setQuestionCustomAnswer,
     toggleQuestionOption,
     setQuestionIndex,
@@ -1114,10 +1403,9 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     promptHistory,
     fileSearchResult,
     stopRequested,
-    sending,
-    stopping,
-    queueing,
-    ending,
+    revertTargets,
+    threadWorking,
+    rewindConfirm,
     diffLoading,
     terminalAttachment,
     expandedTimelineRows,

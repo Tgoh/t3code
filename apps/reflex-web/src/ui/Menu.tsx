@@ -13,7 +13,7 @@ export function MenuItem(
   props: Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onSelect"> & {
     icon: JSX.Element;
     label: string;
-    detail?: string;
+    detail?: string | undefined;
     danger?: boolean;
     /** Cuts a long label to one line, for a menu as wide as its anchor. */
     truncate?: boolean;
@@ -62,8 +62,11 @@ export function MenuHeading(props: { children: JSX.Element }) {
   );
 }
 
-const SURFACE =
-  "fixed z-[120] flex max-h-[calc(100vh-16px)] min-w-52 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]";
+/** A popup's entrance, for a `Popup` that replaces the surface's look with its own `class`. */
+export const POPUP_MOTION =
+  "transition-[opacity,translate] duration-200 ease-in-out starting:-translate-y-1 starting:opacity-0 motion-reduce:transition-none";
+
+const SURFACE = `fixed z-[120] flex max-h-[calc(100vh-16px)] min-w-52 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPUP_MOTION}`;
 
 const MARGIN = 8;
 

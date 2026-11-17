@@ -3,8 +3,8 @@ import {
   toolGroupAction,
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
-import { type IActionGenerator, type IEntity } from "treflex";
-import { useComponentState } from "treflex-solid";
+import { type IActionGenerator, type IAskId, type IEntity } from "treflex";
+import { useComponentState, useInFlight } from "treflex-solid";
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
@@ -23,11 +23,13 @@ import {
   File,
   FileDiff,
   FileSearch,
+  GitFork,
   Globe,
   Link,
   ListTodo,
   MessageCircleQuestion,
   MessagesSquare,
+  Pencil,
   Redo2,
   ShieldQuestion,
   SquarePen,
@@ -45,9 +47,13 @@ import OpenThread, {
   runMessage,
   timelineItem,
 } from "./OpenThread";
-import ThreadSession from "./ThreadSession";
+import { focusComposerAtEnd } from "./composerFocus";
+import { canForkItem } from "./rewind";
+import ThreadSession, { editFromHere, forkFromRun, type IRewindChoice } from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
-import { iconButton } from "./ui/IconButton";
+import { Button } from "./ui/Button";
+import { IconButton, iconButton } from "./ui/IconButton";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 import { viewOf } from "./turnItemView";
 import {
@@ -104,7 +110,7 @@ function Body(props: {
   id: string;
   text: string;
   format: "markdown" | "text" | "code";
-  pre?: string;
+  pre?: string | undefined;
 }) {
   return (
     <Show
@@ -138,6 +144,7 @@ const ROW_ICONS: Record<string, Component> = {
   secret_request: ShieldQuestion,
   link_request: Link,
   error: CircleAlert,
+  fork: GitFork,
 };
 
 export function RowIcon(props: { type: string }) {
@@ -566,10 +573,111 @@ function UserRow(props: IRowProps) {
       <Show when={fold() === null || expanded()}>
         <div class={`${ACTIONS} ${ACTIONS_ON_HOVER} pr-1`}>
           <Show when={createdAt()}>{(at) => <MessageTime at={at()} />}</Show>
+          <EditFromHere id={props.id} />
           <Show when={text()}>{(body) => <CopyButton text={body()} label="Copy message" />}</Show>
         </div>
       </Show>
     </article>
+  );
+}
+
+// Follows RevertUserMessageButton in apps/web/src/components/chat/TimelineUserMessageRow.tsx.
+function EditFromHere(props: IRowProps) {
+  const session = ThreadSession.use();
+  const turn = () => session.revertTargets()[props.id];
+  const rewinding = useInFlight(editFromHere, () => session.state);
+  return (
+    <Show when={turn() !== undefined}>
+      <IconButton
+        variant="muted"
+        size="sm"
+        aria-label="Edit from here"
+        data-tip="Edit from here"
+        disabled={rewinding() || session.threadWorking()}
+        onClick={() => {
+          const at = turn();
+          if (at === undefined) return;
+          void session.editFromHere(props.id, at).then((filled) => {
+            if (filled) focusComposerAtEnd();
+          });
+        }}
+      >
+        <Pencil />
+      </IconButton>
+    </Show>
+  );
+}
+
+// Follows AssistantForkButton in apps/web/src/components/chat/TimelineAssistantRows.tsx.
+function ForkFromHere(props: IRowProps) {
+  const { thread, item } = useRow(props);
+  const session = ThreadSession.use();
+  const forking = useInFlight(forkFromRun, () => session.state);
+  const runId = () => {
+    const held = item();
+    return held === undefined || held.runId === null || !canForkItem(thread.state, held)
+      ? null
+      : held.runId;
+  };
+  return (
+    <Show when={runId()}>
+      {(run) => (
+        <IconButton
+          variant="muted"
+          size="sm"
+          aria-label="Fork from this response"
+          data-tip="Fork from this response"
+          disabled={forking()}
+          onClick={() =>
+            void session.forkFromRun(
+              thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId,
+              run(),
+            )
+          }
+        >
+          <GitFork />
+        </IconButton>
+      )}
+    </Show>
+  );
+}
+
+// Follows RevertConfirmHost in apps/web/src/components/chat/ChatOverlayHosts.tsx.
+export function RewindDialog() {
+  const session = ThreadSession.use();
+  return (
+    <Show when={session.rewindConfirm()}>
+      {(entry) => {
+        const id = () => entry().Id as IAskId<IRewindChoice>;
+        const choose = (choice?: IRewindChoice) => void session.chooseRewind(id(), choice);
+        return (
+          <Dialog aria-labelledby="rewind-title" onClose={() => choose()}>
+            <DialogHeader>
+              <DialogTitle id="rewind-title">Edit from here?</DialogTitle>
+              <DialogDescription>
+                Rewind chat to before this message. Your prompt and attachments return to the
+                composer. “Revert files too” also undoes your own edits.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter class="flex-wrap">
+              <Button autofocus onClick={() => choose()}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive-outline"
+                disabled={!entry().Request.CanRestoreFiles}
+                onClick={() => choose("restoreFiles")}
+              >
+                Revert files too
+              </Button>
+              <Button variant="primary" onClick={() => choose("keepChanges")}>
+                Revert and keep changes
+              </Button>
+            </DialogFooter>
+          </Dialog>
+        );
+      }}
+    </Show>
   );
 }
 
@@ -593,6 +701,7 @@ export function MessageMeta(props: IRowProps & { standalone?: boolean; files?: s
         {(at) => (
           <>
             <Show when={text()}>{(body) => <CopyButton text={body()} label="Copy message" />}</Show>
+            <ForkFromHere id={props.id} />
             <MessageTime at={at()} />
           </>
         )}

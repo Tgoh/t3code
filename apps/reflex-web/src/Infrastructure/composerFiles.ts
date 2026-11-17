@@ -37,6 +37,7 @@ declare module "treflex" {
         forget(ids: string[]): void;
         stored(ids: string[]): IStoredAttachment[];
         restore(files: IStoredAttachment[]): IPickedFile[];
+        recall(attachments: IWireAttachment[]): IPickedFile[];
       };
       Supply: ReadonlyArray<IAdmittedFile>;
       SupplyResponse: IPickedFile[];
@@ -197,6 +198,39 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     return entry;
   };
 
+  // Follows prepareRevertedMessageAttachments in apps/web/src/components/ChatView.logic.ts.
+  const download = async (attachment: IWireAttachment): Promise<IHeldFile> => {
+    if (attachment.type !== "image" && attachment.type !== "file") {
+      throw new Error("This message has an attachment that cannot be restored.");
+    }
+    const { relativeUrl } = await rpc(
+      request(WS_METHODS.assetsCreateUrl, {
+        resource: {
+          _tag: "attachment",
+          attachmentId: attachment.id,
+          fileName: attachment.name,
+          mimeType: attachment.mimeType,
+        },
+      }),
+    );
+    const response = await fetch(relativeUrl, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`Could not restore attachment: ${attachment.name}`);
+    const file = new File([await response.blob()], attachment.name, {
+      type: attachment.mimeType,
+    });
+    const pastedText =
+      "source" in attachment &&
+      attachment.source !== undefined &&
+      "_tag" in attachment.source &&
+      attachment.source._tag === "pasted-text";
+    return heldFile(attachment.type, file, {
+      Name: attachment.name,
+      MimeType: attachment.mimeType,
+      SizeBytes: file.size,
+      PastedText: pastedText,
+    });
+  };
+
   const release = (id: string, discard: boolean) => {
     const entry = held.get(id);
     if (entry === undefined) return;
@@ -257,6 +291,11 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     restore: async (_ctx, files) => {
       const entries = await Promise.all(files.map(restoreOne));
       return entries.filter((entry) => entry !== null).map(hold);
+    },
+    recall: async (_ctx, attachments) => {
+      const entries = await Promise.all(attachments.map(download));
+      for (const entry of entries) startUpload(entry);
+      return entries.map(hold);
     },
   });
 };

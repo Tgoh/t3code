@@ -209,15 +209,17 @@ export function ThreadCard(props: {
   onMenu: (x: number, y: number) => void;
   onRenamed: (title: string | null) => void;
   /** As a search result: where the title matches, the matching message, and the keyboard's row. */
-  search?: {
-    ranges: ReadonlyArray<SearchRange>;
-    snippet: string | null;
-    query: string;
-    highlighted: boolean;
-    id: string;
-    onSelect: () => void;
-    onHover: () => void;
-  };
+  search?:
+    | {
+        ranges: ReadonlyArray<SearchRange>;
+        snippet: string | null;
+        query: string;
+        highlighted: boolean;
+        id: string;
+        onSelect: () => void;
+        onHover: () => void;
+      }
+    | undefined;
 }) {
   const environment = Environment.use();
   const shell = Shell.use();

@@ -624,7 +624,7 @@ function ProvidersPage() {
                               }
                             >
                               <Icons.Star
-                                class={model.Favorite ? "fill-warning stroke-warning" : undefined}
+                                class={model.Favorite ? "fill-warning stroke-warning" : ""}
                               />
                             </IconButton>
                             <span

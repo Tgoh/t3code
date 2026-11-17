@@ -9,7 +9,7 @@ import {
   generateGuid,
   type IActionGenerator,
   type IEntity,
-  inFlight,
+  isEnded,
   type IOpenGenerator,
   type ISelectorGenerator,
   leading,
@@ -84,17 +84,20 @@ import {
   retainThread,
 } from "./OpenThread";
 import {
+  applyConfigEvent,
   archivedThreadCommand,
+  autoRefreshLimits,
   loadUsage,
   openView,
-  refreshingUsage,
   refreshUsage,
   updateServerSettings,
   writeSetting,
 } from "./Settings";
 import { errorText } from "./errorText";
+import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
 import {
+  checkRewind,
   detachTerminal,
   getDefaultThreadSession,
   type IReplica,
@@ -110,6 +113,7 @@ declare module "treflex" {
     "Project/Clones": { Type: "projectClones" };
     "Project/Favicons": { Type: "projectFavicons" };
     "Server/Keybindings": { Type: "serverKeybindings" };
+    "Server/Config": { Type: "serverConfigStream" };
   }
 }
 
@@ -182,6 +186,10 @@ export function* init(draft: IEnvironment): IActionGenerator {
   });
   yield* openResource(draft, "Server/Keybindings", {
     Type: "serverKeybindings",
+    EnvironmentId: draft.EnvironmentId,
+  });
+  yield* openResource(draft, "Server/Config", EnvironmentReceiver, {
+    Type: "serverConfigStream",
     EnvironmentId: draft.EnvironmentId,
   });
   yield* start(loadProviders, draft);
@@ -398,10 +406,6 @@ export function* removeProject(
 }
 leading(removeProject);
 
-export function* removingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight(removeProject, draft);
-}
-
 export function* requestProjectFavicon(
   draft: IEnvironment,
   target: IProjectFaviconTarget,
@@ -461,10 +465,7 @@ export function* addFolder(
     project === undefined || created
       ? null
       : getLatestThreadForProject(
-          Object.values(draft.Replica.Shell.Threads).map((thread) => ({
-            ...thread,
-            archivedAt: thread.archivedAt ?? null,
-          })),
+          Object.values(draft.Replica.Shell.Threads).map(toSortableThread),
           project.id,
           "updated_at",
         );
@@ -530,14 +531,6 @@ export function* cloneControl(
 }
 leading(cloneControl);
 
-export function* addingProject(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight([addFolder, cloneProject, newProject], draft);
-}
-
-export function* cloneControlling(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight(cloneControl, draft);
-}
-
 export function* selectedOpenThread(draft: IEnvironment): ISelectorGenerator<IOpenThread | null> {
   const id = draft.Local.SelectedThreadId;
   return id === null ? null : (draft.Replica.OpenThreads[id] ?? null);
@@ -598,6 +591,9 @@ export function* currentProjectRoot(draft: IEnvironment): ISelectorGenerator<str
 }
 
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
+  *"Server/Config"(draft, message) {
+    if (!isEnded(message)) applyConfigEvent(draft, message.Item);
+  },
   *"Thread/Deleted"(draft, { ThreadId }) {
     delete draft.Replica.OpenThreads[ThreadId];
     yield* forgetSession(draft, ThreadId);
@@ -605,6 +601,13 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Thread/RequestsSettled"(draft, { ThreadId, PendingIds, UnansweredIds }) {
     const session = draft.Local.ThreadSessions[ThreadId];
     if (session !== undefined) yield* start(settleQuestions, session, PendingIds, UnansweredIds);
+  },
+  *"Thread/RewindProgress"(draft, { ThreadId }) {
+    const session = draft.Local.ThreadSessions[ThreadId];
+    if (session !== undefined) yield* start(checkRewind, session);
+  },
+  *"Thread/Forked"(draft, { ThreadId }) {
+    yield* selectThread(draft, ThreadId);
   },
   *"Thread/Expired"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);
@@ -637,6 +640,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     archivedThreadCommand,
     loadUsage,
     refreshUsage,
+    autoRefreshLimits,
     setPreferences,
     setProjectHidden,
     toggleFolder,
@@ -654,9 +658,5 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     panelShortcuts,
     currentProjectId,
     currentProjectRoot,
-    addingProject,
-    cloneControlling,
-    removingProject,
-    refreshingUsage,
   },
 );
