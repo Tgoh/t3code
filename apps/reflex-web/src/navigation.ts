@@ -34,4 +34,4 @@ export const NavigationContext = createContext<INavigation>({
 export const useNavigation = () => useContext(NavigationContext);
 
 export const COMPOSER_SELECTOR = "main .composer-lane textarea";
-export const SEARCH_SELECTOR = ".sidebar-search input";
+export const SEARCH_SELECTOR = "[data-sidebar] input[type=search]";

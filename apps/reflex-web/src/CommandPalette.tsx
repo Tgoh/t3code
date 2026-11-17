@@ -17,7 +17,7 @@ import Environment from "./Environment";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { Highlighted } from "./Highlighted";
 import { Folder, FolderGit2 } from "./icons";
-import { STATUS_LABEL } from "./ThreadCard";
+import { STATUS_LABEL, STATUS_TONE } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
 import { ArrowLeft, FolderOpen, FolderPlus, MessageSquare, Search, SquarePen } from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
@@ -418,7 +418,7 @@ function ThreadStatusLabel(props: { threadId: string }) {
   return (
     <Show when={status()}>
       {(held) => (
-        <span class={`palette-status card-status ${held()}`}>
+        <span class={`palette-status flex-none leading-4 ${STATUS_TONE[held()]}`}>
           <span class="palette-status-dot" />
           {STATUS_LABEL[held()]}
         </span>
