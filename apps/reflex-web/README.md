@@ -209,23 +209,23 @@ To bring in upstream changes, use the `/syncupstream` skill: it merges on a work
 
 Tailwind v4, like stock. `src/index.css` is the entry: it maps stock's theme (`bg-background`, `text-muted-foreground`, `rounded-lg`, `text-2xs`, the `dark`/`light`/`any-hover` variants) onto the tokens in `src/styles.css`, so a utility means the same thing here as in `apps/web`. `dark:` follows the `data-theme` attribute the appearance setting sets. A stock utility that needs a token we don't have yet renders nothing: copy the token from `apps/web/src/index.css` into `styles.css` and its `--color-*` line into `index.css`.
 
-`styles.css` is being emptied component by component. It sits in the `components` layer, under the utilities, so a utility always beats a rule still left there. It keeps only global rules: tokens, base element styles, `.chat-markdown` prose, the terminal, and the iOS input rule. There's no preflight yet; it can come in once the legacy rules are gone.
+`styles.css` holds only global rules: the tokens, base element styles, the `.chat-markdown` prose rules for markup generated from Markdown (which can't carry utilities), the terminal's xterm overrides, and the iOS input rule. It sits in the `components` layer, under the utilities, so a utility always beats it.
+
+There's no preflight. It can come in as a change of its own: it would sit under `styles.css`, so the prose and base rules keep their look, but every surface needs checking for utilities that lean on the browser's defaults, such as a button's padding.
 
 - Put utilities in the markup. Never add a rule to `styles.css` unless it's global.
 - When porting from stock, copy its class strings.
-- When migrating a component, delete its rules from `styles.css` in the same change. Keep the look exactly as it is, and restyle in a separate change. Arbitrary values (`text-[14px]`) are fine where stock's scale would shift a pixel; stock's `text-sm` and `text-xs` set a line-height that the old rules inherited instead.
+- Arbitrary values (`text-[14px]`) are fine where stock's scale would shift a pixel: stock's `text-sm` and `text-xs` also set a line-height.
 - There's no `tailwind-merge`. Never put two utilities for the same property on one element: Tailwind's order wins, not the class order. Drive state through variants on the element's ARIA or data attributes (`aria-[current=page]:bg-accent`, `aria-selected:`, `data-[state=open]:`), not a `classList` that adds a competing utility.
 - A class string used more than once in a file is a `const` at the top of that file. A look shared across areas becomes one exported string or component under `src/ui/`, made by the thread that owns it.
-- `hover:` applies only where the pointer can hover, as in stock. The old `:hover` rules also fired on touch.
+- `hover:` applies only where the pointer can hover, as in stock.
 - Tailwind reads class names from the source text, so a class glued to an interpolation (`` `py-4${extra}` ``) is never generated. Leave a space before the `${`.
-- Without preflight, a `<button>` or `<input>` keeps the browser's padding: an old `padding: 0 8px` is `px-2 py-0`.
-- An old rule in another component that reached into a migrated element (`.chat-stage.with-details .composer-lane` narrowing it) now loses to its utilities. Carry it over on the element, as `in-[.chat-stage.with-details]:max-w-…`.
+- Without preflight, a `<button>` or `<input>` keeps the browser's padding and border: set them (`border-0 px-2 py-0`).
+- To style an element by an ancestor's state, put the variant on the element (`in-[.chat-stage.with-details]:max-w-…`), not a rule that reaches into it.
 
 ### Shared controls
 
 `src/ui/` holds the controls every area uses, each owning its look the way stock's `components/ui` do: `IconButton`, `Button`, `Input`, `Select`, `Textarea`, `Switch`, `MenuSwitch`, `Segmented` and `Segment`, `Popup`, `MenuItem`, `MenuHeading`, `MenuCheck`, `MenuSeparator`, the `Dialog` parts, `Modal`, and the tooltip host. Pick a `variant` or `size`, and pass `class` only for layout (margin, width, position) or a property the variant doesn't set. If no variant fits, add one there rather than restyling at the call site. `iconButton()` and `button()` return the class string for an element that can't be a `<button>`, such as a link or a label. An icon button's on state is its `pressed` prop, which is only the look: a toggle also sets `aria-pressed`.
-
-- A legacy class with a utility's name also gets that utility (`hidden` was `display: none`). None are left, so don't add one.
 
 ## Setting up a machine
 

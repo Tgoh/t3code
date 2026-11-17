@@ -48,7 +48,7 @@ const HOVER_LINE =
 const hoverLine = `${HOVER_LINE} [&_span]:text-[color-mix(in_srgb,var(--foreground)_75%,transparent)]`;
 
 const CARD_LINE = "flex h-5 min-w-0 items-center gap-1.5";
-const MARK = "[&_mark]:bg-transparent [&_mark]:font-bold [&_mark]:text-inherit";
+export const MARK = "[&_mark]:bg-transparent [&_mark]:font-bold [&_mark]:text-inherit";
 // On touch a tap leaves :hover and focus on the card it selected, so there the status stays and
 // the actions open by long-press; only keyboard focus swaps them.
 const CARD_SLOT =

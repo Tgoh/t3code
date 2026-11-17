@@ -52,6 +52,34 @@ import {
   type IAddProjectSettings,
   type IFolderListing,
 } from "./Infrastructure/commandEffects";
+import {
+  PALETTE,
+  PALETTE_ADDON,
+  PALETTE_BACK,
+  PALETTE_BACKDROP,
+  PALETTE_ERROR,
+  PALETTE_FOOTER,
+  PALETTE_GROUP,
+  PALETTE_HINT,
+  PALETTE_INPUT,
+  PALETTE_INPUT_ROW,
+  PALETTE_KBD,
+  PALETTE_LIST,
+  PALETTE_NOTE,
+  PALETTE_ROW,
+  PALETTE_ROW_COMPACT,
+  PALETTE_ROW_DETAIL,
+  PALETTE_ROW_TEXT,
+  PALETTE_ROW_TITLE,
+  PALETTE_SUBMIT,
+  PALETTE_WARNING,
+} from "./ui/palette";
+
+const SUMMARY =
+  "flex items-center gap-2.5 border-b border-border px-3.5 py-2 [&>svg]:size-4 [&>svg]:flex-none [&>svg]:text-muted-foreground";
+const SUMMARY_TEXT = "flex min-w-0 flex-col";
+const SUMMARY_TITLE = "text-[14px] font-medium";
+const SUMMARY_DETAIL = "text-[12px] wrap-anywhere text-muted-foreground";
 
 const UNKNOWN_SETTINGS: IAddProjectSettings = {
   BaseDirectory: "",
@@ -422,32 +450,27 @@ export function AddProjectPalette(props: { onClose: () => void }) {
   return (
     <Portal>
       <div
-        class="palette-backdrop"
+        class={PALETTE_BACKDROP}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) props.onClose();
         }}
       >
-        <div class="palette" role="dialog" aria-modal="true" aria-label="Add project">
-          <div class="palette-input-row">
+        <div class={PALETTE} role="dialog" aria-modal="true" aria-label="Add project">
+          <div class={PALETTE_INPUT_ROW}>
             <Show
               when={stack().length > 1}
               fallback={
-                <span class="palette-addon">
+                <span class={PALETTE_ADDON}>
                   <FolderPlus />
                 </span>
               }
             >
-              <button
-                type="button"
-                class="palette-addon palette-back"
-                aria-label="Back"
-                onClick={back}
-              >
+              <button type="button" class={PALETTE_BACK} aria-label="Back" onClick={back}>
                 <ArrowLeft />
               </button>
             </Show>
             <input
-              class="palette-input"
+              class={PALETTE_INPUT}
               aria-label={view().Kind === "sources" ? "Search sources" : placeholder() || "Path"}
               placeholder={placeholder()}
               spellcheck={false}
@@ -465,44 +488,44 @@ export function AddProjectPalette(props: { onClose: () => void }) {
               {(button) => (
                 <button
                   type="button"
-                  class="palette-submit"
+                  class={PALETTE_SUBMIT}
                   disabled={button().Disabled}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => button().Run()}
                 >
                   {button().Label}
-                  <kbd>{shortcut()}</kbd>
+                  <kbd class={PALETTE_KBD}>{shortcut()}</kbd>
                 </button>
               )}
             </Show>
           </div>
           <Show when={palette.state.SettingsError}>
             {(failure) => (
-              <p class="palette-note">Couldn't read the server's project settings: {failure()}</p>
+              <p class={PALETTE_NOTE}>Couldn't read the server's project settings: {failure()}</p>
             )}
           </Show>
-          <Show when={settings()} fallback={<p class="palette-note">Loading…</p>}>
+          <Show when={settings()} fallback={<p class={PALETTE_NOTE}>Loading…</p>}>
             <Switch>
               <Match when={cloneRemote()}>
                 {(remote) => (
-                  <div class="palette-summary">
+                  <div class={SUMMARY}>
                     <Link />
-                    <div>
-                      <span class="palette-summary-title">{cloneFolder()}</span>
-                      <span class="palette-summary-detail">{remote()}</span>
+                    <div class={SUMMARY_TEXT}>
+                      <span class={SUMMARY_TITLE}>{cloneFolder()}</span>
+                      <span class={SUMMARY_DETAIL}>{remote()}</span>
                     </div>
                   </div>
                 )}
               </Match>
               <Match when={view().Kind === "new" && settings()?.NewProjectsRoot}>
                 {(root) => (
-                  <div class="palette-summary">
+                  <div class={SUMMARY}>
                     <FolderGit2 />
-                    <div>
-                      <span class="palette-summary-title">
+                    <div class={SUMMARY_TEXT}>
+                      <span class={SUMMARY_TITLE}>
                         {newProjectName() === "" ? "New project" : newProjectName()}
                       </span>
-                      <span class="palette-summary-detail">
+                      <span class={SUMMARY_DETAIL}>
                         {newProjectName() === ""
                           ? `Goes in ${root()}`
                           : `Creates ${getNewProjectPathPreview(root(), newProjectName())}`}
@@ -512,17 +535,16 @@ export function AddProjectPalette(props: { onClose: () => void }) {
                 )}
               </Match>
             </Switch>
-            <Show when={error()}>{(shown) => <p class="palette-error">{shown()}</p>}</Show>
-            <Show when={notice()}>{(shown) => <p class="palette-warning">{shown()}</p>}</Show>
-            <div class="palette-list" ref={setList} role="listbox">
+            <Show when={error()}>{(shown) => <p class={PALETTE_ERROR}>{shown()}</p>}</Show>
+            <Show when={notice()}>{(shown) => <p class={PALETTE_WARNING}>{shown()}</p>}</Show>
+            <div class={PALETTE_LIST} ref={setList} role="listbox">
               <Show when={view().Kind === "sources" && sources().length > 0}>
-                <p class="palette-group">Sources</p>
+                <p class={PALETTE_GROUP}>Sources</p>
                 <For each={sources()}>
                   {(source, index) => (
                     <button
                       type="button"
-                      class="palette-row"
-                      classList={{ highlighted: highlight() === index() }}
+                      class={PALETTE_ROW}
                       role="option"
                       aria-selected={highlight() === index()}
                       data-row={index()}
@@ -531,24 +553,23 @@ export function AddProjectPalette(props: { onClose: () => void }) {
                       onClick={() => runSource(source.Id)}
                     >
                       {SOURCE_ICONS[source.Id]()}
-                      <span class="palette-row-text">
-                        <span class="palette-row-title">{source.Title}</span>
-                        <span class="palette-row-detail">{source.Description}</span>
+                      <span class={PALETTE_ROW_TEXT}>
+                        <span class={PALETTE_ROW_TITLE}>{source.Title}</span>
+                        <span class={PALETTE_ROW_DETAIL}>{source.Description}</span>
                       </span>
                     </button>
                   )}
                 </For>
               </Show>
               <Show when={browsing() && rows().length > 0}>
-                <p class="palette-group">
+                <p class={PALETTE_GROUP}>
                   {view().Kind === "clone-dest" ? "Select where to clone" : "Directories"}
                 </p>
                 <For each={rows()}>
                   {(row, index) => (
                     <button
                       type="button"
-                      class="palette-row compact"
-                      classList={{ highlighted: highlight() === index() }}
+                      class={PALETTE_ROW_COMPACT}
                       role="option"
                       aria-selected={highlight() === index()}
                       data-row={index()}
@@ -558,35 +579,35 @@ export function AddProjectPalette(props: { onClose: () => void }) {
                       onClick={() => openRow(row)}
                     >
                       {row.Kind === "up" ? <CornerLeftUp /> : <Folder />}
-                      <span class="palette-row-title">{row.Kind === "up" ? ".." : row.Name}</span>
+                      <span class={PALETTE_ROW_TITLE}>{row.Kind === "up" ? ".." : row.Name}</span>
                     </button>
                   )}
                 </For>
               </Show>
               <Show when={emptyMessage()}>
-                {(message) => <p class="palette-note">{message()}</p>}
+                {(message) => <p class={PALETTE_NOTE}>{message()}</p>}
               </Show>
             </div>
           </Show>
-          <footer class="palette-footer">
-            <span>
-              <kbd>↑</kbd>
-              <kbd>↓</kbd> Navigate
+          <footer class={PALETTE_FOOTER}>
+            <span class={PALETTE_HINT}>
+              <kbd class={PALETTE_KBD}>↑</kbd>
+              <kbd class={PALETTE_KBD}>↓</kbd> Navigate
             </span>
             <Show when={footerAction()}>
               {(action) => (
-                <span>
-                  <kbd>Enter</kbd> {action()}
+                <span class={PALETTE_HINT}>
+                  <kbd class={PALETTE_KBD}>Enter</kbd> {action()}
                 </span>
               )}
             </Show>
             <Show when={stack().length > 1}>
-              <span>
-                <kbd>Backspace</kbd> Back
+              <span class={PALETTE_HINT}>
+                <kbd class={PALETTE_KBD}>Backspace</kbd> Back
               </span>
             </Show>
-            <span>
-              <kbd>Esc</kbd> Close
+            <span class={PALETTE_HINT}>
+              <kbd class={PALETTE_KBD}>Esc</kbd> Close
             </span>
           </footer>
         </div>

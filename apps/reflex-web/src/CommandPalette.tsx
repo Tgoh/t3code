@@ -17,7 +17,7 @@ import Environment from "./Environment";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { Highlighted } from "./Highlighted";
 import { Folder, FolderGit2 } from "./icons";
-import { STATUS_LABEL, STATUS_TONE } from "./ThreadCard";
+import { MARK, STATUS_LABEL, STATUS_TONE } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
 import { ArrowLeft, FolderOpen, FolderPlus, MessageSquare, Search, SquarePen } from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
@@ -26,6 +26,26 @@ import { type IPaletteView, useNavigation } from "./navigation";
 import Shell, { activityAt, isSnoozed, sidebarStatus } from "./Shell";
 import { rankMessages, threadSubject } from "./threadSearch";
 import { relativeTime } from "./timestamps";
+import {
+  PALETTE,
+  PALETTE_ADDON,
+  PALETTE_BACK,
+  PALETTE_BACKDROP,
+  PALETTE_FOOTER,
+  PALETTE_GROUP,
+  PALETTE_HINT,
+  PALETTE_INPUT,
+  PALETTE_INPUT_ROW,
+  PALETTE_KBD,
+  PALETTE_LIST,
+  PALETTE_NOTE,
+  PALETTE_ROW,
+  PALETTE_ROW_DETAIL,
+  PALETTE_ROW_TEXT,
+  PALETTE_ROW_TITLE,
+} from "./ui/palette";
+
+const META_TEXT = "min-w-0 truncate";
 
 const ICONS: Record<IPaletteIcon, () => JSX.Element> = {
   "new-thread": () => <SquarePen />,
@@ -316,32 +336,27 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   return (
     <Portal>
       <div
-        class="palette-backdrop"
+        class={PALETTE_BACKDROP}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) close();
         }}
       >
-        <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
-          <div class="palette-input-row">
+        <div class={PALETTE} role="dialog" aria-modal="true" aria-label="Command palette">
+          <div class={PALETTE_INPUT_ROW}>
             <Show
               when={submenu() !== null}
               fallback={
-                <span class="palette-addon">
+                <span class={PALETTE_ADDON}>
                   <Search />
                 </span>
               }
             >
-              <button
-                type="button"
-                class="palette-addon palette-back"
-                aria-label="Back"
-                onClick={back}
-              >
+              <button type="button" class={PALETTE_BACK} aria-label="Back" onClick={back}>
                 <ArrowLeft />
               </button>
             </Show>
             <input
-              class="palette-input"
+              class={PALETTE_INPUT}
               aria-label="Search commands, projects, and threads"
               placeholder={
                 submenu() === null ? "Search commands, projects, and threads..." : "Search..."
@@ -357,11 +372,11 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
               onKeyDown={onKeyDown}
             />
           </div>
-          <div class="palette-list" id="palette-list" ref={setList} role="listbox">
+          <div class={PALETTE_LIST} id="palette-list" ref={setList} role="listbox">
             <For each={groups()}>
               {(group) => (
                 <>
-                  <p class="palette-group">{group.Label}</p>
+                  <p class={PALETTE_GROUP}>{group.Label}</p>
                   <For each={group.Items}>
                     {(item) => (
                       <PaletteRow
@@ -379,24 +394,24 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
               )}
             </For>
             <Show when={emptyMessage()}>
-              {(message) => <p class="palette-note">{message()}</p>}
+              {(message) => <p class={PALETTE_NOTE}>{message()}</p>}
             </Show>
           </div>
-          <footer class="palette-footer">
-            <span>
-              <kbd>↑</kbd>
-              <kbd>↓</kbd> Navigate
+          <footer class={PALETTE_FOOTER}>
+            <span class={PALETTE_HINT}>
+              <kbd class={PALETTE_KBD}>↑</kbd>
+              <kbd class={PALETTE_KBD}>↓</kbd> Navigate
             </span>
-            <span>
-              <kbd>Enter</kbd> Select
+            <span class={PALETTE_HINT}>
+              <kbd class={PALETTE_KBD}>Enter</kbd> Select
             </span>
             <Show when={submenu() !== null}>
-              <span>
-                <kbd>Backspace</kbd> Back
+              <span class={PALETTE_HINT}>
+                <kbd class={PALETTE_KBD}>Backspace</kbd> Back
               </span>
             </Show>
-            <span>
-              <kbd>Esc</kbd> Close
+            <span class={PALETTE_HINT}>
+              <kbd class={PALETTE_KBD}>Esc</kbd> Close
             </span>
           </footer>
         </div>
@@ -418,8 +433,10 @@ function ThreadStatusLabel(props: { threadId: string }) {
   return (
     <Show when={status()}>
       {(held) => (
-        <span class={`palette-status flex-none leading-4 ${STATUS_TONE[held()]}`}>
-          <span class="palette-status-dot" />
+        <span
+          class={`mr-1.5 inline-flex flex-none items-center gap-1 align-[1px] text-[10px] leading-4 font-medium ${STATUS_TONE[held()]}`}
+        >
+          <span class="size-1.5 rounded-full bg-current" />
           {STATUS_LABEL[held()]}
         </span>
       )}
@@ -427,7 +444,7 @@ function ThreadStatusLabel(props: { threadId: string }) {
   );
 }
 
-const MetaDot = () => <span class="palette-meta-dot">·</span>;
+const MetaDot = () => <span class="flex-none opacity-50">·</span>;
 
 // Follows ThreadCommandSubtitle in apps/web/src/components/ThreadCommandSubtitle.tsx: project,
 // environment, workspace and the provider that runs the thread.
@@ -441,12 +458,12 @@ function ThreadMeta(props: { threadId: string }) {
         const project = () => shell.state.Projects[held().projectId];
         const branch = () => held().branch?.trim() || null;
         return (
-          <span class="palette-meta">
+          <span class="flex min-w-0 items-center gap-1 [&_img]:size-3 [&_img]:flex-none [&_svg]:size-3 [&_svg]:flex-none">
             <Show when={project()}>
               {(shown) => (
                 <>
                   <ProjectBadge project={shown()} size={12} />
-                  <span class="palette-meta-text">{shown().title}</span>
+                  <span class={META_TEXT}>{shown().title}</span>
                   <MetaDot />
                   <span>Local</span>
                 </>
@@ -459,7 +476,7 @@ function ThreadMeta(props: { threadId: string }) {
                   <Show when={held().worktreePath} fallback={<Folder />}>
                     <FolderGit2 />
                   </Show>
-                  <span class="palette-meta-text">{shown()}</span>
+                  <span class={META_TEXT}>{shown()}</span>
                 </>
               )}
             </Show>
@@ -520,8 +537,7 @@ function PaletteRow(props: {
   return (
     <button
       type="button"
-      class="palette-row"
-      classList={{ highlighted: props.highlighted }}
+      class={`${PALETTE_ROW} ${MARK}`}
       role="option"
       aria-selected={props.highlighted}
       data-row={props.index}
@@ -532,21 +548,23 @@ function PaletteRow(props: {
       onClick={() => props.onChoose()}
     >
       {ICONS[props.item.Icon]()}
-      <span class="palette-row-text">
-        <span class="palette-row-title">
+      <span class={PALETTE_ROW_TEXT}>
+        <span class={PALETTE_ROW_TITLE}>
           <Show when={props.item.ThreadId}>
             {(threadId) => <ThreadStatusLabel threadId={threadId()} />}
           </Show>
           {title()}
         </span>
         <Show when={detail()}>
-          <span class="palette-row-detail">{detail()}</span>
+          <span class={PALETTE_ROW_DETAIL}>{detail()}</span>
         </Show>
       </span>
       <Show when={props.item.Timestamp}>
-        <span class="palette-row-time">{props.item.Timestamp}</span>
+        <span class="flex-none text-[12px] text-muted-foreground tabular-nums">
+          {props.item.Timestamp}
+        </span>
       </Show>
-      <Show when={props.shortcut}>{(label) => <kbd>{label()}</kbd>}</Show>
+      <Show when={props.shortcut}>{(label) => <kbd class={PALETTE_KBD}>{label()}</kbd>}</Show>
     </button>
   );
 }

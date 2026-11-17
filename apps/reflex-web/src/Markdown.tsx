@@ -66,6 +66,17 @@ interface ITokenProps {
   token: Token;
 }
 
+const FILE_LINK =
+  "group/file inline-block max-w-full cursor-pointer overflow-x-clip rounded-sm border-0 bg-transparent p-0 align-bottom font-medium text-ellipsis whitespace-nowrap text-(--file-link) [text-align:inherit] focus-visible:outline-current";
+
+const CODE_ICON = "size-3.5 shrink-0";
+
+const IMAGE_BORDER = "border border-[color-mix(in_srgb,var(--border)_40%,transparent)]";
+
+// The .chat-markdown prose rules style every pre, including the highlighter's markup in here.
+const CODE_BLOCK =
+  "my-[0.65rem] overflow-hidden rounded-lg border border-[color-mix(in_srgb,var(--border)_70%,transparent)] bg-secondary text-start leading-snug [.chat-markdown>&:first-child]:mt-0 [.chat-markdown>&:last-child]:mb-0 [&_pre]:m-0 [&_pre]:rounded-none [&_pre]:border-0 [&_pre]:bg-transparent data-[wrap=true]:[&_pre]:whitespace-pre-wrap data-[wrap=true]:[&_pre]:wrap-anywhere";
+
 const decoder = document.createElement("textarea");
 ensureFileIconSprite();
 
@@ -110,12 +121,12 @@ const FileLinkContext = createContext<IFileLinks>({
   inLink: false,
 });
 
-function FileIcon(props: { path: string }) {
+function FileIcon(props: { path: string; class: string }) {
   const icon = () => fileIconFor(props.path);
   return (
     <svg
       aria-hidden="true"
-      class="file-icon"
+      class={props.class}
       style={{ color: `light-dark(${icon().Light}, ${icon().Dark})` }}
       viewBox="0 0 16 16"
     >
@@ -131,7 +142,7 @@ function FileChip(props: { link: IFileLink }) {
   return (
     <button
       type="button"
-      class="file-link"
+      class={FILE_LINK}
       dir="ltr"
       data-tip={props.link.TargetPath}
       onClick={(event) => {
@@ -139,8 +150,10 @@ function FileChip(props: { link: IFileLink }) {
         environment.openInEditor(props.link.TargetPath, files.cwd() ?? null);
       }}
     >
-      <FileIcon path={props.link.FilePath} />
-      <span class="file-link-label">{chipLabel(props.link, files.suffixes())}</span>
+      <FileIcon path={props.link.FilePath} class="mr-[0.2em] size-[1em] align-[-0.125em]" />
+      <span class="underline decoration-transparent decoration-1 underline-offset-[0.2em] transition-[text-decoration-color] duration-150 ease-[ease] group-hover/file:decoration-current">
+        {chipLabel(props.link, files.suffixes())}
+      </span>
     </button>
   );
 }
@@ -327,7 +340,7 @@ function LinkToken(props: ITokenProps) {
 
 function ImageUnavailable(props: { alt: string }) {
   return (
-    <span class="markdown-image-unavailable">
+    <span class="inline-flex items-center gap-1.5 [&_svg]:size-3.5 [&_svg]:shrink-0">
       <TriangleAlert />
       {["Image unavailable", props.alt].filter(Boolean).join(" · ")}
     </span>
@@ -366,14 +379,16 @@ function ShownImage(props: {
           when={props.standalone}
           fallback={
             <Show when={failed()} fallback={<span role="status" aria-label="Loading image" />}>
-              <span class="markdown-image-chip">
+              <span
+                class={`inline-block rounded-md ${IMAGE_BORDER} bg-[color-mix(in_srgb,var(--muted)_40%,transparent)] px-2 py-1 text-[0.75rem] text-muted-foreground`}
+              >
                 <ImageUnavailable alt={props.alt} />
               </span>
             </Show>
           }
         >
           <span
-            class="markdown-image-frame"
+            class={`relative inline-block aspect-video w-full max-w-[min(100%,30rem)] overflow-hidden rounded-lg ${IMAGE_BORDER} bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] align-top`}
             style={style()}
             role={failed() ? "alert" : "status"}
             aria-label={failed() ? undefined : "Loading image"}
@@ -382,11 +397,18 @@ function ShownImage(props: {
               when={failed()}
               fallback={
                 <Show when={props.src}>
-                  {(src) => <img class="markdown-image-probe" src={src()} alt="" {...events} />}
+                  {(src) => (
+                    <img
+                      class="invisible absolute inset-0 size-full"
+                      src={src()}
+                      alt=""
+                      {...events}
+                    />
+                  )}
                 </Show>
               }
             >
-              <span class="markdown-image-failed">
+              <span class="flex h-full items-center justify-center p-2 text-center text-[0.75rem] text-muted-foreground">
                 <ImageUnavailable alt={props.alt} />
               </span>
             </Show>
@@ -397,7 +419,7 @@ function ShownImage(props: {
       {(src) => (
         <>
           <img
-            class="markdown-image"
+            class={`h-auto max-h-[30rem] w-auto max-w-[min(100%,30rem)] cursor-zoom-in rounded-lg ${IMAGE_BORDER} object-contain`}
             src={src()}
             alt={props.alt}
             style={style()}
@@ -608,25 +630,25 @@ const CodeBlockKey = createContext<() => string | null>(() => null);
 function CodeTitle(props: { fence: IFence }) {
   const languageFile = () => languageFileName(props.fence.Language);
   return (
-    <span class="code-language">
+    <span class="inline-flex min-w-0 items-center gap-1.5 font-mono text-[11px] whitespace-nowrap">
       <Show
         when={props.fence.Title}
         fallback={
           <Show when={hasSpecificIcon(languageFile())} fallback={props.fence.Language}>
             <span
-              class="code-language-icon"
+              class="inline-flex"
               aria-label={`Language: ${props.fence.Language}`}
               data-tip={props.fence.Language}
             >
-              <FileIcon path={languageFile()} />
+              <FileIcon path={languageFile()} class={CODE_ICON} />
             </span>
           </Show>
         }
       >
         {(title) => (
           <>
-            <FileIcon path={title()} />
-            <span class="code-title">{title()}</span>
+            <FileIcon path={title()} class={CODE_ICON} />
+            <span class="overflow-hidden text-ellipsis">{title()}</span>
           </>
         )}
       </Show>
@@ -684,15 +706,15 @@ function CodeToken(props: ITokenProps) {
   });
   return (
     <div
-      class="code-block"
+      class={CODE_BLOCK}
       dir="ltr"
       data-wrap={wrapped()}
       data-language={fence().Language}
       data-highlighted={html() !== null}
     >
-      <div class="code-block-header">
+      <div class="flex items-center justify-between gap-2 pt-1.5 pr-1.5 pl-3 text-[color-mix(in_srgb,var(--foreground)_72%,transparent)] select-none">
         <CodeTitle fence={fence()} />
-        <span class="code-actions" role="toolbar" aria-label="Code block actions">
+        <span class="flex items-center gap-0.5" role="toolbar" aria-label="Code block actions">
           <IconButton
             variant="muted"
             size="xs"
@@ -715,7 +737,9 @@ function CodeToken(props: ITokenProps) {
           </pre>
         }
       >
-        {(markup) => <div class="code-highlight" innerHTML={markup()} />}
+        {(markup) => (
+          <div class="[&_:is(pre,.shiki,.diffs)]:bg-transparent!" innerHTML={markup()} />
+        )}
       </Show>
     </div>
   );
@@ -750,7 +774,7 @@ function TopBlock(props: { token: Token; fromUser: boolean; key: string | null }
         </CodeBlockKey.Provider>
       }
     >
-      {(markup) => <div class="raw-html-block" innerHTML={markup()} />}
+      {(markup) => <div class="contents" innerHTML={markup()} />}
     </Show>
   );
 }
