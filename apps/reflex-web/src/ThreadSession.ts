@@ -150,7 +150,7 @@ export interface IReplica extends IEntity {
 
 export interface ISelection extends IEntity {
   SelectedThreadId: string | null;
-  Preferences: { AppearanceMode: IAppearanceMode };
+  Preferences: { AppearanceMode: IAppearanceMode; CompactionDismissed: string[] };
   SystemDark: boolean;
   /** The device clock, a minute at a time. */
   Now: number;
@@ -699,7 +699,7 @@ export function* compactionOffer(draft: IThreadSession): ISelectorGenerator<numb
   const config = replica?.Config;
   const selection = yield* effectiveModel(draft);
   if (open?.Thread == null || config == null || selection === null) return null;
-  const clock = yield* getData(draft, "Selection");
+  const local = yield* getData(draft, "Selection");
   return compactBeforeSendTokens({
     Thread: open,
     Items: () =>
@@ -710,7 +710,9 @@ export function* compactionOffer(draft: IThreadSession): ISelectorGenerator<numb
     Idle: Object.values(open.Runs).every(
       (run) => !ACTIVE_RUN.has(run.status) && run.status !== "queued",
     ),
-    Now: clock?.Now ?? 0,
+    Now: local?.Now ?? 0,
+    EnvironmentId: draft.EnvironmentId,
+    Dismissed: local?.Preferences.CompactionDismissed ?? [],
   });
 }
 

@@ -1,5 +1,9 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
 import type { KeybindingCommand, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import {
+  CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
+  formatClaudeResumeCompactionQuestion,
+} from "@t3tools/shared/claudeCompaction";
 import { createEffect, createMemo, createRoot } from "solid-js";
 import {
   createTestRuntime,
@@ -190,6 +194,7 @@ const storedPreferences: IPreferences = {
   HiddenProjects: [],
   ProjectScope: [],
   SidebarCollapsed: false,
+  CompactionDismissed: [],
   AppearanceMode: "system",
   Usage: { Metric: "limits", Days: 30 },
 };
@@ -2293,6 +2298,10 @@ describe("writing to the server", () => {
         },
       });
       await server.open();
+      await server.sendThread(snapshotOf(staleProjection(), 1));
+      return { server, sent };
+    }
+    function staleProjection() {
       const projection = emptyProjection();
       projection.thread = {
         ...projection.thread,
@@ -2308,8 +2317,7 @@ describe("writing to the server", () => {
           tokenUsage: { usedTokens: 439_000, updatedAt: "1969-12-31T22:00:00.000Z" },
         } as never,
       ];
-      await server.sendThread(snapshotOf(projection, 1));
-      return { server, sent };
+      return projection;
     }
     const offer = (server: Awaited<ReturnType<typeof connect>>) =>
       server.runtime.processSelector(compactionOffer, () => server.session());
@@ -2340,6 +2348,30 @@ describe("writing to the server", () => {
       await server.runtime.dispatch(send, server.sessionId());
       expect(sent.map((turn) => [turn.Text, turn.DispatchMode])).toEqual([["carry on", "auto"]]);
       expect(server.session().KeepFullHistory).toBe(false);
+    });
+
+    it("a never-ask-again answer stops the offer for that provider on this device, in every thread", async () => {
+      const { server } = await staleClaudeThread();
+      const question = formatClaudeResumeCompactionQuestion({
+        ageMinutes: 120,
+        estimatedTokens: 439_000,
+      });
+      const answered = staleProjection();
+      answered.runtimeRequests = [
+        {
+          id: "request-1",
+          kind: "user_input",
+          status: "resolved",
+          answers: { [question]: CLAUDE_RESUME_COMPACTION_NEVER_ANSWER },
+          responseCapability: { type: "live" },
+        } as never,
+      ];
+      await server.sendThread(snapshotOf(answered, 2));
+      await settled();
+      expect(server.device.Preferences.CompactionDismissed).toEqual([`${ENV}:claudeAgent`]);
+      // Another thread, or this one without the answered question in view, stays quiet.
+      await server.sendThread(snapshotOf(staleProjection(), 3));
+      expect(offer(server)).toBeNull();
     });
 
     it("a typed /compact is the compaction, so it sends alone", async () => {

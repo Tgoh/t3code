@@ -88,6 +88,8 @@ function input(patch: Partial<ICompactionInput> = {}): ICompactionInput {
     Text: "carry on",
     Idle: true,
     Now: Date.parse(USED_AT) + 2 * HOUR,
+    EnvironmentId: "env",
+    Dismissed: [],
     ...patch,
   };
 }
@@ -182,6 +184,9 @@ describe("compactBeforeSendTokens", () => {
       answers: { [question]: CLAUDE_RESUME_COMPACTION_NEVER_ANSWER },
     } as never;
     expect(compactBeforeSendTokens(input({ Thread: dismissed }))).toBeNull();
+    // Another thread, once this device remembers the answer for this environment's provider.
+    expect(compactBeforeSendTokens(input({ Dismissed: ["env:claudeAgent"] }))).toBeNull();
+    expect(compactBeforeSendTokens(input({ Dismissed: ["other-env:claudeAgent"] }))).toBe(300_000);
   });
 
   it("is off when switching to a model that would hand the thread off", () => {

@@ -37,6 +37,25 @@ export interface ICompactionInput {
   Text: string;
   Idle: boolean;
   Now: number;
+  EnvironmentId: string;
+  /** This device's `CompactionDismissed` preference. */
+  Dismissed: readonly string[];
+}
+
+// Follows the `t3code:resume-compaction-dismissed:${environmentId}:${instanceId}` key in
+// apps/web/src/components/ChatView.tsx, held here in one per-device preference.
+export const compactionDismissalKey = (environmentId: string, instanceId: string) =>
+  `${environmentId}:${instanceId}`;
+
+/** Whether one of the thread's questions was answered "Don't ask again" to compacting. */
+export function dismissedIn(open: Pick<IOpenThread, "RuntimeRequests">): boolean {
+  return hasDismissedResumeCompaction(
+    Object.values(open.RuntimeRequests).flatMap((request) =>
+      request.kind === "user_input" && request.status === "resolved"
+        ? [{ kind: "user-input.resolved", payload: { answers: request.answers } }]
+        : [],
+    ),
+  );
 }
 
 const isPrompt = (item: IWireTurnItem) =>
@@ -86,6 +105,7 @@ export function compactBeforeSendTokens(input: ICompactionInput): number | null 
   if (
     thread == null ||
     provider === undefined ||
+    input.Dismissed.includes(compactionDismissalKey(input.EnvironmentId, provider.instanceId)) ||
     !input.Idle ||
     COMPACT_COMMAND_PATTERN.test(input.Text) ||
     !provider.slashCommands.some((command) => command.name === "compact") ||
@@ -122,12 +142,7 @@ export function compactBeforeSendTokens(input: ICompactionInput): number | null 
     ) !== null
   )
     return null;
-  const answered = requests.flatMap((request) =>
-    request.kind === "user_input" && request.status === "resolved"
-      ? [{ kind: "user-input.resolved", payload: { answers: request.answers } }]
-      : [],
-  );
-  if (hasDismissedResumeCompaction(answered)) return null;
+  if (dismissedIn(open)) return null;
   const activeId = thread.activeProviderThreadId;
   const providerThread = activeId == null ? undefined : open.ProviderThreads[activeId];
   const live = latestProviderTurnTokenUsage(
