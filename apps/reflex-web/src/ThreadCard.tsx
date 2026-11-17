@@ -41,7 +41,7 @@ import Shell, {
 } from "./Shell";
 import { relativeTime, timeUntil } from "./timestamps";
 import { hoverCard } from "./tooltip";
-import { longPress } from "./viewport";
+import { longPress, useSidebarSheet } from "./viewport";
 
 export const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "Setting up",
@@ -196,8 +196,12 @@ export function ThreadCard(props: {
 }) {
   const environment = Environment.use();
   const shell = Shell.use();
-  const select = () =>
-    props.search ? props.search.onSelect() : environment.selectThread(props.thread.id);
+  const sidebar = useSidebarSheet();
+  const select = () => {
+    sidebar.choseThread();
+    if (props.search) props.search.onSelect();
+    else void environment.selectThread(props.thread.id);
+  };
   const status = () => {
     const held = sidebarStatus(props.thread, shell.subagentRequests()[props.thread.id]);
     return held === "done" && props.selected ? null : held;

@@ -116,11 +116,13 @@ export interface ISidebarSheet {
   collapsed: Accessor<boolean>;
   /** Opens or closes the sheet on a narrow layout, and collapses or restores the column on a wide one. */
   toggle: () => void;
+  /** A thread was picked, which closes the sheet even when it was already the selected one. */
+  choseThread: () => void;
 }
 
 /**
- * Selecting a thread closes the sheet, and leaving the sheet layout forgets that it was open. The
- * column's collapse outlives the sheet layout, as stock's sidebar cookie does.
+ * Picking or selecting a thread closes the sheet, and leaving the sheet layout forgets that it was
+ * open. The column's collapse outlives the sheet layout, as stock's sidebar cookie does.
  */
 export function createSidebarSheet(
   sheet: Accessor<boolean>,
@@ -146,6 +148,7 @@ export function createSidebarSheet(
       setCollapsed(!collapsed());
       collapse.onChange(collapsed());
     },
+    choseThread: () => setOpen(false),
   } satisfies ISidebarSheet;
 }
 
@@ -155,6 +158,7 @@ export const SidebarSheetContext = createContext<ISidebarSheet>({
   setOpen: () => {},
   collapsed: () => false,
   toggle: () => {},
+  choseThread: () => {},
 });
 
 export const useSidebarSheet = () => useContext(SidebarSheetContext);

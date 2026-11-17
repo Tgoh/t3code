@@ -93,6 +93,7 @@ const EnvironmentView = Environment.provider(() => {
     nextFrame(() => document.querySelector<HTMLInputElement>(SEARCH_SELECTOR)?.focus());
   };
   const goToThread = (threadId: string) => {
+    sidebar.choseThread();
     void environment.selectThread(threadId);
     focusComposer();
   };

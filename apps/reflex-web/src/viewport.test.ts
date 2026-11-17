@@ -60,6 +60,17 @@ describe("createSidebarSheet", () => {
     });
   });
 
+  it("closes when the already selected thread is picked again", () => {
+    createRoot((dispose) => {
+      const [selection] = createSignal<string | null>("thread-1");
+      const sidebar = createSidebarSheet(() => true, selection);
+      sidebar.setOpen(true);
+      sidebar.choseThread();
+      expect(sidebar.open()).toBe(false);
+      dispose();
+    });
+  });
+
   it("toggles the sheet on a narrow layout and the column's collapse on a wide one", () => {
     createRoot((dispose) => {
       const [sheet, setSheet] = createSignal(false);
