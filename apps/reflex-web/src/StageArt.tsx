@@ -5,7 +5,7 @@ export function StageArt(props: { compact?: boolean }) {
   const id = createUniqueId();
   return (
     <svg
-      class="stage-art"
+      class="block size-full"
       fill="none"
       preserveAspectRatio="xMinYMin slice"
       viewBox={props.compact ? "64 0 8192 96" : "0 0 8192 96"}

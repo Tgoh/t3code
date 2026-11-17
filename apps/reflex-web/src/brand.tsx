@@ -191,7 +191,7 @@ export function ProviderIcon(props: { driver: string | undefined; size?: number 
     <>
       <Show when={props.driver === "claudeAgent"}>
         <svg
-          class="provider-icon claude"
+          class="provider-icon flex-none fill-[#d97757]"
           viewBox="0 0 256 257"
           width={size()}
           height={size()}
@@ -202,7 +202,7 @@ export function ProviderIcon(props: { driver: string | undefined; size?: number 
       </Show>
       <Show when={props.driver === "codex"}>
         <svg
-          class="provider-icon"
+          class="provider-icon flex-none"
           viewBox="100 100 411 411"
           width={size()}
           height={size()}

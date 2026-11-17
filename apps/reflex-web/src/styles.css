@@ -231,12 +231,6 @@ code {
   }
 }
 
-.stage-art {
-  display: block;
-  height: 100%;
-  width: 100%;
-}
-
 .palette-row mark {
   background: none;
   color: inherit;
@@ -541,14 +535,6 @@ code {
   gap: 4px;
 }
 
-.provider-icon {
-  flex: none;
-}
-
-.provider-icon.claude {
-  fill: #d97757;
-}
-
 /* Markdown rules copy the .chat-markdown block in apps/web/src/index.css. */
 
 .chat-markdown {
@@ -653,71 +639,6 @@ code {
   max-width: 100%;
 }
 
-.chat-markdown .markdown-image {
-  border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
-  border-radius: 0.5rem;
-  cursor: zoom-in;
-  height: auto;
-  max-height: 30rem;
-  max-width: min(100%, 30rem);
-  object-fit: contain;
-  width: auto;
-}
-
-.markdown-image-frame {
-  aspect-ratio: 16 / 9;
-  background: color-mix(in srgb, var(--muted) 60%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
-  border-radius: 0.5rem;
-  display: inline-block;
-  max-width: min(100%, 30rem);
-  overflow: hidden;
-  position: relative;
-  vertical-align: top;
-  width: 100%;
-}
-
-.chat-markdown .markdown-image-probe {
-  inset: 0;
-  height: 100%;
-  position: absolute;
-  visibility: hidden;
-  width: 100%;
-}
-
-.markdown-image-failed {
-  align-items: center;
-  color: var(--muted-foreground);
-  display: flex;
-  font-size: 0.75rem;
-  height: 100%;
-  justify-content: center;
-  padding: 0.5rem;
-  text-align: center;
-}
-
-.markdown-image-chip {
-  background: color-mix(in srgb, var(--muted) 40%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
-  border-radius: 0.375rem;
-  color: var(--muted-foreground);
-  display: inline-block;
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-}
-
-.markdown-image-unavailable {
-  align-items: center;
-  display: inline-flex;
-  gap: 0.375rem;
-}
-
-.markdown-image-unavailable svg {
-  flex-shrink: 0;
-  height: 0.875rem;
-  width: 0.875rem;
-}
-
 .chat-markdown a {
   color: var(--info-foreground);
   text-decoration: none;
@@ -772,128 +693,6 @@ code {
   background: transparent;
   border: none;
   padding: 0;
-}
-
-.code-block {
-  background: var(--secondary);
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: 0.5rem;
-  line-height: 1.375;
-  margin: 0.65rem 0;
-  overflow: hidden;
-  text-align: start;
-}
-
-.code-block-header {
-  align-items: center;
-  color: color-mix(in srgb, var(--foreground) 72%, transparent);
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
-  padding: 6px 6px 0 12px;
-  user-select: none;
-}
-
-.code-language {
-  align-items: center;
-  display: inline-flex;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  gap: 6px;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.code-language .file-icon {
-  flex-shrink: 0;
-  height: 14px;
-  width: 14px;
-}
-
-.code-language-icon {
-  display: inline-flex;
-}
-
-.code-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.code-highlight :is(pre, .shiki, .diffs) {
-  background: transparent !important;
-}
-
-/* Plain-text fences override the highlighter's inline foreground colors. */
-.code-block:is(
-    [data-language="text" i],
-    [data-language="txt" i],
-    [data-language="plain" i],
-    [data-language="plaintext" i]
-  )
-  pre {
-  color: inherit !important;
-}
-
-.file-link {
-  background: none;
-  border: 0;
-  border-radius: 4px;
-  color: var(--file-link);
-  cursor: pointer;
-  display: inline-block;
-  font: inherit;
-  font-weight: 500;
-  max-width: 100%;
-  overflow-x: clip;
-  padding: 0;
-  text-align: inherit;
-  text-overflow: ellipsis;
-  vertical-align: bottom;
-  white-space: nowrap;
-}
-
-.file-link .file-icon {
-  height: 1em;
-  margin-right: 0.2em;
-  vertical-align: -0.125em;
-  width: 1em;
-}
-
-.file-link-label {
-  text-decoration: underline transparent 1px;
-  text-underline-offset: 0.2em;
-  transition: text-decoration-color 0.15s;
-}
-
-.file-link:hover .file-link-label {
-  text-decoration-color: currentcolor;
-}
-
-.file-link:focus-visible {
-  outline: 2px solid currentcolor;
-  outline-offset: -2px;
-}
-
-.code-actions {
-  align-items: center;
-  display: flex;
-  gap: 2px;
-}
-
-.raw-html-block {
-  display: contents;
-}
-
-.chat-markdown .code-block pre {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  margin: 0;
-}
-
-.code-block[data-wrap="true"] pre {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
 }
 
 .chat-markdown table {
