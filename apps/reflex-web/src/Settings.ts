@@ -17,13 +17,15 @@ import {
   type IWireInstanceMutation,
   type IWireSettingsPatch,
   type IWireUsageInput,
+  refreshProvidersEffect,
   refreshUsageRatesEffect,
-  serverConfigEffect,
   storeClientSettingsEffect,
   storedClientSettingsEffect,
   updateServerSettingsEffect,
   usageSummaryEffect,
 } from "./Infrastructure/settings";
+import type { IWireServerConfigEvent } from "./Infrastructure/serverConfigStream";
+import { reconcile } from "./rows";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
 
 /** Where a settings write changes what the composer offers, so its provider list reloads. */
@@ -43,12 +45,33 @@ export function* openView(draft: IEnvironment, view: IAddressView | null): IActi
   if (next.Kind === "settings" && next.Page === "archived") yield* start(loadArchived, draft);
 }
 
-export function* loadSettings(draft: IEnvironment): IOpenGenerator {
+export function* loadSettings(draft: IEnvironment): IActionGenerator {
   draft.Local.ClientSettings = yield* storedClientSettingsEffect();
-  const environmentId = draft.EnvironmentId;
-  draft.Replica.Config = yield* open(serverConfigEffect({ EnvironmentId: environmentId }));
 }
-latest(loadSettings);
+
+// Follows applyServerConfigProjection in packages/client-runtime/src/state/serverConfigProjection.ts,
+// for the events a session subscribed without opt-ins receives.
+export function applyConfigEvent(draft: IEnvironment, event: IWireServerConfigEvent): void {
+  if (event.type === "snapshot") {
+    if (draft.Replica.Config === null) draft.Replica.Config = event.config;
+    else reconcile(draft.Replica.Config, event.config);
+    return;
+  }
+  const config = draft.Replica.Config;
+  if (config === null) return;
+  switch (event.type) {
+    case "keybindingsUpdated":
+      config.keybindings = event.payload.keybindings;
+      config.issues = event.payload.issues;
+      return;
+    case "providerStatuses":
+      config.providers = event.payload.providers;
+      return;
+    case "settingsUpdated":
+      reconcile(config.settings, event.payload.settings);
+      return;
+  }
+}
 
 export function* updateServerSettings(
   draft: IEnvironment,
@@ -65,10 +88,6 @@ export function* updateServerSettings(
   );
   if (draft.Replica.Config !== null) draft.Replica.Config.settings = settings;
   if (!touchesProviders(patch, mutation)) return;
-  // The providers a mutation changes are re-probed by the server, so the config is read again.
-  if (mutation !== null) {
-    draft.Replica.Config = yield* open(serverConfigEffect({ EnvironmentId: environmentId }));
-  }
   yield* loadProviders(draft, true);
 }
 
@@ -120,18 +139,28 @@ export function* loadUsage(
 }
 latest(loadUsage);
 
-/** Limits are read from the config; anything else refreshes prices and reads the window again. */
+/**
+ * Limits ask the server to re-probe its providers, whose new limits arrive on the config stream;
+ * anything else refreshes prices and reads the window again.
+ */
 export function* refreshUsage(
   draft: IEnvironment,
   usage: { Key: string; Input: IWireUsageInput } | null,
 ): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
   if (usage === null) {
-    draft.Replica.Config = yield* open(serverConfigEffect({ EnvironmentId: environmentId }));
+    yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: false }));
     return;
   }
   yield* open(refreshUsageRatesEffect({ EnvironmentId: environmentId }));
   yield* loadUsage(draft, usage.Key, usage.Input);
+}
+
+// Follows the automatic refresh in apps/web/src/components/usage/UsagePage.tsx, which runs when
+// the limits show and skips an environment refreshed in the last five minutes.
+export function* autoRefreshLimits(draft: IEnvironment): IOpenGenerator {
+  const environmentId = draft.EnvironmentId;
+  yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: true }));
 }
 
 export function* refreshingUsage(draft: IEnvironment): ISelectorGenerator<boolean> {

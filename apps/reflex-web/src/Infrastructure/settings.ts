@@ -21,13 +21,15 @@ export type IWireArchivedShell = Wire<OrchestrationV2ArchivedShellSnapshot>;
 export type IWireUsageSummary = Wire<UsageSummary>;
 export type IWireUsageInput = Wire<UsageSummaryInput>;
 
-interface IServerConfigEffect extends IEffect {
-  Type: "serverConfig";
+interface IRefreshProvidersEffect extends IEffect {
+  Type: "refreshProviders";
   EnvironmentId: string;
+  /** Skipped when this environment was refreshed in the last five minutes, as stock does. */
+  Automatic: boolean;
 }
 
-export const serverConfigEffect = defineEffect<IServerConfigEffect, IWireServerConfig>(
-  "serverConfig",
+export const refreshProvidersEffect = defineEffect<IRefreshProvidersEffect, void>(
+  "refreshProviders",
 );
 
 interface IUpdateServerSettingsEffect extends IEffect {

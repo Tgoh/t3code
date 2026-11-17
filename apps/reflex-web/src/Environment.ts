@@ -10,6 +10,7 @@ import {
   type IActionGenerator,
   type IEntity,
   inFlight,
+  isEnded,
   type IOpenGenerator,
   type ISelectorGenerator,
   leading,
@@ -84,7 +85,9 @@ import {
   retainThread,
 } from "./OpenThread";
 import {
+  applyConfigEvent,
   archivedThreadCommand,
+  autoRefreshLimits,
   loadUsage,
   openView,
   refreshingUsage,
@@ -110,6 +113,7 @@ declare module "treflex" {
     "Project/Clones": { Type: "projectClones" };
     "Project/Favicons": { Type: "projectFavicons" };
     "Server/Keybindings": { Type: "serverKeybindings" };
+    "Server/Config": { Type: "serverConfigStream" };
   }
 }
 
@@ -182,6 +186,10 @@ export function* init(draft: IEnvironment): IActionGenerator {
   });
   yield* openResource(draft, "Server/Keybindings", {
     Type: "serverKeybindings",
+    EnvironmentId: draft.EnvironmentId,
+  });
+  yield* openResource(draft, "Server/Config", EnvironmentReceiver, {
+    Type: "serverConfigStream",
     EnvironmentId: draft.EnvironmentId,
   });
   yield* start(loadProviders, draft);
@@ -598,6 +606,9 @@ export function* currentProjectRoot(draft: IEnvironment): ISelectorGenerator<str
 }
 
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
+  *"Server/Config"(draft, message) {
+    if (!isEnded(message)) applyConfigEvent(draft, message.Item);
+  },
   *"Thread/Deleted"(draft, { ThreadId }) {
     delete draft.Replica.OpenThreads[ThreadId];
     yield* forgetSession(draft, ThreadId);
@@ -637,6 +648,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     archivedThreadCommand,
     loadUsage,
     refreshUsage,
+    autoRefreshLimits,
     setPreferences,
     setProjectHidden,
     toggleFolder,

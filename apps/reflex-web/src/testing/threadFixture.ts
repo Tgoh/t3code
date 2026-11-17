@@ -20,7 +20,6 @@ export const REPLICA_WRITERS: ReadonlySet<string | null> = new Set([
   "loadEarlier",
   "loadProviders",
   "toggleModelFavorite",
-  "loadSettings",
   "writeSetting",
   "updateServerSettings",
   "loadArchived",
