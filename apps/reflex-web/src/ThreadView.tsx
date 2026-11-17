@@ -502,20 +502,21 @@ const ThreadBody = ThreadSession.provider(() => {
         >
           <Show when={checkout()} keyed>
             {(held) => (
-              <Show when={detailsShown()}>
-                <DetailsSurface
-                  inline={detailsInline()}
-                  anchor={detailsToggle}
-                  onDismiss={() => session.closeDetailsPopover()}
-                >
-                  <ThreadDetailsCard
-                    state={session.state.Git}
-                    checkout={held}
-                    scripts={projectScripts()}
-                    running={turnState() !== null}
-                  />
-                </DetailsSurface>
-              </Show>
+              <DetailsSurface
+                inline={layout().Inline}
+                shown={detailsShown()}
+                anchor={detailsToggle}
+                onDismiss={() => session.closeDetailsPopover()}
+              >
+                <ThreadDetailsCard
+                  state={session.state.Git}
+                  checkout={held}
+                  branch={thread.state.Thread?.branch ?? null}
+                  scripts={projectScripts()}
+                  running={turnState() !== null}
+                  shown={detailsShown()}
+                />
+              </DetailsSurface>
             )}
           </Show>
           <div
