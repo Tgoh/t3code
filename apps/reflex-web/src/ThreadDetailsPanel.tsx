@@ -9,6 +9,7 @@ import {
   For,
   type JSX,
   Match,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -364,8 +365,11 @@ const newScriptId = (name: string, scripts: readonly ProjectScript[]) => {
 
 interface IDetailsProps {
   checkout: ICheckout;
+  /** The thread's branch, which stands in for git status until status arrives. */
+  branch: string | null;
   scripts: readonly ProjectScript[];
   running: boolean;
+  shown: boolean;
   onClose?: () => void;
 }
 
@@ -385,6 +389,16 @@ const Body = (props: IDetailsProps) => {
   const [addingScript, setAddingScript] = createSignal(false);
   const [branchQuery, setBranchQuery] = createSignal("");
   onMount(() => void details.attach(props.checkout));
+  createEffect(
+    on(
+      () => props.shown,
+      (shown) => {
+        if (shown) void details.refreshStatus();
+        else setMenu(null);
+      },
+      { defer: true },
+    ),
+  );
 
   const terminology = () => changeRequestTerminologyFor(git());
   const busy = () => work.gitBusy();
@@ -400,6 +414,10 @@ const Body = (props: IDetailsProps) => {
     buildMenuItems(git(), busy(), git()?.hasPrimaryRemote ?? false),
   );
   const totals = () => changesTotals(git());
+  const branchName = () => {
+    const status = git();
+    return status === null ? props.branch : status.refName;
+  };
   const editorLabel = () => {
     const editors = details.state.Editors;
     const preferred = editors?.Available.find((editor) => editor.Id === editors.Preferred);
@@ -490,11 +508,13 @@ const Body = (props: IDetailsProps) => {
             <Folder />
           </button>
         </div>
-        <Show when={(details.state.Editors?.Available.length ?? 0) > 0}>
+        <Show when={(details.state.Editors?.Available.length ?? 1) > 0}>
           <SplitRow
             label={editorLabel()}
             icon={<EditorIcon editor={details.state.Editors?.Preferred ?? ""} />}
+            disabled={details.state.Editors === null}
             menuLabel="Choose editor"
+            menuDisabled={details.state.Editors === null}
             onRun={() => openEditor(null)}
             onMenu={(anchor) => setMenu({ Kind: "editor", Anchor: anchor })}
           />
@@ -522,21 +542,21 @@ const Body = (props: IDetailsProps) => {
         <Show when={details.state.ScriptError}>{(error) => <p class={ERROR}>{error()}</p>}</Show>
       </section>
 
-      <Show when={git()?.isRepo}>
+      <Show when={git()?.isRepo ?? props.branch !== null}>
         <section
           class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
           aria-label="Version Control"
         >
           <button
             class={ROW}
-            aria-label={`Branch: ${git()?.refName ?? "detached HEAD"}`}
+            aria-label={`Branch: ${branchName() ?? "detached HEAD"}`}
             disabled={props.running || details.switchingBranch()}
             data-tip={props.running ? "Wait for the turn to finish to switch branches." : undefined}
             onClick={(event) => openBranches(menuAt(event.currentTarget))}
           >
             <GitBranch />
             <span class={LABEL}>
-              {details.switchingBranch() ? "Switching…" : (git()?.refName ?? "Detached HEAD")}
+              {details.switchingBranch() ? "Switching…" : (branchName() ?? "Detached HEAD")}
             </span>
             <ChevronDown class="ml-auto" />
           </button>
@@ -884,6 +904,7 @@ export const ThreadDetailsCard = GitWork.provider<IDetailsProps>((props) => (
  */
 export function DetailsSurface(props: {
   inline: boolean;
+  shown: boolean;
   anchor: HTMLElement | undefined;
   onDismiss: () => void;
   children: JSX.Element;
@@ -897,7 +918,8 @@ export function DetailsSurface(props: {
   const [card, setCard] = createSignal<HTMLElement>();
   const overlays = useOverlays();
   createEffect(() => {
-    if (props.inline) return;
+    if (props.inline || !props.shown) return;
+    measure();
     onCleanup(
       overlays.push({
         close: () => props.onDismiss(),
@@ -906,7 +928,11 @@ export function DetailsSurface(props: {
       }),
     );
   });
+  // A card already pinned open on a thread switch appears once the stage is measured, without
+  // sliding in, so motion starts two frames after mount.
+  const [motion, setMotion] = createSignal(false);
   onMount(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => setMotion(true)));
     measure();
     window.addEventListener("resize", measure);
     onCleanup(() => window.removeEventListener("resize", measure));
@@ -914,9 +940,12 @@ export function DetailsSurface(props: {
   return (
     <aside
       ref={setCard}
-      class={`w-[280px] overflow-y-auto rounded-[16px] border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--popover)_var(--glass-opacity),transparent)] shadow-[0_10px_25px_-5px_rgb(0_0_0/12%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) ${props.inline ? "absolute top-3 right-3 z-30 max-h-[calc(100%-24px)]" : "fixed z-70 max-h-[min(calc(100dvh-6.5rem),32rem)] max-w-[calc(100vw-16px)]"}`}
+      class={`w-[280px] overflow-y-auto rounded-[16px] data-[shown=false]:invisible data-[shown=false]:-translate-y-2 data-[shown=false]:opacity-0 data-motion:motion-safe:transition-[translate,opacity,visibility] data-motion:motion-safe:duration-200 data-motion:motion-safe:ease-in-out border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--popover)_var(--glass-opacity),transparent)] shadow-[0_10px_25px_-5px_rgb(0_0_0/12%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) ${props.inline ? "absolute top-3 right-3 z-30 max-h-[calc(100%-24px)]" : "fixed z-70 max-h-[min(calc(100dvh-6.5rem),32rem)] max-w-[calc(100vw-16px)]"}`}
       role="region"
       aria-label="Thread details"
+      data-shown={props.shown}
+      data-motion={motion() ? "" : undefined}
+      inert={!props.shown}
       style={props.inline ? undefined : { top: `${place().Top}px`, right: `${place().Right}px` }}
     >
       {props.children}
