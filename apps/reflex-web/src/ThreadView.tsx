@@ -17,7 +17,7 @@ import { Composer, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
-import { ChevronDown, PanelBottom, PanelRight, SquareMenu } from "./icons";
+import { Bug, ChevronDown, PanelBottom, PanelRight, SquareMenu } from "./icons";
 import { withShortcut } from "./keybindings";
 import { useNavigation } from "./navigation";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
@@ -437,6 +437,20 @@ const ThreadBody = ThreadSession.provider(() => {
               onClick={() => session.toggleRightPanel()}
             >
               <PanelRight />
+            </button>
+            <button
+              class="icon-button toggle"
+              classList={{ pressed: environment.state.Local.Preferences.ViewportDebug }}
+              aria-label="Toggle layout debug"
+              data-tip="Toggle layout debug"
+              aria-pressed={environment.state.Local.Preferences.ViewportDebug}
+              onClick={() =>
+                void environment.setPreferences({
+                  ViewportDebug: !environment.state.Local.Preferences.ViewportDebug,
+                })
+              }
+            >
+              <Bug />
             </button>
           </div>
         </header>

@@ -8,6 +8,7 @@ export { default as ArrowUp } from "lucide-solid/icons/arrow-up";
 export { default as ArrowUpDown } from "lucide-solid/icons/arrow-up-down";
 export { default as Bot } from "lucide-solid/icons/bot";
 export { default as Brain } from "lucide-solid/icons/brain";
+export { default as Bug } from "lucide-solid/icons/bug";
 export { default as CalendarClock } from "lucide-solid/icons/calendar-clock";
 export { default as Camera } from "lucide-solid/icons/camera";
 export { default as ChartNoAxesColumn } from "lucide-solid/icons/chart-no-axes-column";

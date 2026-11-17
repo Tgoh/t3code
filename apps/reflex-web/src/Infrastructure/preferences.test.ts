@@ -21,6 +21,7 @@ describe("this device's preferences", () => {
       "reflex-web:hidden-projects": '["p-3"]',
       "reflex-web:project-scope": '["p-2"]',
       "reflex-web:sidebar-collapsed": "true",
+      "reflex-web:viewport-debug": "true",
       "t3code:theme-appearance-mode": "dark",
       "t3code:usage-page-preferences:v1": '{"metric":"cost","windowDays":7}',
     });
@@ -32,6 +33,7 @@ describe("this device's preferences", () => {
       HiddenProjects: ["p-3"],
       ProjectScope: ["p-2"],
       SidebarCollapsed: true,
+      ViewportDebug: true,
       AppearanceMode: "dark",
       Usage: { Metric: "cost", Days: 7 },
     });
@@ -52,6 +54,7 @@ describe("this device's preferences", () => {
       HiddenProjects: [],
       ProjectScope: [],
       SidebarCollapsed: false,
+      ViewportDebug: false,
       AppearanceMode: "system",
       Usage: { Metric: "limits", Days: 30 },
     });

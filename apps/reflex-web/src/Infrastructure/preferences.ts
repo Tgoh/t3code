@@ -13,6 +13,7 @@ export interface IPreferences {
   HiddenProjects: string[];
   ProjectScope: string[];
   SidebarCollapsed: boolean;
+  ViewportDebug: boolean;
   AppearanceMode: IAppearanceMode;
   Usage: { Metric: string; Days: number };
 }
@@ -62,6 +63,7 @@ const KEYS = {
   HiddenProjects: "reflex-web:hidden-projects",
   ProjectScope: "reflex-web:project-scope",
   SidebarCollapsed: "reflex-web:sidebar-collapsed",
+  ViewportDebug: "reflex-web:viewport-debug",
 } as const;
 
 function readJson(key: string): unknown {
@@ -104,6 +106,7 @@ export function readPreferences(): IPreferences {
     HiddenProjects: ids(readJson(KEYS.HiddenProjects)),
     ProjectScope: ids(readJson(KEYS.ProjectScope)),
     SidebarCollapsed: readJson(KEYS.SidebarCollapsed) === true,
+    ViewportDebug: readJson(KEYS.ViewportDebug) === true,
     AppearanceMode: storedAppearanceMode(),
     Usage: {
       Metric: typeof usage?.metric === "string" ? usage.metric : "limits",
