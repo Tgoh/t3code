@@ -155,6 +155,26 @@ Code imported from `@t3tools/*` follows upstream through the typecheck. These pa
 
 Add a row whenever stock logic is copied rather than imported. A `Follows …` comment in `src` that names a source missing here is a missing row.
 
+Rows follow stock's behaviour, and an upstream sync ports behaviour changes to them. These rows are ours now: their presentation has diverged on purpose, so a sync leaves stock's changes to them alone and only lists any new feature they carry:
+
+- `styles.css` `.confirm-dialog`, `--dialog-backdrop`
+- `timelineLayout.ts`, `TimelineResponse.tsx` folds and grouping (the `entryFacts` row still follows)
+- `TurnStatus.tsx` working timer, current activity label
+- `markdownImage.ts` `imageSizeStyle`, `Markdown.tsx` `ShownImage`, standalone images
+- `TimelineRows.tsx` `QueuedMessage` and `AttachmentFile`
+- `addProjectPalette.ts`, `AddProject.tsx` views and key handling
+- `Composer.tsx` paste handling, `FileDropSection`, attachment strip
+- `ComposerMenus.tsx`
+- `viewport.ts`, both rows: the sidebar sheet and collapse, the collapsed composer and focus keeping
+- `Infrastructure/draftMemory.ts`, `composerFiles.ts` `stored`, `restore`
+- `codeHighlight.ts`, `codeHighlighter.ts`, `Markdown.tsx` `CodeToken`, `CodeTitle`
+- `fileIcons.ts`, `editorIcons.tsx`, `sourceControlIcon.tsx`
+- `ThreadDetailsPanel.tsx`, `threadDetailsLayout.ts`, `surfaces.ts`, `SurfaceLauncher.tsx`
+- `settingsPages.ts`, `SettingsView.tsx` layout, nav, search box, `ColorSchemeSection` and `ProjectsPage`
+- `usageChart.ts`, `UsageView.tsx`, `SidebarFooter.tsx`
+
+A row moves to this list when its presentation is deliberately changed. Logic a row shares with the server (a status rule, an answer shape, a delivery choice) keeps following even when its view diverges, so split such a row rather than list it.
+
 A running turn deliberately doesn't follow stock, so the text on screen stays still while the agent works. Its response folds under "Working for …" from the start, as it will once settled, and shows only its latest reply; each steer's segment also keeps its last reply, which stock folds. What the agent is doing and the queued messages sit in `TurnStatus`, one fixed-height line above the composer that keeps its space when empty, in place of stock's live, working and thinking rows and its Queued banner. Once the running turn has a to-do list, that line becomes the list, which stock doesn't show outside the timeline: at most six rows, so it grows only when the list appears, changes length or goes, never when a step changes status. A sync doesn't port those back.
 
 ## Running it
