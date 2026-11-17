@@ -179,7 +179,7 @@ export function FileDropSection(props: { children: JSX.Element }) {
   });
   return (
     <section
-      class="thread"
+      class="relative flex h-full min-w-0 flex-1 flex-col"
       onDragEnter={(event) => {
         if (!isFileDrag(event)) return;
         event.preventDefault();

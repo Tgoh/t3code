@@ -44,6 +44,7 @@ import { Button, button, buttonLink } from "./ui/Button";
 import { Input, Select, Textarea } from "./ui/Field";
 import { IconButton } from "./ui/IconButton";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Switch as Toggle } from "./ui/Switch";
 
 const PRIVACY_POLICY_URL = "https://t3.codes/privacy-policy";
@@ -64,12 +65,12 @@ export function SettingsView(props: { page: string }) {
   const label = () => settingsPageOf(page())?.Label ?? "";
   return (
     <div class="flex h-full min-h-0 flex-col">
-      <header class="thread-header h-12 border-b pr-2 in-[.layout.sidebar-sheet]:pr-[calc(8px+env(safe-area-inset-right))]">
+      <PageHeader variant="page">
         <SidebarToggle />
-        <div class="breadcrumb">
-          <span class="crumb-project">Settings</span>
-          <span class="crumb-separator">/</span>
-          <h1>{label()}</h1>
+        <div class={BREADCRUMB}>
+          <span class={CRUMB_MUTED}>Settings</span>
+          <span class={CRUMB_SEPARATOR}>/</span>
+          <h1 class={CRUMB_TITLE}>{label()}</h1>
         </div>
         <IconButton
           aria-label="Close settings"
@@ -78,7 +79,7 @@ export function SettingsView(props: { page: string }) {
         >
           <Icons.X />
         </IconButton>
-      </header>
+      </PageHeader>
       <div class="flex min-h-0 flex-1">
         <SettingsNav page={page()} />
         <div class="min-w-0 flex-1 overflow-y-auto">

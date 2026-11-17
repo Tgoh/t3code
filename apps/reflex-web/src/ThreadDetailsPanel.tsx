@@ -56,6 +56,7 @@ import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 
 const COMMIT_DIALOG_TITLE = "Commit changes";
 const COMMIT_DIALOG_DESCRIPTION =
@@ -252,21 +253,21 @@ function CommitDialog(props: {
                       onChange={() => toggle(file.path)}
                     />
                     <span class={LABEL}>{file.path}</span>
-                    <span class="diff-counts">
-                      <span class="added-text">+{formatCount(file.insertions)}</span> /{" "}
-                      <span class="removed-text">-{formatCount(file.deletions)}</span>
+                    <span class={DIFF_COUNTS}>
+                      <span class={ADDED_TEXT}>+{formatCount(file.insertions)}</span> /{" "}
+                      <span class={REMOVED_TEXT}>-{formatCount(file.deletions)}</span>
                     </span>
                   </label>
                 </li>
               )}
             </For>
           </ul>
-          <span class="diff-counts col-span-full justify-self-end">
-            <span class="added-text">
+          <span class={`${DIFF_COUNTS} col-span-full justify-self-end`}>
+            <span class={ADDED_TEXT}>
               +{formatCount(selected().reduce((sum, file) => sum + file.insertions, 0))}
             </span>
             /
-            <span class="removed-text">
+            <span class={REMOVED_TEXT}>
               -{formatCount(selected().reduce((sum, file) => sum + file.deletions, 0))}
             </span>
           </span>
@@ -632,10 +633,10 @@ const Body = (props: IDetailsProps) => {
                 </span>
               </Show>
               <span class="ml-auto flex flex-none gap-2 pl-2 font-mono text-muted-foreground tabular-nums">
-                <span classList={{ "added-text": (totals()?.Insertions ?? 0) > 0 }}>
+                <span class={(totals()?.Insertions ?? 0) > 0 ? ADDED_TEXT : undefined}>
                   +{formatCount(totals()?.Insertions ?? 0)}
                 </span>
-                <span classList={{ "removed-text": (totals()?.Deletions ?? 0) > 0 }}>
+                <span class={(totals()?.Deletions ?? 0) > 0 ? REMOVED_TEXT : undefined}>
                   -{formatCount(totals()?.Deletions ?? 0)}
                 </span>
               </span>

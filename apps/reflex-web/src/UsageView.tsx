@@ -43,6 +43,7 @@ import type { IWireUsageInput } from "./Infrastructure/settings";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
 import { IconButton } from "./ui/IconButton";
+import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Segment, Segmented } from "./ui/Segmented";
 import {
   costTypeSegments,
@@ -140,13 +141,13 @@ export function UsageView() {
   };
   return (
     <div class="usage-view">
-      <header class="thread-header usage-header">
+      <PageHeader variant="page" class="max-md:h-auto max-md:flex-wrap max-md:py-2">
         <SidebarToggle />
-        <div class="breadcrumb">
-          <h1>Usage</h1>
+        <div class={BREADCRUMB}>
+          <h1 class={CRUMB_TITLE}>Usage</h1>
           <Show when={metric() !== "limits"}>
-            <span class="crumb-separator">·</span>
-            <span class="crumb-project">{windowLabel()}</span>
+            <span class={CRUMB_SEPARATOR}>·</span>
+            <span class={CRUMB_MUTED}>{windowLabel()}</span>
           </Show>
         </div>
         <div class="usage-controls">
@@ -196,7 +197,7 @@ export function UsageView() {
             <X />
           </IconButton>
         </div>
-      </header>
+      </PageHeader>
       <div class="usage-content">
         <div class="usage-column">
           <Show
