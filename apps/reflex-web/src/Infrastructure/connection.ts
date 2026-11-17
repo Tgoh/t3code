@@ -24,10 +24,22 @@ import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
 
+import { shareResponses } from "./sharedFetch";
+
 const httpBaseUrl = `${location.origin}/`;
 const wsBaseUrl = httpBaseUrl.replace(/^http/, "ws");
 
-const layerHttpClient = layerRemoteHttpClient((input, init) => globalThis.fetch(input, init));
+// Startup reads the descriptor three times in a row: the environment info, the connection's
+// registration, and its first connect. They share one request.
+const DESCRIPTOR_HOLD_MS = 5_000;
+const sharedFetch = shareResponses(
+  (input, init) => globalThis.fetch(input, init),
+  "/.well-known/t3/environment",
+  DESCRIPTOR_HOLD_MS,
+  () => performance.now(),
+);
+
+const layerHttpClient = layerRemoteHttpClient(sharedFetch);
 
 export const loadDescriptor = fetchRemoteEnvironmentDescriptor({ httpBaseUrl }).pipe(
   Effect.provide(layerHttpClient),

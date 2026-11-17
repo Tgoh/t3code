@@ -43,9 +43,6 @@ import {
   rewindImpl,
   searchEntriesImpl,
   searchThreadsImpl,
-  modelFavoritesImpl,
-  serverProvidersImpl,
-  setModelFavoriteImpl,
   startCloneImpl,
   startTurnImpl,
   stopThreadImpl,
@@ -118,9 +115,6 @@ runtime.registerImplementation(rewindImpl);
 runtime.registerImplementation(forkThreadImpl);
 runtime.registerImplementation(mergeBackImpl);
 runtime.registerImplementation(threadTitlesImpl);
-runtime.registerImplementation(serverProvidersImpl);
-runtime.registerImplementation(modelFavoritesImpl);
-runtime.registerImplementation(setModelFavoriteImpl);
 runtime.registerImplementation(queueCommandImpl);
 runtime.registerImplementation(projectCommandImpl);
 runtime.registerImplementation(addProjectSettingsImpl);

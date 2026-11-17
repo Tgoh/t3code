@@ -27,17 +27,15 @@ import {
   updateThreadMetadata,
   visitThread,
 } from "@t3tools/client-runtime/operations";
-import { getInitialServerConfig, request } from "@t3tools/client-runtime/rpc";
+import { request } from "@t3tools/client-runtime/rpc";
 import {
   CommandId,
   EDITORS,
   type EditorId,
   EnvironmentId,
-  isProviderAvailable,
   MessageId,
   ORCHESTRATION_V2_WS_METHODS,
   ProjectId,
-  ProviderInstanceId,
   RunId,
   RuntimeRequestId,
   THREAD_SEARCH_QUERY_MAX_LENGTH,
@@ -60,8 +58,6 @@ import {
   searchThreadsEffect,
   cloneControlEffect,
   closeTerminalEffect,
-  type IProviderOption,
-  modelFavoritesEffect,
   newProjectEffect,
   openInEditorEffect,
   openInFileManagerEffect,
@@ -71,8 +67,6 @@ import {
   mergeBackEffect,
   respondRequestEffect,
   rewindEffect,
-  serverProvidersEffect,
-  setModelFavoriteEffect,
   startCloneEffect,
   startTurnEffect,
   stopThreadEffect,
@@ -80,7 +74,6 @@ import {
   threadDiffEffect,
   threadTitlesEffect,
 } from "./commandEffects";
-import { applyModelPreferences } from "../modelOptions";
 import { connectionRuntime } from "./connection";
 import { ServerError, settle } from "./serverError";
 import { runCommand, sourceControl } from "./sourceControl";
@@ -524,8 +517,6 @@ export const assetUrlImpl = implementation(assetUrlEffect, async (input, action)
   };
 });
 
-const plainCopy = <T>(value: ReadonlyArray<T>): T[] => JSON.parse(JSON.stringify(value));
-
 const followOnce = <A, E>(
   environmentId: string,
   effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>,
@@ -552,70 +543,3 @@ export const onceRegistered = <A, E>(
     environmentId,
     effect.pipe(Effect.retry({ times: 30, schedule: Schedule.spaced("1 second") })),
   );
-
-const initialConfig = (environmentId: string) =>
-  followOnce(
-    environmentId,
-    getInitialServerConfig().pipe(Effect.retry(Schedule.spaced("1 second"))),
-  );
-
-export const serverProvidersImpl = implementation(serverProvidersEffect, async (input) => {
-  const config = input.Fresh
-    ? await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}))
-    : await initialConfig(input.EnvironmentId);
-  const preferences = config.settings?.providerModelPreferences ?? {};
-  return config.providers
-    .filter((provider) => provider.enabled && isProviderAvailable(provider))
-    .map((provider): IProviderOption => ({
-      InstanceId: provider.instanceId,
-      Driver: provider.driver,
-      Name: provider.displayName ?? provider.instanceId,
-      ...(provider.supportsConversationRollback === false ? { SupportsRollback: false } : {}),
-      ...(provider.supportedRuntimeModes === undefined
-        ? {}
-        : { SupportedRuntimeModes: [...provider.supportedRuntimeModes] }),
-      ...(provider.slashCommands.length === 0
-        ? {}
-        : { SlashCommands: plainCopy(provider.slashCommands) }),
-      ...(provider.skills.length === 0 ? {} : { Skills: plainCopy(provider.skills) }),
-      ...((preferences[provider.instanceId]?.hiddenModels.length ?? 0) === 0
-        ? {}
-        : { HiddenModels: [...preferences[provider.instanceId]!.hiddenModels] }),
-      Models: applyModelPreferences(provider.models, preferences[provider.instanceId]).map(
-        (model) => ({
-          Slug: model.slug,
-          Name: model.name,
-          ...(model.shortName === undefined ? {} : { ShortName: model.shortName }),
-          ...(model.subProvider === undefined ? {} : { SubProvider: model.subProvider }),
-          IsDefault: model.isDefault === true,
-          ...(model.isLegacy === true ? { IsLegacy: true } : {}),
-          ...(model.capabilities == null ? {} : { Capabilities: model.capabilities }),
-        }),
-      ),
-    }));
-});
-
-export const modelFavoritesImpl = implementation(modelFavoritesEffect, async (input) => {
-  const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
-  return (config.settings.favorites ?? []).map((favorite) => ({
-    Provider: favorite.provider,
-    Model: favorite.model,
-  }));
-});
-
-export const setModelFavoriteImpl = implementation(setModelFavoriteEffect, async (input) => {
-  await inEnvironment(
-    input.EnvironmentId,
-    request(WS_METHODS.serverUpdateSettings, {
-      patch: {
-        setModelFavorites: [
-          {
-            provider: ProviderInstanceId.make(input.Provider),
-            model: input.Model,
-            favorite: input.Favorite,
-          },
-        ],
-      },
-    }),
-  );
-});

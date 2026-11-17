@@ -8,6 +8,7 @@ import {
 import { rankModelPickerSearch } from "@t3tools/client-runtime/model-search";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  isProviderAvailable,
   type ModelCapabilities,
   type ModelSelection,
   type ProviderDriverKind,
@@ -32,6 +33,7 @@ import type {
   IWireModelSelection,
   IWireRuntimeMode,
 } from "./Infrastructure/commandEffects";
+import type { IWireServerConfig } from "./Infrastructure/settings";
 
 export type ISelectDescriptor = Extract<ProviderOptionDescriptor, { type: "select" }>;
 export type IBooleanDescriptor = Extract<ProviderOptionDescriptor, { type: "boolean" }>;
@@ -325,6 +327,53 @@ export function applyModelPreferences<T extends { slug: string; isCustom?: boole
     )
     .map(({ model }) => model);
 }
+
+/** The providers the composer offers: enabled and available, with the user's model preferences. */
+export function providerOptions(config: IWireServerConfig): IProviderOption[] {
+  const preferences = config.settings?.providerModelPreferences ?? {};
+  return config.providers
+    .filter(
+      (provider) =>
+        provider.enabled &&
+        isProviderAvailable(provider as unknown as Parameters<typeof isProviderAvailable>[0]),
+    )
+    .map((provider): IProviderOption => {
+      const preference = preferences[provider.instanceId];
+      return {
+        InstanceId: provider.instanceId,
+        Driver: provider.driver,
+        Name: provider.displayName ?? provider.instanceId,
+        ...(provider.supportsConversationRollback === false ? { SupportsRollback: false } : {}),
+        ...(provider.supportedRuntimeModes === undefined
+          ? {}
+          : { SupportedRuntimeModes: [...provider.supportedRuntimeModes] }),
+        ...(provider.slashCommands.length === 0
+          ? {}
+          : { SlashCommands: [...provider.slashCommands] }),
+        ...(provider.skills.length === 0 ? {} : { Skills: [...provider.skills] }),
+        ...((preference?.hiddenModels.length ?? 0) === 0
+          ? {}
+          : { HiddenModels: [...preference!.hiddenModels] }),
+        Models: applyModelPreferences(provider.models, preference).map((model) => ({
+          Slug: model.slug,
+          Name: model.name,
+          ...(model.shortName === undefined ? {} : { ShortName: model.shortName }),
+          ...(model.subProvider === undefined ? {} : { SubProvider: model.subProvider }),
+          IsDefault: model.isDefault === true,
+          ...(model.isLegacy === true ? { IsLegacy: true } : {}),
+          ...(model.capabilities == null
+            ? {}
+            : { Capabilities: model.capabilities as ModelCapabilities }),
+        })),
+      };
+    });
+}
+
+export const modelFavoritesOf = (config: IWireServerConfig): IModelFavorite[] =>
+  (config.settings?.favorites ?? []).map((favorite) => ({
+    Provider: favorite.provider,
+    Model: favorite.model,
+  }));
 
 /** Favorites first when any is offered, except on a started thread, which opens on its own provider. */
 export function initialPickerTab(input: {

@@ -35,13 +35,10 @@ import {
   type INewProject,
   type IProjectCommand,
   type IThreadCommand,
-  modelFavoritesEffect,
   newProjectEffect,
   openInEditorEffect,
   openInFileManagerEffect,
   projectCommandEffect,
-  serverProvidersEffect,
-  setModelFavoriteEffect,
   startCloneEffect,
   threadCommandEffect,
   withCommandId,
@@ -92,6 +89,7 @@ import {
   loadUsage,
   openView,
   refreshUsage,
+  toggleModelFavorite,
   updateServerSettings,
   writeSetting,
 } from "./Settings";
@@ -229,46 +227,10 @@ export function* init(draft: IEnvironment): IActionGenerator {
   });
   yield* openConfigStream(draft);
   yield* openDictation(draft);
-  yield* start(loadProviders, draft);
   const selected = yield* addressThread();
   if (selected !== null) yield* selectThread(draft, selected);
   const view = yield* addressView();
   if (view !== null) yield* openView(draft, view);
-}
-
-export function* loadProviders(draft: IEnvironment, fresh = false): IOpenGenerator {
-  const environmentId = draft.EnvironmentId;
-  const providers = yield* open(
-    serverProvidersEffect({ EnvironmentId: environmentId, Fresh: fresh }),
-  );
-  draft.Replica.Providers = providers;
-  yield* loadModelFavorites(draft);
-}
-
-function* loadModelFavorites(draft: IEnvironment): IOpenGenerator {
-  const environmentId = draft.EnvironmentId;
-  const favorites = yield* open(modelFavoritesEffect({ EnvironmentId: environmentId }));
-  draft.Replica.ModelFavorites = favorites;
-}
-
-export function* toggleModelFavorite(
-  draft: IEnvironment,
-  provider: string,
-  model: string,
-): IOpenGenerator {
-  const favorite = !draft.Replica.ModelFavorites.some(
-    (held) => held.Provider === provider && held.Model === model,
-  );
-  const environmentId = draft.EnvironmentId;
-  yield* open(
-    setModelFavoriteEffect({
-      EnvironmentId: environmentId,
-      Provider: provider,
-      Model: model,
-      Favorite: favorite,
-    }),
-  );
-  yield* loadModelFavorites(draft);
 }
 
 function* sessionOf(

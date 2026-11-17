@@ -7,11 +7,15 @@ import { environmentInfo } from "./environmentInfo";
 
 const RETRY_MS = 1_000;
 
-async function readInfo() {
+async function readSession() {
   const response = await fetch("/api/auth/session");
   if (!response.ok) throw new Error(`Session check failed with HTTP ${response.status}.`);
+  return response.json();
+}
+
+async function readInfo() {
   const [session, descriptor] = await Promise.all([
-    response.json(),
+    readSession(),
     Effect.runPromise(loadDescriptor),
   ]);
   return {

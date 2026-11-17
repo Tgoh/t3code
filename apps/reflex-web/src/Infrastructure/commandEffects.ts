@@ -154,25 +154,6 @@ export interface IModelFavorite {
   Model: string;
 }
 
-interface IModelFavoritesEffect extends IEffect {
-  Type: "modelFavorites";
-  EnvironmentId: string;
-}
-
-export const modelFavoritesEffect = defineEffect<IModelFavoritesEffect, IModelFavorite[]>(
-  "modelFavorites",
-);
-
-interface ISetModelFavoriteEffect extends IEffect, IModelFavorite {
-  Type: "setModelFavorite";
-  EnvironmentId: string;
-  Favorite: boolean;
-}
-
-export const setModelFavoriteEffect = defineEffect<ISetModelFavoriteEffect, void>(
-  "setModelFavorite",
-);
-
 interface IStartTurnEffect extends IEffect, IStartTurn {
   Type: "startTurn";
 }
@@ -181,12 +162,6 @@ interface IStopThreadEffect extends IEffect, IStopThread {
 }
 interface IRespondRequestEffect extends IEffect, IRespondRequest {
   Type: "respondRequest";
-}
-interface IServerProvidersEffect extends IEffect {
-  Type: "serverProviders";
-  EnvironmentId: string;
-  /** Reads the server's current config instead of the one the connection opened with. */
-  Fresh: boolean;
 }
 
 export interface IThreadDiff {
@@ -396,9 +371,6 @@ export const queueCommandEffect = defineEffect<IQueueCommandEffect, void>("queue
 export const startTurnEffect = defineEffect<IStartTurnEffect, void>("startTurn");
 export const stopThreadEffect = defineEffect<IStopThreadEffect, void>("stopThread");
 export const respondRequestEffect = defineEffect<IRespondRequestEffect, void>("respondRequest");
-export const serverProvidersEffect = defineEffect<IServerProvidersEffect, IProviderOption[]>(
-  "serverProviders",
-);
 
 export function* withCommandId<R>(
   run: (commandId: string) => IActionGenerator<R>,

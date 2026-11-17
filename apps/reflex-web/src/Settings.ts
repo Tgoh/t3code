@@ -1,7 +1,7 @@
 import { type IActionGenerator, type IOpenGenerator, latest, open, start } from "treflex";
 
 import type { IEnvironment } from "./Environment";
-import { loadProviders, threadCommand } from "./Environment";
+import { threadCommand } from "./Environment";
 import { type IAddressView, setAddressView } from "./Infrastructure/address";
 import {
   archivedShellEffect,
@@ -17,15 +17,10 @@ import {
   usageSummaryEffect,
 } from "./Infrastructure/settings";
 import type { IWireServerConfigEvent } from "./Infrastructure/serverConfigStream";
+import { modelFavoritesOf, providerOptions } from "./modelOptions";
+import { modelFavoritePatch } from "./providerSettings";
 import { reconcile } from "./rows";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
-
-/** Where a settings write changes what the composer offers, so its provider list reloads. */
-const touchesProviders = (patch: IWireSettingsPatch, mutation: IWireInstanceMutation | null) =>
-  mutation !== null ||
-  "setModelsHidden" in patch ||
-  "setProviderModelOrder" in patch ||
-  "setModelFavorites" in patch;
 
 export function* openView(draft: IEnvironment, view: IAddressView | null): IActionGenerator {
   const next: IAddressView | null =
@@ -47,6 +42,7 @@ export function applyConfigEvent(draft: IEnvironment, event: IWireServerConfigEv
   if (event.type === "snapshot") {
     if (draft.Replica.Config === null) draft.Replica.Config = event.config;
     else reconcile(draft.Replica.Config, event.config);
+    syncProviders(draft);
     return;
   }
   const config = draft.Replica.Config;
@@ -58,10 +54,26 @@ export function applyConfigEvent(draft: IEnvironment, event: IWireServerConfigEv
       return;
     case "providerStatuses":
       config.providers = event.payload.providers;
+      syncProviders(draft);
       return;
     case "settingsUpdated":
       reconcile(config.settings, event.payload.settings);
+      syncProviders(draft);
       return;
+  }
+}
+
+/** Rewrites the composer's provider list and favorites only when the config changed what they hold. */
+function syncProviders(draft: IEnvironment): void {
+  const config = draft.Replica.Config;
+  if (config === null) return;
+  const providers = JSON.stringify(providerOptions(config));
+  if (providers !== JSON.stringify(draft.Replica.Providers)) {
+    draft.Replica.Providers = JSON.parse(providers);
+  }
+  const favorites = JSON.stringify(modelFavoritesOf(config));
+  if (favorites !== JSON.stringify(draft.Replica.ModelFavorites)) {
+    draft.Replica.ModelFavorites = JSON.parse(favorites);
   }
 }
 
@@ -79,8 +91,18 @@ export function* updateServerSettings(
     }),
   );
   if (draft.Replica.Config !== null) draft.Replica.Config.settings = settings;
-  if (!touchesProviders(patch, mutation)) return;
-  yield* loadProviders(draft, true);
+  syncProviders(draft);
+}
+
+export function* toggleModelFavorite(
+  draft: IEnvironment,
+  provider: string,
+  model: string,
+): IOpenGenerator {
+  const favorite = !draft.Replica.ModelFavorites.some(
+    (held) => held.Provider === provider && held.Model === model,
+  );
+  yield* updateServerSettings(draft, modelFavoritePatch(provider, model, favorite));
 }
 
 export function* setClientSettings(

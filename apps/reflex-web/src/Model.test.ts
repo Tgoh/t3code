@@ -38,7 +38,6 @@ import {
   removeProject,
   selectThread,
   threadCommand,
-  toggleModelFavorite,
 } from "./Environment";
 import {
   cancelDictation,
@@ -59,6 +58,7 @@ import {
   loadUsage,
   openView,
   refreshUsage,
+  toggleModelFavorite,
   updateServerSettings,
   writeSetting,
 } from "./Settings";
@@ -199,6 +199,37 @@ import { reconcile } from "./rows";
 
 const ENV = "env-1";
 
+const wireProvider = (
+  instanceId: string,
+  models: Array<Record<string, unknown>>,
+  extra: Record<string, unknown> = {},
+) => ({
+  instanceId,
+  driver: instanceId,
+  displayName: instanceId,
+  enabled: true,
+  installed: true,
+  status: "ready",
+  auth: { status: "authenticated" },
+  checkedAt: "2026-11-17T00:00:00.000Z",
+  slashCommands: [],
+  skills: [],
+  models,
+  ...extra,
+});
+
+const replayProvider = (extra: Record<string, unknown> = {}) =>
+  wireProvider("devReplay", [{ slug: "showcase", name: "Showcase", isDefault: true }], extra);
+
+const configSnapshot = (
+  providers: unknown[],
+  settings: Record<string, unknown> = { favorites: [] },
+) => ({
+  version: 1,
+  type: "snapshot",
+  config: { settings, providers, keybindings: [], issues: [] },
+});
+
 const inFlightOf = (
   runtime: IRuntime<IRoot>,
   reading: Parameters<typeof inFlight>[0],
@@ -258,15 +289,7 @@ async function connect(
         Label: "Test",
         FileAttachmentLimit: null,
       }),
-      serverProviders: () => [
-        {
-          InstanceId: "devReplay",
-          Name: "Replay",
-          Models: [{ Slug: "showcase", Name: "Showcase", IsDefault: true }],
-        },
-      ],
       generateGuid: () => `guid-${(guid += 1)}`,
-      modelFavorites: () => [],
       addressView: () => address.view,
       setAddressView: (effect: { View: IAddressView | null }) => {
         address.view = effect.View;
@@ -343,6 +366,14 @@ async function connect(
   await runtime.dispatch(load, "Root");
   await settled();
   const environment = () => runtime.state.Environments[0] as IEnvironment;
+  const sendConfig = (Item: Record<string, unknown>) =>
+    runtime.dispatch(
+      EnvironmentReceiver.handle,
+      environment().$Id,
+      { Type: "Server/Config", Item: Item as never },
+      { publisher: { Id: environment().$Id } },
+    );
+  await sendConfig(configSnapshot([replayProvider()]));
   expect(environment().Replica.Providers).toHaveLength(1);
   if (initialAddress !== null) expect(address.thread).toBe(initialAddress);
   else expect(runtime.resources().some((row) => row.Key === "Shell/Stream")).toBe(true);
@@ -383,13 +414,7 @@ async function connect(
         { Type: "Shell/Stream", Item },
         { publisher: { Id: shellId() } },
       ),
-    sendConfig: (Item: Record<string, unknown>) =>
-      runtime.dispatch(
-        EnvironmentReceiver.handle,
-        envId(),
-        { Type: "Server/Config", Item: Item as never },
-        { publisher: { Id: envId() } },
-      ),
+    sendConfig,
     disposed: (id: string) =>
       new Promise<void>((resolve) => {
         runtime.on("record", (record) => {
@@ -2097,33 +2122,28 @@ describe("writing to the server", () => {
     expect(model(draftId)).toEqual({ instanceId: "devReplay", model: "showcase" });
   });
 
-  const codexWithEffort = () => [
-    {
-      InstanceId: "codex",
-      Driver: "codex",
-      Name: "Codex",
-      Models: [
-        {
-          Slug: "gpt-5.4",
-          Name: "GPT-5.4",
-          IsDefault: true,
-          Capabilities: {
-            optionDescriptors: [
-              {
-                id: "reasoningEffort",
-                label: "Reasoning",
-                type: "select",
-                options: [
-                  { id: "medium", label: "Medium" },
-                  { id: "high", label: "High", isDefault: true },
-                ],
-              },
-            ],
-          },
+  const codexWithEffort = configSnapshot([
+    wireProvider("codex", [
+      {
+        slug: "gpt-5.4",
+        name: "GPT-5.4",
+        isDefault: true,
+        capabilities: {
+          optionDescriptors: [
+            {
+              id: "reasoningEffort",
+              label: "Reasoning",
+              type: "select",
+              options: [
+                { id: "medium", label: "Medium" },
+                { id: "high", label: "High", isDefault: true },
+              ],
+            },
+          ],
         },
-      ],
-    },
-  ];
+      },
+    ]),
+  ]);
   const medium = {
     instanceId: "codex",
     model: "gpt-5.4",
@@ -2133,7 +2153,6 @@ describe("writing to the server", () => {
   it("a pick on the thread's own provider saves to the thread at once, and the next turn carries it", async () => {
     const log: Array<IThreadCommand | IStartTurn> = [];
     const server = await connect(undefined, null, {
-      serverProviders: codexWithEffort,
       threadCommand: (effect: { Command: IThreadCommand }) => {
         log.push(effect.Command);
       },
@@ -2141,6 +2160,7 @@ describe("writing to the server", () => {
         log.push(effect);
       },
     });
+    await server.sendConfig(codexWithEffort);
     await server.open();
     await server.sendThread(snapshotOf(emptyProjection(), 1));
     await server.runtime.dispatch(setModelSelection, server.sessionId(), medium);
@@ -2191,14 +2211,17 @@ describe("writing to the server", () => {
     ]);
   });
 
-  it("a favorite toggle saves the opposite of the server's list and reads the list back", async () => {
+  it("a favorite toggle saves the opposite of the server's list and holds the settings it returns", async () => {
     const saved: Array<{ Model: string; Favorite: boolean }> = [];
-    let held: Array<{ Provider: string; Model: string }> = [];
     const server = await connect(undefined, null, {
-      modelFavorites: () => held,
-      setModelFavorite: (effect: { Provider: string; Model: string; Favorite: boolean }) => {
-        saved.push({ Model: effect.Model, Favorite: effect.Favorite });
-        held = effect.Favorite ? [{ Provider: effect.Provider, Model: effect.Model }] : [];
+      updateServerSettings: (effect: {
+        Patch: { setModelFavorites: Array<{ provider: string; model: string; favorite: boolean }> };
+      }) => {
+        const [change] = effect.Patch.setModelFavorites;
+        saved.push({ Model: change!.model, Favorite: change!.favorite });
+        return {
+          favorites: change!.favorite ? [{ provider: change!.provider, model: change!.model }] : [],
+        };
       },
     });
     await server.runtime.dispatch(toggleModelFavorite, server.envId(), "devReplay", "showcase");
@@ -2214,7 +2237,8 @@ describe("writing to the server", () => {
   });
 
   it("a new thread starts on the last picked model while its provider still offers it", async () => {
-    const server = await connect(undefined, null, { serverProviders: codexWithEffort });
+    const server = await connect();
+    await server.sendConfig(codexWithEffort);
     server.models.Last = medium;
     await server.runtime.dispatch(newThread, server.envId(), "project-1");
     const draftId = server.environment().Local.SelectedThreadId!;
@@ -3759,16 +3783,6 @@ function settingsServer() {
       calls.push({ Type: "storeClientSettings", Settings: effect.Settings });
       client = effect.Settings;
     },
-    serverProviders: (effect: { Fresh: boolean }) => {
-      calls.push({ Type: "serverProviders", Fresh: effect.Fresh });
-      return [
-        {
-          InstanceId: "devReplay",
-          Name: "Replay",
-          Models: [{ Slug: "showcase", Name: "Showcase", IsDefault: true }],
-        },
-      ];
-    },
     archivedShell: () => {
       calls.push({ Type: "archivedShell" });
       return { projects: [], threads: [] };
@@ -3856,27 +3870,72 @@ describe("settings and usage", () => {
       Settings: { toolCallVisibility: "showAll", timestampFormat: "24-hour" },
     });
     expect(server.environment().Local.ClientSettings?.timestampFormat).toBe("24-hour");
-    expect(fake.calls.some((call) => call.Type === "serverProviders" && call.Fresh)).toBe(false);
   });
 
-  it("reload the composer's providers from the current config after a model or provider change", async () => {
+  it("follow the config stream in the composer's provider list and favorites", async () => {
+    const server = await connect();
+    const offered = () =>
+      server.environment().Replica.Providers.map((provider) => ({
+        Id: provider.InstanceId,
+        Models: provider.Models.map((model) => model.Slug),
+      }));
+    const codex = (extra: Record<string, unknown> = {}) =>
+      wireProvider(
+        "codex",
+        [
+          { slug: "gpt-5.4", name: "GPT-5.4", isDefault: true },
+          { slug: "gpt-5.5", name: "GPT-5.5" },
+        ],
+        extra,
+      );
+    await server.sendConfig({
+      version: 1,
+      type: "providerStatuses",
+      payload: { providers: [replayProvider(), codex()] },
+    });
+    expect(offered()).toEqual([
+      { Id: "devReplay", Models: ["showcase"] },
+      { Id: "codex", Models: ["gpt-5.4", "gpt-5.5"] },
+    ]);
+    const held = server.environment().Replica.Providers;
+    await server.sendConfig({
+      version: 1,
+      type: "providerStatuses",
+      payload: { providers: [replayProvider({ checkedAt: "2026-11-18T00:00:00.000Z" }), codex()] },
+    });
+    expect(server.environment().Replica.Providers).toBe(held);
+    await server.sendConfig({
+      version: 1,
+      type: "providerStatuses",
+      payload: {
+        providers: [replayProvider({ availability: "unavailable" }), codex({ enabled: true })],
+      },
+    });
+    expect(offered()).toEqual([{ Id: "codex", Models: ["gpt-5.4", "gpt-5.5"] }]);
+    await server.sendConfig({
+      version: 1,
+      type: "settingsUpdated",
+      payload: {
+        settings: {
+          favorites: [{ provider: "codex", model: "gpt-5.5" }],
+          providerModelPreferences: { codex: { hiddenModels: ["gpt-5.4"], modelOrder: [] } },
+        },
+      },
+    });
+    expect(offered()).toEqual([{ Id: "codex", Models: ["gpt-5.5"] }]);
+    expect(server.environment().Replica.ModelFavorites).toEqual([
+      { Provider: "codex", Model: "gpt-5.5" },
+    ]);
+  });
+
+  it("take a settings write's reply into the composer's provider list without waiting for the stream", async () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
-    await server.runtime.dispatch(openView, server.envId(), {
-      Kind: "settings",
-      Page: "providers",
-    });
-    await settled();
+    await server.sendConfig(configSnapshot([replayProvider()]));
     await server.runtime.dispatch(updateServerSettings, server.envId(), {
-      setModelsHidden: [{ provider: "devReplay", model: "showcase", hidden: true }],
+      providerModelPreferences: { devReplay: { hiddenModels: ["showcase"], modelOrder: [] } },
     } as never);
-    expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
-    await server.runtime.dispatch(updateServerSettings, server.envId(), {}, {
-      operation: "upsert",
-      instanceId: "devReplay",
-      instance: { driver: "devReplay", enabled: false },
-    } as never);
-    expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
+    expect(server.environment().Replica.Providers[0]?.Models).toEqual([]);
   });
 
   it("follow the config stream, so a provider push replaces the limits held since the snapshot", async () => {
@@ -4206,16 +4265,10 @@ describe("rewinding and forking", () => {
       "Interrupt the current turn before reverting checkpoints.",
     );
 
-    const unsupported = await rewindServer(undefined, {
-      serverProviders: () => [
-        {
-          InstanceId: INSTANCE,
-          Name: "Replay",
-          SupportsRollback: false,
-          Models: [{ Slug: "showcase", Name: "Showcase", IsDefault: true }],
-        },
-      ],
-    });
+    const unsupported = await rewindServer();
+    await unsupported.server.sendConfig(
+      configSnapshot([replayProvider({ supportsConversationRollback: false })]),
+    );
     const session = () => unsupported.server.session();
     expect(unsupported.server.runtime.processSelector(revertTargets, session)).toEqual({});
     expect(await unsupported.editFrom("user-1", 0)).toBe(false);
