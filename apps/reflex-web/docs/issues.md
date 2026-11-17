@@ -201,6 +201,10 @@ Settings opens in place of the thread view, not as stock's modal, and keeps the 
 
 `vp run dev` runs the server under `node --watch` over `src`, `packages` and `package.json`. On this machine a recursive `fs.watch` reports `change` on a directory that is only listed, with nothing written, so any tool that lists a directory under those paths restarts the server and interrupts a running turn. A probe watching `packages/` while the app's gates ran saw one `change` for every package during `tsc --noEmit`, directly or through `vp run typecheck`, and the server's process id changed, sometimes twice. `vp test run`, `vp lint` and `vp fmt` raised no events. A separate directory showed the same event from a plain `ls`, and none from reading a file. Avoid typechecking during a turn. Daily use needs a server run without `--watch`.
 
+## Open: the thread hover card never shows under `vp run dev`
+
+Hovering a sidebar thread opens the tooltip popup empty, and the console logs `Unrecognized value. Skipped inserting {name: [solid-refresh]ThreadHoverCard}`. `hoverCard` in `ui/tooltip.tsx` keeps the card component and renders it later with `createComponent`. In dev, solid-refresh wraps `ThreadHoverCard`, and the insert gets the wrapper rather than its output. A production build (`vp build`, `vp preview`) shows the card. The daily driver runs the dev server, so it's affected too.
+
 ## Open: 502s on the environment descriptor
 
 The console showed `/.well-known/t3/environment` requests through the Vite proxy ending in 502 and `ERR_ABORTED` during `check:changed`, and again during step 6. Both fit a server restart from the entry above, but that hasn't been confirmed. The connection recovers.

@@ -25,6 +25,7 @@ import ThreadSession, { closeRightPanel } from "./ThreadSession";
 import { ThreadView } from "./ThreadView";
 import { TooltipHost } from "./ui/tooltip";
 import { UsageView } from "./UsageView";
+import { ViewportDebug } from "./ViewportDebug";
 import {
   createMediaQuery,
   createSidebarSheet,
@@ -260,6 +261,9 @@ function EnvironmentMain() {
           {(session) => <NewThreadView state={session} />}
         </Match>
       </Switch>
+      <Show when={environment.state.Local.Preferences.ViewportDebug}>
+        <ViewportDebug />
+      </Show>
     </main>
   );
 }
