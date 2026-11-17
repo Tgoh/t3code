@@ -209,7 +209,7 @@ To bring in upstream changes, use the `/syncupstream` skill: it merges on a work
 
 Tailwind v4, like stock. `src/index.css` is the entry: it maps stock's theme (`bg-background`, `text-muted-foreground`, `rounded-lg`, `text-2xs`, the `dark`/`light`/`any-hover` variants) onto the tokens in `src/styles.css`, so a utility means the same thing here as in `apps/web`. `dark:` follows the `data-theme` attribute the appearance setting sets. A stock utility that needs a token we don't have yet renders nothing: copy the token from `apps/web/src/index.css` into `styles.css` and its `--color-*` line into `index.css`.
 
-`styles.css` holds global rules: the tokens, base element styles, the `.chat-markdown` prose rules for markup generated from Markdown (which can't carry utilities), the terminal's xterm overrides, and the iOS input rule. The command palette and usage view rules are still there until their migrations land. It sits in the `components` layer, under the utilities, so a utility always beats it.
+`styles.css` holds global rules: the tokens, base element styles, the `.chat-markdown` prose rules for markup generated from Markdown (which can't carry utilities), the terminal's xterm overrides, and the iOS input rule. The command palette rules are still there until its migration lands. It sits in the `components` layer, under the utilities, so a utility always beats it.
 
 There's no preflight. Once only global rules are left, it can come in as a change of its own: it would sit under `styles.css`, so the prose and base rules keep their look, but every surface needs checking for utilities that lean on the browser's defaults, such as a button's padding.
 
