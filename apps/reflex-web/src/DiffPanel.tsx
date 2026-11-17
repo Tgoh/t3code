@@ -5,6 +5,7 @@ import { ChevronRight, FileDiff, X } from "./icons";
 import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import { ERROR_TEXT } from "./ui/notice";
 
 const LINE_CAP = 2000;
 
@@ -94,7 +95,7 @@ export function DiffPanel() {
           <p class="empty">Loading diff…</p>
         </Show>
         <Show when={panel().Error}>
-          <p class="composer-error">Couldn't load the diff: {panel().Error}</p>
+          <p class={ERROR_TEXT}>Couldn't load the diff: {panel().Error}</p>
         </Show>
         <Show when={panel().Text === "" || (panel().Text != null && files().length === 0)}>
           <p class="empty">No changes.</p>

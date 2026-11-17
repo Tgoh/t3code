@@ -9,6 +9,7 @@ import { createMemo, Show } from "solid-js";
 import Environment from "./Environment";
 import { Download } from "./icons";
 import { Button } from "./ui/Button";
+import { BANNER, BANNER_ACTIONS, BANNER_BODY, BANNER_TITLE } from "./ui/notice";
 
 // Follows useProjectClone in apps/web/src/state/projectClones.ts.
 export function useProjectClone(projectId: () => string | null) {
@@ -35,23 +36,23 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
   const cancelled = () => props.clone.phase === "cancelled";
   return (
     <div
-      class="composer-banner"
-      classList={{ warning: cancelled(), error: props.clone.phase === "failed" }}
+      class={BANNER}
+      data-tone={cancelled() ? "warning" : props.clone.phase === "failed" ? "error" : undefined}
     >
       <Show
         when={props.clone.phase === "running"}
         fallback={
           <>
-            <div class="banner-title">
+            <div class={BANNER_TITLE}>
               <Download />
               <strong>
                 {cancelled() ? `Cancelled cloning ${name()}` : `Failed to clone ${name()}`}
               </strong>
             </div>
-            <pre class="banner-body">
+            <pre class={BANNER_BODY}>
               {cancelled() ? "Retry to bring in the repository." : props.clone.error}
             </pre>
-            <div class="request-actions">
+            <div class={BANNER_ACTIONS}>
               <Button onClick={() => environment.projectCommand(projectId(), { Kind: "delete" })}>
                 Remove project
               </Button>
@@ -65,7 +66,7 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
           </>
         }
       >
-        <div class="banner-title">
+        <div class={BANNER_TITLE}>
           <Download />
           <strong>Cloning {name()}</strong>
           <Button
@@ -75,7 +76,7 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
             Cancel
           </Button>
         </div>
-        <p class="banner-body">{projectCloneProgressSummary(props.clone)}</p>
+        <p class={BANNER_BODY}>{projectCloneProgressSummary(props.clone)}</p>
       </Show>
     </div>
   );

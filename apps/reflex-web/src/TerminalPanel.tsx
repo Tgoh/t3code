@@ -4,6 +4,7 @@ import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { Trash2, X } from "./icons";
 import ThreadSession from "./ThreadSession";
 import { IconButton } from "./ui/IconButton";
+import { ERROR_TEXT } from "./ui/notice";
 
 const RECONNECTING = new Set(["connecting", "backoff", "offline", "blocked"]);
 
@@ -58,7 +59,7 @@ export function TerminalPanel() {
         </IconButton>
       </div>
       <Show when={error()}>
-        <p class="composer-error terminal-error">{error()}</p>
+        <p class={`${ERROR_TEXT} terminal-error`}>{error()}</p>
       </Show>
       <div class="terminal-host" ref={setHost} />
     </aside>

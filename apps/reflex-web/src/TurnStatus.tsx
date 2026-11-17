@@ -21,6 +21,7 @@ import { QueuedMessage } from "./TimelineRows";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import { Popup } from "./ui/Menu";
+import { BANNER_TITLE } from "./ui/notice";
 import { useWorkspaceRoot } from "./workspaceRoot";
 import {
   liveWorkEntryLabel,
@@ -345,7 +346,7 @@ function QueuedPopover(props: {
       anchor={props.toggle}
       onClose={props.onClose}
     >
-      <div class="banner-title">
+      <div class={BANNER_TITLE}>
         <strong>Queued</strong>
         <Show when={!props.working}>
           <Button
