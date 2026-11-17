@@ -34,8 +34,10 @@ import { continueDefaultBranch, pull, runGitAction } from "./GitWork";
 import { loadEarlier } from "./HistoryWindow";
 import {
   archivedThreadCommand,
+  autoRefreshLimits,
   loadUsage,
   openView,
+  refreshUsage,
   updateServerSettings,
   writeSetting,
 } from "./Settings";
@@ -333,6 +335,13 @@ async function connect(
         shellId(),
         { Type: "Shell/Stream", Item },
         { publisher: { Id: shellId() } },
+      ),
+    sendConfig: (Item: Record<string, unknown>) =>
+      runtime.dispatch(
+        EnvironmentReceiver.handle,
+        envId(),
+        { Type: "Server/Config", Item: Item as never },
+        { publisher: { Id: envId() } },
       ),
     disposed: (id: string) =>
       new Promise<void>((resolve) => {
@@ -3396,9 +3405,11 @@ function settingsServer() {
   let client = { toolCallVisibility: "showAll" } as Record<string, unknown>;
   let refreshing = true;
   const commands = {
-    serverConfig: () => {
-      calls.push({ Type: "serverConfig" });
-      return { settings, providers: [], keybindings: [] };
+    refreshProviders: (effect: { Automatic: boolean }) => {
+      calls.push({ Type: "refreshProviders", Automatic: effect.Automatic });
+    },
+    refreshUsageRates: () => {
+      calls.push({ Type: "refreshUsageRates" });
     },
     updateServerSettings: (effect: { Patch: object; InstanceMutation: unknown }) => {
       calls.push({
@@ -3440,16 +3451,28 @@ function settingsServer() {
   return {
     calls,
     commands,
+    snapshot: () => ({
+      version: 1,
+      type: "snapshot",
+      config: { settings: { ...settings }, providers: [], keybindings: [], issues: [] },
+    }),
     stopRefreshing: () => {
       refreshing = false;
     },
   };
 }
 
+const claude = (left: number) => ({
+  instanceId: "claudeAgent",
+  driver: "claudeAgent",
+  usageLimits: { checkedAt: "2026-11-17T00:00:00.000Z", windows: [{ usedPercent: 100 - left }] },
+});
+
 describe("settings and usage", () => {
   it("open over the thread, keep the address, load both stores, and close on a thread pick", async () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
+    await server.sendConfig(fake.snapshot());
     await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "voice" });
     await settled();
     expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "general" });
@@ -3470,12 +3493,13 @@ describe("settings and usage", () => {
     });
     await settled();
     expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "providers" });
-    expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(true);
+    expect(server.environment().Local.ClientSettings?.toolCallVisibility).toBe("showAll");
   });
 
   it("send a server row's patch and hold what the server returns, and merge a client row into the whole stored object", async () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
+    await server.sendConfig(fake.snapshot());
     await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "threads" });
     await settled();
     await server.runtime.dispatch(writeSetting, server.envId(), {
@@ -3506,20 +3530,55 @@ describe("settings and usage", () => {
       Page: "providers",
     });
     await settled();
-    const configReads = () => fake.calls.filter((call) => call.Type === "serverConfig").length;
-    const before = configReads();
     await server.runtime.dispatch(updateServerSettings, server.envId(), {
       setModelsHidden: [{ provider: "devReplay", model: "showcase", hidden: true }],
     } as never);
     expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
-    expect(configReads()).toBe(before);
     await server.runtime.dispatch(updateServerSettings, server.envId(), {}, {
       operation: "upsert",
       instanceId: "devReplay",
       instance: { driver: "devReplay", enabled: false },
     } as never);
-    expect(configReads()).toBe(before + 1);
     expect(fake.calls.at(-1)).toEqual({ Type: "serverProviders", Fresh: true });
+  });
+
+  it("follow the config stream, so a provider push replaces the limits held since the snapshot", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    const usedPercent = () =>
+      (server.environment().Replica.Config?.providers[0] as ReturnType<typeof claude> | undefined)
+        ?.usageLimits.windows[0]?.usedPercent;
+    const snapshot = fake.snapshot();
+    await server.sendConfig({
+      ...snapshot,
+      config: { ...snapshot.config, providers: [claude(82)] },
+    });
+    expect(usedPercent()).toBe(18);
+    await server.sendConfig({
+      version: 1,
+      type: "providerStatuses",
+      payload: { providers: [claude(61)] },
+    });
+    expect(usedPercent()).toBe(39);
+    await server.sendConfig({
+      version: 1,
+      type: "settingsUpdated",
+      payload: { settings: { favorites: [], sidebarAutoSettleAfterDays: 3 } },
+    });
+    expect(server.environment().Replica.Config?.settings.sidebarAutoSettleAfterDays).toBe(3);
+    expect(usedPercent()).toBe(39);
+  });
+
+  it("refresh limits by asking the server to re-probe its providers, and leave the result to the stream", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    await server.runtime.dispatch(autoRefreshLimits, server.envId());
+    await server.runtime.dispatch(refreshUsage, server.envId(), null);
+    expect(fake.calls.filter((call) => call.Type === "refreshProviders")).toEqual([
+      { Type: "refreshProviders", Automatic: true },
+      { Type: "refreshProviders", Automatic: false },
+    ]);
+    expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(false);
   });
 
   it("unarchive a thread with stock's command and read the archive again", async () => {

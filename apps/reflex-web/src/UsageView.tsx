@@ -32,7 +32,7 @@ import {
   mergeUsage,
 } from "@t3tools/shared/usageMerge";
 import { useInFlight } from "treflex-solid";
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
 
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
@@ -133,6 +133,14 @@ export function UsageView() {
     void environment.loadUsage(String(windowDays), next);
   };
   onMount(() => load(days()));
+  createEffect(
+    on(
+      () => metric() === "limits",
+      (limits) => {
+        if (limits) void environment.autoRefreshLimits();
+      },
+    ),
+  );
   const choose = (nextMetric: IMetric, nextDays: number) => {
     const daysChanged = nextDays !== days();
     void environment.setPreferences({ Usage: { Metric: nextMetric, Days: nextDays } });
