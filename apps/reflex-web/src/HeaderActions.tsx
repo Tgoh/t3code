@@ -84,9 +84,9 @@ export function UsageRing() {
             cy="8"
             r="6"
             fill="none"
-            stroke="currentColor"
+            stroke="var(--foreground)"
             stroke-width="2"
-            opacity="0.2"
+            opacity="0.22"
           />
           <Show when={weekly()}>
             {(held) => (
