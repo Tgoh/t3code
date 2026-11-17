@@ -9,6 +9,14 @@ import RuntimeRequest, { canAnswer } from "./RuntimeRequest";
 import ThreadSession from "./ThreadSession";
 import { RowIcon, workLine } from "./TimelineRows";
 import { viewOf } from "./turnItemView";
+import { BANNER, BANNER_BODY, BANNER_FRAME, BANNER_TITLE, ERROR_TEXT } from "./ui/notice";
+
+const APPROVAL_STATE = "inline-flex items-center gap-1 text-warning-foreground [&>svg]:size-3.5";
+
+const QUESTION_MARK = "flex h-5 flex-none items-center justify-center";
+const OPTION_MARK =
+  "inline-flex size-4 items-center justify-center border border-[color-mix(in_srgb,var(--foreground)_55%,transparent)] bg-background data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground";
+const QUESTION_NOTE = "mx-0 mt-1.5 mb-0 text-[12px]";
 
 export const PendingApproval = RuntimeRequest.provider(() => {
   const thread = OpenThread.use();
@@ -27,30 +35,33 @@ export const PendingApproval = RuntimeRequest.provider(() => {
         ] as const);
   };
   return (
-    <div class="pending-approval">
+    <div class="p-0.5">
       <div class={workLine()}>
         <RowIcon type="command_execution" />
-        <code class="approval-subject">{item()?.prompt ?? item()?.requestKind}</code>
+        <code class="min-w-0 text-[12px] font-medium wrap-anywhere text-foreground">
+          {item()?.prompt ?? item()?.requestKind}
+        </code>
       </div>
-      <div class="approval-actions">
+      <div class="ml-[30px] flex flex-wrap items-center gap-1.5 text-[12px] leading-4 text-muted-foreground">
         <Show
           when={canAnswer(request.state)}
           fallback={
-            <span class="approval-state">
+            <span class={APPROVAL_STATE}>
               Provider process is gone. Interrupt or restart the run to respond.
             </span>
           }
         >
-          <span class="approval-state">
+          <span class={APPROVAL_STATE}>
             <ShieldQuestion />
             Waiting for approval
           </span>
           <For each={options()}>
             {(option) => (
               <>
-                <span class="approval-dot">·</span>
+                <span>·</span>
                 <button
-                  classList={{ strong: option.decision === "accept" }}
+                  class="cursor-pointer border-0 bg-transparent p-0 text-[12px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-64 data-strong:font-medium data-strong:text-foreground"
+                  data-strong={option.decision === "accept" || undefined}
                   disabled={request.answering()}
                   onClick={() =>
                     request.answerRequest(
@@ -69,7 +80,7 @@ export const PendingApproval = RuntimeRequest.provider(() => {
         </Show>
       </div>
       <Show when={request.answerError()}>
-        {(error) => <p class="composer-error">Couldn't answer: {error()}</p>}
+        {(error) => <p class={ERROR_TEXT}>Couldn't answer: {error()}</p>}
       </Show>
     </div>
   );
@@ -83,15 +94,15 @@ export const UnansweredRequest = RuntimeRequest.provider(() => {
     return held == null ? null : viewOf(held);
   });
   return (
-    <div class="composer-banner warning">
-      <div class="banner-title">
+    <div class={BANNER} data-tone="warning">
+      <div class={BANNER_TITLE}>
         <ShieldQuestion />
         <strong>{view()?.Label ?? `Request: ${request.state.kind}`}</strong>
       </div>
       <Show when={view()?.Body?.replace(/\n?Status: \w+$/, "")}>
-        {(body) => <pre class="banner-body">{body()}</pre>}
+        {(body) => <pre class={BANNER_BODY}>{body()}</pre>}
       </Show>
-      <p class="banner-body">Answer this one in the stock client.</p>
+      <p class={BANNER_BODY}>Answer this one in the stock client.</p>
     </div>
   );
 });
@@ -199,10 +210,10 @@ export const PendingQuestion = RuntimeRequest.provider<{
     <>
       <Show when={progress().Question}>
         {(question) => (
-          <div class="composer-banner question-card">
+          <div class={`${BANNER_FRAME} pb-4`}>
             <button
               type="button"
-              class="question-head"
+              class="group/head flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent py-1.5 pr-3 pl-4 text-start [font-family:inherit] text-[length:inherit] leading-6 text-inherit"
               aria-expanded={!collapsed()}
               data-tip={
                 collapsed()
@@ -211,23 +222,27 @@ export const PendingQuestion = RuntimeRequest.provider<{
               }
               onClick={() => setCollapsedId(collapsed() ? null : question().id)}
             >
-              <span class="question-header">{question().header}</span>
+              <span class="max-w-[50%] flex-none truncate text-muted-foreground group-aria-expanded/head:max-w-none group-aria-expanded/head:flex-1">
+                {question().header}
+              </span>
               <Show when={collapsed()}>
-                <span class="question-dot">·</span>
-                <span class="question-summary">{question().question}</span>
+                <span class="text-muted-foreground">·</span>
+                <span class="min-w-0 flex-1 truncate text-secondary-label">
+                  {question().question}
+                </span>
               </Show>
-              <span class="question-head-actions">
+              <span class="ml-auto flex flex-none items-center gap-1 text-muted-foreground [&_svg]:size-4 [&_svg]:[transition:transform_150ms]">
                 <Show when={questions().length > 1}>
-                  <span class="question-count">
+                  <span class="px-1 text-[12px] tabular-nums">
                     {progress().QuestionIndex + 1}/{questions().length}
                   </span>
                 </Show>
-                <ChevronDown classList={{ flipped: collapsed() }} />
+                <ChevronDown class="group-aria-[expanded=false]/head:[transform:rotate(180deg)]" />
                 <Show when={dismissible()}>
                   <span
                     role="button"
                     tabIndex={0}
-                    class="question-dismiss"
+                    class="inline-flex size-6 items-center justify-center rounded-[6px] hover:bg-accent hover:text-foreground"
                     aria-label="Dismiss question without answering"
                     data-tip="Dismiss question without answering"
                     aria-disabled={request.answering()}
@@ -250,11 +265,11 @@ export const PendingQuestion = RuntimeRequest.provider<{
               </span>
             </button>
             <Show when={!collapsed()}>
-              <div class="question-body">
-                <div class="question-text">
+              <div class="max-h-[min(50vh,28rem)] overflow-auto pt-0 pr-4 pb-1 pl-[22px] wrap-anywhere">
+                <div class="pt-0.5 text-[color-mix(in_srgb,var(--foreground)_85%,transparent)]">
                   <Markdown text={question().question} fromUser />
                 </div>
-                <div class="question-options">
+                <div class="mt-1.5 -ml-1.5">
                   <For each={question().options}>
                     {(option, index) => {
                       const value = () => option.value ?? option.label;
@@ -262,39 +277,44 @@ export const PendingQuestion = RuntimeRequest.provider<{
                         <div>
                           <button
                             type="button"
-                            class="question-option"
-                            classList={{ selected: selected(value()) }}
+                            class="flex w-full cursor-pointer items-start gap-2.5 rounded-[6px] border-0 bg-transparent py-1.5 pr-0 pl-1.5 text-start [font:inherit] text-[color-mix(in_srgb,var(--foreground)_70%,transparent)] hover:enabled:not-aria-pressed:bg-[color-mix(in_srgb,var(--muted)_30%,transparent)] focus-visible:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--primary)_25%,transparent)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 aria-pressed:text-foreground"
                             aria-pressed={selected(value())}
                             disabled={locked()}
                             onClick={() => choose(question(), value())}
                           >
-                            <span class="question-mark">
+                            <span class={`${QUESTION_MARK} min-w-0`}>
                               <span
-                                class={question().multiSelect ? "option-checkbox" : "option-radio"}
-                                classList={{ checked: selected(value()) }}
+                                class={
+                                  question().multiSelect
+                                    ? `${OPTION_MARK} rounded-[4px] [&>svg]:size-3 [&>svg]:[stroke-width:3]`
+                                    : `${OPTION_MARK} rounded-full data-checked:before:size-1.5 data-checked:before:rounded-full data-checked:before:bg-primary-foreground data-checked:before:content-['']`
+                                }
+                                data-checked={selected(value()) || undefined}
                               >
                                 <Show when={question().multiSelect && selected(value())}>
                                   <Check />
                                 </Show>
                               </span>
                             </span>
-                            <span class="question-option-text">
-                              <span class="question-option-label">{option.label}</span>
+                            <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                              <span class="text-[14px] leading-5 font-medium">{option.label}</span>
                               <Show when={option.description !== option.label}>
-                                <span class="question-option-description">
+                                <span class="text-[12px] text-secondary-label">
                                   {option.description}
                                 </span>
                               </Show>
                             </span>
                             <Show when={index() < 9}>
-                              <span class="question-mark">
-                                <kbd>{index() + 1}</kbd>
+                              <span class={`${QUESTION_MARK} min-w-6`}>
+                                <kbd class="min-w-[18px] rounded-[4px] border border-border bg-muted px-1 py-0 text-center [font-family:inherit] text-[11px] leading-4 text-muted-foreground">
+                                  {index() + 1}
+                                </kbd>
                               </span>
                             </Show>
                           </button>
                           <Show when={option.preview}>
                             {(preview) => (
-                              <div class="question-preview">
+                              <div class="pt-0 pr-2 pb-1.5 pl-8 text-[12px] text-[color-mix(in_srgb,var(--foreground)_70%,transparent)]">
                                 <Markdown text={preview()} fromUser />
                               </div>
                             )}
@@ -305,10 +325,14 @@ export const PendingQuestion = RuntimeRequest.provider<{
                   </For>
                 </div>
                 <Show when={session.state.QuestionNotice}>
-                  {(notice) => <p class="question-notice">{notice()}</p>}
+                  {(notice) => <p class={`${QUESTION_NOTE} text-muted-foreground`}>{notice()}</p>}
                 </Show>
                 <Show when={request.answerError()}>
-                  {(error) => <p class="question-error">Couldn't answer: {error()}</p>}
+                  {(error) => (
+                    <p class={`${QUESTION_NOTE} text-error-foreground`}>
+                      Couldn't answer: {error()}
+                    </p>
+                  )}
                 </Show>
               </div>
             </Show>
