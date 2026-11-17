@@ -344,7 +344,8 @@ const ThreadBody = ThreadSession.provider(() => {
       stage.style.setProperty("--composer-height", `${lane.offsetHeight}px`);
       if (stuck()) scrollToEnd();
     });
-    laneObserver.observe(lane);
+    // Border box: the keyboard changes only the lane's bottom padding.
+    laneObserver.observe(lane, { box: "border-box" });
     // The stage shrinks under an opening keyboard with no change to the content or the lane.
     const stageObserver = new ResizeObserver(() => {
       setStageSize({ Width: stage.clientWidth, Height: stage.clientHeight });
