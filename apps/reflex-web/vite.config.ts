@@ -78,7 +78,7 @@ export default defineConfig(({ mode }) => ({
           // Production's setting. In dev the budgeted walk adds a full-tree pause every so many writes.
           env: { TREFLEX_VERIFY_INDEX: process.env.TREFLEX_VERIFY_INDEX ?? "off" },
         }
-      : { include: ["src/**/*.test.ts"] }),
+      : { include: ["src/**/*.test.ts"], env: { TREFLEX_VERIFY_INDEX: "always" } }),
   },
   server: {
     host: "localhost",

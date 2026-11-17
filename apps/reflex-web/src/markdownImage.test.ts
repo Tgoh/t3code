@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { IAssetUrl } from "./Infrastructure/commandEffects";
 import { type IMarkdownImageUrl, loadImageUrl, markdownImageTarget } from "./markdownImage";
 import { createMarkdownLexer } from "./markdownTokens";
+import { watchRuntime } from "./testing/watchRuntime";
 
 const THREAD = "thread-1";
 const ROOT = "G:\\Sorted\\Project";
@@ -65,6 +66,7 @@ describe("loadImageUrl", () => {
         },
       },
     );
+    watchRuntime(runtime);
     await runtime.dispatch(loadImageUrl, "Image", "env-1", resource);
     return { state: runtime.state, asked };
   }

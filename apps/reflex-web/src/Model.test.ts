@@ -189,6 +189,7 @@ import {
   tapReplicaWriters,
   THREAD_ID,
 } from "./testing/threadFixture";
+import { watchRuntime } from "./testing/watchRuntime";
 import { orderFolders } from "./projectOrder";
 import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
@@ -307,7 +308,7 @@ async function connect(
       },
     },
     {
-      onError: (error) => console.error("action failed:", error),
+      onError: () => {},
       resources: {
         ...resources,
         methods: {
@@ -327,6 +328,7 @@ async function connect(
     if (!REPLICA_WRITERS.has(name)) strayWriters.add(name);
   });
   onTestFinished(() => expect([...strayWriters], "actions that wrote the replica").toEqual([]));
+  const { takeFailures, takeDiags } = watchRuntime(runtime);
   runtime.registerReceiver(RootReceiver);
   runtime.registerReceiver(EnvironmentReceiver);
   runtime.registerReceiver(ShellReceiver);
@@ -349,6 +351,8 @@ async function connect(
   const shellId = () => environment().Replica.Shell.$Id;
   return {
     runtime,
+    takeFailures,
+    takeDiags,
     address,
     terminals,
     models,
@@ -960,6 +964,7 @@ describe("snapshots and identity", () => {
     await expect(server.runtime.dispatch(replace, server.envId())).rejects.toThrow(
       EntityReplacedError,
     );
+    expect(server.takeFailures().map((failure) => failure.ActionName)).toEqual(["replace"]);
 
     const start = longThread(6);
     await server.sendThread(snapshotOf(copy(start), 1));
@@ -2808,6 +2813,9 @@ describe("writing to the server", () => {
       await expect(
         server.runtime.dispatch(threadCommand, server.envId(), "t-1", command),
       ).rejects.toThrow(message);
+      expect(server.takeFailures()).toMatchObject([
+        { ActionName: "threadCommand", Taken: true, Error: { message } },
+      ]);
     };
     await server.runtime.dispatch(threadCommand, server.envId(), "t-1", { Kind: "settle" });
     expect(commands).toMatchObject([{ ThreadId: "t-1", Command: { Kind: "settle" } }]);
@@ -4006,6 +4014,15 @@ describe("rewinding and forking", () => {
               }));
             },
             remove: (_ctx: unknown, id: string) => void removed.push(id),
+            stored: (_ctx: unknown, ids: string[]): IStoredAttachment[] =>
+              ids.map((id) => ({
+                Kind: "image",
+                Name: id,
+                MimeType: "image/png",
+                SizeBytes: 4,
+                PastedText: false,
+                AttachmentId: `uploaded-${id}`,
+              })),
           },
         },
       },
@@ -4092,6 +4109,7 @@ describe("rewinding and forking", () => {
     expect(server.session().Draft).toBe("half written\n\nprompt 2");
     expect(server.session().Attachments.map((file) => file.Name)).toEqual(["shot.png"]);
     expect(server.stored.Drafts.get(THREAD_ID)?.Text).toBe("half written\n\nprompt 2");
+    expect(server.stored.Files.get(THREAD_ID)?.map((file) => file.Name)).toEqual(["recalled-0"]);
     expect(inFlightOf(server.runtime, editFromHere, () => server.session())).toBe(false);
     expect(server.session().RewindError).toBeUndefined();
   });

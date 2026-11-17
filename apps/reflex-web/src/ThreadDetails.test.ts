@@ -19,6 +19,7 @@ import {
   selectBranch,
 } from "./ThreadDetails";
 import { detailsLayout } from "./threadDetailsLayout";
+import { watchRuntime } from "./testing/watchRuntime";
 import { shortcutAction, surfaceActions } from "./surfaces";
 
 const CHECKOUT: ICheckout = {
@@ -72,6 +73,7 @@ function details(outcome: () => IGitActionOutcome = () => OUTCOME) {
       refreshVcsStatus: () => {},
     },
   );
+  watchRuntime(runtime);
   return { runtime, actions, commands, switches };
 }
 
