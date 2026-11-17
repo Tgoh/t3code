@@ -57,6 +57,20 @@ import {
 // Follows apps/web/src/components/usage/usageShortcuts.ts and usageProviders.ts.
 type IMetric = "cost" | "tokens" | "limits";
 const loading = "m-0 px-4 text-[13px] text-muted-foreground";
+const MESSAGE =
+  "m-0 rounded-lg border border-warning/40 px-3 py-2 text-[13px] text-warning-foreground";
+const HEADING = "m-0 flex items-center gap-2 text-[14px] font-medium";
+const TOTAL_TERM = "text-[12px] text-muted-foreground";
+const TOTAL_VALUE = "mx-0 mt-0.5 mb-0 text-[18px] font-semibold tabular-nums";
+const TABLE = "w-full border-collapse text-[14px]";
+const HEAD_CELL =
+  "border-b border-border py-2 pr-0 text-[12px] font-normal text-muted-foreground last:pr-2";
+const HEAD_FIGURE = `${HEAD_CELL} pl-6 text-right`;
+const HEAD_LEFT = `${HEAD_CELL} pl-2 text-left`;
+const CELL = "border-b border-border/50 py-2.5 pr-0 tabular-nums last:pr-2";
+const FIGURE = `${CELL} pl-6 text-right whitespace-nowrap text-muted-foreground`;
+const STRONG_FIGURE = `${CELL} pl-6 text-right whitespace-nowrap text-foreground`;
+const EMPTY_CELL = `${CELL} pl-6 text-center whitespace-nowrap text-muted-foreground`;
 
 const METRICS: Array<{ Value: IMetric; Label: string }> = [
   { Value: "cost", Label: "Cost" },
@@ -88,6 +102,11 @@ const PACE: Record<LimitPace, string> = {
   ahead: "Ahead of pace: spending faster than the window elapses",
   on: "On pace with the window",
   under: "Under pace: headroom left for the rest of the window",
+};
+const PACE_COLOR: Record<LimitPace, string> = {
+  ahead: "bg-warning",
+  on: "bg-muted-foreground",
+  under: "bg-success",
 };
 
 const shownMetric = (held: string): IMetric =>
@@ -140,7 +159,7 @@ export function UsageView() {
       : `${formatDayShort(held.sinceDay)} to ${formatDayShort(held.untilDay)}`;
   };
   return (
-    <div class="usage-view">
+    <div class="flex h-full min-h-0 flex-col">
       <PageHeader variant="page" class="max-md:h-auto max-md:flex-wrap max-md:py-2">
         <SidebarToggle />
         <div class={BREADCRUMB}>
@@ -150,7 +169,7 @@ export function UsageView() {
             <span class={CRUMB_MUTED}>{windowLabel()}</span>
           </Show>
         </div>
-        <div class="usage-controls">
+        <div class="flex items-center gap-2">
           <Show when={metric() !== "limits"}>
             <Segmented variant="card" role="group" aria-label="Period">
               <For each={WINDOWS}>
@@ -187,7 +206,7 @@ export function UsageView() {
               )
             }
           >
-            <RefreshCw classList={{ spinning: environment.refreshingUsage() }} />
+            <RefreshCw classList={{ "animate-spin": environment.refreshingUsage() }} />
           </IconButton>
           <IconButton
             aria-label="Close usage"
@@ -198,8 +217,8 @@ export function UsageView() {
           </IconButton>
         </div>
       </PageHeader>
-      <div class="usage-content">
-        <div class="usage-column">
+      <div class="min-w-0 flex-1 overflow-y-auto">
+        <div class="mx-auto flex max-w-6xl flex-col gap-8 px-6 pt-6 pb-12">
           <Show
             when={metric() !== "limits"}
             fallback={<UsageLimits providers={environment.state.Replica.Config?.providers} />}
@@ -260,16 +279,16 @@ function UsageOverview(props: {
     (hourly() ? props.usage.hourly : props.usage.daily).toReversed(),
   );
   return (
-    <div class="usage-overview" classList={{ stale: props.stale }}>
-      <For each={props.messages}>{(message) => <p class="usage-message">{message}</p>}</For>
-      <section class="usage-summary">
-        <div class="usage-figures">
-          <p class="usage-figure">
+    <div class="flex flex-col gap-8 data-stale:opacity-60" data-stale={props.stale || undefined}>
+      <For each={props.messages}>{(message) => <p class={MESSAGE}>{message}</p>}</For>
+      <section class="grid grid-cols-[minmax(0,18rem)_minmax(0,1fr)] gap-8 max-md:grid-cols-[minmax(0,1fr)]">
+        <div class="flex flex-col gap-4">
+          <p class="m-0 text-[36px] leading-[1.1] font-semibold tabular-nums">
             {props.metric === "cost"
               ? formatUsd(props.usage.costUsd)
               : formatTokens(props.usage.totalTokens)}
           </p>
-          <p class="usage-subline">
+          <p class="mx-0 mt-1 mb-0 text-[12px] text-muted-foreground">
             {formatCount(props.usage.sessions)} sessions
             {props.metric === "cost" ? " · API estimate" : ""}
             <Show when={props.metric === "cost" && props.usage.costQuality.unpricedShare > 0}>
@@ -283,21 +302,21 @@ function UsageOverview(props: {
               const share = () =>
                 props.metric === "cost" ? (totals()?.costShare ?? 0) : (totals()?.tokenShare ?? 0);
               return (
-                <div class="usage-provider">
-                  <div class="usage-provider-line">
+                <div class="flex flex-col gap-0.5">
+                  <div class="flex items-center gap-2 text-[14px]">
                     <span
-                      class="usage-dot"
+                      class="size-2 shrink-0 rounded-full"
                       style={{ "background-color": PROVIDERS[provider].Color }}
                     />
                     <ProviderIcon driver={PROVIDERS[provider].Driver} size={16} />
-                    <span class="usage-provider-name">{PROVIDERS[provider].Label}</span>
-                    <span class="usage-provider-sessions">
+                    <span class="min-w-0 truncate">{PROVIDERS[provider].Label}</span>
+                    <span class="flex-1 text-[11px] whitespace-nowrap text-muted-foreground">
                       {formatCount(totals()?.sessions ?? 0)}{" "}
                       {totals()?.sessions === 1 ? "session" : "sessions"}
                     </span>
-                    <span class="usage-provider-value">{format(totals()?.[field()] ?? 0)}</span>
+                    <span class="font-medium tabular-nums">{format(totals()?.[field()] ?? 0)}</span>
                   </div>
-                  <p class="usage-provider-share">
+                  <p class="m-0 text-[12px] text-muted-foreground">
                     {props.metric === "cost"
                       ? `${formatPercent(share())} of cost · ${formatTokens(totals()?.totalTokens ?? 0)} tokens`
                       : `${formatPercent(share())} of tokens · ${formatUsd(totals()?.costUsd ?? 0)}`}
@@ -307,8 +326,8 @@ function UsageOverview(props: {
             }}
           </For>
         </div>
-        <div class="usage-chart-column">
-          <h2 class="usage-heading">
+        <div class="flex min-w-0 flex-col gap-3">
+          <h2 class={HEADING}>
             {props.input.resolution === "hour" ? "Hourly" : "Daily"}{" "}
             {props.metric === "tokens" ? "processed tokens" : "cost"}
           </h2>
@@ -320,33 +339,33 @@ function UsageOverview(props: {
           />
         </div>
       </section>
-      <section class="usage-totals">
-        <h2 class="usage-heading">Totals</h2>
-        <dl>
+      <section class="flex flex-col gap-2">
+        <h2 class={HEADING}>Totals</h2>
+        <dl class="m-0 grid grid-cols-5 gap-x-6 gap-y-4 max-md:grid-cols-2">
           <div>
-            <dt>Processed tokens</dt>
-            <dd>{formatTokens(props.usage.totalTokens)}</dd>
+            <dt class={TOTAL_TERM}>Processed tokens</dt>
+            <dd class={TOTAL_VALUE}>{formatTokens(props.usage.totalTokens)}</dd>
           </div>
           <div>
-            <dt>Cached input</dt>
-            <dd>{formatTokens(props.usage.cachedInputTokens)}</dd>
+            <dt class={TOTAL_TERM}>Cached input</dt>
+            <dd class={TOTAL_VALUE}>{formatTokens(props.usage.cachedInputTokens)}</dd>
           </div>
           <div>
-            <dt>Uncached input</dt>
-            <dd>{formatTokens(props.usage.uncachedInputTokens)}</dd>
+            <dt class={TOTAL_TERM}>Uncached input</dt>
+            <dd class={TOTAL_VALUE}>{formatTokens(props.usage.uncachedInputTokens)}</dd>
           </div>
           <div>
-            <dt>Output</dt>
-            <dd>{formatTokens(props.usage.outputTokens)}</dd>
+            <dt class={TOTAL_TERM}>Output</dt>
+            <dd class={TOTAL_VALUE}>{formatTokens(props.usage.outputTokens)}</dd>
           </div>
           <div>
-            <dt>Cache savings</dt>
-            <dd>{formatUsd(props.usage.costQuality.cacheSavingsUsd)}</dd>
+            <dt class={TOTAL_TERM}>Cache savings</dt>
+            <dd class={TOTAL_VALUE}>{formatUsd(props.usage.costQuality.cacheSavingsUsd)}</dd>
           </div>
         </dl>
       </section>
       <Show when={props.usage.totalTokens > 0}>
-        <section class="usage-shares">
+        <section class="grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] gap-x-12 gap-y-8">
           <Show
             when={props.metric === "cost"}
             fallback={
@@ -372,9 +391,9 @@ function UsageOverview(props: {
           </Show>
         </section>
       </Show>
-      <section class="usage-breakdown">
-        <div class="usage-breakdown-head">
-          <h2 class="usage-heading">Breakdown</h2>
+      <section class="flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class={HEADING}>Breakdown</h2>
           <Segmented variant="card" role="group" aria-label="Usage breakdown">
             <Segment aria-pressed={breakdown() === "model"} onClick={() => setBreakdown("model")}>
               Model
@@ -386,18 +405,20 @@ function UsageOverview(props: {
         </div>
         <Show when={breakdown() === "time"}>
           <div
-            class="usage-table-scroll"
+            class="overflow-x-auto"
             role="region"
             aria-label="Usage breakdown by time"
             tabindex="0"
           >
-            <table>
+            <table class={TABLE}>
               <thead>
                 <tr>
-                  <th class="left first">{hourly() ? "Hour" : "Day"}</th>
-                  <For each={providers()}>{(provider) => <th>{PROVIDERS[provider].Label}</th>}</For>
-                  <th>Total</th>
-                  <th>Tokens</th>
+                  <th class={HEAD_LEFT}>{hourly() ? "Hour" : "Day"}</th>
+                  <For each={providers()}>
+                    {(provider) => <th class={HEAD_FIGURE}>{PROVIDERS[provider].Label}</th>}
+                  </For>
+                  <th class={HEAD_FIGURE}>Total</th>
+                  <th class={HEAD_FIGURE}>Tokens</th>
                 </tr>
               </thead>
               <tbody>
@@ -405,7 +426,7 @@ function UsageOverview(props: {
                   when={periods().length > 0}
                   fallback={
                     <tr>
-                      <td colSpan={providers().length + 3} class="usage-empty">
+                      <td colSpan={providers().length + 3} class={EMPTY_CELL}>
                         No activity in this window.
                       </td>
                     </tr>
@@ -414,18 +435,20 @@ function UsageOverview(props: {
                   <For each={periods()}>
                     {(period) => (
                       <tr>
-                        <td class="left first strong">
+                        <td class={`${CELL} pl-2 text-left whitespace-nowrap text-foreground`}>
                           {"hourStart" in period
                             ? formatHourShort(period.hourStart, props.input.timeZone)
                             : formatDayShort(period.day)}
                         </td>
                         <For each={providers()}>
                           {(provider) => (
-                            <td>{formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}</td>
+                            <td class={FIGURE}>
+                              {formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
+                            </td>
                           )}
                         </For>
-                        <td class="strong">{formatUsd(period.costUsd)}</td>
-                        <td>{formatTokens(period.totalTokens)}</td>
+                        <td class={STRONG_FIGURE}>{formatUsd(period.costUsd)}</td>
+                        <td class={FIGURE}>{formatTokens(period.totalTokens)}</td>
                       </tr>
                     )}
                   </For>
@@ -435,14 +458,14 @@ function UsageOverview(props: {
           </div>
         </Show>
         <Show when={breakdown() === "model"}>
-          <table>
+          <table class={TABLE}>
             <thead>
               <tr>
-                <th class="left">#</th>
-                <th class="left wide">Model</th>
-                <th>Cost</th>
-                <th class="share">Share</th>
-                <th>Tokens</th>
+                <th class={HEAD_LEFT}>#</th>
+                <th class={`${HEAD_CELL} w-full pl-3 text-left`}>Model</th>
+                <th class={HEAD_FIGURE}>Cost</th>
+                <th class={`${HEAD_FIGURE} max-md:hidden`}>Share</th>
+                <th class={HEAD_FIGURE}>Tokens</th>
               </tr>
             </thead>
             <tbody>
@@ -450,7 +473,7 @@ function UsageOverview(props: {
                 when={models().length > 0}
                 fallback={
                   <tr>
-                    <td colSpan={5} class="usage-empty">
+                    <td colSpan={5} class={EMPTY_CELL}>
                       No activity in this window.
                     </td>
                   </tr>
@@ -467,15 +490,20 @@ function UsageOverview(props: {
                           : model.costShare;
                     return (
                       <tr>
-                        <td class="left index">{index() + 1}</td>
-                        <td class="left wide">
-                          <span class="usage-model">
+                        <td
+                          class={`${CELL} pl-2 text-left text-[12px] whitespace-nowrap text-muted-foreground`}
+                        >
+                          {index() + 1}
+                        </td>
+                        <td class={`${CELL} w-full pl-3 text-left text-muted-foreground`}>
+                          <span class="flex items-center gap-2 text-foreground">
                             <ProviderIcon driver={PROVIDERS[model.provider].Driver} size={14} />
                             {model.model}
                           </span>
                           <Show when={value() > 0 && peak() > 0}>
-                            <span class="usage-bar">
+                            <span class="mt-1.5 block h-0.5 max-w-48">
                               <span
+                                class="block h-full rounded-full"
                                 style={{
                                   width: `max(0.5rem, ${(value() / peak()) * 100}%)`,
                                   "background-color": PROVIDERS[model.provider].Color,
@@ -484,15 +512,17 @@ function UsageOverview(props: {
                             </span>
                           </Show>
                         </td>
-                        <td class="strong">
+                        <td class={STRONG_FIGURE}>
                           {isModelCostUnknown(model) ? (
-                            <span class="muted">Unpriced</span>
+                            <span class="text-muted-foreground">Unpriced</span>
                           ) : (
                             formatUsd(model.costUsd)
                           )}
                         </td>
-                        <td class="share">{share() === null ? "" : formatPercent(share()!)}</td>
-                        <td>{formatTokens(model.totalTokens)}</td>
+                        <td class={`${FIGURE} max-md:hidden`}>
+                          {share() === null ? "" : formatPercent(share()!)}
+                        </td>
+                        <td class={FIGURE}>{formatTokens(model.totalTokens)}</td>
                       </tr>
                     );
                   }}
@@ -516,24 +546,28 @@ function ShareBar(props: {
   const total = () => visible().reduce((sum, segment) => sum + segment.Value, 0);
   return (
     <Show when={total() > 0}>
-      <div class="share-bar">
-        <h3 class="usage-heading">{props.label}</h3>
-        <div class="share-bar-track" aria-hidden="true">
+      <div class="flex min-w-0 flex-col gap-2.5">
+        <h3 class={HEADING}>{props.label}</h3>
+        <div class="flex h-2 gap-0.5" aria-hidden="true">
           <For each={visible()}>
             {(segment) => (
               <span
+                class="h-full min-w-1 rounded-xs first:rounded-l-full last:rounded-r-full"
                 style={{ flex: `${segment.Value} 1 0`, "background-color": segment.Color }}
                 data-tip={`${segment.Label} · ${props.format(segment.Value)} · ${formatPercent(segment.Value / total())}`}
               />
             )}
           </For>
         </div>
-        <ul class="share-bar-legend" aria-label={props.label}>
+        <ul
+          class="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[12px] tabular-nums"
+          aria-label={props.label}
+        >
           <For each={visible()}>
             {(segment) => (
-              <li>
-                <span class="share-bar-swatch" style={{ "background-color": segment.Color }} />
-                <span class="muted">{segment.Label}</span>
+              <li class="flex items-center gap-1.5">
+                <span class="size-2 rounded-xs" style={{ "background-color": segment.Color }} />
+                <span class="text-muted-foreground">{segment.Label}</span>
                 <span>{props.format(segment.Value)}</span>
               </li>
             )}
@@ -608,24 +642,27 @@ function UsageChart(props: {
     <Show
       when={props.providers.length > 0}
       fallback={
-        <div class="usage-chart-empty">
+        <div class="flex h-[260px] flex-col items-center justify-center gap-2 text-[13px] text-muted-foreground">
           <ChartNoAxesColumn />
           No activity in this window.
         </div>
       }
     >
-      <div class="usage-chart-frame">
-        <div class="usage-chart-axis-labels" aria-hidden="true">
+      <div class="flex h-56 gap-2">
+        <div class="relative w-14 flex-none" aria-hidden="true">
           <For each={scale().Ticks}>
             {(tick) => (
-              <span style={{ top: `${(y(tick) / CHART_HEIGHT) * 100}%` }}>
+              <span
+                class="absolute right-0 -translate-y-1/2 text-[10px] text-muted-foreground tabular-nums"
+                style={{ top: `${(y(tick) / CHART_HEIGHT) * 100}%` }}
+              >
                 {tick === 0 ? "0" : format(tick)}
               </span>
             )}
           </For>
         </div>
         <svg
-          class="usage-chart"
+          class="block h-full min-w-0 flex-1 overflow-visible"
           viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
           preserveAspectRatio="none"
           role="img"
@@ -634,7 +671,7 @@ function UsageChart(props: {
           <For each={scale().Ticks}>
             {(tick) => (
               <line
-                class="usage-chart-grid"
+                class="stroke-border stroke-1"
                 x1={0}
                 x2={CHART_WIDTH}
                 y1={y(tick)}
@@ -665,7 +702,7 @@ function UsageChart(props: {
           </For>
         </svg>
       </div>
-      <div class="usage-chart-ticks">
+      <div class="flex justify-between pl-16 text-[10px] text-muted-foreground uppercase">
         <For each={ticks()}>{(index) => <span>{label(points()[index]?.Slot ?? "")}</span>}</For>
       </div>
     </Show>
@@ -696,14 +733,14 @@ function UsageLimits(props: { providers: readonly unknown[] | undefined }) {
   const notices = createMemo(() => collectLimitNotices(presentations()));
   return (
     <Show when={props.providers} fallback={<p class={loading}>Reading limits…</p>}>
-      <div class="usage-limits">
+      <div class="flex flex-col gap-8">
         <Show when={pools().length === 0 && notices().length === 0}>
           <p class={loading}>
             No provider on the selected environments reports subscription limits.
           </p>
         </Show>
         <For each={pools()}>{(pool) => <LimitPoolSection pool={pool} now={now} />}</For>
-        <For each={notices()}>{(notice) => <p class="usage-message">{notice}</p>}</For>
+        <For each={notices()}>{(notice) => <p class={MESSAGE}>{notice}</p>}</For>
       </div>
     </Show>
   );
@@ -715,37 +752,45 @@ function LimitPoolSection(props: { pool: LimitPool; now: number }) {
     Object.values(PROVIDERS).find((entry) => entry.Driver === props.pool.driver)?.Color ??
     "var(--primary)";
   return (
-    <section class="limit-pool">
-      <h2 class="usage-heading">
+    <section class="flex flex-col gap-3">
+      <h2 class={HEADING}>
         <ProviderIcon driver={props.pool.driver} size={16} />
         {label()}
       </h2>
       <For each={displayLimitWindows(props.pool)}>
         {(window) => (
-          <div class="limit-card">
-            <div class="limit-card-figures">
-              <span class="limit-card-label">{window.label}</span>
-              <span class="limit-card-left">
-                <span class="limit-card-percent">{window.remainingPercent}%</span>
-                <span class="limit-card-word">left</span>
+          <div class="grid grid-cols-[11rem_minmax(0,1fr)] items-center gap-x-6 gap-y-3 rounded-[10px] border border-border/60 p-4 max-md:grid-cols-[minmax(0,1fr)]">
+            <div class="flex flex-col gap-1">
+              <span class="text-[14px] font-medium">{window.label}</span>
+              <span class="flex items-baseline gap-2">
+                <span class="text-[30px] font-semibold tabular-nums">
+                  {window.remainingPercent}%
+                </span>
+                <span class="text-[14px] text-muted-foreground">left</span>
                 <Show when={window.pace}>
-                  {(pace) => <span class={`limit-pace ${pace()}`} data-tip={PACE[pace()]} />}
+                  {(pace) => (
+                    <span
+                      class={`size-2 rounded-full ${PACE_COLOR[pace()]}`}
+                      data-tip={PACE[pace()]}
+                    />
+                  )}
                 </Show>
               </span>
             </div>
-            <div class="limit-bars">
+            <div class="grid auto-cols-[minmax(0,1fr)] grid-flow-col gap-1">
               <For each={window.members}>
                 {(member) => (
-                  <div class="limit-bar-cell">
-                    <div class="limit-bar">
+                  <div class="flex flex-col gap-1">
+                    <div class="h-5 overflow-hidden rounded-[6px] border border-border bg-muted">
                       <span
+                        class="block h-full opacity-85"
                         style={{
                           width: `${Math.max(0, 100 - member.window.usedPercent)}%`,
                           "background-color": color(),
                         }}
                       />
                     </div>
-                    <span class="limit-bar-reset">
+                    <span class="text-[11px] text-muted-foreground">
                       {formatResetsIn(member.window, props.now) ?? ""}
                     </span>
                   </div>
