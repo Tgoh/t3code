@@ -13,7 +13,7 @@ import { useSidebarSheet } from "./viewport";
 import { clockNow } from "./timestamps";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
-import { MenuCheck, MenuItem, Popup } from "./ui/Menu";
+import { MenuCheck, MenuItem, Popup, POPUP_MOTION } from "./ui/Menu";
 import { LimitsSummary } from "./UsageView";
 
 const MARGIN = 8;
@@ -32,7 +32,7 @@ const TONE: Record<ILimitTone, string> = {
   danger: "text-destructive",
 };
 
-/** Claude's overall weekly limit as a ring that fills as it's used, opening every limit's figures. */
+/** Claude's overall weekly limit as a ring of what's left, opening every limit's figures. */
 export function UsageRing() {
   const environment = Environment.use();
   const sidebar = useSidebarSheet();
@@ -98,7 +98,7 @@ export function UsageRing() {
                 stroke="currentColor"
                 stroke-width="2"
                 pathLength="100"
-                stroke-dasharray={`${held().UsedPercent} 100`}
+                stroke-dasharray={`${held().RemainingPercent} 100`}
               />
             )}
           </Show>
@@ -112,7 +112,7 @@ export function UsageRing() {
             label="Usage limits"
             anchor={anchor()}
             place={placeBelow(anchor())}
-            class="fixed z-[120] flex max-h-[calc(100dvh-16px)] w-64 flex-col gap-3 overflow-y-auto rounded-lg border border-border bg-popover p-3 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]"
+            class={`fixed z-[120] flex max-h-[calc(100dvh-16px)] w-64 flex-col gap-3 overflow-y-auto rounded-lg border border-border bg-popover p-3 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPUP_MOTION}`}
             onClose={(reason) => {
               setOpen(null);
               if (reason === "escape") anchor().focus();
