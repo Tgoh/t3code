@@ -20,6 +20,10 @@ Its test step runs `apps/reflex-web`'s tests in the root vitest project, which l
 
 `client-runtime` exports the session factory only as a type, so reusing the supervisor means building the whole `Connection` layer. That layer requires the relay client, DPoP signer, SSH gateway, cloud session and stores, none of which one cookie-authenticated environment uses. `Infrastructure/connection.ts` mocks them, and a mock dies if it's ever called. Adding a remote environment means replacing these mocks.
 
+## Limit: a server-side defect shows as the sidebar error
+
+An action's `catch` takes only a `ServerError`, which `settle` makes from an Effect run's typed failure, and rethrows a defect as a bug. The RPC client delivers a defect the server died with as a defect too, so it can't be told from a client bug: it reaches Root's sidebar error instead of the inline error line where the action would show a refusal. Telling them apart needs the RPC layer to mark a defect that came over the wire.
+
 ## Gap: the command path assumes atoms
 
 `createEnvironmentRpcCommand` and its `permissionAtom` take an atom runtime, so they don't fit without one. Commands go through `client-runtime/operations` and `request`, run with `EnvironmentRegistry.run`. That skips the client's permission check, so a connection without the scope learns from the server's refusal. `startThreadTurn` also needs `SecureRandom` provided, even when given a command id.
