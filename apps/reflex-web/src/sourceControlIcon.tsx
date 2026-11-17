@@ -13,7 +13,7 @@ export function SourceControlIcon(props: { status: VcsStatusResult | null; class
   const prefix = createUniqueId();
   const icon = () => sourceControlClients.get(props.status?.sourceControlProvider?.kind).icon;
   return (
-    <Show when={icon()} fallback={<GitPullRequest class={props.class} />}>
+    <Show when={icon()} fallback={<GitPullRequest class={props.class ?? ""} />}>
       {(artwork) => {
         type IPaint = ReturnType<typeof artwork>["paths"][number]["fill"];
         const paint = (value: IPaint) =>

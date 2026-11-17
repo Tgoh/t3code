@@ -166,7 +166,7 @@ function SplitRow(props: {
   label: string;
   icon: JSX.Element;
   disabled?: boolean;
-  tip?: string;
+  tip?: string | undefined;
   menuLabel: string;
   menuDisabled?: boolean;
   onRun: () => void;

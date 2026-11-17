@@ -9,8 +9,6 @@
     "jsxImportSource": "solid-js",
     "lib": ["ES2023", "ESNext.Disposable", "DOM", "DOM.Iterable"],
     "types": ["node"],
-    "noUncheckedIndexedAccess": false,
-    "exactOptionalPropertyTypes": false,
     "plugins": [
       {
         "name": "@effect/language-service",
