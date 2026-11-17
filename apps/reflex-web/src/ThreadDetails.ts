@@ -253,10 +253,6 @@ export function* loadingBranches(draft: IThreadDetails): ISelectorGenerator<bool
   return yield* inFlight(loadBranches, draft);
 }
 
-export function* savingScripts(draft: IThreadDetails): ISelectorGenerator<boolean> {
-  return yield* inFlight(saveScripts, draft);
-}
-
 export default createComponentFeature<IThreadDetails>(import.meta.url)(
   {
     attach,
@@ -268,5 +264,5 @@ export default createComponentFeature<IThreadDetails>(import.meta.url)(
     runScript,
     saveScripts,
   },
-  { switchingBranch, loadingBranches, savingScripts },
+  { switchingBranch, loadingBranches },
 );

@@ -87,10 +87,6 @@ export function* writeSetting(draft: IEnvironment, write: ISettingWrite): IOpenG
   else yield* updateServerSettings(draft, write.Patch);
 }
 
-export function* savingSettings(draft: IEnvironment): ISelectorGenerator<boolean> {
-  return yield* inFlight([updateServerSettings, writeSetting], draft);
-}
-
 export function* loadArchived(draft: IEnvironment): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
   draft.Replica.Archived = yield* open(archivedShellEffect({ EnvironmentId: environmentId }));

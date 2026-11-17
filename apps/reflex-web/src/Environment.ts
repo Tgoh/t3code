@@ -89,7 +89,6 @@ import {
   openView,
   refreshingUsage,
   refreshUsage,
-  savingSettings,
   updateServerSettings,
   writeSetting,
 } from "./Settings";
@@ -658,7 +657,6 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     addingProject,
     cloneControlling,
     removingProject,
-    savingSettings,
     refreshingUsage,
   },
 );
