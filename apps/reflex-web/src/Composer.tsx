@@ -33,7 +33,7 @@ import { StageArt } from "./StageArt";
 import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { iconButton } from "./ui/IconButton";
-import { composerCollapses, createMediaQuery, PHONE_QUERY } from "./viewport";
+import { composerCollapses, createMediaQuery, PHONE_QUERY, SHORT_TOUCH_QUERY } from "./viewport";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
@@ -311,7 +311,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     blocked() === null &&
     !session.sending() &&
     (held().Draft.trim() !== "" || held().Attachments.length > 0);
-  const phone = createMediaQuery(PHONE_QUERY);
+  const phone = createMediaQuery(`${PHONE_QUERY}, ${SHORT_TOUCH_QUERY}`);
   const [focused, setFocused] = createSignal(false);
   const overlays = useOverlays();
   const collapsed = () =>

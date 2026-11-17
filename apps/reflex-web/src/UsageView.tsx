@@ -56,6 +56,8 @@ import {
 
 // Follows apps/web/src/components/usage/usageShortcuts.ts and usageProviders.ts.
 type IMetric = "cost" | "tokens" | "limits";
+const loading = "m-0 px-4 text-[13px] text-muted-foreground";
+
 const METRICS: Array<{ Value: IMetric; Label: string }> = [
   { Value: "cost", Label: "Cost" },
   { Value: "tokens", Label: "Tokens" },
@@ -202,7 +204,7 @@ export function UsageView() {
             when={metric() !== "limits"}
             fallback={<UsageLimits providers={environment.state.Replica.Config?.providers} />}
           >
-            <Show when={merged()} fallback={<p class="settings-loading">Reading usage…</p>}>
+            <Show when={merged()} fallback={<p class={loading}>Reading usage…</p>}>
               {(usage) => (
                 <UsageOverview
                   usage={usage()}
@@ -693,10 +695,10 @@ function UsageLimits(props: { providers: readonly unknown[] | undefined }) {
   const pools = createMemo(() => collectLimitPools(collectLimitAccounts(presentations()), now));
   const notices = createMemo(() => collectLimitNotices(presentations()));
   return (
-    <Show when={props.providers} fallback={<p class="settings-loading">Reading limits…</p>}>
+    <Show when={props.providers} fallback={<p class={loading}>Reading limits…</p>}>
       <div class="usage-limits">
         <Show when={pools().length === 0 && notices().length === 0}>
-          <p class="settings-loading">
+          <p class={loading}>
             No provider on the selected environments reports subscription limits.
           </p>
         </Show>

@@ -44,22 +44,33 @@ import { Button, button, buttonLink } from "./ui/Button";
 import { Input, Select, Textarea } from "./ui/Field";
 import { IconButton } from "./ui/IconButton";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Switch as Toggle } from "./ui/Switch";
 
 const PRIVACY_POLICY_URL = "https://t3.codes/privacy-policy";
+
+const loading = "m-0 px-4 text-[13px] text-muted-foreground";
+const note = "m-0 px-4 text-[13px] text-muted-foreground [&_code]:text-[12px]";
+const badge = "rounded-full border px-1.5 py-0 text-[11px] font-normal text-muted-foreground";
+const titleIcon = "inline-flex items-center gap-2 [&>svg]:size-4";
+const mutedValue = "text-[13px] text-muted-foreground";
+const toolbar = "flex items-center gap-2 px-4 text-[14px]";
+const monoNote = "font-mono text-[11px] font-normal text-muted-foreground";
+const headline =
+  "inline-flex items-center gap-1.5 text-[12px] leading-[1.35] text-muted-foreground";
 
 export function SettingsView(props: { page: string }) {
   const environment = Environment.use();
   const page = () => builtSettingsPage(props.page);
   const label = () => settingsPageOf(page())?.Label ?? "";
   return (
-    <div class="settings-view">
-      <header class="thread-header settings-header">
+    <div class="flex h-full min-h-0 flex-col">
+      <PageHeader variant="page">
         <SidebarToggle />
-        <div class="breadcrumb">
-          <span class="crumb-project">Settings</span>
-          <span class="crumb-separator">/</span>
-          <h1>{label()}</h1>
+        <div class={BREADCRUMB}>
+          <span class={CRUMB_MUTED}>Settings</span>
+          <span class={CRUMB_SEPARATOR}>/</span>
+          <h1 class={CRUMB_TITLE}>{label()}</h1>
         </div>
         <IconButton
           aria-label="Close settings"
@@ -68,11 +79,11 @@ export function SettingsView(props: { page: string }) {
         >
           <Icons.X />
         </IconButton>
-      </header>
-      <div class="settings-body">
+      </PageHeader>
+      <div class="flex min-h-0 flex-1">
         <SettingsNav page={page()} />
-        <div class="settings-content">
-          <div class="settings-column">
+        <div class="min-w-0 flex-1 overflow-y-auto">
+          <div class="mx-auto flex max-w-4xl flex-col gap-8 px-6 pt-6 pb-12">
             <Switch>
               <Match when={page() === "appearance"}>
                 <ColorSchemeSection />
@@ -262,6 +273,10 @@ function SettingsNav(props: { page: string }) {
   );
 }
 
+const section = "flex flex-col gap-2.5";
+const sectionHead = "flex min-h-7 items-center justify-between px-4";
+const sectionTitle = "m-0 text-[16px] font-semibold";
+
 export function SettingsSection(props: {
   title: string;
   action?: JSX.Element;
@@ -269,12 +284,18 @@ export function SettingsSection(props: {
   children: JSX.Element;
 }) {
   return (
-    <section class="settings-section">
-      <div class="settings-section-head">
-        <h2>{props.title}</h2>
+    <section class={section}>
+      <div class={sectionHead}>
+        <h2 class={sectionTitle}>{props.title}</h2>
         {props.action}
       </div>
-      <div class="settings-group" classList={{ plain: props.plain === true }}>
+      <div
+        class={
+          props.plain === true
+            ? undefined
+            : "rounded-xl border border-border/60 bg-card/40 [&>*+*]:border-t"
+        }
+      >
         {props.children}
       </div>
     </section>
@@ -285,23 +306,23 @@ export function SettingsRowFrame(props: {
   title: JSX.Element;
   description?: JSX.Element;
   control?: JSX.Element;
-  muted?: boolean;
   settingId?: string;
 }) {
   return (
     <div
-      class="settings-row"
-      classList={{ muted: props.muted === true }}
+      class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 px-4 py-3.5 max-md:grid-cols-[minmax(0,1fr)]"
       data-setting-id={props.settingId}
     >
-      <div class="settings-row-text">
-        <div class="settings-row-title">{props.title}</div>
+      <div>
+        <div class="flex flex-wrap items-center gap-2 text-[14px] font-medium">{props.title}</div>
         <Show when={props.description}>
-          <p class="settings-row-description">{props.description}</p>
+          <p class="mx-0 mt-0.5 mb-0 max-w-2xl text-[12px] leading-[1.45] text-muted-foreground">
+            {props.description}
+          </p>
         </Show>
       </div>
       <Show when={props.control}>
-        <div class="settings-row-control">{props.control}</div>
+        <div class="flex items-center justify-end gap-2 max-md:justify-start">{props.control}</div>
       </Show>
     </div>
   );
@@ -319,7 +340,7 @@ function useHeld(): () => ISettingsHeld | null {
 function Sections(props: { sections: ISettingsSection[] }) {
   const held = useHeld();
   return (
-    <Show when={held()} fallback={<p class="settings-loading">Loading settings…</p>}>
+    <Show when={held()} fallback={<p class={loading}>Loading settings…</p>}>
       {(current) => (
         <For each={props.sections}>
           {(section) => (
@@ -342,7 +363,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
   const control = (): JSX.Element => {
     const control = props.row.Control;
     const current = value();
-    if (current === null) return <span class="settings-unavailable">Unavailable</span>;
+    if (current === null) return <span class={mutedValue}>Unavailable</span>;
     switch (control.Kind) {
       case "switch":
         return <Toggle checked={current === true} label={props.row.Title} onChange={write} />;
@@ -407,7 +428,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
           {props.row.Title}
           <Show when={!props.row.Applied}>
             <span
-              class="settings-badge"
+              class={badge}
               data-tip="Saved in this browser as stock saves it, but this client doesn't use it yet."
             >
               Not used here yet
@@ -428,29 +449,42 @@ const APPEARANCE_MODES: Array<{ Mode: IAppearanceMode; Label: string }> = [
   { Mode: "dark", Label: "Dark" },
 ];
 
+const SCHEME_PREVIEW: Record<IAppearanceMode, string> = {
+  system: "bg-[linear-gradient(135deg,#fafafa_50%,#111_50%)]",
+  light: "bg-[#fafafa]",
+  dark: "bg-[#111]",
+};
+const schemeLine = "h-1.5 rounded-sm bg-[#8a8a8a] opacity-35";
+
 // Follows the color scheme tiles in apps/web/src/components/settings/ThemeSettings.tsx.
 function ColorSchemeSection() {
   const environment = Environment.use();
   return (
-    <section class="settings-section">
-      <div class="settings-section-head">
-        <h2>Color scheme</h2>
+    <section class={section}>
+      <div class={sectionHead}>
+        <h2 class={sectionTitle}>Color scheme</h2>
       </div>
-      <div class="scheme-tiles" role="radiogroup" aria-label="Color scheme">
+      <div
+        class="grid grid-cols-[repeat(3,minmax(0,10rem))] gap-3 px-4"
+        role="radiogroup"
+        aria-label="Color scheme"
+      >
         <For each={APPEARANCE_MODES}>
           {(entry) => (
             <button
-              class="scheme-tile"
+              class="group flex cursor-pointer flex-col items-stretch gap-1.5 border-0 bg-transparent p-0"
               role="radio"
               aria-checked={environment.state.Local.Preferences.AppearanceMode === entry.Mode}
               onClick={() => void environment.setAppearanceMode(entry.Mode)}
             >
-              <span class={`scheme-preview ${entry.Mode}`}>
-                <span class="scheme-preview-bar" />
-                <span class="scheme-preview-line" />
-                <span class="scheme-preview-line short" />
+              <span
+                class={`flex h-[72px] flex-col gap-1.5 overflow-hidden rounded-[10px] border-2 p-2.5 group-aria-checked:border-primary ${SCHEME_PREVIEW[entry.Mode]}`}
+              >
+                <span class="h-2 w-1/2 rounded-sm bg-[#8a8a8a] opacity-50" />
+                <span class={schemeLine} />
+                <span class={`${schemeLine} w-[70%]`} />
               </span>
-              <span class="scheme-label">{entry.Label}</span>
+              <span class="text-left text-[13px]">{entry.Label}</span>
             </button>
           )}
         </For>
@@ -479,37 +513,35 @@ function ProvidersPage() {
     ].join(" · ");
   };
   return (
-    <Show when={config()} fallback={<p class="settings-loading">Loading providers…</p>}>
+    <Show when={config()} fallback={<p class={loading}>Loading providers…</p>}>
       {(held) => (
         <>
           <SettingsSection title="Providers" plain>
-            <div class="providers-layout">
-              <ul class="provider-list">
+            <div class="grid grid-cols-[17rem_minmax(0,1fr)] items-start gap-4 max-md:grid-cols-[minmax(0,1fr)]">
+              <ul class="m-0 list-none rounded-xl border border-border/60 p-1">
                 <For each={rows()}>
                   {(row) => (
                     <li
-                      class="provider-list-row"
-                      classList={{ active: current()?.InstanceId === row.InstanceId }}
+                      class="flex items-center gap-2 rounded-lg pr-2 data-active:bg-accent"
+                      data-active={current()?.InstanceId === row.InstanceId || undefined}
                     >
                       <button
-                        class="provider-list-pick"
+                        class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 border-0 bg-transparent p-2 text-left text-[14px] [&>svg]:mt-0.5"
                         onClick={() => {
                           setSelected(row.InstanceId);
                           setModelFilter("");
                         }}
                       >
                         <ProviderIcon driver={row.Driver} size={16} />
-                        <span class="provider-list-text">
-                          <span class="provider-list-name">
+                        <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span class="flex min-w-0 items-baseline gap-1.5">
                             {row.Name}
                             <Show when={row.Version}>
-                              {(version) => <code class="provider-version">v{version()}</code>}
+                              {(version) => <code class={monoNote}>v{version()}</code>}
                             </Show>
                           </span>
-                          <span class="provider-list-headline">
-                            <span
-                              class={`provider-status ${row.Enabled ? row.Status : "disabled"}`}
-                            />
+                          <span class={headline}>
+                            <StatusDot row={row} />
                             {row.Headline}
                           </span>
                         </span>
@@ -528,16 +560,14 @@ function ProvidersPage() {
               </ul>
               <Show when={current()} keyed>
                 {(row) => (
-                  <div class="provider-editor">
+                  <div class="flex min-w-0 flex-col gap-6">
                     <SettingsSection title={row.Name}>
                       <SettingsRowFrame
                         title="Status"
                         description={
                           <>
-                            <span class="provider-list-headline">
-                              <span
-                                class={`provider-status ${row.Enabled ? row.Status : "disabled"}`}
-                              />
+                            <span class={headline}>
+                              <StatusDot row={row} />
                               {row.Headline}
                             </span>
                             <Show when={row.Message}>{(message) => <> · {message()}</>}</Show>
@@ -546,15 +576,15 @@ function ProvidersPage() {
                       />
                       <SettingsRowFrame
                         title="Display name"
-                        control={<span class="settings-value">{row.Name}</span>}
+                        control={<span class={mutedValue}>{row.Name}</span>}
                       />
                     </SettingsSection>
                     <SettingsSection title="Models">
-                      <p class="settings-note">
+                      <p class={`${note} py-3`}>
                         Model preferences and custom models are saved on the selected environment
                         and shared across connected devices.
                       </p>
-                      <div class="model-toolbar">
+                      <div class="flex flex-wrap items-center gap-2 px-4 pt-0 pb-2">
                         <Show when={row.Models.length > MODEL_FILTER_THRESHOLD}>
                           <Input
                             class="w-56"
@@ -576,11 +606,11 @@ function ProvidersPage() {
                             {allBuiltInHidden(row) ? "Enable all" : "Disable all"}
                           </Button>
                         </Show>
-                        <span class="model-count">{modelCount(row)}</span>
+                        <span class="text-[12px] text-muted-foreground">{modelCount(row)}</span>
                       </div>
                       <For each={filterModels(row.Models, modelFilter())}>
                         {(model) => (
-                          <div class="model-row" classList={{ unlisted: model.Hidden }}>
+                          <div class="flex items-center gap-1 py-1.5 pr-4 pl-2.5">
                             <IconButton
                               size="sm"
                               pressed={model.Favorite}
@@ -593,17 +623,25 @@ function ProvidersPage() {
                                 )
                               }
                             >
-                              <Icons.Star class={model.Favorite ? "star-on" : undefined} />
+                              <Icons.Star
+                                class={model.Favorite ? "fill-warning stroke-warning" : undefined}
+                              />
                             </IconButton>
-                            <span class="model-name">
+                            <span
+                              class={`flex min-w-0 flex-1 items-center gap-2 pl-1 text-[14px] ${model.Hidden ? "text-muted-foreground" : ""}`}
+                            >
                               {model.Name}
-                              <code class="model-slug">{model.Slug}</code>
+                              <code class={monoNote}>{model.Slug}</code>
                               <Show when={model.Custom}>
-                                <span class="settings-badge">Custom</span>
+                                <span class={badge}>Custom</span>
                               </Show>
                             </span>
                             <For each={model.Tags}>
-                              {(tag) => <span class="model-tag">{tag}</span>}
+                              {(tag) => (
+                                <span class="mr-3 text-[12px] whitespace-nowrap text-muted-foreground">
+                                  {tag}
+                                </span>
+                              )}
                             </For>
                             <IconButton
                               size="sm"
@@ -655,6 +693,24 @@ function ProvidersPage() {
   );
 }
 
+const STATUS_DOT: Record<string, string> = {
+  ready: "bg-success",
+  warning: "bg-warning",
+  error: "bg-error",
+};
+
+function StatusDot(props: { row: IProviderRow }) {
+  return (
+    <span
+      class={`size-1.5 flex-none rounded-full ${
+        props.row.Enabled
+          ? (STATUS_DOT[props.row.Status] ?? "bg-muted-foreground")
+          : "bg-muted-foreground opacity-50"
+      }`}
+    />
+  );
+}
+
 // Follows ProjectSettingsPanel.tsx: name, pin, archive and removal for one picked project.
 const ProjectsPage = Shell.provider(() => {
   const environment = Environment.use();
@@ -670,7 +726,7 @@ const ProjectsPage = Shell.provider(() => {
   const [removing, setRemoving] = createSignal<IWireProject | null>(null);
   return (
     <>
-      <div class="settings-scope">
+      <div class={`${toolbar} text-muted-foreground`}>
         <span>Applying settings for</span>
         <Select
           class="min-w-44"
@@ -686,9 +742,7 @@ const ProjectsPage = Shell.provider(() => {
         when={project()}
         keyed
         fallback={
-          <p class="settings-loading">
-            Choose a project to manage its name, icon, checkouts and actions.
-          </p>
+          <p class={loading}>Choose a project to manage its name, icon, checkouts and actions.</p>
         }
       >
         {(current) => (
@@ -719,7 +773,7 @@ const ProjectsPage = Shell.provider(() => {
               />
               <SettingsRowFrame
                 title={
-                  <span class="settings-title-icon">
+                  <span class={titleIcon}>
                     <ProjectBadge project={current} size={14} />
                     Project icon
                   </span>
@@ -805,11 +859,11 @@ function KeybindingsPage() {
   return (
     <Show
       when={environment.state.Replica.Config}
-      fallback={<p class="settings-loading">Loading keybindings…</p>}
+      fallback={<p class={loading}>Loading keybindings…</p>}
     >
       {(config) => (
         <>
-          <div class="settings-toolbar">
+          <div class={toolbar}>
             <Input
               class="w-full min-w-44"
               type="search"
@@ -819,7 +873,7 @@ function KeybindingsPage() {
               onInput={(event) => setQuery(event.currentTarget.value)}
             />
           </div>
-          <p class="settings-note">
+          <p class={note}>
             Read-only here. Edit them in stock T3 Code or in{" "}
             <code>{config().keybindingsConfigPath}</code>.
           </p>
@@ -833,14 +887,20 @@ function KeybindingsPage() {
                         <span data-tip={row.Command}>
                           {row.Label}
                           <Show when={row.Source !== "Default"}>
-                            <span class="settings-badge">{row.Source}</span>
+                            <span class={badge}>{row.Source}</span>
                           </Show>
                         </span>
                       }
                       description={row.When === "" ? undefined : `When ${row.When}`}
                       control={
-                        <span class="key-caps">
-                          <For each={keyCaps(row.Key)}>{(cap) => <kbd>{cap}</kbd>}</For>
+                        <span class="inline-flex gap-1">
+                          <For each={keyCaps(row.Key)}>
+                            {(cap) => (
+                              <kbd class="min-w-[22px] rounded-sm border bg-muted px-1.5 py-px text-center font-sans text-[12px]">
+                                {cap}
+                              </kbd>
+                            )}
+                          </For>
                         </span>
                       }
                     />
@@ -899,7 +959,7 @@ function ArchivedPage() {
             <SettingsSection title="Archived threads">
               <SettingsRowFrame
                 title={
-                  <span class="settings-title-icon">
+                  <span class={titleIcon}>
                     <Icons.Archive />
                     No archived threads
                   </span>
@@ -918,7 +978,7 @@ function ArchivedPage() {
                       title={thread.title}
                       description={`Archived ${relativeTime(thread.archivedAt ?? thread.createdAt, now())} ago · Created ${relativeTime(thread.createdAt, now())} ago`}
                       control={
-                        <span class="settings-actions">
+                        <span class="inline-flex gap-1.5">
                           <IconButton
                             variant="outline"
                             aria-label="Unarchive"
@@ -988,12 +1048,12 @@ function AboutPage() {
       <SettingsSection title="App">
         <SettingsRowFrame
           title={
-            <span class="settings-title-icon">
+            <span class={titleIcon}>
               Version
               <Show when={version()}>
                 {(text) => (
                   <button
-                    class="version-chip"
+                    class="cursor-pointer rounded-md border bg-muted px-1.5 py-0 text-[12px]"
                     data-tip={copied() ? "Copied" : "Copy version"}
                     onClick={() => {
                       void navigator.clipboard.writeText(text()).then(() => setCopied(true));

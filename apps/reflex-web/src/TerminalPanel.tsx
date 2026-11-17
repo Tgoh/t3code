@@ -4,7 +4,7 @@ import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { Trash2, X } from "./icons";
 import ThreadSession from "./ThreadSession";
 import { IconButton } from "./ui/IconButton";
-import { ERROR_NOTE } from "./ui/notes";
+import { ERROR_TEXT } from "./ui/notice";
 
 const RECONNECTING = new Set(["connecting", "backoff", "offline", "blocked"]);
 
@@ -67,7 +67,7 @@ export function TerminalPanel() {
         </IconButton>
       </div>
       <Show when={error()}>
-        <p class={`${ERROR_NOTE} flex-none py-1`}>{error()}</p>
+        <p class={`${ERROR_TEXT} flex-none py-1`}>{error()}</p>
       </Show>
       <div
         class="terminal-host min-h-0 flex-1 overflow-hidden bg-(--terminal-background)"

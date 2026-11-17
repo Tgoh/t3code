@@ -5,7 +5,8 @@ import { ChevronRight, FileDiff } from "./icons";
 import { PanelHeader } from "./RightPanel";
 import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
-import { ADDED_TEXT, DIFF_COUNTS, EMPTY_NOTE, ERROR_NOTE, REMOVED_TEXT } from "./ui/notes";
+import { ERROR_TEXT } from "./ui/notice";
+import { ADDED_TEXT, DIFF_COUNTS, EMPTY_NOTE, REMOVED_TEXT } from "./ui/notes";
 
 const LINE_CAP = 2000;
 
@@ -106,7 +107,7 @@ export function DiffPanel() {
           <p class={EMPTY_NOTE}>Loading diff…</p>
         </Show>
         <Show when={panel().Error}>
-          <p class={ERROR_NOTE}>Couldn't load the diff: {panel().Error}</p>
+          <p class={ERROR_TEXT}>Couldn't load the diff: {panel().Error}</p>
         </Show>
         <Show when={panel().Text === "" || (panel().Text != null && files().length === 0)}>
           <p class={EMPTY_NOTE}>No changes.</p>

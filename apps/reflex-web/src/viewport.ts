@@ -17,6 +17,8 @@ import {
 export const SIDEBAR_SHEET_QUERY = "(max-width: 767px)";
 export const PANEL_SHEET_QUERY = "(max-width: 980px)";
 export const PHONE_QUERY = "(max-width: 639px)";
+/** A phone in landscape, which is wider than `PHONE_QUERY` but has even less height to spare. */
+export const SHORT_TOUCH_QUERY = "(pointer: coarse) and (max-height: 500px)";
 
 type IMediaList = Pick<MediaQueryList, "matches" | "addEventListener" | "removeEventListener">;
 
