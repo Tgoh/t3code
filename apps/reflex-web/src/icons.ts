@@ -59,6 +59,7 @@ export { default as Link } from "lucide-solid/icons/link";
 export { default as ListFilter } from "lucide-solid/icons/list-filter";
 export { default as ListPlus } from "lucide-solid/icons/list-plus";
 export { default as ListTodo } from "lucide-solid/icons/list-todo";
+export { default as LoaderCircle } from "lucide-solid/icons/loader-circle";
 export { default as Lock } from "lucide-solid/icons/lock";
 export { default as Mail } from "lucide-solid/icons/mail";
 export { default as MessageCircleQuestion } from "lucide-solid/icons/message-circle-question";

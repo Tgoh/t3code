@@ -12,9 +12,11 @@ import {
   splitTransferredFiles,
 } from "./attachmentIntake";
 import { ComposerCommandMenu, useComposerMenu } from "./ComposerCommandMenu";
-import { FOCUS_COMPOSER_EVENT } from "./composerFocus";
+import { FOCUS_COMPOSER_EVENT, TOGGLE_DICTATION_EVENT } from "./composerFocus";
 import { ModelPicker, PermissionsChip } from "./ComposerMenus";
 import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
+import { dictationBusy } from "./Dictation";
+import { DictationPill, DictationPreview, MicButton, useVoiceOffered } from "./DictationControls";
 import Environment from "./Environment";
 import {
   ArrowUp,
@@ -26,6 +28,7 @@ import {
   X,
 } from "./icons";
 import { arrowStep } from "./listNavigation";
+import { useNavigation } from "./navigation";
 import { useOverlays } from "./overlays";
 import { cloneSendBlock, ProjectCloneBanner, useProjectClone } from "./ProjectClone";
 import { caretOnEdge, type IPromptHistoryPosition, stepPromptHistory } from "./promptHistory";
@@ -63,6 +66,17 @@ function useFocusRequests(focus: () => void) {
   onMount(() => {
     window.addEventListener(FOCUS_COMPOSER_EVENT, focus);
     onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, focus));
+  });
+}
+
+function useDictationKeys(toggle: () => void, escape: (event: KeyboardEvent) => void) {
+  onMount(() => {
+    window.addEventListener(TOGGLE_DICTATION_EVENT, toggle);
+    window.addEventListener("keydown", escape, true);
+    onCleanup(() => {
+      window.removeEventListener(TOGGLE_DICTATION_EVENT, toggle);
+      window.removeEventListener("keydown", escape, true);
+    });
   });
 }
 
@@ -330,8 +344,15 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const phone = createMediaQuery(`${PHONE_QUERY}, ${SHORT_TOUCH_QUERY}`);
   const [focused, setFocused] = createSignal(false);
   const overlays = useOverlays();
+  const navigation = useNavigation();
+  const voiceOffered = useVoiceOffered();
+  const voice = () => environment.dictation();
+  const ownsVoice = () => voice().ThreadId === held().ThreadId && voice().Phase !== "idle";
+  const dictating = () => ownsVoice() && dictationBusy(voice().Phase);
+  const voiceElsewhere = () => !ownsVoice() && dictationBusy(voice().Phase);
   const collapsed = () =>
     !answering() &&
+    !ownsVoice() &&
     composerCollapses({
       Phone: phone(),
       Focused: focused(),
@@ -360,10 +381,41 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       return;
     }
     if (blocked() !== null) return;
+    const mode = resolveComposerDispatchMode({ running: running(), alternateModifier: alternate });
+    if (dictating()) {
+      props.onSend?.();
+      void environment.sendAfterDictation(held().ThreadId, mode);
+      return;
+    }
     if (canSend()) props.onSend?.();
-    session.send(resolveComposerDispatchMode({ running: running(), alternateModifier: alternate }));
+    session.send(mode);
     if (phone()) textarea.blur();
   };
+  // Follows useDictationShortcut in apps/web/src/speech: the shortcut finishes a recording or
+  // starts one at the caret, and Escape cancels a running one.
+  const startDictation = () => {
+    const atCaret = document.activeElement === textarea;
+    const text = held().Draft;
+    void environment.startDictation(held().ThreadId, {
+      Text: text,
+      Start: atCaret ? textarea.selectionStart : text.length,
+      End: atCaret ? textarea.selectionEnd : text.length,
+    });
+  };
+  useDictationKeys(
+    () => {
+      if (answering() || !voiceOffered()) return;
+      if (dictating()) {
+        if (voice().Phase === "recording") void environment.stopDictation();
+      } else if (!voiceElsewhere()) startDictation();
+    },
+    (event) => {
+      if (event.key !== "Escape" || !dictating() || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void environment.cancelDictation();
+    },
+  );
 
   const [cursor, setCursor] = createSignal(0);
   const trackCursor = () => setCursor(textarea.selectionStart);
@@ -586,6 +638,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           placeholder={placeholder()}
           value={text()}
           disabled={answerLocked()}
+          readOnly={dictating()}
           onInput={(event) => {
             setCursor(event.currentTarget.selectionStart);
             const question = answering();
@@ -625,11 +678,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         <Show when={held().ForkError}>
           <p class={ERROR}>Couldn't fork this response: {held().ForkError}</p>
         </Show>
+        <Show when={ownsVoice()}>
+          <DictationPreview />
+        </Show>
         <div
           class="flex min-h-8 items-center gap-1 px-2 pt-px pb-[7px] in-data-collapsed:pt-0 in-data-collapsed:[&>:not(.model-trigger)]:hidden"
           onPointerDown={keepPromptFocus}
         >
-          <Show when={!answering()}>
+          <Show when={!answering() && !(phone() && ownsVoice())}>
             <label class={`${iconButton()} overflow-hidden`} data-tip="Attach files">
               <Paperclip />
               <input
@@ -646,20 +702,36 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             </label>
           </Show>
           <span class="flex-1" />
-          <ModelPicker />
-          <Show when={!isDraft() && session.effectiveRuntimeMode() !== DEFAULT_RUNTIME_MODE}>
-            <PermissionsChip />
+          <Show when={!(phone() && ownsVoice())}>
+            <ModelPicker />
+            <Show when={!isDraft() && session.effectiveRuntimeMode() !== DEFAULT_RUNTIME_MODE}>
+              <PermissionsChip />
+            </Show>
+          </Show>
+          <Show when={!answering() && voiceOffered()}>
+            <Show
+              when={ownsVoice()}
+              fallback={
+                <MicButton
+                  shortcut={navigation.shortcut("composer.dictation")}
+                  disabled={voiceElsewhere()}
+                  onStart={startDictation}
+                />
+              }
+            >
+              <DictationPill dictation={voice()} onRetry={startDictation} />
+            </Show>
           </Show>
           <Show when={answering()}>{(question) => <AnswerActions question={question()} />}</Show>
           <Show when={props.active}>
             <StopButton stopping={stopping()} class="ml-[5px]" onStop={() => session.stopRun()} />
           </Show>
-          <Show when={!answering() && (!props.active || canSend())}>
+          <Show when={!answering() && (!props.active || canSend() || dictating())}>
             <SendButton
               running={running()}
               alternate={alternateHeld()}
               sending={sending()}
-              disabled={!canSend()}
+              disabled={!canSend() && !(dictating() && voice().Phase !== "preparing")}
               blocked={blocked()}
               class="ml-[5px]"
               onSend={send}

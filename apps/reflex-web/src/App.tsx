@@ -7,6 +7,8 @@ import { AddProjectPalette } from "./AddProject";
 import { ProjectBadge } from "./brand";
 import { CommandPalette } from "./CommandPalette";
 import { Composer, COMPOSER_LANE, FileDropSection } from "./Composer";
+import { TOGGLE_DICTATION_EVENT } from "./composerFocus";
+import { DictationIndicator } from "./DictationControls";
 import Environment from "./Environment";
 import { adjacentThread, isEditable, resolveShortcutCommand, shortcutLabel } from "./keybindings";
 import {
@@ -144,6 +146,10 @@ const EnvironmentView = Environment.provider(() => {
       case "usage.open":
         void environment.openView({ Kind: "usage" });
         return true;
+      case "composer.dictation":
+        if (document.querySelector(COMPOSER_SELECTOR) === null) return false;
+        window.dispatchEvent(new Event(TOGGLE_DICTATION_EVENT));
+        return true;
       default:
         return runPanelShortcut(command, environment.panelShortcuts(), dispatch);
     }
@@ -267,6 +273,7 @@ function EnvironmentMain() {
       <Show when={environment.state.Local.ViewportDebug}>
         <ViewportDebug />
       </Show>
+      <DictationIndicator />
     </main>
   );
 }

@@ -46,6 +46,7 @@ import { IconButton } from "./ui/IconButton";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Switch as Toggle } from "./ui/Switch";
+import { VoiceSetup } from "./VoiceSettings";
 
 const PRIVACY_POLICY_URL = "https://t3.codes/privacy-policy";
 
@@ -97,6 +98,10 @@ export function SettingsView(props: { page: string }) {
               </Match>
               <Match when={page() === "threads"}>
                 <Sections sections={SETTINGS_SECTIONS.threads} />
+              </Match>
+              <Match when={page() === "voice"}>
+                <VoiceSetup />
+                <Sections sections={SETTINGS_SECTIONS.voice} />
               </Match>
               <Match when={page() === "providers"}>
                 <ProvidersPage />

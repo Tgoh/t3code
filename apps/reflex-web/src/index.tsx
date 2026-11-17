@@ -6,6 +6,7 @@ import "@fontsource-variable/inter";
 import "./index.css";
 
 import { App } from "./App";
+import { DictationReceiver } from "./Dictation";
 import { EnvironmentReceiver } from "./Environment";
 import { openExternalLinksInSafari } from "./externalLinks";
 import {
@@ -53,6 +54,7 @@ import {
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
 import { delayImpl } from "./Infrastructure/delay";
+import { dictation, voiceStatusImpl } from "./Infrastructure/dictation";
 import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
 import {
   storeDraftFilesImpl,
@@ -147,6 +149,8 @@ runtime.registerResourceType("projectFavicons", projectFavicons);
 runtime.registerResourceType("serverKeybindings", serverKeybindings);
 runtime.registerResourceType("serverConfigStream", serverConfigStream);
 runtime.registerResourceType("terminalSession", terminalSession);
+runtime.registerResourceType("dictation", dictation);
+runtime.registerImplementation(voiceStatusImpl);
 runtime.registerImplementation(delayImpl);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);
@@ -175,6 +179,7 @@ runtime.registerReceiver(TerminalReceiver);
 runtime.registerReceiver(RewindReceiver);
 runtime.registerReceiver(GitReceiver);
 runtime.registerReceiver(PreferencesReceiver);
+runtime.registerReceiver(DictationReceiver);
 // The Environment applies the scheme once it connects; this paints the loading screen in it.
 document.documentElement.dataset.theme = resolveScheme(
   storedAppearanceMode(),

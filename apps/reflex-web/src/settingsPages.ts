@@ -14,7 +14,7 @@ export const SETTINGS_NAV = [
       { Id: "chat", Label: "Chat", Icon: "MessageSquareText", Built: true },
       { Id: "diffs", Label: "Diffs & pull requests", Icon: "FileDiff", Built: false },
       { Id: "keybindings", Label: "Keybindings", Icon: "Keyboard", Built: true },
-      { Id: "voice", Label: "Voice", Icon: "Mic", Built: false },
+      { Id: "voice", Label: "Voice", Icon: "Mic", Built: true },
       { Id: "snap-shot", Label: "SnapShots", Icon: "Camera", Built: false },
     ],
   },
@@ -539,11 +539,50 @@ const THREADS: ISettingsSection[] = [
   },
 ];
 
+// Follows the transcription rows of apps/web/src/components/settings/VoiceSettingsPanel.tsx.
+const VOICE: ISettingsSection[] = [
+  {
+    Title: "Transcription",
+    Rows: [
+      clientRow("speechStreaming", {
+        Id: "speechStreaming",
+        Title: "Streaming transcription",
+        Description:
+          "Transcribe while recording, on models that support it. Turn off to transcribe after stopping, which may help when live transcription falls behind.",
+        Control: switchControl,
+        Applied: true,
+      }),
+      clientRow("speechTranslateToEnglish", {
+        Id: "speechTranslateToEnglish",
+        Title: "Translate to English",
+        Description: "Speak any language and get English text, on models that translate.",
+        Control: switchControl,
+        Applied: true,
+      }),
+      clientRow("speechSilenceFiltering", {
+        Id: "speechSilenceFiltering",
+        Title: "Silence filtering",
+        Description: "Skip silence and background noise before transcribing.",
+        Control: switchControl,
+        Applied: true,
+      }),
+      clientRow("speechRemoveFillerWords", {
+        Id: "speechRemoveFillerWords",
+        Title: "Remove filler words",
+        Description: "Drop “um” and “uh” from transcripts.",
+        Control: switchControl,
+        Applied: true,
+      }),
+    ],
+  },
+];
+
 export const SETTINGS_SECTIONS = {
   general: GENERAL,
   appearance: APPEARANCE,
   chat: CHAT,
   threads: THREADS,
+  voice: VOICE,
 } as const satisfies Partial<Record<ISettingsPageId, ISettingsSection[]>>;
 
 export interface ISettingsSearchItem {
@@ -568,6 +607,13 @@ const OTHER_SEARCH_ITEMS: Array<Omit<ISettingsSearchItem, "Text"> & { Descriptio
   { Id: "projectArchive", Title: "Archive", Page: "projects", Description: "Archive project" },
   { Id: "removeProject", Title: "Remove project", Page: "projects", Description: "Delete" },
   { Id: "keybindings", Title: "Keybindings", Page: "keybindings", Description: "Shortcuts keys" },
+  {
+    Id: "voiceDestination",
+    Title: "Transcribe with",
+    Page: "voice",
+    Description: "Microphone dictation speech audio destination",
+  },
+  { Id: "voiceModel", Title: "Model", Page: "voice", Description: "Speech transcription download" },
   { Id: "archivedThreads", Title: "Archived threads", Page: "archived", Description: "Unarchive" },
   { Id: "version", Title: "Version", Page: "about", Description: "Current version" },
   { Id: "privacyPolicy", Title: "Privacy policy", Page: "about", Description: "Legal" },

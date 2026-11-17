@@ -157,7 +157,7 @@ describe("settings rows", () => {
 
   it("fall back to General for pages this client hasn't built", () => {
     expect(builtSettingsPage("providers")).toBe("providers");
-    expect(builtSettingsPage("voice")).toBe("general");
+    expect(builtSettingsPage("snap-shot")).toBe("general");
     expect(builtSettingsPage("nonsense")).toBe("general");
     expect(builtSettingsPage(null)).toBe("general");
   });

@@ -93,6 +93,16 @@ import {
   updateServerSettings,
   writeSetting,
 } from "./Settings";
+import {
+  cancelDictation,
+  dictation,
+  dropDictation,
+  openDictation,
+  sendAfterDictation,
+  setVoiceDestination,
+  startDictation,
+  stopDictation,
+} from "./Dictation";
 import { errorText } from "./errorText";
 import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
@@ -192,6 +202,7 @@ export function* init(draft: IEnvironment): IActionGenerator {
     Type: "serverConfigStream",
     EnvironmentId: draft.EnvironmentId,
   });
+  yield* openDictation(draft);
   yield* start(loadProviders, draft);
   const selected = yield* addressThread();
   if (selected !== null) yield* selectThread(draft, selected);
@@ -324,6 +335,7 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
 function* forgetSession(draft: IEnvironment, threadId: string): IActionGenerator {
   yield* storeDraftEffect({ ThreadId: threadId, Draft: null });
   yield* storeDraftFilesEffect({ ThreadId: threadId, Files: [] });
+  yield* dropDictation(draft, threadId);
   delete draft.Local.ThreadSessions[threadId];
   yield* rememberTerminalEffect({ ThreadId: threadId, Launch: null });
   if (draft.Local.SelectedThreadId === threadId) {
@@ -652,8 +664,14 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     toggleViewportDebug,
     showMoreSettled,
     setAppearanceMode,
+    startDictation,
+    stopDictation,
+    cancelDictation,
+    sendAfterDictation,
+    setVoiceDestination,
   },
   {
+    dictation,
     sidebarLayout,
     colorScheme,
     selectedOpenThread,

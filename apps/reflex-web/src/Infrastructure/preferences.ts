@@ -15,7 +15,11 @@ export interface IPreferences {
   SidebarCollapsed: boolean;
   AppearanceMode: IAppearanceMode;
   Usage: { Metric: string; Days: number };
+  /** Where dictated audio goes: this client's server, nowhere, or not yet chosen. */
+  VoiceDestination: IVoiceDestination;
 }
+
+export type IVoiceDestination = "server" | "off" | null;
 
 interface IStoredPreferencesEffect extends IEffect {
   Type: "storedPreferences";
@@ -62,6 +66,7 @@ const KEYS = {
   HiddenProjects: "reflex-web:hidden-projects",
   ProjectScope: "reflex-web:project-scope",
   SidebarCollapsed: "reflex-web:sidebar-collapsed",
+  VoiceDestination: "reflex-web:voice-destination",
 } as const;
 
 function readJson(key: string): unknown {
@@ -93,6 +98,9 @@ export function storedAppearanceMode(): IAppearanceMode {
   }
 }
 
+const voiceDestination = (held: unknown): IVoiceDestination =>
+  held === "server" || held === "off" ? held : null;
+
 export function readPreferences(): IPreferences {
   const sort = readJson(KEYS.ProjectSort);
   const usage = readJson(USAGE_KEY) as { metric?: unknown; windowDays?: unknown } | undefined;
@@ -109,6 +117,7 @@ export function readPreferences(): IPreferences {
       Metric: typeof usage?.metric === "string" ? usage.metric : "limits",
       Days: typeof usage?.windowDays === "number" ? usage.windowDays : 30,
     },
+    VoiceDestination: voiceDestination(readJson(KEYS.VoiceDestination)),
   };
 }
 

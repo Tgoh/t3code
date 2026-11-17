@@ -23,6 +23,7 @@ describe("this device's preferences", () => {
       "reflex-web:sidebar-collapsed": "true",
       "t3code:theme-appearance-mode": "dark",
       "t3code:usage-page-preferences:v1": '{"metric":"cost","windowDays":7}',
+      "reflex-web:voice-destination": '"server"',
     });
     expect(readPreferences()).toEqual({
       GroupByProject: false,
@@ -34,6 +35,7 @@ describe("this device's preferences", () => {
       SidebarCollapsed: true,
       AppearanceMode: "dark",
       Usage: { Metric: "cost", Days: 7 },
+      VoiceDestination: "server",
     });
     vi.unstubAllGlobals();
   });
@@ -54,6 +56,7 @@ describe("this device's preferences", () => {
       SidebarCollapsed: false,
       AppearanceMode: "system",
       Usage: { Metric: "limits", Days: 30 },
+      VoiceDestination: null,
     });
     vi.unstubAllGlobals();
   });

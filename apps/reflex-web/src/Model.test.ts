@@ -1,5 +1,9 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
-import type { KeybindingCommand, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import {
+  DEFAULT_CLIENT_SETTINGS,
+  type KeybindingCommand,
+  type OrchestrationV2ThreadProjection,
+} from "@t3tools/contracts";
 import { createEffect, createMemo, createRoot } from "solid-js";
 import {
   createTestRuntime,
@@ -30,6 +34,17 @@ import {
   threadCommand,
   toggleModelFavorite,
 } from "./Environment";
+import {
+  cancelDictation,
+  dictation,
+  DictationReceiver,
+  type IDictation,
+  MISSING_MODEL,
+  sendAfterDictation,
+  setVoiceDestination,
+  STALE_DRAFT,
+  startDictation,
+} from "./Dictation";
 import { continueDefaultBranch, pull, runGitAction } from "./GitWork";
 import { loadEarlier } from "./HistoryWindow";
 import {
@@ -192,6 +207,7 @@ const storedPreferences: IPreferences = {
   SidebarCollapsed: false,
   AppearanceMode: "system",
   Usage: { Metric: "limits", Days: 30 },
+  VoiceDestination: "server",
 };
 
 interface IStoredDrafts {
@@ -309,6 +325,7 @@ async function connect(
   runtime.registerReceiver(TerminalReceiver);
   runtime.registerReceiver(RewindReceiver);
   runtime.registerReceiver(PreferencesReceiver);
+  runtime.registerReceiver(DictationReceiver);
   await runtime.dispatch(load, "Root");
   await settled();
   const environment = () => runtime.state.Environments[0] as IEnvironment;
@@ -3487,7 +3504,10 @@ describe("settings and usage", () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
     await server.sendConfig(fake.snapshot());
-    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "voice" });
+    await server.runtime.dispatch(openView, server.envId(), {
+      Kind: "settings",
+      Page: "snap-shot",
+    });
     await settled();
     expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "general" });
     expect(server.address.view).toEqual({ Kind: "settings", Page: "general" });
@@ -3933,5 +3953,211 @@ describe("rewinding and forking", () => {
     });
     expect(server.session().MergeError).toBeUndefined();
     expect(server.environment().Local.SelectedThreadId).toBe("parent-1");
+  });
+});
+
+describe("dictation", () => {
+  const READY = {
+    supported: true,
+    state: "ready",
+    modelId: "parakeet",
+    model: "Parakeet",
+    size: 1,
+    supportsStreaming: false,
+    supportsTranslation: false,
+    acceleration: "auto",
+    benchmarkTier: "cpu",
+    modelUnloadTimeout: "never",
+    gpuDevices: [],
+  };
+  const EMPTY = { Text: "", Start: 0, End: 0 };
+
+  async function dictating(
+    status: object = READY,
+    commands: Record<string, (effect: never) => unknown> = {},
+    preferences: IPreferences = storedPreferences,
+  ) {
+    const calls: { Method: string; Args: unknown[] }[] = [];
+    const record =
+      (method: string) =>
+      (_ctx: unknown, ...args: unknown[]) =>
+        void calls.push({ Method: method, Args: args });
+    const server = await connect(
+      undefined,
+      null,
+      {
+        voiceStatus: () => status,
+        storedClientSettings: () => copy(DEFAULT_CLIENT_SETTINGS),
+        ...commands,
+      },
+      undefined,
+      {
+        methods: {
+          "Voice/Dictation": {
+            start: record("start"),
+            stop: record("stop"),
+            cancel: record("cancel"),
+          },
+        },
+      },
+      preferences,
+    );
+    await server.open();
+    const state = () =>
+      server.runtime.processSelector(dictation, () => server.environment()) as IDictation;
+    const deliver = (message: object) =>
+      server.runtime.dispatch(
+        DictationReceiver.handle,
+        server.envId(),
+        { Type: "Voice/Dictation", ...message } as never,
+        { publisher: { Id: server.envId() } },
+      );
+    const phase = (Phase: string, Error: string | null = null) =>
+      deliver({ Kind: "state", ThreadId: THREAD_ID, Phase, Error, ErrorAction: null });
+    const methods = () => calls.map((call) => call.Method);
+    return { server, calls, methods, state, deliver, phase };
+  }
+
+  it("reads the destination's status, then records the draft with the device's options", async () => {
+    const { server, calls, state, phase } = await dictating();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "Fix the");
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, {
+      Text: "Fix the",
+      Start: 7,
+      End: 7,
+    });
+    expect(calls).toEqual([
+      {
+        Method: "start",
+        Args: [
+          {
+            ThreadId: THREAD_ID,
+            Draft: { Text: "Fix the", Start: 7, End: 7 },
+            Options: expect.objectContaining({ speechLanguage: "auto" }),
+            Streaming: true,
+          },
+        ],
+      },
+    ]);
+    expect(state()).toMatchObject({ ThreadId: THREAD_ID, Phase: "preparing" });
+    server.device.Now = 5_000;
+    await phase("recording");
+    expect(state()).toMatchObject({ Phase: "recording", StartedAt: 5_000 });
+    await phase("transcribing");
+    expect(state().StartedAt).toBeNull();
+  });
+
+  it("a missing model points to Voice settings instead of recording", async () => {
+    const { server, methods, state } = await dictating({ ...READY, state: "missing-model" });
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    expect(methods()).toEqual([]);
+    expect(state()).toMatchObject({
+      Phase: "error",
+      Error: MISSING_MODEL,
+      ErrorAction: "settings",
+    });
+  });
+
+  it("an unchosen destination opens Voice settings, and turning voice off cancels", async () => {
+    const { server, methods, state, phase } = await dictating(
+      READY,
+      {},
+      {
+        ...storedPreferences,
+        VoiceDestination: null,
+      },
+    );
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "voice" });
+    expect(methods()).toEqual([]);
+
+    await server.runtime.dispatch(setVoiceDestination, server.envId(), "server");
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    await phase("recording");
+    await server.runtime.dispatch(setVoiceDestination, server.envId(), "off");
+    expect(methods()).toEqual(["start", "cancel"]);
+    expect(state().Phase).toBe("idle");
+    expect(server.device.Preferences.VoiceDestination).toBe("off");
+  });
+
+  it("keeps recording into its own thread while another is selected", async () => {
+    const { server, methods, state, deliver, phase } = await dictating();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "Fix the");
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, {
+      Text: "Fix the",
+      Start: 7,
+      End: 7,
+    });
+    await phase("recording");
+    await server.runtime.dispatch(selectThread, server.envId(), "thread-2");
+    await server.runtime.dispatch(setDraft, server.sessionId("thread-2"), "elsewhere");
+    await server.runtime.dispatch(startDictation, server.envId(), "thread-2", {
+      Text: "elsewhere",
+      Start: 9,
+      End: 9,
+    });
+    expect(methods()).toEqual(["start"]);
+    expect(state()).toMatchObject({ ThreadId: THREAD_ID, Phase: "recording" });
+
+    await deliver({ Kind: "commit", ThreadId: THREAD_ID, Before: "Fix the", Text: "Fix the bug" });
+    await phase("idle");
+    await settled();
+    expect(server.session().Draft).toBe("Fix the bug");
+    expect(server.stored.Drafts.get(THREAD_ID)).toMatchObject({ Text: "Fix the bug" });
+    expect(server.session("thread-2").Draft).toBe("elsewhere");
+    expect(state()).toMatchObject({ ThreadId: null, Phase: "idle" });
+  });
+
+  it("refuses a transcript whose draft changed, and keeps saying so", async () => {
+    const { server, state, deliver, phase } = await dictating();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "edited");
+    await deliver({ Kind: "commit", ThreadId: THREAD_ID, Before: "", Text: "hello" });
+    await phase("idle");
+    expect(server.session().Draft).toBe("edited");
+    expect(state()).toMatchObject({ Phase: "error", Error: STALE_DRAFT, ErrorAction: "retry" });
+  });
+
+  it("a send while recording stops it and sends once the transcript is in", async () => {
+    const sent: IStartTurn[] = [];
+    const { server, methods, deliver, phase } = await dictating(READY, {
+      startTurn: (effect: IStartTurn) => void sent.push(effect),
+    });
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    await phase("recording");
+    await server.runtime.dispatch(sendAfterDictation, server.envId(), THREAD_ID, "auto");
+    expect(methods()).toEqual(["start", "stop"]);
+    expect(sent).toEqual([]);
+    await phase("transcribing");
+    await deliver({ Kind: "commit", ThreadId: THREAD_ID, Before: "", Text: "ship it" });
+    await phase("idle");
+    await settled();
+    expect(sent.map((turn) => turn.Text)).toEqual(["ship it"]);
+    expect(server.session().Draft).toBe("");
+  });
+
+  it("a failed transcript forgets the queued send, and cancel ends a recording", async () => {
+    const sent: IStartTurn[] = [];
+    const { server, methods, state, phase } = await dictating(READY, {
+      startTurn: (effect: IStartTurn) => void sent.push(effect),
+    });
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    await phase("recording");
+    await server.runtime.dispatch(sendAfterDictation, server.envId(), THREAD_ID, "auto");
+    await phase("error", "No speech was detected.");
+    expect(state()).toMatchObject({ Phase: "error", SubmitMode: null });
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    await phase("recording");
+    await server.runtime.dispatch(cancelDictation, server.envId());
+    expect(state().Phase).toBe("idle");
+    expect(methods()).toEqual(["start", "stop", "start", "cancel"]);
+    expect(sent).toEqual([]);
+  });
+
+  it("deleting the recording's thread cancels it", async () => {
+    const { server, methods, phase } = await dictating(READY, { threadCommand: () => undefined });
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    await phase("recording");
+    await server.runtime.dispatch(threadCommand, server.envId(), THREAD_ID, { Kind: "delete" });
+    expect(methods()).toEqual(["start", "cancel"]);
   });
 });
