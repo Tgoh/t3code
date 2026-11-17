@@ -791,7 +791,7 @@ function OptionMenuRow(props: { descriptor: ISelectDescriptor; traits: ITraits }
           <span class={SMALL_MUTED}>{props.descriptor.label}</span>
           <span>{current()}</span>
         </span>
-        <ChevronRight class={open() ? "rotate-90" : undefined} />
+        <ChevronRight class={open() ? "rotate-90" : ""} />
       </button>
       <Show when={open()}>
         <div role="radiogroup" aria-label={props.descriptor.label} class={`${STACK} pl-2`}>

@@ -104,7 +104,7 @@ function Body(props: {
   id: string;
   text: string;
   format: "markdown" | "text" | "code";
-  pre?: string;
+  pre?: string | undefined;
 }) {
   return (
     <Show

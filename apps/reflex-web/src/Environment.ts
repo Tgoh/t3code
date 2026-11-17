@@ -93,6 +93,7 @@ import {
   writeSetting,
 } from "./Settings";
 import { errorText } from "./errorText";
+import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
 import {
   detachTerminal,
@@ -461,10 +462,7 @@ export function* addFolder(
     project === undefined || created
       ? null
       : getLatestThreadForProject(
-          Object.values(draft.Replica.Shell.Threads).map((thread) => ({
-            ...thread,
-            archivedAt: thread.archivedAt ?? null,
-          })),
+          Object.values(draft.Replica.Shell.Threads).map(toSortableThread),
           project.id,
           "updated_at",
         );
