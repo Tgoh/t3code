@@ -16,7 +16,6 @@ import { Dynamic } from "solid-js/web";
 import { useComponentState } from "treflex-solid";
 
 import { ProjectBadge } from "./brand";
-import { colorScheme } from "./colorScheme";
 import {
   cachedHighlight,
   fenceOf,
@@ -24,7 +23,6 @@ import {
   type IFence,
   isPlainLanguage,
   isSettled,
-  type Scheme,
 } from "./codeHighlight";
 import { ensureFileIconSprite, fileIconFor, hasSpecificIcon, languageFileName } from "./fileIcons";
 import {
@@ -598,8 +596,6 @@ function TableToken(props: ITokenProps) {
   );
 }
 
-const scheme = (): Scheme => colorScheme();
-
 // A message's blocks remount as its turn settles and as the timeline windows, so each block's
 // wrap choice is held here by message and position rather than in the block.
 const wrapChoices = new Map<string, boolean>();
@@ -639,6 +635,7 @@ function CodeTitle(props: { fence: IFence }) {
 // Follows MarkdownCodeBlock and SuspenseShikiCodeBlock in
 // apps/web/src/components/chat/MarkdownCodeBlock.tsx, highlighting only settled blocks.
 function CodeToken(props: ITokenProps) {
+  const environment = Environment.use();
   const code = () => of<Tokens.Code>(props);
   const fence = createMemo(() => fenceOf(code().lang), undefined, {
     equals: (a, b) => a.Language === b.Language && a.Title === b.Title,
@@ -654,7 +651,7 @@ function CodeToken(props: ITokenProps) {
   const wanted = createMemo(
     () =>
       isSettled(code()) && !isPlainLanguage(fence().Language)
-        ? { Text: code().text, Language: fence().Language, Scheme: scheme() }
+        ? { Text: code().text, Language: fence().Language, Scheme: environment.colorScheme() }
         : null,
     undefined,
     {

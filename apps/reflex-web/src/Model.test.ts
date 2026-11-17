@@ -61,6 +61,20 @@ import type {
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
+import type { IPreferences } from "./Infrastructure/preferences";
+import {
+  colorScheme,
+  PreferencesReceiver,
+  setAppearanceMode,
+  setPreferences,
+  setProjectHidden,
+  sidebarLayout,
+  toggleFolder,
+  toggleProjectScope,
+  toggleShelf,
+} from "./Preferences";
+import type { IAppearanceMode, IColorScheme } from "./colorScheme";
+import { type IShelves, layoutSidebar } from "./sidebarLayout";
 import {
   diffTurnOf,
   fileChangeCounts,
@@ -143,6 +157,18 @@ import { reconcile } from "./rows";
 
 const ENV = "env-1";
 
+const storedPreferences: IPreferences = {
+  GroupByProject: true,
+  ClosedFolders: [],
+  ProjectSort: "manual",
+  ProjectOrder: [],
+  HiddenProjects: [],
+  ProjectScope: [],
+  SidebarCollapsed: false,
+  AppearanceMode: "system",
+  Usage: { Metric: "limits", Days: 30 },
+};
+
 interface IStoredDrafts {
   Drafts: Map<string, IStoredDraft>;
   Files: Map<string, IStoredAttachment[]>;
@@ -154,6 +180,7 @@ async function connect(
   commands: Record<string, (effect: never) => unknown> = {},
   stored: IStoredDrafts = { Drafts: new Map(), Files: new Map() },
   resources?: ITestRuntimeOptions["resources"],
+  preferences: IPreferences = storedPreferences,
 ) {
   const address: { thread: string | null; view: IAddressView | null } = {
     thread: initialAddress,
@@ -161,6 +188,13 @@ async function connect(
   };
   const terminals = new Map<string, ITerminalLaunch>();
   const models: IRememberedModels = { Last: null, OptionsByModel: {} };
+  const device = {
+    Preferences: preferences,
+    Editor: null as string | null,
+    Now: 0,
+    Applied: [] as IColorScheme[],
+    Schemes: [] as IColorScheme[],
+  };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
     getDefaultRoot("Root"),
@@ -207,19 +241,43 @@ async function connect(
         if (effect.Files.length === 0) stored.Files.delete(effect.ThreadId);
         else stored.Files.set(effect.ThreadId, effect.Files);
       },
+      storedPreferences: () => copy(device.Preferences),
+      storePreferences: (effect: { Patch: Partial<IPreferences> }) => {
+        device.Preferences = { ...device.Preferences, ...copy(effect.Patch) };
+      },
+      storedEditor: () => device.Editor,
+      storeEditor: (effect: { Editor: string }) => {
+        device.Editor = effect.Editor;
+      },
+      clockNow: () => device.Now,
       rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
       rememberTerminal: (effect: { ThreadId: string; Launch: ITerminalLaunch | null }) => {
         if (effect.Launch === null) terminals.delete(effect.ThreadId);
         else terminals.set(effect.ThreadId, effect.Launch);
       },
     },
-    { onError: (error) => console.error("action failed:", error), resources },
+    {
+      onError: (error) => console.error("action failed:", error),
+      resources: {
+        ...resources,
+        methods: {
+          "Terminal/Session": {
+            setScheme: (_ctx: unknown, scheme: IColorScheme) => void device.Schemes.push(scheme),
+          },
+          "Device/Appearance": {
+            apply: (_ctx: unknown, scheme: IColorScheme) => void device.Applied.push(scheme),
+          },
+          ...resources?.methods,
+        },
+      },
+    },
   );
   runtime.registerReceiver(RootReceiver);
   runtime.registerReceiver(EnvironmentReceiver);
   runtime.registerReceiver(ShellReceiver);
   runtime.registerReceiver(ThreadReceiver);
   runtime.registerReceiver(TerminalReceiver);
+  runtime.registerReceiver(PreferencesReceiver);
   await runtime.dispatch(load, "Root");
   await settled();
   const environment = () => runtime.state.Environments[0] as IEnvironment;
@@ -237,6 +295,7 @@ async function connect(
     address,
     terminals,
     models,
+    device,
     stored,
     environment,
     session,
@@ -1408,6 +1467,185 @@ describe("the sidebar", () => {
     ]);
     expect(ids(sections("settled").Settled)).toEqual(["settled"]);
     expect(unhiddenThreads(threads as never, new Set(), null)).toBe(threads);
+  });
+
+  it("lists threads in the sidebar's order, from this device's choices", () => {
+    const at = "2026-01-01T00:00:00.000Z";
+    const later = "2099-01-01T00:00:00.000Z";
+    const project = (id: string, title: string) => ({ id, title, workspaceRoot: `/${id}` });
+    const projects = {
+      a: project("a", "Alpha"),
+      b: project("b", "Beta"),
+      h: project("h", "Hidden"),
+    };
+    const threads = [
+      row("pin", "a", at, { pinnedAt: at }),
+      row("a1", "a", at, { createdAt: at }),
+      row("main", "a", at, { title: "Main", createdAt: at }),
+      row("b1", "b", at, { createdAt: "2026-01-03T00:00:00.000Z" }),
+      row("h1", "h", at),
+      row("nap", "b", at, { snoozedUntil: later, snoozedAt: at }),
+      row("done", "a", at, { settledOverride: "settled", settledAt: at }),
+    ];
+    const layout = (
+      preferences: Partial<IPreferences> = {},
+      selectedId: string | null = null,
+      shelves: Partial<IShelves> = {},
+    ) =>
+      layoutSidebar({
+        Threads: threads as never,
+        Projects: projects as never,
+        SelectedId: selectedId,
+        Now: Date.parse(at),
+        Subagents: {},
+        Preferences: { ...storedPreferences, HiddenProjects: ["h"], ...preferences },
+        Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: 25, ...shelves },
+      });
+    const order = (...args: Parameters<typeof layout>) => layout(...args).Order;
+
+    expect(order()).toEqual(["pin", "main", "a1", "b1"]);
+    expect(layout().Folders.map((folder) => folder.ProjectId)).toEqual(["a", "b"]);
+    expect(order({ GroupByProject: false })).toEqual(["pin", "a1", "main", "b1"]);
+    expect(layout({ GroupByProject: false }).Folders).toEqual([]);
+    expect(order({ ProjectOrder: ["b", "a"] })).toEqual(["pin", "b1", "main", "a1"]);
+    expect(order({ ProjectSort: "created_at" })).toEqual(["pin", "b1", "main", "a1"]);
+    expect(order({ ClosedFolders: ["a"] })).toEqual(["pin", "b1"]);
+    expect(order({ ClosedFolders: ["a"] }, "a1")).toEqual(["pin", "a1", "b1"]);
+    expect(order({}, "h1")).toEqual(["pin", "main", "a1", "b1", "h1"]);
+    expect(order({ HiddenProjects: [] })).toEqual(["pin", "main", "a1", "b1", "h1"]);
+
+    expect(order({ ProjectScope: ["b"] })).toEqual(["b1"]);
+    expect(layout({ ProjectScope: ["b"] }).Visible.map((thread) => thread.id)).toEqual([
+      "b1",
+      "nap",
+    ]);
+    expect(layout({ ProjectScope: ["h"] }).Scope).toEqual([]);
+    expect(order({ ProjectScope: ["h"] })).toEqual(order());
+
+    expect(order({}, null, { SnoozedOpen: true })).toEqual(["pin", "main", "a1", "b1", "nap"]);
+    expect(order({}, "nap")).toEqual(["pin", "main", "a1", "b1", "nap"]);
+    expect(order({}, null, { SettledOpen: true })).toEqual(["pin", "main", "a1", "b1", "done"]);
+    expect(order({}, null, { SettledOpen: true, SettledShown: 0 })).toEqual(order());
+  });
+
+  it("keeps this device's choices, restores them in a fresh client, and wakes snoozed rows on the clock", async () => {
+    const first = await connect();
+    const read = () => first.runtime.processSelector(sidebarLayout, first.environment);
+    await first.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [
+          { id: "p-1", title: "One", workspaceRoot: "/1" },
+          { id: "p-2", title: "Two", workspaceRoot: "/2" },
+        ],
+        threads: [
+          row("t-1", "p-1", "2026-01-01T00:00:00.000Z"),
+          row("t-2", "p-2", "2026-01-01T00:00:00.000Z"),
+          row("nap", "p-2", "2026-01-01T00:00:00.000Z", {
+            snoozedUntil: "1970-01-01T00:01:00.000Z",
+            snoozedAt: "1970-01-01T00:00:00.000Z",
+          }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    expect(read().Order).toEqual(["t-1", "t-2"]);
+
+    const envId = first.envId();
+    await first.runtime.dispatch(setProjectHidden, envId, "p-1", true);
+    await first.runtime.dispatch(toggleFolder, envId, "p-2");
+    await first.runtime.dispatch(toggleProjectScope, envId, "p-2");
+    await first.runtime.dispatch(setPreferences, envId, { ProjectSort: "created_at" });
+    await first.runtime.dispatch(setPreferences, envId, { ProjectOrder: ["p-2", "p-1"] });
+    await first.runtime.dispatch(setPreferences, envId, { SidebarCollapsed: true });
+    await first.runtime.dispatch(setAppearanceMode, envId, "dark");
+    const chosen: IPreferences = {
+      ...storedPreferences,
+      HiddenProjects: ["p-1"],
+      ClosedFolders: ["p-2"],
+      ProjectScope: ["p-2"],
+      ProjectSort: "created_at",
+      ProjectOrder: ["p-2", "p-1"],
+      SidebarCollapsed: true,
+      AppearanceMode: "dark",
+    };
+    expect(first.device.Preferences).toEqual(chosen);
+    expect(first.environment().Local.Preferences).toEqual(chosen);
+    expect(read().Order).toEqual([]);
+    await first.runtime.dispatch(toggleFolder, envId, "p-2");
+    expect(read().Order).toEqual(["t-2"]);
+    await first.runtime.dispatch(toggleProjectScope, envId, null);
+    await first.runtime.dispatch(setProjectHidden, envId, "p-1", false);
+    expect(read().Order).toEqual(["t-1", "t-2"]);
+    await first.runtime.dispatch(setPreferences, envId, { ProjectSort: "manual" });
+    expect(read().Order).toEqual(["t-2", "t-1"]);
+
+    first.device.Now = 120_000;
+    await first.runtime.dispatch(toggleShelf, envId, "Snoozed");
+    expect(read().Order).toEqual(["t-2", "t-1", "nap"]);
+    expect(read().Sections.Snoozed.map((thread) => thread.id)).toEqual(["nap"]);
+    await first.runtime.dispatch(
+      PreferencesReceiver.handle,
+      envId,
+      { Type: "Environment/Clock" },
+      { publisher: { Id: envId } },
+    );
+    expect(read().Sections.Snoozed).toEqual([]);
+    expect(read().Order).toEqual(["nap", "t-2", "t-1"]);
+    expect(first.runtime.timers(envId)).toMatchObject([
+      { Key: "Environment/Clock", IntervalMs: 60_000 },
+    ]);
+
+    const second = await connect(undefined, null, {}, undefined, undefined, chosen);
+    expect(second.environment().Local.Preferences).toEqual(chosen);
+    expect(second.environment().Local.Shelves.SnoozedOpen).toBe(false);
+  });
+
+  it("applies the color scheme from the mode and the system, and passes it to an open terminal", async () => {
+    const server = await connect();
+    const appearance = (SystemDark: boolean, Mode: IAppearanceMode | null = null) =>
+      server.runtime.dispatch(
+        PreferencesReceiver.handle,
+        server.envId(),
+        { Type: "Device/Appearance", SystemDark, Mode },
+        { publisher: { Id: server.envId() } },
+      );
+    const scheme = () => server.runtime.processSelector(colorScheme, server.environment);
+    await appearance(true);
+    await settled();
+    expect(scheme()).toBe("dark");
+    expect(server.device.Applied).toEqual(["dark"]);
+
+    await server.runtime.dispatch(setAppearanceMode, server.envId(), "light");
+    expect(scheme()).toBe("light");
+    expect(server.device.Preferences.AppearanceMode).toBe("light");
+
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "p-1", title: "One", workspaceRoot: "/1" }],
+        threads: [],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const projection = emptyProjection();
+    await server.sendThread(
+      snapshotOf({ ...projection, thread: { ...projection.thread, projectId: "p-1" } } as never, 1),
+    );
+    await server.runtime.dispatch(openTerminal, server.sessionId());
+    expect(server.device.Schemes).toEqual(["light"]);
+
+    // Another tab set the mode, so it's applied without being stored again.
+    server.device.Preferences = { ...server.device.Preferences, AppearanceMode: "system" };
+    await appearance(true, "dark");
+    await settled();
+    expect(server.environment().Local.Preferences.AppearanceMode).toBe("dark");
+    expect(server.device.Preferences.AppearanceMode).toBe("system");
+    expect(server.device.Applied.at(-1)).toBe("dark");
+    expect(server.device.Schemes).toEqual(["light", "dark"]);
   });
 
   it("derives a row's status and how long it has been working", () => {

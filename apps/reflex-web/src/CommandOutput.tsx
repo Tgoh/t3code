@@ -7,15 +7,13 @@ import { type IActionGenerator, type IEntity, openResource } from "treflex";
 import { useComponentState, useResource } from "treflex-solid";
 import { createEffect, createMemo, createSignal, Index, onMount, Show } from "solid-js";
 
-import { colorScheme } from "./colorScheme";
+import Environment from "./Environment";
 
 declare module "treflex" {
   interface IResourceRegistry {
     "Command/Output": { Type: "commandOutput" };
   }
 }
-
-const palette = () => TERMINAL_PALETTES[colorScheme()];
 
 const cssOf = (style: TerminalSpanStyle) => ({
   color: style.color,
@@ -42,10 +40,13 @@ function* openOutput(
 
 // The component entity's removal closes the subscription.
 export function CommandOutput(props: { environmentId: string; threadId: string; itemId: string }) {
+  const environment = Environment.use();
   const local = useComponentState(() => ({}));
   const output = useResource(local.state, "Command/Output");
   onMount(() => local.dispatch(openOutput, props.environmentId, props.threadId, props.itemId));
-  const spans = createMemo(() => terminalOutputSpans(output.value()?.Text ?? "", palette()));
+  const spans = createMemo(() =>
+    terminalOutputSpans(output.value()?.Text ?? "", TERMINAL_PALETTES[environment.colorScheme()]),
+  );
   const [scroller, setScroller] = createSignal<HTMLPreElement>();
   const [following, setFollowing] = createSignal(true);
   createEffect(() => {

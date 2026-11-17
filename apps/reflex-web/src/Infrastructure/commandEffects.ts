@@ -298,9 +298,11 @@ interface IOpenInEditorEffect extends IEffect {
   // An absolute path, with a `:line:column` suffix when it names a position.
   Path: string;
   ProjectRoot: string | null;
+  Stored: string | null;
 }
 
-export const openInEditorEffect = defineEffect<IOpenInEditorEffect, void>("openInEditor");
+/** Answers the editor it opened. */
+export const openInEditorEffect = defineEffect<IOpenInEditorEffect, string>("openInEditor");
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 

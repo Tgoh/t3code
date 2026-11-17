@@ -10,9 +10,6 @@ export interface INavigation {
   shortcut: (command: KeybindingCommand) => string | null;
   palette: Accessor<IPaletteView | null>;
   setPalette: (view: IPaletteView | null) => void;
-  /** Threads in the order the sidebar lists them, for next and previous. */
-  threadOrder: Accessor<readonly string[]>;
-  setThreadOrder: (order: Accessor<readonly string[]>) => void;
   /** Selects a thread and, outside the sheet layout, puts the caret in its composer. */
   goToThread: (threadId: string) => void;
   focusComposer: () => void;
@@ -24,8 +21,6 @@ export const NavigationContext = createContext<INavigation>({
   shortcut: () => null,
   palette: () => null,
   setPalette: () => {},
-  threadOrder: () => [],
-  setThreadOrder: () => {},
   goToThread: () => {},
   focusComposer: () => {},
   focusSearch: () => {},

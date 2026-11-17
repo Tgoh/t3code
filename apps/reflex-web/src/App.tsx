@@ -1,16 +1,7 @@
 import type { KeybindingCommand } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { useResource } from "treflex-solid";
-import {
-  type Accessor,
-  createSignal,
-  For,
-  Match,
-  onCleanup,
-  onMount,
-  Show,
-  Switch,
-} from "solid-js";
+import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 
 import { AddProjectPalette } from "./AddProject";
 import { ProjectBadge } from "./brand";
@@ -33,7 +24,6 @@ import {
 } from "./navigation";
 import Root from "./Root";
 import { SettingsView } from "./SettingsView";
-import { readStored, writeStored } from "./storage";
 import { Sidebar, SidebarToggle } from "./Sidebar";
 import ThreadSession from "./ThreadSession";
 import { ThreadView } from "./ThreadView";
@@ -76,7 +66,6 @@ const NewThreadView = ThreadSession.provider(() => {
   );
 });
 
-const SIDEBAR_COLLAPSED_KEY = "reflex-web:sidebar-collapsed";
 const nextFrame = (run: () => void) => requestAnimationFrame(() => requestAnimationFrame(run));
 
 const EnvironmentView = Environment.provider(() => {
@@ -85,15 +74,14 @@ const EnvironmentView = Environment.provider(() => {
     createMediaQuery(SIDEBAR_SHEET_QUERY),
     () => environment.state.Local.SelectedThreadId,
     {
-      initial: readStored<unknown>(SIDEBAR_COLLAPSED_KEY, false) === true,
-      onChange: (collapsed) => writeStored(SIDEBAR_COLLAPSED_KEY, collapsed),
+      initial: environment.state.Local.Preferences.SidebarCollapsed,
+      onChange: (collapsed) => void environment.setPreferences({ SidebarCollapsed: collapsed }),
     },
   );
   const keybindingsResource = useResource(environment.state, "Server/Keybindings");
   const keybindings = () => keybindingsResource.value() ?? DEFAULT_RESOLVED_KEYBINDINGS;
   const platform = navigator.platform;
   const [palette, setPalette] = createSignal<IPaletteView | null>(null);
-  const [threadOrder, setThreadOrder] = createSignal<Accessor<readonly string[]>>(() => []);
   // The on-screen keyboard would cover a phone's thread, so the sheet layout leaves focus alone.
   const focusComposer = () => {
     if (sidebar.sheet()) return;
@@ -138,7 +126,7 @@ const EnvironmentView = Environment.provider(() => {
       case "thread.previous":
       case "thread.next": {
         const target = adjacentThread(
-          threadOrder()(),
+          environment.sidebarLayout().Order,
           environment.state.Local.SelectedThreadId,
           command === "thread.next" ? "next" : "previous",
         );
@@ -197,8 +185,6 @@ const EnvironmentView = Environment.provider(() => {
     shortcut: (command) => shortcutLabel(keybindings(), command, platform),
     palette,
     setPalette,
-    threadOrder: () => threadOrder()(),
-    setThreadOrder: (order) => setThreadOrder(() => order),
     goToThread,
     focusComposer,
     focusSearch,

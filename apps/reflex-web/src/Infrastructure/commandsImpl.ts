@@ -386,32 +386,21 @@ export const openInFileManagerImpl = implementation(openInFileManagerEffect, asy
   );
 });
 
-export const LAST_EDITOR_KEY = "t3code:last-editor";
-
-// Follows resolveAndPersistPreferredEditor in apps/web/src/editorPreferences.ts.
-export function preferredEditor(available: ReadonlyArray<EditorId>): EditorId | null {
-  let stored: string | null = null;
-  try {
-    stored = JSON.parse(localStorage.getItem(LAST_EDITOR_KEY) ?? "null") as string | null;
-  } catch {
-    stored = null;
-  }
-  const held = available.find((editor) => editor === stored);
-  if (held !== undefined) return held;
-  const editor = EDITORS.find((candidate) => available.includes(candidate.id))?.id ?? null;
-  if (editor !== null) {
-    try {
-      localStorage.setItem(LAST_EDITOR_KEY, JSON.stringify(editor));
-    } catch {
-      // Without storage the first available editor is picked again next time.
-    }
-  }
-  return editor;
+// Follows resolveAndPersistPreferredEditor in apps/web/src/editorPreferences.ts; the caller persists.
+export function preferredEditor(
+  available: ReadonlyArray<EditorId>,
+  stored: string | null,
+): EditorId | null {
+  return (
+    available.find((editor) => editor === stored) ??
+    EDITORS.find((candidate) => available.includes(candidate.id))?.id ??
+    null
+  );
 }
 
 export const openInEditorImpl = implementation(openInEditorEffect, async (input) => {
   const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
-  const editor = preferredEditor(config.availableEditors);
+  const editor = preferredEditor(config.availableEditors, input.Stored);
   if (editor === null) throw new Error(`No editor on this machine can open ${input.Path}.`);
   await inEnvironment(
     input.EnvironmentId,
@@ -421,6 +410,7 @@ export const openInEditorImpl = implementation(openInEditorEffect, async (input)
       ...(input.ProjectRoot === null ? {} : { projectRoot: input.ProjectRoot }),
     }),
   );
+  return editor;
 });
 
 export const closeTerminalImpl = implementation(closeTerminalEffect, async (input) => {

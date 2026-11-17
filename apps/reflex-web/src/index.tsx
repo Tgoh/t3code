@@ -67,6 +67,17 @@ import { terminalSession } from "./Infrastructure/terminalSession";
 import { vcsStatus } from "./Infrastructure/vcsStatus";
 import { threadHistoryPageImpl } from "./Infrastructure/threadHistory";
 import { threadStream } from "./Infrastructure/threadStream";
+import { appearance } from "./Infrastructure/appearance";
+import {
+  clockNowImpl,
+  storedAppearanceMode,
+  storedEditorImpl,
+  storedPreferencesImpl,
+  storeEditorImpl,
+  storePreferencesImpl,
+} from "./Infrastructure/preferences";
+import { resolveScheme, SYSTEM_DARK_QUERY } from "./colorScheme";
+import { PreferencesReceiver } from "./Preferences";
 import { ThreadReceiver } from "./OpenThread";
 import { getDefaultRoot, load, RootReceiver } from "./Root";
 import { ShellReceiver } from "./Shell";
@@ -135,6 +146,12 @@ runtime.registerImplementation(storeClientSettingsImpl);
 runtime.registerImplementation(archivedShellImpl);
 runtime.registerImplementation(usageSummaryImpl);
 runtime.registerImplementation(refreshUsageRatesImpl);
+runtime.registerImplementation(storedPreferencesImpl);
+runtime.registerImplementation(storePreferencesImpl);
+runtime.registerImplementation(storedEditorImpl);
+runtime.registerImplementation(storeEditorImpl);
+runtime.registerImplementation(clockNowImpl);
+runtime.registerResourceType("appearance", appearance);
 runtime.registerResourceType("shellStream", shellStream, { endOnReceiverFailure: true });
 runtime.registerResourceType("threadStream", threadStream, { endOnReceiverFailure: true });
 runtime.registerReceiver(RootReceiver);
@@ -143,6 +160,12 @@ runtime.registerReceiver(ShellReceiver);
 runtime.registerReceiver(ThreadReceiver);
 runtime.registerReceiver(TerminalReceiver);
 runtime.registerReceiver(DetailsReceiver);
+runtime.registerReceiver(PreferencesReceiver);
+// The Environment applies the scheme once it connects; this paints the loading screen in it.
+document.documentElement.dataset.theme = resolveScheme(
+  storedAppearanceMode(),
+  matchMedia(SYSTEM_DARK_QUERY).matches,
+);
 void runtime.dispatch(load, "Root");
 
 render(

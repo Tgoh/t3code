@@ -25,6 +25,7 @@ import {
   threadCommandEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
+import { storedEditorEffect, storeEditorEffect } from "./Infrastructure/preferences";
 import {
   editorsEffect,
   gitActionEffect,
@@ -158,11 +159,16 @@ export function* attach(draft: IThreadDetails, checkout: ICheckout): IOpenGenera
     Cwd: checkout.Cwd,
   });
   yield* refreshStatus(draft);
+  const stored = yield* storedEditorEffect();
   try {
-    draft.Editors = yield* open(editorsEffect({ EnvironmentId: checkout.EnvironmentId }));
+    draft.Editors = yield* open(
+      editorsEffect({ EnvironmentId: checkout.EnvironmentId, Stored: stored }),
+    );
   } catch {
     draft.Editors = { Available: [], Preferred: null };
   }
+  const preferred = draft.Editors.Preferred;
+  if (preferred !== null && preferred !== stored) yield* storeEditorEffect({ Editor: preferred });
 }
 
 /** Terminal edits and commits made outside a turn publish no status, so a refresh asks for one. */
@@ -193,6 +199,7 @@ export function* openEditor(draft: IThreadDetails, editor: string | null): IOpen
     return;
   }
   if (draft.Editors !== null) draft.Editors.Preferred = target;
+  yield* storeEditorEffect({ Editor: target });
   try {
     yield* open(
       openWithEditorEffect({
