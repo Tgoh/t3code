@@ -274,9 +274,10 @@ export function ModelPicker() {
   const name = () => session.effectiveModelName() ?? "No model";
   return (
     <>
+      {/* model-trigger has no rule: Composer.tsx keeps it visible in the collapsed phone composer. */}
       <button
         type="button"
-        class={`group/trigger ${COMPOSER_CONTROL}`}
+        class={`model-trigger group/trigger ${COMPOSER_CONTROL}`}
         ref={setTrigger}
         aria-label={`Model: ${name()}${suffix()?.Detail ? `, ${suffix()!.Detail}` : ""}`}
         aria-expanded={open()}
