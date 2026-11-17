@@ -167,7 +167,7 @@ function SettingsNav(props: { page: string }) {
         <Icons.Search />
         <input
           ref={setSearchBox}
-          class="min-w-0 flex-1 border-0 bg-transparent text-[14px] text-foreground outline-none"
+          class="min-w-0 flex-1 border-0 bg-transparent px-0.5 py-px text-[14px] text-foreground outline-none"
           type="text"
           placeholder="Search"
           aria-label="Search settings"

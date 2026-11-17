@@ -498,7 +498,7 @@ function PickerContent(props: { traits: ITraits | null }) {
         >
           <Search />
           <input
-            class="h-[26px] min-w-0 flex-1 border-0 bg-transparent text-[14px] text-foreground outline-none"
+            class="h-[26px] min-w-0 flex-1 border-0 bg-transparent px-0.5 text-[14px] text-foreground outline-none"
             data-model-search
             ref={setSearch}
             type="text"

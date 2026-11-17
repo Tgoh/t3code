@@ -213,11 +213,9 @@ To bring in upstream changes, use the `/syncupstream` skill: it merges on a work
 
 ## Styling
 
-Tailwind v4, like stock. `src/index.css` is the entry: it maps stock's theme (`bg-background`, `text-muted-foreground`, `rounded-lg`, `text-2xs`, the `dark`/`light`/`any-hover` variants) onto the tokens in `src/styles.css`, so a utility means the same thing here as in `apps/web`. `dark:` follows the `data-theme` attribute the appearance setting sets. A stock utility that needs a token we don't have yet renders nothing: copy the token from `apps/web/src/index.css` into `styles.css` and its `--color-*` line into `index.css`.
+Tailwind v4 with preflight, like stock. `src/index.css` is the entry: it maps stock's theme (`bg-background`, `text-muted-foreground`, `rounded-lg`, `text-2xs`, the `dark`/`light`/`any-hover` variants) onto the tokens in `src/styles.css`, so a utility means the same thing here as in `apps/web`. `dark:` follows the `data-theme` attribute the appearance setting sets. A stock utility that needs a token we don't have yet renders nothing: copy the token from `apps/web/src/index.css` into `styles.css` and its `--color-*` line into `index.css`.
 
-`styles.css` holds only global rules: the tokens, base element styles, the `.chat-markdown` prose rules for markup generated from Markdown (which can't carry utilities), the terminal's xterm overrides, and the iOS input rule. It sits in the `components` layer, under the utilities, so a utility always beats it.
-
-There's no preflight. It can come in as a change of its own: it would sit under `styles.css`, so the prose and base rules keep their look, but every surface needs checking for utilities that lean on the browser's defaults, such as a button's padding.
+`styles.css` holds only global rules: the tokens, the page's base styles, the `.chat-markdown` prose rules for markup generated from Markdown (which can't carry utilities), the terminal's xterm overrides, and the iOS input rule. It sits in the `components` layer, above preflight and under the utilities, so its rules beat the reset and a utility always beats it. Preflight strips the heading, list and margin defaults, so the prose rules set them for Markdown.
 
 - Put utilities in the markup. Never add a rule to `styles.css` unless it's global.
 - When porting from stock, copy its class strings.
@@ -226,7 +224,6 @@ There's no preflight. It can come in as a change of its own: it would sit under 
 - A class string used more than once in a file is a `const` at the top of that file. A look shared across areas becomes one exported string or component under `src/ui/`, made by the thread that owns it.
 - `hover:` applies only where the pointer can hover, as in stock.
 - Tailwind reads class names from the source text, so a class glued to an interpolation (`` `py-4${extra}` ``) is never generated. Leave a space before the `${`.
-- Without preflight, a `<button>` or `<input>` keeps the browser's padding and border: set them (`border-0 px-2 py-0`).
 - To style an element by an ancestor's state, put the variant on the element (`in-[.chat-stage.with-details]:max-w-…`), not a rule that reaches into it.
 
 ### Shared controls
