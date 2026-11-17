@@ -99,6 +99,7 @@ export function UsageRing() {
                 stroke-width="2"
                 pathLength="100"
                 stroke-dasharray={`${held().RemainingPercent} 100`}
+                stroke-dashoffset={-held().UsedPercent}
               />
             )}
           </Show>
