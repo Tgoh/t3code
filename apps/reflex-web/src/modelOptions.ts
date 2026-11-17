@@ -385,7 +385,11 @@ export function pickerList(input: {
     ];
     // Follows appendUnavailableDynamicModelSelection in apps/web/src/modelSelection.ts.
     const slug = active?.instanceId === provider.InstanceId ? active.model.trim() : "";
-    if (slug !== "" && missingFromCatalog(provider, slug)) {
+    if (
+      slug !== "" &&
+      !(provider.HiddenModels ?? []).includes(slug) &&
+      missingFromCatalog(provider, slug)
+    ) {
       models.push({ Slug: slug, Name: slug, IsDefault: false, IsUnavailable: true });
     }
     return models.map((model) => ({

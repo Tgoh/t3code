@@ -240,6 +240,8 @@ describe("the model list", () => {
     expect(slugs(list(active("pi", "listed")))).toEqual(["listed"]);
     expect(slugs(list(active("claudeAgent", "gone")))).not.toContain("gone");
     expect(slugs(list(active("acpRegistry", "default")))).toEqual(["listed"]);
+    const hidden = { ...runtime("pi"), HiddenModels: ["gone"] };
+    expect(slugs(list({ ...active("pi", "gone"), Providers: [hidden] }))).toEqual(["listed"]);
   });
 
   it("puts a provider's older models behind Show more, after its current ones", () => {

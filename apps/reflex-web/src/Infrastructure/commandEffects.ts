@@ -108,6 +108,8 @@ export interface IProviderOption {
   SupportedRuntimeModes?: IWireRuntimeMode[];
   SlashCommands?: ServerProviderSlashCommand[];
   Skills?: ServerProviderSkill[];
+  /** Slugs the user hid; `Models` already leaves them out. */
+  HiddenModels?: string[];
   Models: Array<{
     Slug: string;
     Name: string;
