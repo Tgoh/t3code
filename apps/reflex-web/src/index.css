@@ -1,7 +1,6 @@
-/* Utilities sit above styles.css, so a migrated element's utilities beat any rule left there.
-   No preflight: styles.css's own base styles still carry the unmigrated markup. */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "./styles.css" layer(components);
 

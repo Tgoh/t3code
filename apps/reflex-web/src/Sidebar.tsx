@@ -348,7 +348,7 @@ export const Sidebar = Shell.provider(() => {
         <div class="relative mr-0.5 flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-2 text-sidebar-muted-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ring)_70%,transparent)] hover:bg-sidebar-row-hover hover:text-sidebar-foreground [&>svg]:size-4">
           <Search />
           <input
-            class="min-w-0 flex-1 border-0 bg-transparent text-[14px] font-medium text-sidebar-foreground outline-none placeholder:text-sidebar-muted-foreground [&::-webkit-search-cancel-button]:appearance-none"
+            class="min-w-0 flex-1 border-0 bg-transparent px-0.5 py-px text-[14px] font-medium text-sidebar-foreground outline-none placeholder:text-sidebar-muted-foreground [&::-webkit-search-cancel-button]:appearance-none"
             type="search"
             placeholder="Search"
             aria-label="Search threads"

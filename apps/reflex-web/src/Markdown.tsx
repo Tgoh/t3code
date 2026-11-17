@@ -150,7 +150,7 @@ function FileChip(props: { link: IFileLink }) {
         environment.openInEditor(props.link.TargetPath, files.cwd() ?? null);
       }}
     >
-      <FileIcon path={props.link.FilePath} class="mr-[0.2em] size-[1em] align-[-0.125em]" />
+      <FileIcon path={props.link.FilePath} class="mr-[0.2em] inline size-[1em] align-[-0.125em]" />
       <span class="underline decoration-transparent decoration-1 underline-offset-[0.2em] transition-[text-decoration-color] duration-150 ease-[ease] group-hover/file:decoration-current">
         {chipLabel(props.link, files.suffixes())}
       </span>

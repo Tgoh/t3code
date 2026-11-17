@@ -1,5 +1,5 @@
 /** A muted line standing in for empty or loading content. */
-export const EMPTY_NOTE = "px-5 py-4 text-[14px] text-muted-foreground";
+export const EMPTY_NOTE = "my-3.5 px-5 py-4 text-[14px] text-muted-foreground";
 
 export const ADDED_TEXT = "text-diff-addition-foreground";
 export const REMOVED_TEXT = "text-diff-deletion-foreground";

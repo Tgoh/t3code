@@ -16,7 +16,7 @@ export const PALETTE_ADDON =
 export const PALETTE_BACK = `${PALETTE_ADDON} cursor-pointer rounded-sm hover:text-foreground`;
 
 export const PALETTE_INPUT =
-  "h-7 min-w-0 flex-1 border-0 bg-transparent text-[14px] text-inherit outline-none placeholder:text-muted-foreground";
+  "h-7 min-w-0 flex-1 border-0 bg-transparent px-0.5 text-[14px] text-inherit outline-none placeholder:text-muted-foreground";
 
 export const PALETTE_SUBMIT =
   "inline-flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-md border border-input bg-popover py-0 pr-1 pl-2 text-[12px] font-medium hover:bg-accent disabled:cursor-default disabled:opacity-64";
