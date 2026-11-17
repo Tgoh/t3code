@@ -22,7 +22,7 @@ const keyOf = (threadId: string) => `reflex-web:terminal:${threadId}`;
 export const rememberedTerminalEffect = defineEffect<
   IRememberedTerminalEffect,
   ITerminalLaunch | null
->("rememberedTerminal");
+>("rememberedTerminal", { settles: "sync" });
 
 export const rememberTerminalEffect = defineEffect<IRememberTerminalEffect, void>(
   "rememberTerminal",

@@ -47,13 +47,18 @@ interface IClockNowEffect extends IEffect {
 
 export const storedPreferencesEffect = defineEffect<IStoredPreferencesEffect, IPreferences>(
   "storedPreferences",
+  { settles: "sync" },
 );
 export const storePreferencesEffect = defineEffect<IStorePreferencesEffect, void>(
   "storePreferences",
 );
-export const storedEditorEffect = defineEffect<IStoredEditorEffect, string | null>("storedEditor");
+export const storedEditorEffect = defineEffect<IStoredEditorEffect, string | null>("storedEditor", {
+  settles: "sync",
+});
 export const storeEditorEffect = defineEffect<IStoreEditorEffect, void>("storeEditor");
-export const clockNowEffect = defineEffect<IClockNowEffect, number>("clockNow");
+export const clockNowEffect = defineEffect<IClockNowEffect, number>("clockNow", {
+  settles: "sync",
+});
 
 // The theme, usage and editor keys are stock's (THEME_APPEARANCE_MODE_STORAGE_KEY,
 // usagePagePreferences.ts, editorPreferences.ts), so a browser on stock's origin reads the same values.

@@ -52,7 +52,7 @@ interface IStoredClientSettingsEffect extends IEffect {
 export const storedClientSettingsEffect = defineEffect<
   IStoredClientSettingsEffect,
   IWireClientSettings
->("storedClientSettings");
+>("storedClientSettings", { settles: "sync" });
 
 interface IStoreClientSettingsEffect extends IEffect {
   Type: "storeClientSettings";

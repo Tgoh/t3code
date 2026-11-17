@@ -16,10 +16,6 @@ The step installs the workspace in a temp directory that holds the manifests and
 
 Its test step runs `apps/reflex-web`'s tests in the root vitest project, which lacks this app's `solid` and `browser` resolve conditions, so `solid-js` resolves to its server build and every `createTestRuntime` throws treflex's `SolidServerBuildError`. Run them with `vp test run` from `apps/reflex-web`. Fixing it means a change to upstream's root `vite.config.ts`.
 
-## Setup: the app's tsconfig turns off two of the repo's strict flags
-
-The app's `tsconfig.json` turns off `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`, because treflex's source once failed them. Treflex 0.1.0 ships declarations, which pass both. With them on, the app's own code has 16 errors in 12 files.
-
 ## Gap: the connection runtime has one public door
 
 `client-runtime` exports the session factory only as a type, so reusing the supervisor means building the whole `Connection` layer. That layer requires the relay client, DPoP signer, SSH gateway, cloud session and stores, none of which one cookie-authenticated environment uses. `Infrastructure/connection.ts` mocks them, and a mock dies if it's ever called. Adding a remote environment means replacing these mocks.

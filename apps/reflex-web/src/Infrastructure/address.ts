@@ -9,7 +9,9 @@ interface ISetAddressThreadEffect extends IEffect {
   ThreadId: string | null;
 }
 
-export const addressThread = defineEffect<IAddressThreadEffect, string | null>("addressThread");
+export const addressThread = defineEffect<IAddressThreadEffect, string | null>("addressThread", {
+  settles: "sync",
+});
 
 const setAddress = defineEffect<ISetAddressThreadEffect, void>("setAddressThread");
 
@@ -38,7 +40,9 @@ interface ISetAddressViewEffect extends IEffect {
   View: IAddressView | null;
 }
 
-export const addressView = defineEffect<IAddressViewEffect, IAddressView | null>("addressView");
+export const addressView = defineEffect<IAddressViewEffect, IAddressView | null>("addressView", {
+  settles: "sync",
+});
 
 const setView = defineEffect<ISetAddressViewEffect, void>("setAddressView");
 

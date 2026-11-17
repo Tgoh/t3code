@@ -53,13 +53,16 @@ const FILES_PREFIX = "reflex-web:draft-files:";
 
 export const storedDraftEffect = defineEffect<IStoredDraftEffect, IStoredDraft | null>(
   "storedDraft",
+  { settles: "sync" },
 );
 export const storedNewThreadEffect = defineEffect<IStoredNewThreadEffect, string | null>(
   "storedNewThread",
+  { settles: "sync" },
 );
 export const storeDraftEffect = defineEffect<IStoreDraftEffect, void>("storeDraft");
 export const storedDraftFilesEffect = defineEffect<IStoredDraftFilesEffect, IStoredAttachment[]>(
   "storedDraftFiles",
+  { settles: "sync" },
 );
 export const storeDraftFilesEffect = defineEffect<IStoreDraftFilesEffect, void>("storeDraftFiles");
 

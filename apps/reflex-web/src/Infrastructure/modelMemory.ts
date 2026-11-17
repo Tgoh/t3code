@@ -23,6 +23,7 @@ export const rememberedModelKey = (instanceId: string, model: string) => `${inst
 
 export const rememberedModelsEffect = defineEffect<IRememberedModelsEffect, IRememberedModels>(
   "rememberedModels",
+  { settles: "sync" },
 );
 
 export const rememberModelEffect = defineEffect<IRememberModelEffect, void>("rememberModel");
