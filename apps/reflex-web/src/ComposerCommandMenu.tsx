@@ -81,11 +81,15 @@ export function ComposerCommandMenu(props: {
   onPick: (item: IMenuItem) => void;
 }) {
   return (
-    <div class="composer-menu" role="listbox" aria-label="Suggestions">
+    <div
+      class="absolute inset-x-0 bottom-[calc(100%+4px)] z-40 flex max-h-[min(18rem,40dvh)] flex-col overflow-y-auto rounded-xl border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]"
+      role="listbox"
+      aria-label="Suggestions"
+    >
       <Show
         when={props.menu.items().length > 0}
         fallback={
-          <p class="composer-menu-empty">
+          <p class="m-0 px-2 py-1.5 text-[13px] text-muted-foreground">
             {props.menu.searching() ? "Searching…" : MENU_EMPTY[props.trigger.kind]}
           </p>
         }
@@ -97,7 +101,7 @@ export function ComposerCommandMenu(props: {
               <button
                 type="button"
                 role="option"
-                class="composer-menu-item"
+                class="flex min-h-[30px] flex-none cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1 text-left text-[13px] aria-selected:bg-accent [&_svg]:size-3.5 [&_svg]:flex-none [&_svg]:text-muted-foreground"
                 aria-selected={index() === props.menu.highlight()}
                 ref={(element) =>
                   createEffect(() => {
@@ -109,9 +113,11 @@ export function ComposerCommandMenu(props: {
                 onClick={() => props.onPick(item)}
               >
                 <Show when={Icon}>{(Shown) => <Dynamic component={Shown()} />}</Show>
-                <span class="composer-menu-label">{item.Label}</span>
+                <span class="max-w-[50%] flex-none truncate">{item.Label}</span>
                 <Show when={item.Description}>
-                  <span class="composer-menu-detail">{item.Description}</span>
+                  <span class="min-w-0 truncate text-[12px] text-muted-foreground">
+                    {item.Description}
+                  </span>
                 </Show>
               </button>
             );
