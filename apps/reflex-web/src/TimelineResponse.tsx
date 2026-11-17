@@ -39,7 +39,7 @@ import {
   layoutResponse,
   sameFacts,
 } from "./timelineLayout";
-import { MessageMeta, MessageTime, TimelineRow, WorkRow } from "./TimelineRows";
+import { MessageMeta, MessageTime, TimelineRow, WORK_ICON, WorkRow } from "./TimelineRows";
 import { useWorkingTimer } from "./TurnStatus";
 import { workLogEntry, workLogEntryIsToolLike } from "./workLog";
 
@@ -144,9 +144,9 @@ function RunningLabel() {
 function FoldRow(props: { row: IRowOf<"fold"> }) {
   const session = ThreadSession.use();
   return (
-    <div class="turn-fold">
+    <div class="group/fold mb-1.5 flex items-center gap-1 border-b border-[color-mix(in_srgb,var(--border)_60%,transparent)] pt-1 pr-0.5 pb-2 pl-1 text-[14px] leading-6 text-muted-foreground tabular-nums">
       <button
-        class="turn-fold-toggle"
+        class="inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1 py-0 hover:text-foreground [&_svg]:size-3.5"
         aria-expanded={props.row.Expanded}
         onClick={() => session.toggleRowExpanded(props.row.Key)}
       >
@@ -159,7 +159,10 @@ function FoldRow(props: { row: IRowOf<"fold"> }) {
           <ChevronDown />
         </Show>
       </button>
-      <MessageTime at={props.row.At} />
+      <MessageTime
+        at={props.row.At}
+        class="ml-auto opacity-0 group-hover/fold:opacity-100 pointer-coarse:opacity-100"
+      />
     </div>
   );
 }
@@ -195,23 +198,26 @@ function GroupRow(props: { row: IRowOf<"group"> }) {
     return last !== undefined && workEntryDisplayIndicatesToolFailure(last);
   };
   return (
-    <div class="work-group">
+    <div class="px-0.5 pt-0.5 pb-2">
       <button
-        class="work-line work-toggle"
-        classList={{ failed: failed() }}
+        class="group/row flex min-h-6 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent p-0 text-left text-secondary-label hover:text-foreground"
+        data-failed={failed() ? "" : undefined}
         aria-expanded={props.row.Expanded}
         onClick={() => session.toggleRowExpanded(props.row.Key)}
       >
-        <span class="work-icon">
+        <span class={WORK_ICON}>
           <Dynamic component={SUMMARY_ICONS[toolGroupSummaryKind(entries())] ?? Wrench} />
         </span>
-        <span class="work-label">{summary()}</span>
-        <ChevronRight class="work-chevron" classList={{ open: props.row.Expanded }} />
-        <span class="composer-spacer" />
-        <MessageTime at={props.row.At} />
+        <span class="min-w-0 flex-initial truncate">{summary()}</span>
+        <ChevronRight class="size-3.5 text-muted-foreground opacity-0 group-hover/row:opacity-100 group-aria-expanded/row:rotate-90 group-aria-expanded/row:opacity-100" />
+        <span class="flex-1" />
+        <MessageTime
+          at={props.row.At}
+          class="text-[12px] opacity-0 group-hover/row:opacity-100 pointer-coarse:opacity-100"
+        />
       </button>
       <Show when={props.row.Expanded}>
-        <div class="work-group-list">
+        <div class="flex max-h-[min(18rem,50dvh)] flex-col overflow-y-auto pt-0.5">
           <For each={props.row.Ids}>{(id) => <WorkRow id={id} />}</For>
         </div>
       </Show>

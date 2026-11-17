@@ -55,7 +55,7 @@ const NewThreadView = ThreadSession.provider(() => {
         </div>
       </header>
       <div class="chat-stage">
-        <div class="timeline" />
+        <div class="min-h-0 flex-1" />
         <div class="composer-lane">
           <Composer />
         </div>

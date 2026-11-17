@@ -50,7 +50,7 @@ import {
 } from "./markdownImage";
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import OpenThread from "./OpenThread";
-import { EXTERNAL_LINK, sanitizeHtml } from "./sanitize";
+import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } from "./sanitize";
 import ThreadSession from "./ThreadSession";
 import { IconButton } from "./ui/IconButton";
 import {
@@ -229,7 +229,7 @@ function ThreadChip(props: { target: ILinkTarget }) {
       when={"Ref" in props.target && props.target.Openable ? props.target : null}
       fallback={
         <span
-          class="thread-link unavailable"
+          class={THREAD_LINK_UNAVAILABLE}
           data-tip={"Unknown" in props.target ? props.target.Unknown : "Thread on another machine"}
         >
           <MessagesSquare />
@@ -246,7 +246,7 @@ function ThreadChip(props: { target: ILinkTarget }) {
         return (
           <button
             type="button"
-            class="thread-link"
+            class={`${THREAD_LINK} group/link`}
             aria-label={`Thread, ${target().Title}`}
             data-tip="Open thread"
             onClick={() => environment.selectThread(target().Ref.threadId)}
@@ -254,7 +254,9 @@ function ThreadChip(props: { target: ILinkTarget }) {
             <Show when={project()} fallback={<MessagesSquare />}>
               {(held) => <ProjectBadge project={held()} />}
             </Show>
-            <span class="thread-link-label">{target().Title}</span>
+            <span class="underline decoration-transparent decoration-1 underline-offset-[0.2em] transition-[text-decoration-color] duration-150 ease-[ease] group-hover/link:decoration-current">
+              {target().Title}
+            </span>
           </button>
         );
       }}

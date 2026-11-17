@@ -7,7 +7,7 @@ import OpenThread, { pendingRequest } from "./OpenThread";
 import { type IAnswering, type IQuestion, questionProgress } from "./questions";
 import RuntimeRequest, { canAnswer } from "./RuntimeRequest";
 import ThreadSession from "./ThreadSession";
-import { RowIcon } from "./TimelineRows";
+import { RowIcon, workLine } from "./TimelineRows";
 import { viewOf } from "./turnItemView";
 
 export const PendingApproval = RuntimeRequest.provider(() => {
@@ -28,7 +28,7 @@ export const PendingApproval = RuntimeRequest.provider(() => {
   };
   return (
     <div class="pending-approval">
-      <div class="work-line">
+      <div class={workLine()}>
         <RowIcon type="command_execution" />
         <code class="approval-subject">{item()?.prompt ?? item()?.requestKind}</code>
       </div>

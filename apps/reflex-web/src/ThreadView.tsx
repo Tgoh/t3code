@@ -56,7 +56,7 @@ const LoadEarlier = HistoryWindow.provider(() => {
     <>
       <Show when={history.state.HasMore}>
         <Button
-          class="load-earlier"
+          class="mx-auto mb-4 block"
           disabled={history.loadingEarlier()}
           onClick={() => history.loadEarlier()}
         >
@@ -120,7 +120,7 @@ function TimelineSentinel(props: {
   return (
     <button
       ref={setSentinel}
-      class="timeline-sentinel"
+      class="block h-px w-full border-0 bg-transparent p-0"
       aria-label="Show earlier messages"
       onFocus={(event) => {
         const from = event.relatedTarget;
@@ -483,7 +483,7 @@ const ThreadBody = ThreadSession.provider(() => {
             )}
           </Show>
           <div
-            class="timeline"
+            class="min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-x-hidden overflow-y-auto px-[calc(var(--gutter)-var(--scrollbar-width))] pt-2 pb-[calc(var(--composer-height,0px)+var(--turn-status-height))] [mask-image:linear-gradient(to_bottom,transparent_0,black_1.5rem)] focus-visible:outline-none"
             ref={scroller}
             tabIndex={-1}
             onScroll={() => {
@@ -509,7 +509,10 @@ const ThreadBody = ThreadSession.provider(() => {
               document.addEventListener("pointerup", () => (dragging = false), { once: true });
             }}
           >
-            <div class="timeline-lane" ref={content}>
+            <div
+              class="mx-auto w-full max-w-(--chat-content-max-width) min-w-0 in-[.chat-stage.with-details]:max-w-[min(var(--chat-content-max-width),var(--details-lane,100%))] in-[.chat-stage.with-details]:translate-x-(--details-shift)"
+              ref={content}
+            >
               <div ref={head}>
                 <Show
                   when={reachedTop()}

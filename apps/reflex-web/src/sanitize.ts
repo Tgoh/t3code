@@ -17,6 +17,16 @@ const ALLOWED_ATTR = "href src alt open colspan rowspan align start reversed".sp
 
 export const EXTERNAL_LINK = /^(?:https?:|mailto:)/i;
 
+const THREAD_LINK_BASE =
+  "inline rounded-sm border-0 bg-transparent p-0 font-medium [text-align:inherit] [&_svg]:size-[1em] [&>:first-child]:mr-[0.2em] [&>:first-child]:align-[-0.15em]";
+
+export const THREAD_LINK = `${THREAD_LINK_BASE} cursor-pointer text-(color:--thread-link)`;
+
+// The anchor's colour comes from .chat-markdown a:not([href]), which it always sits under.
+const THREAD_ANCHOR = `${THREAD_LINK_BASE} cursor-pointer`;
+
+export const THREAD_LINK_UNAVAILABLE = `${THREAD_LINK_BASE} cursor-default text-inherit`;
+
 // A relative href is a file path an agent named, and following it would leave the app and lose drafts.
 DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   if (node.nodeName !== "A") return;
@@ -25,7 +35,7 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   if (parseThreadLinkHref(href) !== null) {
     node.removeAttribute("href");
     node.setAttribute("data-thread-href", href);
-    node.setAttribute("class", "thread-link");
+    node.setAttribute("class", THREAD_ANCHOR);
   } else if (EXTERNAL_LINK.test(href)) {
     node.setAttribute("target", "_blank");
     node.setAttribute("rel", "noopener noreferrer");

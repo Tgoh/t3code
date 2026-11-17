@@ -9,7 +9,7 @@ import { type Component, createMemo, createSignal, For, onMount, Show } from "so
 import { Dynamic } from "solid-js/web";
 
 import { attachmentDetail } from "./attachmentIntake";
-import { CommandOutput } from "./CommandOutput";
+import { CommandOutput, WORK_PRE } from "./CommandOutput";
 import { CopyButton } from "./CopyButton";
 import {
   Bot,
@@ -62,20 +62,62 @@ import { ImageDialog } from "./ImageDialog";
 import { singleToolCallLabel, workEntryDisplayLabel, workLogEntry } from "./workLog";
 import { useWorkspaceRoot } from "./workspaceRoot";
 
-function Body(props: { id: string; text: string; format: "markdown" | "text" | "code" }) {
+const WORK_TEXT = `${WORK_PRE} ml-7`;
+
+const ERROR_TEXT =
+  "m-0 ml-7 max-h-64 overflow-auto py-1 font-sans text-[14px] leading-[1.625] wrap-anywhere whitespace-pre-wrap text-[color-mix(in_srgb,var(--foreground)_80%,transparent)]";
+
+const BUBBLE = "min-w-0 max-w-[80%] rounded-2xl bg-message";
+
+const NOTE = "m-0 mr-1 flex items-center gap-1 text-[12px] text-muted-foreground [&_svg]:size-3";
+
+const ACTIONS = "flex h-6 items-center gap-2 text-[12px] text-muted-foreground tabular-nums";
+
+const ACTIONS_ON_HOVER =
+  "opacity-0 transition-opacity duration-200 ease-[ease] group-hover/row:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100";
+
+const IMAGE =
+  "block h-48 max-w-full min-w-24 rounded-2xl object-cover outline outline-[color:var(--media-ring)] -outline-offset-1";
+
+const FILE_OPEN =
+  "flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left text-inherit no-underline";
+
+const FOLD_LABEL = "max-w-[50%] flex-none truncate text-muted-foreground";
+
+const WORK_LINE = "flex min-h-6 min-w-0 items-center gap-1.5 text-[14px] leading-6";
+
+export const WORK_ICON =
+  "inline-flex size-6 flex-none items-center justify-center text-muted-foreground group-data-failed/row:text-destructive group-data-[tone=error]/row:font-medium group-data-[tone=error]/row:text-destructive [&_svg]:stroke-2 [&_svg]:opacity-70";
+
+const SUMMARY =
+  "group/line cursor-pointer list-none group-data-action/row:pr-18 [&::-webkit-details-marker]:hidden";
+
+export const workLine = (tone?: string) =>
+  tone === "quiet"
+    ? `${WORK_LINE} text-muted-foreground`
+    : tone === "error"
+      ? `${WORK_LINE} font-medium text-destructive`
+      : `${WORK_LINE} text-secondary-label`;
+
+function Body(props: {
+  id: string;
+  text: string;
+  format: "markdown" | "text" | "code";
+  pre?: string;
+}) {
   return (
     <Show
       when={props.format === "markdown"}
-      fallback={<pre class={props.format === "code" ? "work-code" : "work-text"}>{props.text}</pre>}
+      fallback={<pre class={props.pre ?? WORK_PRE}>{props.text}</pre>}
     >
       <Markdown text={props.text} fromUser={false} id={props.id} />
     </Show>
   );
 }
 
-export function MessageTime(props: { at: string }) {
+export function MessageTime(props: { at: string; class?: string }) {
   return (
-    <span class="message-time" data-tip={fullTimestamp(props.at)}>
+    <span class={props.class} data-tip={fullTimestamp(props.at)}>
       {dayAwareTimestamp(props.at)}
     </span>
   );
@@ -99,7 +141,7 @@ const ROW_ICONS: Record<string, Component> = {
 
 export function RowIcon(props: { type: string }) {
   return (
-    <span class="work-icon">
+    <span class={WORK_ICON}>
       <Dynamic component={ROW_ICONS[props.type] ?? CircleHelp} />
     </span>
   );
@@ -162,24 +204,24 @@ function AttachmentFile(props: { file: IWireAttachment; url: string | null }) {
   const label = () => (pastedText() ? "Pasted text" : props.file.name);
   const identity = () => (
     <>
-      <span class="attachment-file-icon">
+      <span class="flex size-9 flex-none items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--background)_60%,transparent)] [&_svg]:size-4">
         <File />
       </span>
-      <span class="attachment-file-text">
-        <span class="attachment-file-name">{label()}</span>
-        <span class="attachment-file-detail">
+      <span class="flex min-w-0 flex-1 flex-col">
+        <span class="truncate text-[14px] font-medium in-[a:hover]:underline">{label()}</span>
+        <span class="text-[12px] text-muted-foreground tabular-nums">
           {attachmentDetail(props.file.name, props.file.sizeBytes, pastedText())}
         </span>
       </span>
     </>
   );
   return (
-    <div class="attachment-file-card">
-      <Show when={props.url} fallback={<span class="attachment-file-open">{identity()}</span>}>
+    <div class="flex w-64 max-w-full items-center gap-1 rounded-2xl bg-message py-2 pr-1 pl-2">
+      <Show when={props.url} fallback={<span class={FILE_OPEN}>{identity()}</span>}>
         {(url) => (
           <>
             <a
-              class="attachment-file-open"
+              class={FILE_OPEN}
               href={url()}
               target="_blank"
               rel="noopener"
@@ -212,18 +254,21 @@ function AttachmentImage(props: {
 }) {
   const [expanded, setExpanded] = createSignal(false);
   return (
-    <Show when={!props.failed} fallback={<span class="attachment-chip">{props.file.name}</span>}>
-      <Show when={props.url} fallback={<span class="attachment-image placeholder" />}>
+    <Show
+      when={!props.failed}
+      fallback={<span class="rounded-2xl bg-message px-3 py-2 text-[14px]">{props.file.name}</span>}
+    >
+      <Show when={props.url} fallback={<span class={`${IMAGE} w-48 bg-message`} />}>
         {(url) => (
           <>
             <button
-              class="attachment-open"
+              class="block max-w-full cursor-zoom-in rounded-2xl border-0 bg-transparent p-0"
               aria-label={`Preview ${props.file.name}`}
               onClick={() => setExpanded(true)}
             >
               <img
-                class="attachment-image"
-                classList={{ grouped: props.grouped }}
+                class={`${IMAGE} w-auto data-grouped:rounded-br-md`}
+                data-grouped={props.grouped ? "" : undefined}
                 src={url()}
                 alt={props.file.name}
                 onError={() => props.onError()}
@@ -276,7 +321,7 @@ function FilesSummary(props: { id: string }) {
         const turn = () => diffTurnOf(thread.state, held());
         return (
           <button
-            class="meta-files"
+            class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-0 disabled:cursor-default enabled:hover:bg-accent enabled:hover:text-foreground [&_svg]:size-3.5"
             data-tip={turn() === null ? undefined : "Open this turn's diff"}
             disabled={turn() === null}
             onClick={() => {
@@ -298,17 +343,17 @@ function ChangedFiles(props: { item: IWireCheckpoint; turn: number | null }) {
   const session = ThreadSession.use();
   const totals = () => checkpointTotals(props.item);
   return (
-    <article class="row changed-files">
-      <header>
+    <article class="mx-1 mb-12 min-w-0 rounded-lg bg-muted" data-changed-files>
+      <header class="flex items-center gap-3 px-3 py-2 text-[12px] leading-4 font-medium">
         <span>
           {totals().count} changed file{totals().count === 1 ? "" : "s"}
         </span>
         <DiffCounts additions={totals().additions} deletions={totals().deletions} />
-        <span class="composer-spacer" />
+        <span class="flex-1" />
         <Show when={props.turn}>
           {(turn) => (
             <button
-              class="open-diff"
+              class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-lg border border-transparent bg-transparent px-1.5 py-0 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
               data-tip="Open this turn's diff"
               onClick={() => session.openDiff("turn", turn())}
             >
@@ -318,12 +363,14 @@ function ChangedFiles(props: { item: IWireCheckpoint; turn: number | null }) {
           )}
         </Show>
       </header>
-      <ul>
+      <ul class="m-0 list-none px-2 pt-0 pb-2">
         <For each={props.item.files}>
           {(file) => (
-            <li>
+            <li class="flex h-7 items-center gap-2 px-2 font-mono text-[12px] leading-4 [&_svg]:size-3.5 [&_svg]:text-muted-foreground">
               <File />
-              <span class="changed-path">{file.path}</span>
+              <span class="min-w-0 flex-1 truncate text-[color-mix(in_srgb,var(--foreground)_85%,transparent)]">
+                {file.path}
+              </span>
               <DiffCounts additions={file.additions} deletions={file.deletions} />
             </li>
           )}
@@ -349,16 +396,16 @@ function useRow(props: IRowProps) {
 export function FoldHeader(props: { fold: IMessageFold; expanded: boolean; onToggle: () => void }) {
   const environment = Environment.use();
   return (
-    <div class="fold-header">
+    <div class="flex min-w-0 items-center gap-1.5 px-3 py-2 text-[14px] [&>svg]:size-4 [&>svg]:flex-none [&>svg]:text-muted-foreground">
       <Dynamic component={props.fold.Kind === "agent" ? MessagesSquare : CalendarClock} />
       <Show
         when={props.fold.Sender?.Openable ? props.fold.Sender : null}
-        fallback={<span class="fold-label">{props.fold.Label}</span>}
+        fallback={<span class={FOLD_LABEL}>{props.fold.Label}</span>}
       >
         {(sender) => (
           <button
             type="button"
-            class="fold-label link"
+            class={`${FOLD_LABEL} cursor-pointer border-0 bg-transparent p-0 hover:text-foreground hover:underline`}
             data-tip="Open thread"
             onClick={() => environment.selectThread(sender().Ref.threadId)}
           >
@@ -368,12 +415,12 @@ export function FoldHeader(props: { fold: IMessageFold; expanded: boolean; onTog
       </Show>
       <button
         type="button"
-        class="fold-toggle"
+        class="group/toggle flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left"
         aria-expanded={props.expanded}
         onClick={() => props.onToggle()}
       >
-        <span class="fold-summary">{props.fold.Summary}</span>
-        <ChevronDown class="fold-chevron" classList={{ open: props.expanded }} />
+        <span class="min-w-0 flex-1 truncate">{props.fold.Summary}</span>
+        <ChevronDown class="size-3.5 flex-none text-muted-foreground transition-transform duration-150 ease-[ease] group-aria-expanded/toggle:rotate-180" />
       </button>
     </div>
   );
@@ -403,16 +450,16 @@ export function QueuedMessage(props: { runId: string }) {
   };
   const [expanded, setExpanded] = createSignal(false);
   return (
-    <Show when={fold()} fallback={<span class="queued-text">{text()}</span>}>
+    <Show when={fold()} fallback={<span class="min-w-0 flex-1">{text()}</span>}>
       {(held) => (
-        <div class="queued-fold">
+        <div class="min-w-0 flex-1 rounded-2xl border border-dashed border-input">
           <FoldHeader
             fold={held()}
             expanded={expanded()}
             onToggle={() => setExpanded((open) => !open)}
           />
           <Show when={expanded()}>
-            <span class="queued-text">{text()}</span>
+            <span class="block max-h-96 overflow-auto px-3 pb-2 whitespace-pre-wrap">{text()}</span>
           </Show>
         </div>
       )}
@@ -469,7 +516,10 @@ function UserRow(props: IRowProps) {
             when={!folded}
             fallback={<Markdown text={body()} fromUser message={sent() ?? undefined} />}
           >
-            <div class="bubble" classList={{ grouped: attachments().length > 0 }}>
+            <div
+              class={`${BUBBLE} p-3 data-grouped:rounded-tr-md`}
+              data-grouped={attachments().length > 0 ? "" : undefined}
+            >
               <Markdown text={body()} fromUser message={sent() ?? undefined} />
             </div>
           </Show>
@@ -478,13 +528,16 @@ function UserRow(props: IRowProps) {
     </>
   );
   return (
-    <article class="row user" classList={{ inherited: inherited() }}>
+    <article
+      class="group/row flex min-w-0 flex-col items-end gap-1 pb-4 data-inherited:opacity-70"
+      data-inherited={inherited() ? "" : undefined}
+    >
       <Show when={sent() !== null && attribution(sent()!) === "t3code"}>
-        <p class="message-note">Sent by T3 Code</p>
+        <p class={NOTE}>Sent by T3 Code</p>
       </Show>
       <Show when={steer()}>
         {(label) => (
-          <p class="message-note" data-tip={label().Tip}>
+          <p class={NOTE} data-tip={label().Tip}>
             <Redo2 />
             {label().Text}
           </p>
@@ -492,20 +545,25 @@ function UserRow(props: IRowProps) {
       </Show>
       <Show when={fold()} fallback={content(false)}>
         {(held) => (
-          <div class="bubble folded" classList={{ expanded: expanded() }}>
+          <div
+            class={`${BUBBLE} data-expanded:w-[80%]`}
+            data-expanded={expanded() ? "" : undefined}
+          >
             <FoldHeader
               fold={held()}
               expanded={expanded()}
               onToggle={() => setExpanded((open) => !open)}
             />
             <Show when={expanded()}>
-              <div class="fold-body">{content(true)}</div>
+              <div class="flex max-h-96 flex-col gap-2 overflow-auto px-3 pb-3">
+                {content(true)}
+              </div>
             </Show>
           </div>
         )}
       </Show>
       <Show when={fold() === null || expanded()}>
-        <div class="message-actions">
+        <div class={`${ACTIONS} ${ACTIONS_ON_HOVER} pr-1`}>
           <Show when={createdAt()}>{(at) => <MessageTime at={at()} />}</Show>
           <Show when={text()}>{(body) => <CopyButton text={body()} label="Copy message" />}</Show>
         </div>
@@ -523,7 +581,13 @@ export function MessageMeta(props: IRowProps & { standalone?: boolean; files?: s
   };
   const updatedAt = () => (item()?.status === "completed" ? item()?.updatedAt : undefined);
   return (
-    <div class="message-actions" classList={{ standalone: props.standalone === true }}>
+    <div
+      class={
+        props.standalone === true
+          ? `${ACTIONS} px-1 pt-0.5 pb-4`
+          : `${ACTIONS} ${ACTIONS_ON_HOVER} mt-1.5`
+      }
+    >
       <Show when={updatedAt()}>
         {(at) => (
           <>
@@ -537,6 +601,12 @@ export function MessageMeta(props: IRowProps & { standalone?: boolean; files?: s
   );
 }
 
+const MESSAGE_TONES: Record<string, string> = {
+  assistant:
+    "group/row min-w-0 px-1 pt-0.5 pb-[18px] [&_.chat-markdown]:text-[color-mix(in_srgb,var(--foreground)_90%,transparent)] [&:has(+[data-changed-files])]:pb-0",
+  plan: "mb-4 min-w-0 rounded-xl border border-border bg-card px-4 py-3",
+};
+
 function MessageRow(props: IRowProps & { meta: boolean }) {
   const { item, inherited } = useRow(props);
   const view = createMemo(() => {
@@ -544,9 +614,12 @@ function MessageRow(props: IRowProps & { meta: boolean }) {
     return held === undefined ? undefined : viewOf(held);
   });
   return (
-    <article class={`row ${view()?.Tone}`} classList={{ inherited: inherited() }}>
+    <article
+      class={`${MESSAGE_TONES[view()?.Tone ?? ""] ?? "min-w-0"} data-inherited:opacity-70`}
+      data-inherited={inherited() ? "" : undefined}
+    >
       <Show when={view()?.Tone === "plan"}>
-        <header class="plan-title">{view()?.Label}</header>
+        <header class="mb-2 text-[12px] font-medium text-muted-foreground">{view()?.Label}</header>
       </Show>
       <Show when={view()?.Body}>
         {(text) => <Body id={props.id} text={text()} format={view()?.Format ?? "text"} />}
@@ -620,35 +693,37 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
   const label = () => (
     <>
       <RowIcon type={item()?.type ?? ""} />
-      <span class="work-label">{view()?.Label}</span>
+      <span class="min-w-0 flex-initial truncate">{view()?.Label}</span>
       <Show when={counts()}>
         {(held) => <DiffCounts additions={held().additions} deletions={held().deletions} />}
       </Show>
       <Show when={live()}>
-        <span class="work-live">{live()}</span>
+        <span class="flex-none text-[12px] text-info-foreground">{live()}</span>
       </Show>
     </>
   );
-  const body = () => (
+  const body = (pre?: string) => (
     <Show when={view()?.Body}>
-      {(text) => <Body id={props.id} text={text()} format={view()?.Format ?? "text"} />}
+      {(text) => <Body id={props.id} text={text()} format={view()?.Format ?? "text"} pre={pre} />}
     </Show>
   );
+  const tone = () => view()?.Tone;
   return (
     <article
-      class={`row work ${view()?.Tone}`}
-      classList={{
-        inherited: inherited(),
-        "with-action": diffTurn() !== null,
-        failed: view()?.Failed === true,
-      }}
+      class="group/row relative min-w-0 rounded-md p-0.5 data-inherited:opacity-70"
+      data-tone={tone()}
+      data-inherited={inherited() ? "" : undefined}
+      data-action={diffTurn() !== null ? "" : undefined}
+      data-failed={view()?.Failed === true ? "" : undefined}
     >
       <Show
         when={view()?.Collapsed && (view()?.Body || view()?.LiveOutput)}
         fallback={
           <>
-            <div class="work-line">{label()}</div>
-            {body()}
+            <div class={`${workLine(tone())} group-data-action/row:pr-18`}>{label()}</div>
+            {body(
+              view()?.Format !== "text" ? WORK_PRE : tone() === "error" ? ERROR_TEXT : WORK_TEXT,
+            )}
           </>
         }
       >
@@ -659,11 +734,13 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
             if (event.currentTarget.open !== expanded()) session.toggleRowExpanded(props.id);
           }}
         >
-          <summary class="work-line">
+          <summary
+            class={`${workLine(tone())} ${SUMMARY} ${tone() === "quiet" || tone() === "error" ? "" : "hover:text-foreground"}`}
+          >
             {label()}
-            <ChevronRight class="work-chevron" />
+            <ChevronRight class="size-3.5 text-muted-foreground opacity-0 group-hover/line:opacity-100 in-open:rotate-90 in-open:opacity-100" />
           </summary>
-          <div class="work-detail">
+          <div class="ml-7 pt-0.5 pb-1.5">
             <Show when={view()?.LiveOutput && expanded()}>
               <CommandOutput
                 environmentId={thread.state.EnvironmentId}
@@ -677,7 +754,10 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
       </Show>
       <Show when={diffTurn()}>
         {(turn) => (
-          <button class="diff-link" onClick={() => session.openDiff("turn", turn())}>
+          <button
+            class="absolute top-0.5 right-0.5 cursor-pointer border-0 bg-transparent p-0 text-[14px] leading-6 text-primary hover:underline"
+            onClick={() => session.openDiff("turn", turn())}
+          >
             View diff
           </button>
         )}

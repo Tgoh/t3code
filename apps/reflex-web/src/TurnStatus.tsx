@@ -31,6 +31,14 @@ import {
 
 const SECOND = 1_000;
 
+const POPOVER =
+  "absolute right-0 bottom-[calc(100%+4px)] left-0 z-40 max-h-[min(24rem,50dvh)] overflow-y-auto rounded-xl border border-border bg-popover px-3.5 pt-2.5 pb-3 text-[14px] text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]";
+
+const STEPS = "m-0 min-w-0 flex-1 list-none p-0";
+
+const QUEUED_TOGGLE =
+  "ml-auto inline-flex flex-none cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1 py-0 whitespace-nowrap hover:text-foreground aria-expanded:text-foreground [&_svg]:size-3.5 [&_svg]:transition-transform [&_svg]:duration-120 [&_svg]:ease-[ease] aria-expanded:[&_svg]:rotate-180";
+
 // Reasoning past this length can't change the first line, so the preview reads no further.
 const THOUGHT_PREVIEW_LENGTH = 8_192;
 
@@ -84,7 +92,9 @@ function useActivity(): Accessor<string | null> {
 function WorkingText(props: { waiting: boolean }) {
   const activity = useActivity();
   return (
-    <span class="turn-status-text">{props.waiting ? "Waiting" : (activity() ?? "Thinking")}</span>
+    <span class="min-w-0 flex-1 truncate">
+      {props.waiting ? "Waiting" : (activity() ?? "Thinking")}
+    </span>
   );
 }
 
@@ -133,21 +143,27 @@ export const checklistRows = (checklist: IChecklist | null): number =>
 function ChecklistStep(props: { step: IChecklistStep; active: boolean }) {
   return (
     <li
-      class="checklist-step"
-      classList={{ active: props.active, done: props.step.status === "completed" }}
+      class="group/step flex h-[var(--checklist-row-height,22px)] items-center gap-2 data-active:font-medium data-active:text-foreground [&_svg]:size-3.5 [&_svg]:flex-none"
+      data-active={props.active ? "" : undefined}
+      data-done={props.step.status === "completed" ? "" : undefined}
     >
       <Show when={props.step.status === "completed"} fallback={<Square />}>
         <SquareCheck />
       </Show>
-      <span>{props.step.text}</span>
+      <span class="min-w-0 truncate group-data-done/step:line-through">{props.step.text}</span>
     </li>
   );
 }
 
-function ChecklistSteps(props: { checklist: IChecklist; start: number; end: number }) {
+function ChecklistSteps(props: {
+  checklist: IChecklist;
+  start: number;
+  end: number;
+  class: string;
+}) {
   const steps = () => props.checklist.Steps.slice(props.start, props.end);
   return (
-    <ol class="checklist-steps">
+    <ol class={props.class}>
       <Index each={steps()}>
         {(step, index) => (
           <ChecklistStep step={step()} active={props.start + index === props.checklist.Active} />
@@ -166,13 +182,18 @@ function ChecklistPopover(props: {
   onCleanup(props.onClose);
   return (
     <Popup
-      class="queued-popover"
+      class={POPOVER}
       role="dialog"
       label="To-do list"
       anchor={props.toggle}
       onClose={props.onClose}
     >
-      <ChecklistSteps checklist={props.checklist} start={0} end={props.checklist.Steps.length} />
+      <ChecklistSteps
+        checklist={props.checklist}
+        start={0}
+        end={props.checklist.Steps.length}
+        class={`${STEPS} text-muted-foreground`}
+      />
     </Popup>
   );
 }
@@ -186,17 +207,29 @@ function Checklist(props: { checklist: IChecklist }) {
   const count = () => `${props.checklist.Done}/${props.checklist.Steps.length}`;
   return (
     <>
-      <ChecklistSteps checklist={props.checklist} start={shown().start} end={shown().end} />
-      <Show when={hidden()} fallback={<span class="checklist-count">{count()}</span>}>
+      <ChecklistSteps
+        checklist={props.checklist}
+        start={shown().start}
+        end={shown().end}
+        class={STEPS}
+      />
+      <Show
+        when={hidden()}
+        fallback={
+          <span class="ml-auto inline-flex h-(--checklist-row-height) flex-none items-center">
+            {count()}
+          </span>
+        }
+      >
         <button
           ref={setToggle}
-          class="turn-status-queued checklist-count"
+          class={`${QUEUED_TOGGLE} h-(--checklist-row-height)`}
           aria-expanded={open()}
           aria-label={`${count()} done, show all steps`}
           onClick={() => setOpen((held) => !held)}
         >
           {count()}
-          <ChevronUp classList={{ open: open() }} />
+          <ChevronUp />
         </button>
         <Show when={open() && toggle()}>
           {(held) => (
@@ -228,16 +261,17 @@ function QueuedRow(props: { runId: string }) {
     setEditing(null);
   };
   return (
-    <div class="queued">
+    <div class="mt-1.5 flex items-center gap-2 wrap-anywhere">
       <Show when={editing() !== null} fallback={<QueuedMessage runId={props.runId} />}>
         <form
-          class="queued-edit"
+          class="flex min-w-0 flex-1 flex-col gap-1.5"
           onSubmit={(event) => {
             event.preventDefault();
             save();
           }}
         >
           <textarea
+            class="resize-y rounded-[10px] border border-input bg-background px-2.5 py-1.5"
             aria-label="Edit queued message"
             rows={3}
             value={editing() ?? ""}
@@ -253,7 +287,7 @@ function QueuedRow(props: { runId: string }) {
               }
             }}
           />
-          <div class="queued-edit-actions">
+          <div class="flex justify-end gap-1.5">
             <Button onClick={() => setEditing(null)}>Cancel</Button>
             <Button type="submit" variant="primary" disabled={session.queueing()}>
               Save
@@ -262,7 +296,7 @@ function QueuedRow(props: { runId: string }) {
         </form>
       </Show>
       <Show when={editing() === null}>
-        <div class="queued-actions">
+        <div class="flex flex-none gap-0.5 [&_svg]:size-3.5">
           <IconButton
             aria-label="Send now"
             data-tip="Send now"
@@ -305,7 +339,7 @@ function QueuedPopover(props: {
   onCleanup(props.onClose);
   return (
     <Popup
-      class="queued-popover"
+      class={POPOVER}
       role="dialog"
       label="Queued messages"
       anchor={props.toggle}
@@ -342,11 +376,9 @@ export function TurnStatus(props: {
   const queued = () => thread.queuedRunIds().length;
   return (
     <div
-      class="turn-status"
-      classList={{
-        idle: props.state === null && queued() === 0,
-        checklist: props.checklist !== null,
-      }}
+      class="group/status absolute right-(--gutter) bottom-full left-(--gutter) flex h-(--turn-status-height) items-center gap-1 rounded-lg bg-[color-mix(in_srgb,var(--background)_var(--glass-opacity),transparent)] px-3.5 text-[13px] text-muted-foreground tabular-nums backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) data-checklist:items-start data-checklist:py-1 data-idle:invisible"
+      data-idle={props.state === null && queued() === 0 ? "" : undefined}
+      data-checklist={props.checklist !== null ? "" : undefined}
     >
       <Show
         when={props.checklist}
@@ -361,15 +393,15 @@ export function TurnStatus(props: {
       <Show when={queued() > 0}>
         <button
           ref={setToggle}
-          class="turn-status-queued"
+          class={`${QUEUED_TOGGLE} group-data-checklist/status:h-(--checklist-row-height)`}
           aria-expanded={open()}
           onClick={() => setOpen((held) => !held)}
         >
           <Show when={props.state !== null}>
-            <span class="turn-status-dot">·</span>
+            <span class="mr-0.5">·</span>
           </Show>
           {queued()} queued
-          <ChevronUp classList={{ open: open() }} />
+          <ChevronUp />
         </button>
         <Show when={open() && toggle()}>
           {(held) => (

@@ -38,6 +38,11 @@ function* openOutput(
   });
 }
 
+export const WORK_PRE =
+  "m-0 max-h-64 overflow-auto font-mono text-[11px] leading-[1.625] wrap-anywhere whitespace-pre-wrap text-secondary-label";
+
+const NOTE = "m-0 text-[12px] text-muted-foreground";
+
 // The component entity's removal closes the subscription.
 export function CommandOutput(props: { environmentId: string; threadId: string; itemId: string }) {
   const environment = Environment.use();
@@ -55,25 +60,25 @@ export function CommandOutput(props: { environmentId: string; threadId: string; 
     if (element !== undefined && following()) element.scrollTop = element.scrollHeight;
   });
   return (
-    <Show when={output.value()} fallback={<p class="command-note">Loading output…</p>}>
+    <Show when={output.value()} fallback={<p class={NOTE}>Loading output…</p>}>
       {(shown) => (
         <>
           <Show when={shown().Error}>
             <p class="composer-error">Couldn't load output: {shown().Error}</p>
           </Show>
           <Show when={shown().Truncated}>
-            <p class="command-note">Earlier output not shown.</p>
+            <p class={NOTE}>Earlier output not shown.</p>
           </Show>
           <Show
             when={shown().Text !== ""}
             fallback={
               <Show when={!shown().Running && shown().Error === null}>
-                <p class="command-note">No output.</p>
+                <p class={NOTE}>No output.</p>
               </Show>
             }
           >
             <pre
-              class="code"
+              class={WORK_PRE}
               ref={setScroller}
               onScroll={(event) => {
                 const element = event.currentTarget;
