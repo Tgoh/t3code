@@ -34,6 +34,8 @@ export function createMediaQuery(
 
 // Longer than iOS's keyboard animation, which reports its final size only when it ends, if at all.
 const KEYBOARD_SETTLE_MS = 1_000;
+// Taller than Safari's collapsing toolbar, so only a keyboard counts.
+const KEYBOARD_MIN_HEIGHT = 150;
 
 /**
  * Sizes the app to the visual viewport, which iOS Safari shrinks for the on-screen keyboard while
@@ -48,10 +50,14 @@ export function trackVisualViewport(target: HTMLElement) {
     if (Math.abs(viewport.scale - 1) > 0.01) {
       target.style.removeProperty("--viewport-height");
       target.style.removeProperty("--viewport-top");
+      delete target.dataset.keyboard;
       return;
     }
     target.style.setProperty("--viewport-height", `${viewport.height}px`);
     target.style.setProperty("--viewport-top", `${viewport.offsetTop}px`);
+    if (target.clientHeight - viewport.height > KEYBOARD_MIN_HEIGHT)
+      target.dataset.keyboard = "open";
+    else delete target.dataset.keyboard;
   };
   let frame = 0;
   const follow = () => {
