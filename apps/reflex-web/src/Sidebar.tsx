@@ -56,7 +56,7 @@ const searchResultId = (threadId: string) => `sidebar-search-result-${threadId}`
 
 // The sheet and collapse states are classes App.tsx sets on the layout around the sidebar.
 const SIDEBAR =
-  "flex h-full min-h-0 flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) bg-size-[256px_256px] text-sidebar-foreground in-[.sidebar-collapsed]:hidden in-[.sidebar-sheet]:absolute in-[.sidebar-sheet]:top-[env(safe-area-inset-top)] in-[.sidebar-sheet]:bottom-0 in-[.sidebar-sheet]:left-0 in-[.sidebar-sheet]:z-50 in-[.sidebar-sheet]:w-[calc(100vw-12px)] in-[.sidebar-sheet]:pl-[env(safe-area-inset-left)] in-[.sidebar-sheet:not(.sidebar-open)]:invisible in-[.sidebar-sheet:not(.sidebar-open)]:[transform:translateX(-100%)] in-[.sidebar-sheet:not(.sidebar-open)]:[transition:transform_0.2s_ease-in-out,visibility_0s_linear_0.2s] in-[.sidebar-open]:shadow-[0_8px_24px_rgb(0_0_0/12%)] in-[.sidebar-open]:[transition:transform_0.2s_ease-in-out]";
+  "flex h-full min-h-0 flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) bg-size-[256px_256px] text-sidebar-foreground in-[.sidebar-collapsed]:hidden in-[.sidebar-sheet]:absolute in-[.sidebar-sheet]:top-[env(safe-area-inset-top)] in-[.sidebar-sheet]:bottom-0 in-[.sidebar-sheet]:left-0 in-[.sidebar-sheet]:z-50 pl-[env(safe-area-inset-left)] in-[.sidebar-sheet]:w-[calc(100vw-12px)]in-[.sidebar-sheet:not(.sidebar-open)]:invisible in-[.sidebar-sheet:not(.sidebar-open)]:[transform:translateX(-100%)] in-[.sidebar-sheet:not(.sidebar-open)]:[transition:transform_0.2s_ease-in-out,visibility_0s_linear_0.2s] in-[.sidebar-open]:shadow-[0_8px_24px_rgb(0_0_0/12%)] in-[.sidebar-open]:[transition:transform_0.2s_ease-in-out]";
 const STAGE_FADE =
   "after:bg-[linear-gradient(to_bottom,transparent_0%,transparent_28%,color-mix(in_srgb,var(--sidebar)_10%,transparent)_40%,color-mix(in_srgb,var(--sidebar)_30%,transparent)_52%,color-mix(in_srgb,var(--sidebar)_58%,transparent)_64%,color-mix(in_srgb,var(--sidebar)_82%,transparent)_75%,color-mix(in_srgb,var(--sidebar)_96%,transparent)_85%,var(--sidebar)_93%)]";
 const THREAD_LIST =
@@ -331,7 +331,7 @@ export const Sidebar = Shell.provider(() => {
     <nav class={SIDEBAR} data-sidebar>
       <header class="relative flex h-(--topbar-height) flex-none items-center px-3">
         <div
-          class={`pointer-events-none absolute inset-x-0 top-0 h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_92%)] after:absolute after:inset-0 after:content-[''] ${STAGE_FADE}`}
+          class={`pointer-events-none absolute top-0 right-0 left-[calc(-1*env(safe-area-inset-left))] h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_92%)] after:absolute after:inset-0 after:content-[''] ${STAGE_FADE}`}
         >
           <StageArt />
         </div>
