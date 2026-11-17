@@ -207,7 +207,7 @@ Dictation transcribes on this client's own server with a local model, as stock's
 - No transcript cleanup, dictionary (personal or project), correction cue, language select, microphone order or test, hardware or unload settings, model compare, linking or removal. The project's name is still sent as a recognition hint.
 - The shortcut toggles; stock's "hold to talk" mode isn't built. Escape cancels a recording.
 - No dictating into a question's custom answer, the timeline's comment editors or the preview annotator.
-- Tested in desktop Chromium with `getUserMedia` stubbed to play a recorded WAV through Web Audio, on the dev server and on the production build with its service worker in control, both streaming and buffered. A real iPhone isn't tested. iOS needs the HTTPS (Tailscale) address, may ask for the microphone again in each home-screen app session, and ends the capture when the app goes to the background, which shows as "Mic disconnected" with Record again.
+- Tested in desktop Chromium with `getUserMedia` stubbed to play a recorded WAV through Web Audio, on the dev server and on the production build with its service worker in control, both streaming and buffered, and a send after dictation on Haiku. A real iPhone isn't tested. iOS needs the HTTPS (Tailscale) address, may ask for the microphone again in each home-screen app session, and ends the capture when the app goes to the background, which shows as "Mic disconnected" with Record again.
 
 ## Open: reading `packages/` restarts the dev server on Windows
 
