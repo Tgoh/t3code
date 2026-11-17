@@ -28,15 +28,18 @@ import {
   resolveQuickAction,
 } from "./gitActions";
 import {
+  ArrowRight,
   ChevronDown,
   CloudDownload,
   CloudUpload,
+  CornerLeftUp,
   ExternalLink,
   FileDiff,
   Folder,
   GitBranch,
   GitBranchPlus,
   GitCommitHorizontal,
+  GitFork,
   Info,
   Play,
   Plus,
@@ -44,6 +47,7 @@ import {
   X,
 } from "./icons";
 import GitWork, { type IActionContext } from "./GitWork";
+import { forkLineage, lineageStatusLabel } from "./lineage";
 import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
@@ -401,6 +405,12 @@ const Body = (props: IDetailsProps) => {
     ),
   );
 
+  const lineage = createMemo(() => {
+    const thread = environment.state.Replica.OpenThreads[session.state.ThreadId]?.Thread;
+    return thread == null
+      ? []
+      : forkLineage(thread, Object.values(environment.state.Replica.Shell.Threads));
+  });
   const terminology = () => changeRequestTerminologyFor(git());
   const busy = () => work.gitBusy();
   const quick = createMemo(() =>
@@ -642,6 +652,47 @@ const Body = (props: IDetailsProps) => {
               </span>
             </span>
           </button>
+        </section>
+      </Show>
+
+      <Show when={lineage().length > 0}>
+        <section
+          class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
+          aria-labelledby="thread-details-lineage-heading"
+        >
+          <h3
+            id="thread-details-lineage-heading"
+            class="m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none"
+          >
+            Lineage
+          </h3>
+          <ul class="m-0 list-none p-0" aria-label="Related threads">
+            <For each={lineage()}>
+              {(row) => {
+                const title = () => row.Title ?? (row.Parent ? "Parent thread" : "Fork");
+                const relation = row.Parent ? "parent thread" : "fork";
+                return (
+                  <li>
+                    <button
+                      class={`group/lineage ${ROW}`}
+                      data-tip={`Open ${relation}: ${title()}`}
+                      data-failed={
+                        row.Status === "failed" || row.Status === "error" ? "" : undefined
+                      }
+                      onClick={() => void environment.selectThread(row.ThreadId)}
+                    >
+                      <Dynamic component={row.Parent ? CornerLeftUp : GitFork} />
+                      <span class={LABEL}>{title()}</span>
+                      <ArrowRight class="size-3! flex-none opacity-0 group-hover/lineage:opacity-100" />
+                      <span class="flex-none text-[11px] font-normal text-muted-foreground group-data-failed/lineage:text-destructive">
+                        {lineageStatusLabel(row.Status)}
+                      </span>
+                    </button>
+                  </li>
+                );
+              }}
+            </For>
+          </ul>
         </section>
       </Show>
 

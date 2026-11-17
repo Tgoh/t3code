@@ -12,6 +12,7 @@ import {
   splitTransferredFiles,
 } from "./attachmentIntake";
 import { ComposerCommandMenu, useComposerMenu } from "./ComposerCommandMenu";
+import { FOCUS_COMPOSER_EVENT } from "./composerFocus";
 import { ModelPicker, PermissionsChip } from "./ComposerMenus";
 import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
 import Environment from "./Environment";
@@ -52,6 +53,13 @@ const NOTE = "mx-4 my-1 text-[12px]";
 const ERROR = `${NOTE} text-error-foreground ${HIDDEN_COLLAPSED}`;
 const REMOVE_ATTACHMENT =
   "inline-flex cursor-pointer items-center rounded-full border-0 p-0.5 [&_svg]:size-3.5";
+
+function useFocusRequests(focus: () => void) {
+  onMount(() => {
+    window.addEventListener(FOCUS_COMPOSER_EVENT, focus);
+    onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, focus));
+  });
+}
 
 /** Holds whether ⌘ or Ctrl is down, so the send button can show what a click would do. */
 function useAlternateHeld() {
@@ -330,6 +338,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   };
+  useFocusRequests(expand);
   // A tap on a control would take focus from the prompt and drop the on-screen keyboard.
   const keepPromptFocus = (event: PointerEvent) => {
     if (phone() && event.target !== textarea) event.preventDefault();
@@ -451,6 +460,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         ref={form}
         class="relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)"
         data-collapsed={collapsed() ? "" : undefined}
+        inert={session.rewinding()}
         onSubmit={(event) => {
           event.preventDefault();
           send();
@@ -600,6 +610,12 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         </Show>
         <Show when={held().ModelError}>
           <p class={ERROR}>{held().ModelError}</p>
+        </Show>
+        <Show when={held().RewindError}>
+          <p class={ERROR}>{held().RewindError}</p>
+        </Show>
+        <Show when={held().ForkError}>
+          <p class={ERROR}>Couldn't fork this response: {held().ForkError}</p>
         </Show>
         <div
           class="flex min-h-8 items-center gap-1 px-2 pt-px pb-[7px] in-data-collapsed:pt-0 in-data-collapsed:[&>:not(.model-trigger)]:hidden"

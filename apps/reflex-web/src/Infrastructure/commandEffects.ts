@@ -70,10 +70,41 @@ export interface IQueueCommand {
   Operation: IQueueOperation;
 }
 
+export interface IRewind {
+  EnvironmentId: string;
+  ThreadId: string;
+  CommandId: string;
+  TurnCount: number;
+  RestoreFiles: boolean;
+  Checkpoint: { Id: string; ScopeId: string } | null;
+}
+
+interface IRewindEffect extends IEffect, IRewind {
+  Type: "rewind";
+}
+
+export const rewindEffect = defineEffect<IRewindEffect, void>("rewind");
+
+export interface IForkThread {
+  EnvironmentId: string;
+  CommandId: string;
+  SourceThreadId: string;
+  TargetThreadId: string;
+  RunId: string;
+  Title: string;
+}
+
+interface IForkThreadEffect extends IEffect, IForkThread {
+  Type: "forkThread";
+}
+
+export const forkThreadEffect = defineEffect<IForkThreadEffect, void>("forkThread");
+
 export interface IProviderOption {
   InstanceId: string;
   Driver?: string;
   Name: string;
+  SupportsRollback?: false;
   SupportedRuntimeModes?: IWireRuntimeMode[];
   SlashCommands?: ServerProviderSlashCommand[];
   Skills?: ServerProviderSkill[];

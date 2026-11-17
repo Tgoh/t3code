@@ -34,7 +34,9 @@ import {
   openInEditorImpl,
   openInFileManagerImpl,
   queueCommandImpl,
+  forkThreadImpl,
   respondRequestImpl,
+  rewindImpl,
   searchEntriesImpl,
   searchThreadsImpl,
   modelFavoritesImpl,
@@ -84,7 +86,7 @@ import { ThreadReceiver } from "./OpenThread";
 import { getDefaultRoot, load, RootReceiver } from "./Root";
 import { ShellReceiver } from "./Shell";
 import { GitReceiver } from "./GitWork";
-import { TerminalReceiver } from "./ThreadSession";
+import { RewindReceiver, TerminalReceiver } from "./ThreadSession";
 
 await pairFromUrl();
 
@@ -100,6 +102,8 @@ runtime.registerImplementation(threadHistoryPageImpl);
 runtime.registerImplementation(startTurnImpl);
 runtime.registerImplementation(stopThreadImpl);
 runtime.registerImplementation(respondRequestImpl);
+runtime.registerImplementation(rewindImpl);
+runtime.registerImplementation(forkThreadImpl);
 runtime.registerImplementation(serverProvidersImpl);
 runtime.registerImplementation(modelFavoritesImpl);
 runtime.registerImplementation(setModelFavoriteImpl);
@@ -162,6 +166,7 @@ runtime.registerReceiver(EnvironmentReceiver);
 runtime.registerReceiver(ShellReceiver);
 runtime.registerReceiver(ThreadReceiver);
 runtime.registerReceiver(TerminalReceiver);
+runtime.registerReceiver(RewindReceiver);
 runtime.registerReceiver(GitReceiver);
 runtime.registerReceiver(PreferencesReceiver);
 // The Environment applies the scheme once it connects; this paints the loading screen in it.

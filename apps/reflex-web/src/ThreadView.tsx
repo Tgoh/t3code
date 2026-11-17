@@ -33,6 +33,7 @@ import { detailsLayout } from "./threadDetailsLayout";
 import ThreadSession from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
 import { TimelineResponse } from "./TimelineResponse";
+import { RewindDialog } from "./TimelineRows";
 import {
   firstAfterChange,
   followAfterScroll,
@@ -609,6 +610,7 @@ const ThreadBody = ThreadSession.provider(() => {
                 />
               )}
             </Show>
+            <RewindDialog />
           </div>
         </div>
         <Show when={terminalOpen()}>

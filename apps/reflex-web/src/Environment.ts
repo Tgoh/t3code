@@ -95,6 +95,7 @@ import {
 import { errorText } from "./errorText";
 import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
 import {
+  checkRewind,
   detachTerminal,
   getDefaultThreadSession,
   type IReplica,
@@ -605,6 +606,13 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Thread/RequestsSettled"(draft, { ThreadId, PendingIds, UnansweredIds }) {
     const session = draft.Local.ThreadSessions[ThreadId];
     if (session !== undefined) yield* start(settleQuestions, session, PendingIds, UnansweredIds);
+  },
+  *"Thread/RewindProgress"(draft, { ThreadId }) {
+    const session = draft.Local.ThreadSessions[ThreadId];
+    if (session !== undefined) yield* start(checkRewind, session);
+  },
+  *"Thread/Forked"(draft, { ThreadId }) {
+    yield* selectThread(draft, ThreadId);
   },
   *"Thread/Expired"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);

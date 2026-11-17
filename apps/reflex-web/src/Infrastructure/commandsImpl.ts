@@ -7,11 +7,13 @@ import {
   deleteProject,
   deleteThread,
   dismissThreadUserInput,
+  forkThreadFromRun,
   interruptThreadTurn,
   markThreadUnread,
   pinThread,
   respondToThreadApproval,
   respondToThreadUserInput,
+  revertThreadCheckpoint,
   settleThread,
   setThreadRuntimeMode,
   snoozeThread,
@@ -64,7 +66,9 @@ import {
   openInFileManagerEffect,
   projectCommandEffect,
   queueCommandEffect,
+  forkThreadEffect,
   respondRequestEffect,
+  rewindEffect,
   serverProvidersEffect,
   setModelFavoriteEffect,
   startCloneEffect,
@@ -140,6 +144,34 @@ export const stopThreadImpl = implementation(stopThreadEffect, async (input) => 
     interruptThreadTurn({
       commandId: CommandId.make(input.CommandId),
       threadId: ThreadId.make(input.ThreadId),
+    }),
+  );
+});
+
+export const rewindImpl = implementation(rewindEffect, async (input) => {
+  await inEnvironment(
+    input.EnvironmentId,
+    revertThreadCheckpoint({
+      commandId: CommandId.make(input.CommandId),
+      threadId: ThreadId.make(input.ThreadId),
+      turnCount: input.TurnCount,
+      restoreFiles: input.RestoreFiles,
+      ...(input.Checkpoint === null
+        ? {}
+        : { checkpointId: input.Checkpoint.Id, scopeId: input.Checkpoint.ScopeId }),
+    }),
+  );
+});
+
+export const forkThreadImpl = implementation(forkThreadEffect, async (input) => {
+  await inEnvironment(
+    input.EnvironmentId,
+    forkThreadFromRun({
+      commandId: CommandId.make(input.CommandId),
+      sourceThreadId: ThreadId.make(input.SourceThreadId),
+      targetThreadId: ThreadId.make(input.TargetThreadId),
+      runId: RunId.make(input.RunId),
+      title: input.Title,
     }),
   );
 });
@@ -507,6 +539,7 @@ export const serverProvidersImpl = implementation(serverProvidersEffect, async (
       InstanceId: provider.instanceId,
       Driver: provider.driver,
       Name: provider.displayName ?? provider.instanceId,
+      ...(provider.supportsConversationRollback === false ? { SupportsRollback: false } : {}),
       ...(provider.supportedRuntimeModes === undefined
         ? {}
         : { SupportedRuntimeModes: [...provider.supportedRuntimeModes] }),
