@@ -88,6 +88,7 @@ async function connected(projection: IWireProjection) {
       modelFavorites: () => [],
       rememberedModels: () => ({}),
       rememberModel: () => {},
+      storedClientSettings: () => null,
     },
     { onError: (error) => console.error("action failed:", error) },
   );
