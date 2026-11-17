@@ -2,6 +2,7 @@ import {
   DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES,
   DEV_PROXIED_PATH_PREFIXES,
 } from "@t3tools/shared/devProxy";
+import tailwindcss from "@tailwindcss/vite";
 import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import solidPlugin from "vite-plugin-solid";
@@ -9,7 +10,7 @@ import solidPlugin from "vite-plugin-solid";
 const backend = `http://localhost:${process.env.T3CODE_PORT ?? 13773}/`;
 
 export default defineConfig(({ mode }) => ({
-  plugins: [solidPlugin()],
+  plugins: [solidPlugin(), tailwindcss()],
   // Treflex ships as source; pre-bundling would give the app a second copy of its contexts.
   optimizeDeps: { exclude: ["treflex", "treflex-solid"] },
   build: { target: "esnext" },

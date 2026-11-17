@@ -205,6 +205,20 @@ To bring in upstream changes, use the `/syncupstream` skill: it merges on a work
 
 `upstream` is fetch-only. Actions is disabled on `Tgoh/t3code`, because upstream's workflows include release and deploy jobs. Keep it disabled.
 
+## Styling
+
+Tailwind v4, like stock. `src/index.css` is the entry: it maps stock's theme (`bg-background`, `text-muted-foreground`, `rounded-lg`, `text-2xs`, the `dark`/`light`/`any-hover` variants) onto the tokens in `src/styles.css`, so a utility means the same thing here as in `apps/web`. `dark:` follows the `data-theme` attribute the appearance setting sets. A stock utility that needs a token we don't have yet renders nothing: copy the token from `apps/web/src/index.css` into `styles.css` and its `--color-*` line into `index.css`.
+
+`styles.css` is being emptied component by component. It sits in the `components` layer, under the utilities, so a utility always beats a rule still left there. It keeps only global rules: tokens, base element styles, `.chat-markdown` prose, the terminal, and the iOS input rule. There's no preflight yet; it can come in once the legacy rules are gone.
+
+- Put utilities in the markup. Never add a rule to `styles.css` unless it's global.
+- When porting from stock, copy its class strings.
+- When migrating a component, delete its rules from `styles.css` in the same change. Keep the look exactly as it is, and restyle in a separate change. Arbitrary values (`text-[14px]`) are fine where stock's scale would shift a pixel; stock's `text-sm` and `text-xs` set a line-height that the old rules inherited instead.
+- There's no `tailwind-merge`. Never put two utilities for the same property on one element: Tailwind's order wins, not the class order. Drive state through variants on the element's ARIA or data attributes (`aria-[current=page]:bg-accent`, `aria-selected:`, `data-[state=open]:`), not a `classList` that adds a competing utility.
+- A class string used more than once in a file is a `const` at the top of that file. A look shared across areas (icon button, button, input, menu row) becomes one exported string or component under `src/ui/`, made by the thread that owns it.
+- `hover:` applies only where the pointer can hover, as in stock. The old `:hover` rules also fired on touch.
+- A legacy class with a utility's name also gets that utility (`hidden` was `display: none`). None are left, so don't add one.
+
 ## Setting up a machine
 
 Three folders sit side by side under `G:\Sorted\Code`, because `dev-stack.ps1` finds the data folder by relative path, and `scripts/setup-worktree.ts` and the Claude skills use absolute ones:

@@ -28,7 +28,9 @@
     "treflex-solid": "file:../../.t3/treflex/packages/solid"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
+    "tailwindcss": "catalog:",
     "vite-plugin-solid": "^2.11.7",
     "vite-plus": "catalog:"
   }

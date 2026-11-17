@@ -3642,15 +3642,6 @@ button.composer-control.open {
   fill: currentColor;
 }
 
-.sr-only {
-  clip: rect(0 0 0 0);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
-}
-
 .picker-model > svg,
 .effort-row > svg {
   flex: none;
@@ -4799,9 +4790,10 @@ a.attachment-file-open:hover .attachment-file-name {
   padding: 8px 12px;
 }
 
-/* xterm.css makes the viewport black, which shows through the .xterm padding as a frame. */
+/* xterm.css makes the viewport black, which shows through the .xterm padding as a frame.
+   It loads unlayered, so this layered override needs !important to win. */
 .terminal-host .xterm .xterm-viewport {
-  background-color: var(--terminal-background);
+  background-color: var(--terminal-background) !important;
 }
 
 .empty {
@@ -4835,7 +4827,7 @@ a.attachment-file-open:hover .attachment-file-name {
   z-index: 30;
 }
 
-.details-card.inline {
+.details-card.docked {
   max-height: calc(100% - 24px);
   position: absolute;
   right: 12px;
@@ -4905,11 +4897,11 @@ a.attachment-file-open:hover .attachment-file-name {
   justify-self: end;
 }
 
-.details-row:not(.static, :disabled, [aria-disabled="true"]):hover {
+.details-row:not(.inert, :disabled, [aria-disabled="true"]):hover {
   background: color-mix(in srgb, var(--foreground) 3.5%, transparent);
 }
 
-.details-row.static {
+.details-row.inert {
   cursor: default;
 }
 
@@ -5277,25 +5269,6 @@ a.attachment-file-open:hover .attachment-file-name {
 
 /* Settings and usage follow apps/web/src/components/settings/settingsLayout.tsx,
    SettingsSidebarNav.tsx and apps/web/src/components/usage/UsagePage.tsx. */
-.sidebar-footer {
-  align-items: center;
-  display: flex;
-  flex: none;
-  gap: 2px;
-  margin-top: auto;
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-}
-
-.sidebar-footer .icon-button {
-  color: var(--sidebar-muted-foreground);
-}
-
-.sidebar-footer .icon-button:hover,
-.sidebar-footer .icon-button.pressed {
-  background: var(--sidebar-accent);
-  color: var(--sidebar-foreground);
-}
-
 .settings-view,
 .usage-view {
   display: flex;
@@ -5315,68 +5288,6 @@ a.attachment-file-open:hover .attachment-file-name {
   display: flex;
   flex: 1;
   min-height: 0;
-}
-
-.settings-nav {
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-  padding: 12px 8px;
-  width: 15rem;
-}
-
-.settings-nav-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.settings-nav-heading {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 8px;
-}
-
-.settings-nav-item {
-  align-items: center;
-  background: none;
-  border: 0;
-  border-radius: var(--radius);
-  color: var(--muted-foreground);
-  cursor: pointer;
-  display: flex;
-  font: inherit;
-  font-size: 14px;
-  gap: 8px;
-  height: 32px;
-  padding: 0 8px;
-  text-align: left;
-}
-
-.settings-nav-item svg {
-  flex: none;
-  height: 16px;
-  width: 16px;
-}
-
-.settings-nav-item:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--foreground);
-}
-
-.settings-nav-item.active {
-  background: var(--accent);
-  color: var(--foreground);
-  font-weight: 500;
-}
-
-.settings-nav-item:disabled {
-  cursor: default;
-  opacity: 0.45;
 }
 
 .settings-content,
@@ -5602,15 +5513,15 @@ a.button {
   text-decoration: none;
 }
 
-.icon-button.outline {
+.icon-button.outlined {
   border-color: var(--input);
 }
 
-.icon-button.outline.destructive {
+.icon-button.outlined.destructive {
   color: var(--error-foreground);
 }
 
-.icon-button.outline.destructive:hover {
+.icon-button.outlined.destructive:hover {
   background: color-mix(in srgb, var(--destructive) 10%, transparent);
 }
 
@@ -5840,81 +5751,6 @@ a.button {
   color: var(--foreground);
 }
 
-.settings-search {
-  align-items: center;
-  border-radius: var(--radius);
-  color: var(--muted-foreground);
-  display: flex;
-  gap: 8px;
-  height: 32px;
-  padding: 0 4px 0 8px;
-}
-
-.settings-search:focus-within,
-.settings-search:hover {
-  background: var(--accent);
-}
-
-.settings-search > svg {
-  flex: none;
-  height: 16px;
-  width: 16px;
-}
-
-.settings-search input {
-  background: none;
-  border: 0;
-  color: var(--foreground);
-  flex: 1;
-  font: inherit;
-  font-size: 14px;
-  min-width: 0;
-  outline: none;
-}
-
-.settings-search kbd {
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-family: var(--font-sans);
-  font-size: 11px;
-  padding: 0 5px;
-}
-
-.settings-search-empty {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  margin: 0;
-  padding: 24px 8px;
-  text-align: center;
-}
-
-.settings-nav-item.result {
-  align-items: flex-start;
-  height: auto;
-  min-height: 40px;
-  padding-bottom: 4px;
-  padding-top: 6px;
-}
-
-.settings-result-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.settings-result-title {
-  color: var(--foreground);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-result-page {
-  font-size: 11px;
-}
-
 .provider-status.ready {
   background: var(--success);
 }
@@ -5941,7 +5777,7 @@ a.button {
   padding: 6px 16px 6px 10px;
 }
 
-.model-row.hidden .model-name {
+.model-row.unlisted .model-name {
   color: var(--muted-foreground);
 }
 
@@ -5965,21 +5801,6 @@ a.button {
 }
 
 @media (max-width: 767px) {
-  .settings-nav {
-    overflow-x: hidden;
-    width: 3.5rem;
-  }
-
-  .settings-search,
-  .settings-nav-item span,
-  .settings-nav-heading {
-    display: none;
-  }
-
-  .settings-nav-item {
-    justify-content: center;
-  }
-
   .providers-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -6508,10 +6329,10 @@ a.button {
   }
 }
 
-/* iOS Safari zooms the page into any focused field under 16px. Doubled :root outranks each
-   field's own font-size rule; keep this last in the file. */
+/* iOS Safari zooms the page into any focused field under 16px. !important outranks each
+   field's own font-size, including text-* utilities in the later utilities layer. */
 @media (max-width: 639px), (pointer: coarse) {
-  :root:root :is(input:not([type="checkbox"], [type="radio"]), textarea, select) {
-    font-size: 16px;
+  :is(input:not([type="checkbox"], [type="radio"]), textarea, select) {
+    font-size: 16px !important;
   }
 }

@@ -109,6 +109,10 @@ export function SettingsView(props: { page: string }) {
 
 const SEARCH_ITEMS = settingsSearchItems();
 
+const navItem =
+  "flex cursor-pointer gap-2 rounded-lg border-0 bg-transparent px-2 text-left text-[14px] text-muted-foreground hover:not-disabled:bg-accent hover:not-disabled:text-foreground disabled:cursor-default disabled:opacity-45 aria-selected:bg-accent aria-selected:font-medium aria-selected:text-foreground aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground max-md:justify-center";
+const navGroup = "flex flex-col gap-0.5";
+
 function SettingsNav(props: { page: string }) {
   const environment = Environment.use();
   const [query, setQuery] = createSignal("");
@@ -141,11 +145,15 @@ function SettingsNav(props: { page: string }) {
   document.addEventListener("keydown", onKeyDown);
   onCleanup(() => document.removeEventListener("keydown", onKeyDown));
   return (
-    <nav class="settings-nav" aria-label="Settings pages">
-      <div class="settings-search">
+    <nav
+      class="flex w-60 flex-none flex-col gap-4 overflow-y-auto border-r px-2 py-3 max-md:w-14 max-md:overflow-x-hidden"
+      aria-label="Settings pages"
+    >
+      <div class="flex h-8 items-center gap-2 rounded-lg pr-1 pl-2 text-muted-foreground focus-within:bg-accent hover:bg-accent max-md:hidden">
         <Icons.Search />
         <input
           ref={setSearchBox}
+          class="min-w-0 flex-1 border-0 bg-transparent text-[14px] text-foreground outline-none"
           type="text"
           placeholder="Search"
           aria-label="Search settings"
@@ -171,7 +179,10 @@ function SettingsNav(props: { page: string }) {
             }
           }}
         />
-        <Show when={searching()} fallback={<kbd>/</kbd>}>
+        <Show
+          when={searching()}
+          fallback={<kbd class="rounded-sm border bg-muted px-[5px] font-sans text-[11px]">/</kbd>}
+        >
           <button
             class="icon-button small"
             aria-label="Clear settings search"
@@ -188,17 +199,16 @@ function SettingsNav(props: { page: string }) {
         <Show
           when={results().length > 0}
           fallback={
-            <p class="settings-search-empty" role="status">
+            <p class="m-0 px-2 py-6 text-center text-[12px] text-muted-foreground" role="status">
               No settings found
             </p>
           }
         >
-          <div class="settings-nav-group" role="listbox" aria-label="Settings search results">
+          <div class={navGroup} role="listbox" aria-label="Settings search results">
             <For each={results()}>
               {(item, index) => (
                 <button
-                  class="settings-nav-item result"
-                  classList={{ active: index() === active() }}
+                  class={`${navItem} min-h-10 items-start pt-1.5 pb-1`}
                   role="option"
                   aria-selected={index() === active()}
                   tabindex="-1"
@@ -206,9 +216,9 @@ function SettingsNav(props: { page: string }) {
                   onClick={() => open(item)}
                 >
                   <Dynamic component={Icons[settingsPageOf(item.Page)?.Icon ?? "Settings2"]} />
-                  <span class="settings-result-text">
-                    <span class="settings-result-title">{item.Title}</span>
-                    <span class="settings-result-page">{settingsPageOf(item.Page)?.Label}</span>
+                  <span class="flex min-w-0 flex-col max-md:hidden">
+                    <span class="truncate font-medium text-foreground">{item.Title}</span>
+                    <span class="text-[11px]">{settingsPageOf(item.Page)?.Label}</span>
                   </span>
                 </button>
               )}
@@ -219,22 +229,25 @@ function SettingsNav(props: { page: string }) {
       <Show when={!searching()}>
         <For each={SETTINGS_NAV}>
           {(group) => (
-            <div class="settings-nav-group">
+            <div class={navGroup}>
               <Show when={group.Group}>
-                {(title) => <span class="settings-nav-heading">{title()}</span>}
+                {(title) => (
+                  <span class="px-2 py-1 text-[12px] font-medium text-muted-foreground max-md:hidden">
+                    {title()}
+                  </span>
+                )}
               </Show>
               <For each={group.Pages}>
                 {(entry) => (
                   <button
-                    class="settings-nav-item"
-                    classList={{ active: props.page === entry.Id }}
+                    class={`${navItem} h-8 items-center py-0`}
                     aria-current={props.page === entry.Id ? "page" : undefined}
                     disabled={!entry.Built}
                     data-tip={entry.Built ? undefined : "Not in this client yet"}
                     onClick={() => environment.openView({ Kind: "settings", Page: entry.Id })}
                   >
                     <Dynamic component={Icons[entry.Icon]} />
-                    <span>{entry.Label}</span>
+                    <span class="max-md:hidden">{entry.Label}</span>
                   </button>
                 )}
               </For>
@@ -585,7 +598,7 @@ function ProvidersPage() {
                       </div>
                       <For each={filterModels(row.Models, modelFilter())}>
                         {(model) => (
-                          <div class="model-row" classList={{ hidden: model.Hidden }}>
+                          <div class="model-row" classList={{ unlisted: model.Hidden }}>
                             <button
                               class="icon-button small"
                               classList={{ pressed: model.Favorite }}
@@ -925,7 +938,7 @@ function ArchivedPage() {
                       control={
                         <span class="settings-actions">
                           <button
-                            class="icon-button outline"
+                            class="icon-button outlined"
                             aria-label="Unarchive"
                             data-tip="Unarchive"
                             onClick={() =>
@@ -935,7 +948,7 @@ function ArchivedPage() {
                             <Icons.ArchiveX />
                           </button>
                           <button
-                            class="icon-button outline destructive"
+                            class="icon-button outlined destructive"
                             aria-label="Delete"
                             data-tip="Delete"
                             onClick={() => setDeleting(thread)}

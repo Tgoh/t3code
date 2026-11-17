@@ -469,7 +469,7 @@ const Body = (props: IDetailsProps) => {
   return (
     <div class="details-content">
       <section class="details-section" aria-label="Workspace">
-        <div class="details-row static" aria-label={`Run context: ${environment.state.Label}`}>
+        <div class="details-row inert" aria-label={`Run context: ${environment.state.Label}`}>
           <Server />
           <span class="details-label">{environment.state.Label || "This machine"}</span>
           <button
@@ -536,7 +536,7 @@ const Body = (props: IDetailsProps) => {
           <Show
             when={!busy() && noticeLabel() === null}
             fallback={
-              <div class="details-row static progress" role="status">
+              <div class="details-row inert progress" role="status">
                 <QuickActionIcon action={quick()} status={git()} />
                 <span class="details-label">{busy() ? "Working…" : noticeLabel()}</span>
                 <Show when={!busy() && work.state.Notice?.Url}>
@@ -918,7 +918,7 @@ export function DetailsSurface(props: {
     <aside
       ref={setCard}
       class="details-card"
-      classList={{ inline: props.inline, popover: !props.inline }}
+      classList={{ docked: props.inline, popover: !props.inline }}
       role="region"
       aria-label="Thread details"
       style={props.inline ? undefined : { top: `${place().Top}px`, right: `${place().Right}px` }}

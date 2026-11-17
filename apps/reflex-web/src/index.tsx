@@ -3,7 +3,7 @@ import { TreflexProvider } from "treflex-solid";
 import { render } from "solid-js/web";
 
 import "@fontsource-variable/inter";
-import "./styles.css";
+import "./index.css";
 
 import { App } from "./App";
 import { EnvironmentReceiver } from "./Environment";
