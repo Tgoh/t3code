@@ -1,7 +1,6 @@
 // @effect-diagnostics globalDate:off -- View-only usage windows, outside any Effect runtime.
 import {
   EnvironmentId,
-  type ServerProvider,
   USAGE_CONTRACT_VERSION,
   type UsageProviderKind,
   type UsageSummary,
@@ -19,9 +18,7 @@ import {
   usageSourceMessages,
 } from "@t3tools/shared/usageFormat";
 import {
-  collectLimitAccounts,
   collectLimitNotices,
-  collectLimitPools,
   displayLimitWindows,
   formatResetsIn,
   type LimitPace,
@@ -41,6 +38,7 @@ import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
 import { ChartNoAxesColumn, RefreshCw, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
+import { limitPools, limitPresentations } from "./limits";
 import { loadUsage, refreshUsage } from "./Settings";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
@@ -720,19 +718,8 @@ function UsageLimits(props: { providers: readonly unknown[] | undefined }) {
   const environment = Environment.use();
   const now = clockNow();
   const presentations = () =>
-    new Map([
-      [
-        EnvironmentId.make(environment.state.EnvironmentId),
-        {
-          entry: { target: { label: environment.state.Label } },
-          serverConfig:
-            props.providers === undefined
-              ? null
-              : { providers: props.providers as readonly ServerProvider[] },
-        },
-      ],
-    ]);
-  const pools = createMemo(() => collectLimitPools(collectLimitAccounts(presentations()), now));
+    limitPresentations(environment.state.EnvironmentId, environment.state.Label, props.providers);
+  const pools = createMemo(() => limitPools(presentations(), now));
   const notices = createMemo(() => collectLimitNotices(presentations()));
   return (
     <Show when={props.providers} fallback={<p class={loading}>Reading limits…</p>}>
@@ -749,11 +736,62 @@ function UsageLimits(props: { providers: readonly unknown[] | undefined }) {
   );
 }
 
+const poolLabel = (pool: LimitPool) => LIMIT_DRIVER_LABELS[pool.driver] ?? String(pool.driver);
+const poolColor = (pool: LimitPool) =>
+  Object.values(PROVIDERS).find((entry) => entry.Driver === pool.driver)?.Color ?? "var(--primary)";
+
+/** The Limits tab's figures in one column, for a popover. */
+export function LimitsSummary(props: { pools: readonly LimitPool[]; now: number }) {
+  return (
+    <Show
+      when={props.pools.length > 0}
+      fallback={<p class="m-0 text-[13px] text-muted-foreground">No limits reported.</p>}
+    >
+      <div class="flex flex-col gap-3">
+        <For each={props.pools}>
+          {(pool) => (
+            <section class="flex flex-col gap-2">
+              <h2 class="m-0 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
+                <ProviderIcon driver={pool.driver} size={12} />
+                {poolLabel(pool)}
+              </h2>
+              <For each={displayLimitWindows(pool)}>
+                {(window) => (
+                  <div class="flex flex-col gap-1">
+                    <span class="flex items-baseline gap-2 text-[13px]">
+                      <span class="min-w-0 flex-1 truncate">{window.label}</span>
+                      <span class="font-medium tabular-nums">{window.remainingPercent}% left</span>
+                    </span>
+                    <span class="block h-1.5 overflow-hidden rounded-full bg-muted">
+                      <span
+                        class="block h-full opacity-85"
+                        style={{
+                          width: `${Math.max(0, window.remainingPercent)}%`,
+                          "background-color": poolColor(pool),
+                        }}
+                      />
+                    </span>
+                    <Show when={window.members[0]}>
+                      {(member) => (
+                        <span class="text-[11px] text-muted-foreground">
+                          {formatResetsIn(member().window, props.now) ?? ""}
+                        </span>
+                      )}
+                    </Show>
+                  </div>
+                )}
+              </For>
+            </section>
+          )}
+        </For>
+      </div>
+    </Show>
+  );
+}
+
 function LimitPoolSection(props: { pool: LimitPool; now: number }) {
-  const label = () => LIMIT_DRIVER_LABELS[props.pool.driver] ?? String(props.pool.driver);
-  const color = () =>
-    Object.values(PROVIDERS).find((entry) => entry.Driver === props.pool.driver)?.Color ??
-    "var(--primary)";
+  const label = () => poolLabel(props.pool);
+  const color = () => poolColor(props.pool);
   return (
     <section class="flex flex-col gap-3">
       <h2 class={HEADING}>
