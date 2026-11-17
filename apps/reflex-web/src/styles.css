@@ -316,6 +316,7 @@ code {
    from trackVisualViewport in viewport.ts. */
 :root[data-keyboard="open"] {
   --safe-bottom: 0px;
+  --composer-gap: 8px;
 }
 
 /* --viewport-height and --viewport-top come from trackVisualViewport in viewport.ts. */
@@ -2949,7 +2950,7 @@ details[open] > summary .work-chevron {
   left: 0;
   margin-inline: auto;
   max-width: calc(var(--chat-content-max-width) + 2 * var(--gutter));
-  padding: 0 var(--gutter) calc(21px + var(--safe-bottom));
+  padding: 0 var(--gutter) calc(var(--composer-gap, 21px) + var(--safe-bottom));
   pointer-events: none;
   position: absolute;
   right: 0;
