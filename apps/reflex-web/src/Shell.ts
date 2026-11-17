@@ -7,18 +7,24 @@ import { isListedThreadLineage, isProviderNativeSubagentThread } from "@t3tools/
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
 import {
+  getData,
   type IActionGenerator,
   type IEntity,
+  type IOpenGenerator,
   type ISelectorGenerator,
   isEnded,
+  open,
   openResource,
   receiver,
+  select,
+  start,
   startTimer,
   stopTimer,
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
+import { threadCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
 import type {
   IWireProject,
   IWireShellItem,
@@ -141,8 +147,52 @@ function applyItem(draft: IShell, item: Exclude<IWireShellItem, { kind: "synchro
   }
 }
 
-export function* dropThreadRow(draft: IShell, threadId: string): IActionGenerator {
-  delete draft.Threads[threadId];
+function* selectedThreadId(draft: IShell): ISelectorGenerator<string | null> {
+  return (yield* getData(draft, "Selection"))?.SelectedThreadId ?? null;
+}
+
+const lastVisit = (draft: IShell) =>
+  transient(draft, "Shell/Visit", {
+    ThreadId: null as string | null,
+    Completion: null as string | null,
+  });
+
+/**
+ * Marks a finished thread visited, once per completion unless `again`, so a thread marked unread
+ * while it's selected stays unread until its next completion.
+ */
+export function* visitThread(draft: IShell, threadId: string, again: boolean): IOpenGenerator {
+  const row = draft.Threads[threadId];
+  if (row === undefined || !needsVisit(row)) return;
+  const visit = yield* lastVisit(draft);
+  const completion = row.latestRunCompletedAt ?? null;
+  if (!again && visit.ThreadId === threadId && visit.Completion === completion) return;
+  visit.ThreadId = threadId;
+  visit.Completion = completion;
+  const environmentId = draft.EnvironmentId;
+  const visitedAt = row.updatedAt;
+  try {
+    yield* open(
+      withCommandId((commandId) =>
+        threadCommandEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+          Command: { Kind: "visit", VisitedAt: visitedAt },
+        }),
+      ),
+    );
+  } catch {
+    // A visit is bookkeeping the user didn't ask for, and the next one covers it.
+  }
+}
+
+function* visitSelected(draft: IShell, item: IWireShellItem): IActionGenerator {
+  if (item.kind !== "thread.updated" && item.kind !== "snapshot") return;
+  const selected = yield* select(selectedThreadId);
+  if (selected === null) return;
+  const row = draft.Threads[selected];
+  if (row !== undefined && needsVisit(row)) yield* start(visitThread, draft, selected, false);
 }
 
 function* reopenLater(draft: IShell): IActionGenerator {
@@ -158,7 +208,10 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
     }
     if (!("Item" in message)) (yield* streamState(draft)).Synchronized = false;
     else if (message.Item.kind === "synchronized") (yield* streamState(draft)).Synchronized = true;
-    else applyItem(draft, message.Item);
+    else {
+      applyItem(draft, message.Item);
+      yield* visitSelected(draft, message.Item);
+    }
   },
   *"Shell/Reopen"(draft) {
     yield* stopTimer(draft, "Shell/Reopen");

@@ -557,6 +557,9 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         <Show when={held().StopError}>
           <p class="composer-error">Couldn't stop: {held().StopError}</p>
         </Show>
+        <Show when={held().QueueError}>
+          <p class="composer-error">Couldn't change the queue: {held().QueueError}</p>
+        </Show>
         <Show when={held().ModelError}>
           <p class="composer-error">{held().ModelError}</p>
         </Show>

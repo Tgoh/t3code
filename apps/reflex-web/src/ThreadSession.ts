@@ -50,6 +50,7 @@ import {
   threadDiffEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
+import type { IGitWork } from "./GitWork";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import { branchDiffEffect, type IBranchDiff } from "./Infrastructure/sourceControlEffects";
 import {
@@ -150,6 +151,9 @@ const fileSearch = (draft: IThreadSession) =>
 const expandedRows = (owner: IThreadSession) =>
   transient(owner, "Timeline/Expanded", { Rows: {} as Record<string, true> });
 
+const unwrappedCode = (owner: IThreadSession) =>
+  transient(owner, "Timeline/Unwrapped", { Blocks: {} as Record<string, true> });
+
 export interface IThreadSession extends IEntity {
   EnvironmentId: string;
   ThreadId: string;
@@ -163,18 +167,20 @@ export interface IThreadSession extends IEntity {
   ModelError?: string;
   SendError?: string;
   StopError?: string;
+  QueueError?: string;
   QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
   QuestionIndex: Record<string, number>;
   QuestionNotice?: string;
   Panels: { Diff: IDiffPanel; Details: { Open: boolean }; Launcher: { Open: boolean } };
   Terminal: ITerminalPanel;
+  Git: IGitWork;
 }
 
 export function getDefaultThreadSession(
   environmentId: string,
   threadId: string,
   newThreadProjectId: string | null,
-): Omit<IThreadSession, "$Id"> {
+): Omit<IThreadSession, "$Id" | "Git"> {
   return {
     EnvironmentId: environmentId,
     ThreadId: threadId,
@@ -689,7 +695,7 @@ export type IQueuePress =
 
 // Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx.
 export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGenerator {
-  delete draft.StopError;
+  delete draft.QueueError;
   let operation: IQueueOperation;
   if (press.Kind !== "sendNow") operation = press;
   else {
@@ -713,7 +719,7 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
       ),
     );
   } catch (error) {
-    draft.StopError = errorText(error);
+    draft.QueueError = errorText(error);
   }
 }
 leading(queueAction);
@@ -810,6 +816,13 @@ export function* toggleRowExpanded(draft: IThreadSession, rowId: string): IActio
   const expanded = yield* expandedRows(draft);
   if (expanded.Rows[rowId]) delete expanded.Rows[rowId];
   else expanded.Rows[rowId] = true;
+}
+
+/** Code blocks wrap their lines until the person turns it off. */
+export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActionGenerator {
+  const unwrapped = yield* unwrappedCode(draft);
+  if (unwrapped.Blocks[blockKey]) delete unwrapped.Blocks[blockKey];
+  else unwrapped.Blocks[blockKey] = true;
 }
 
 export function* openDiff(
@@ -1001,6 +1014,10 @@ export function* expandedTimelineRows(draft: IThreadSession) {
   return (yield* expandedRows(draft)).Rows;
 }
 
+export function* unwrappedCodeBlocks(draft: IThreadSession) {
+  return (yield* unwrappedCode(draft)).Blocks;
+}
+
 export const TerminalReceiver = receiver<IThreadSession>("TerminalReceiver")({
   *"Terminal/Session"(draft, message) {
     if (isEnded(message)) return;
@@ -1026,6 +1043,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     toggleQuestionOption,
     setQuestionIndex,
     toggleRowExpanded,
+    toggleCodeWrap,
     openDiff,
     closeDiff,
     toggleDetails,
@@ -1056,5 +1074,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     diffLoading,
     terminalAttachment,
     expandedTimelineRows,
+    unwrappedCodeBlocks,
   },
 );

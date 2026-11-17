@@ -41,12 +41,12 @@ import {
   Server,
   X,
 } from "./icons";
+import GitWork, { type IActionContext } from "./GitWork";
 import { Popup } from "./Menu";
 import ThreadDetails, {
   blockedByWorktree,
   changesTotals,
   getDefaultThreadDetails,
-  type IActionContext,
   type ICheckout,
 } from "./ThreadDetails";
 import { SourceControlIcon } from "./sourceControlIcon";
@@ -356,13 +356,16 @@ const newScriptId = (name: string, scripts: readonly ProjectScript[]) => {
   return id;
 };
 
-const Body = (props: {
+interface IDetailsProps {
   checkout: ICheckout;
   scripts: readonly ProjectScript[];
   running: boolean;
   onClose?: () => void;
-}) => {
+}
+
+const Body = (props: IDetailsProps) => {
   const details = ThreadDetails.use();
+  const work = GitWork.use();
   const session = ThreadSession.use();
   const environment = Environment.use();
   const status = useResource(() => details.state, "Details/Status");
@@ -378,7 +381,7 @@ const Body = (props: {
   onMount(() => void details.attach(props.checkout));
 
   const terminology = () => changeRequestTerminologyFor(git());
-  const busy = () => details.gitBusy();
+  const busy = () => work.gitBusy();
   const quick = createMemo(() =>
     resolveQuickAction(
       git(),
@@ -397,12 +400,18 @@ const Body = (props: {
     return preferred === undefined ? "Open in editor" : `Open in ${preferred.Label}`;
   };
   const closeMenu = () => setMenu(null);
+  const openEditor = (editor: string | null) => {
+    const target = editor ?? details.state.Editors?.Preferred ?? null;
+    if (target !== null) void details.preferEditor(target);
+    void work.openEditor(props.checkout, target);
+  };
 
   const runQuick = () => {
     const action = quick();
-    if (action.kind === "run_pull") return void details.pull();
+    if (action.kind === "run_pull") return void work.pull(props.checkout);
     if (action.kind === "run_action" && action.action !== undefined) {
-      void details.runGitAction(
+      void work.runGitAction(
+        props.checkout,
         { Action: action.action, CommitMessage: null, FilePaths: null, FeatureBranch: false },
         actionContext(git()),
         false,
@@ -413,7 +422,8 @@ const Body = (props: {
     closeMenu();
     if (item.disabled) return;
     if (item.dialogAction === "commit") return setCommitting(true);
-    void details.runGitAction(
+    void work.runGitAction(
+      props.checkout,
       {
         Action: item.dialogAction === "push" ? "push" : "create_pr",
         CommitMessage: null,
@@ -435,7 +445,7 @@ const Body = (props: {
     void details.loadBranches("");
   };
   const pendingCopy = () => {
-    const pending = details.state.PendingDefaultBranch;
+    const pending = work.state.PendingDefaultBranch;
     if (pending === null) return null;
     return defaultBranchDialogCopy({
       action: pending.Action,
@@ -445,7 +455,7 @@ const Body = (props: {
     });
   };
   const featureBranchBlock = () => {
-    const pending = details.state.PendingDefaultBranch;
+    const pending = work.state.PendingDefaultBranch;
     return pending === null
       ? null
       : featureBranchUnavailableReason({
@@ -455,7 +465,7 @@ const Body = (props: {
         });
   };
   const noticeLabel = () => {
-    const notice = details.state.Notice;
+    const notice = work.state.Notice;
     return notice?.Tone === "success" ? notice.Title : null;
   };
 
@@ -479,7 +489,7 @@ const Body = (props: {
             label={editorLabel()}
             icon={<EditorIcon editor={details.state.Editors?.Preferred ?? ""} />}
             menuLabel="Choose editor"
-            onRun={() => void details.openEditor(null)}
+            onRun={() => openEditor(null)}
             onMenu={(anchor) => setMenu({ Kind: "editor", Anchor: anchor })}
           />
         </Show>
@@ -523,7 +533,7 @@ const Body = (props: {
             </span>
             <ChevronDown class="details-chevron" />
           </button>
-          <Show when={details.state.BranchError}>
+          <Show when={details.state.BranchError ?? work.state.BranchError}>
             {(error) => <p class="details-error">{error()}</p>}
           </Show>
           <Show
@@ -532,7 +542,7 @@ const Body = (props: {
               <div class="details-row static progress" role="status">
                 <QuickActionIcon action={quick()} status={git()} />
                 <span class="details-label">{busy() ? "Working…" : noticeLabel()}</span>
-                <Show when={!busy() && details.state.Notice?.Url}>
+                <Show when={!busy() && work.state.Notice?.Url}>
                   {(url) => (
                     <a
                       class="details-icon-action"
@@ -568,7 +578,7 @@ const Body = (props: {
               }}
             />
           </Show>
-          <Show when={details.state.Notice?.Tone === "error" && details.state.Notice}>
+          <Show when={work.state.Notice?.Tone === "error" && work.state.Notice}>
             {(notice) => (
               <div class="details-error-row" role="alert">
                 <p class="details-error">
@@ -578,7 +588,7 @@ const Body = (props: {
                   class="details-icon-action"
                   aria-label="Dismiss"
                   data-tip="Dismiss"
-                  onClick={() => void details.dismissNotice()}
+                  onClick={() => void work.dismissNotice()}
                 >
                   <X />
                 </button>
@@ -636,7 +646,7 @@ const Body = (props: {
                         role="menuitem"
                         onClick={() => {
                           closeMenu();
-                          void details.openEditor(editor.Id);
+                          openEditor(editor.Id);
                         }}
                       >
                         <EditorIcon editor={editor.Id} />
@@ -788,7 +798,8 @@ const Body = (props: {
             status={held()}
             onClose={() => setCommitting(false)}
             onCommit={(message, files, featureBranch) =>
-              void details.runGitAction(
+              void work.runGitAction(
+                props.checkout,
                 {
                   Action: "commit",
                   CommitMessage: message,
@@ -827,7 +838,7 @@ const Body = (props: {
             class="confirm-dialog branch-confirm"
             aria-labelledby="default-branch-title"
             ref={(dialog) => queueMicrotask(() => dialog.showModal())}
-            onClose={() => void details.cancelDefaultBranch()}
+            onClose={() => void work.cancelDefaultBranch()}
           >
             <div class="confirm-header">
               <h2 id="default-branch-title" class="confirm-title">
@@ -839,19 +850,23 @@ const Body = (props: {
               </Show>
             </div>
             <div class="confirm-actions">
-              <button class="button" onClick={() => void details.cancelDefaultBranch()}>
+              <button class="button" onClick={() => void work.cancelDefaultBranch()}>
                 Abort
               </button>
               <button
                 class="button"
-                onClick={() => void details.continueDefaultBranch(false, actionContext(git()))}
+                onClick={() =>
+                  void work.continueDefaultBranch(props.checkout, false, actionContext(git()))
+                }
               >
                 {copy().continueLabel}
               </button>
               <button
                 class="button primary"
                 disabled={featureBranchBlock() !== null}
-                onClick={() => void details.continueDefaultBranch(true, actionContext(git()))}
+                onClick={() =>
+                  void work.continueDefaultBranch(props.checkout, true, actionContext(git()))
+                }
               >
                 Check out feature branch & continue
               </button>
@@ -863,7 +878,12 @@ const Body = (props: {
   );
 };
 
-export const ThreadDetailsCard = ThreadDetails.provider(Body, getDefaultThreadDetails);
+const DetailsCard = ThreadDetails.provider(Body, getDefaultThreadDetails);
+
+/** Mounted over the session's `Git`, so a git action's result outlives the card. */
+export const ThreadDetailsCard = GitWork.provider<IDetailsProps>((props) => (
+  <DetailsCard {...props} />
+));
 
 /**
  * The card's frame: pinned in the chat's corner when it fits there, else a popover under the

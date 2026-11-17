@@ -1,9 +1,62 @@
+import type { IRuntime } from "treflex";
+
 import type {
   IWireProjection,
   IWireThreadEvent,
   IWireThreadSnapshot,
   IWireTurnItem,
 } from "../Infrastructure/wire";
+import type { IRoot } from "../Root";
+
+/**
+ * The actions allowed to write under `Replica`, as README's state model lists them: the stream
+ * receivers, the reads of server data, and opening, leaving and closing a thread, which the
+ * selecting actions reach with `yield*`. `foldParsed` is a test's stand-in for a receiver's fold.
+ */
+export const REPLICA_WRITERS: ReadonlySet<string | null> = new Set([
+  "EnvironmentReceiver",
+  "ShellReceiver",
+  "ThreadReceiver",
+  "loadEarlier",
+  "loadProviders",
+  "toggleModelFavorite",
+  "loadSettings",
+  "writeSetting",
+  "updateServerSettings",
+  "loadArchived",
+  "archivedThreadCommand",
+  "loadUsage",
+  "refreshUsage",
+  "init",
+  "openThread",
+  "closeThread",
+  "selectThread",
+  "newThread",
+  "addFolder",
+  "cloneProject",
+  "newProject",
+  "foldParsed",
+]);
+
+/** Reports each action whose step writes under an environment's `Replica`, once per step. */
+export function tapReplicaWriters(
+  runtime: IRuntime<IRoot>,
+  report: (name: string | null) => void,
+): void {
+  const actions = new Map<string, { Name: string | null; Path: string[] }>();
+  runtime.on("record", (record) => {
+    if (record.Kind === "action:start") actions.set(record.ActionId, record);
+    if (record.Kind !== "step" || record.Root !== "AppState") return;
+    const changes = record.Changes.filter((change) => change.Path[0] !== "TransientState");
+    if (changes.length === 0) return;
+    const action = actions.get(record.ActionId);
+    const replicas = new Set(runtime.state.Environments.map((held) => held.Replica.$Id));
+    const onReplica =
+      action?.Path.some((id) => replicas.has(id)) === true ||
+      changes.some((change) => change.Path.includes("Replica"));
+    if (onReplica) report(action?.Name ?? null);
+  });
+}
 
 export const THREAD_ID = "thread-1";
 const AT = "2026-06-20T00:00:00.000Z";

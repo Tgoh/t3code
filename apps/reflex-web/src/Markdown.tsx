@@ -53,6 +53,7 @@ import {
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml } from "./sanitize";
+import ThreadSession from "./ThreadSession";
 import {
   contextThreadTarget,
   type ILinkTarget,
@@ -600,11 +601,9 @@ function TableToken(props: ITokenProps) {
 
 const scheme = (): Scheme => colorScheme();
 
-// A message's blocks remount as its turn settles and as the timeline windows, so each block's
-// wrap choice is held here by message and position rather than in the block.
-const wrapChoices = new Map<string, boolean>();
-
-// Hands each code block in a top-level block the next key in document order.
+// Hands each code block in a top-level block the next key in document order. A message's blocks
+// remount as its turn settles and as the timeline windows, so the session keeps a keyed block's
+// wrap choice.
 const CodeBlockKey = createContext<() => string | null>(() => null);
 
 function CodeTitle(props: { fence: IFence }) {
@@ -644,11 +643,13 @@ function CodeToken(props: ITokenProps) {
     equals: (a, b) => a.Language === b.Language && a.Title === b.Title,
   });
   const key = useContext(CodeBlockKey)();
-  const [wrapped, setWrapped] = createSignal(key === null ? true : (wrapChoices.get(key) ?? true));
+  const session = key === null ? null : ThreadSession.use();
+  const [unkeyedWrap, setUnkeyedWrap] = createSignal(true);
+  const wrapped = () =>
+    key === null || session === null ? unkeyedWrap() : session.unwrappedCodeBlocks()[key] !== true;
   const toggleWrap = () => {
-    const next = !wrapped();
-    setWrapped(next);
-    if (key !== null) wrapChoices.set(key, next);
+    if (key === null || session === null) setUnkeyedWrap((held) => !held);
+    else void session.toggleCodeWrap(key);
   };
   const wrapLabel = () => (wrapped() ? "Disable line wrap" : "Wrap lines");
   const wanted = createMemo(
