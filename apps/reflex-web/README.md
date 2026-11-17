@@ -20,7 +20,7 @@ Log gaps and problems in [docs/issues.md](./docs/issues.md).
 | Tests              | Headless, with a scripted server at the effect boundary                                                                                                                                         |
 | Terminal emulator  | `@xterm/xterm` and its fit addon, loaded on first open. Stock's libghostty WASM surface isn't reusable from a non-React app without its build and surface code                                  |
 | Project order      | `localStorage`, like stock's `projectOrder` in `uiStateStore` and its `sidebarProjectSortOrder` client setting. Neither is on the server, so neither is shared with stock or other devices      |
-| Treflex dependency | `file:` paths to `packages/core` and `packages/solid` through each checkout's `.t3/treflex` junction to the pin                                                                                 |
+| Treflex dependency | The 0.1.0 release tarballs of `treflex` and `treflex-solid`, committed in `vendor/` and installed with `file:`, so every checkout has the same treflex with no setup                            |
 
 The server holds all the work, and the client receives its data and uses treflex for client state.
 
@@ -73,7 +73,7 @@ Root
 
 ## Reference code
 
-- **Treflex concepts:** in the pin, `docs\usage\introduction.md`, then `docs\advanced\live-sources.md`, `views.md` and `testing.md`. The worked demo is `demos\kitchen`.
+- **Treflex concepts:** in `G:\Sorted\Code\treflex-public` at the pinned commit, `docs\guide` in order, then `docs\patterns.md`, and `docs\reference` for the rules.
 - **Conventions at scale:** `G:\Sorted\Code\solidportal\docs\exemplars.md` and `Concepts.md`.
 
 ## Logic copied from stock
@@ -191,7 +191,7 @@ From `apps/reflex-web`, `vp run test` runs the headless suite and `vp run bench`
 
 ## Making changes
 
-The client in the main checkout is the daily driver, so nobody edits files there. Each change gets a worktree off `reflex-main`, anywhere on disk. T3's worktree setup links `.t3/treflex` and installs, or run `node scripts/setup-worktree.ts` with `T3CODE_PROJECT_ROOT` set to the main checkout. Then, from the worktree's `apps/reflex-web`, run its client against the same server:
+The client in the main checkout is the daily driver, so nobody edits files there. Each change gets a worktree off `reflex-main`, anywhere on disk. T3's worktree setup installs, or run `node scripts/setup-worktree.ts` with `T3CODE_PROJECT_ROOT` set to the main checkout. Then, from the worktree's `apps/reflex-web`, run its client against the same server:
 
 ```powershell
 $env:REFLEX_WEB_PORT = 5735; vp run dev
@@ -199,7 +199,7 @@ $env:REFLEX_WEB_PORT = 5735; vp run dev
 
 Keep test clients on 5735: `localStorage` is per port, so choices such as grouping by project stay set there across worktrees. The test client works on the driver's real threads, so a send there runs a real turn. The driver changes only when the branch merges into `reflex-main`.
 
-Treflex is pinned to commit `2cd7ce0` through a detached checkout at `G:\Sorted\Code\reflex-t3code-treflex`, so work in the reflex repo doesn't reach this client. To move it, check out another commit there, run `vp i`, and update this line.
+Treflex is pinned to `treflex-public` commit `24aeb08` (treflex 0.1.0) by the tarballs in `vendor/`, so neither work in the reflex repo nor a new export reaches this client. To move it, clone `treflex-public` to a scratch folder, check out the new commit, run `npm ci` and `npm run release:pack`, copy `release/treflex-<version>.tgz` and `release/treflex-solid-<version>.tgz` over the ones in `vendor/`, point `package.json` at them, run `vp i`, and update this line.
 
 To bring in upstream changes, use the `/syncupstream` skill: it merges on a worktree, ports the logic copied from stock, tests the client live, and fast-forwards `reflex-main` only when it all holds. `apps/reflex-web/scripts/sync-upstream.ps1` alone fast-forwards `main` and pushes it to `origin` (`-DryRun` previews).
 
@@ -229,10 +229,9 @@ There's no preflight. It can come in as a change of its own: it would sit under 
 
 ## Setting up a machine
 
-Three folders sit side by side under `G:\Sorted\Code`, because `dev-stack.ps1` finds the data folder by relative path, and `scripts/setup-worktree.ts` and the Claude skills use absolute ones:
+Two folders sit side by side under `G:\Sorted\Code`, because `dev-stack.ps1` finds the data folder by relative path, and the Claude skills use absolute ones:
 
 - `t3code`: this repo, on `reflex-main`.
-- `reflex-t3code-treflex`: the treflex pin.
 - `t3code-dev-home`: the driver's data (threads, settings, attachments, stored secrets, T3's worktrees). Copy it from the old machine with the stack stopped (`./dev-stack.ps1 -Stop`), or leave it out to start empty.
 
 Install Git, PowerShell 7, nvm-windows and Vite+ (`vp`), then the Node version in the root `package.json` `engines` field:
@@ -245,7 +244,7 @@ nvm install 26.13.1
 nvm use 26.13.1
 ```
 
-Clone this repo and the treflex pin from `G:\Sorted\Code`:
+Clone this repo from `G:\Sorted\Code`:
 
 ```powershell
 git clone -b reflex-main https://github.com/Tgoh/t3code.git t3code
@@ -257,20 +256,6 @@ git -C t3code remote add upstream https://github.com/pingdotgg/t3code.git
 
 ```powershell
 git -C t3code remote set-url --push upstream no_push
-```
-
-```powershell
-git clone https://github.com/Tgoh/reflex.git reflex-t3code-treflex
-```
-
-```powershell
-git -C reflex-t3code-treflex checkout --detach 2cd7ce0
-```
-
-Link the pin into the checkout, which worktree setup does on its own:
-
-```powershell
-New-Item -ItemType Junction -Path t3code\.t3\treflex -Target (Resolve-Path reflex-t3code-treflex)
 ```
 
 From `t3code`, run `vp i`, build the stock client with `vp build` in `apps/web`, and start the stack with `./dev-stack.ps1`.

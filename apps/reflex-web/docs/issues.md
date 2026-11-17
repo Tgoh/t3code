@@ -8,17 +8,13 @@ The repo pins Node 26.12.1 and the server needs 24.10 or later, but `vp` stays i
 
 Workaround: use Node 26.13.0 through nvm. The pin in `package.json` isn't enforced, and `vp i` and `vp run dev` work on it.
 
-## Setup: pnpm installs `file:` treflex as a copy
-
-Under `node_modules/.pnpm`, treflex is a real directory and not a link, so changes in the pin don't reach the app until `vp i` runs again. solidportal gets a link from npm. `link:` might behave like solidportal, but it hasn't been tried, and treflex's `solid-js` peer must still resolve to the app's copy.
-
 ## Setup: `vp run check:changed` fails its unused-patches step
 
 The step installs the workspace in a temp directory, where the `.t3/treflex` junction doesn't exist. Its other checks still run. It runs when the lockfile, the workspace file, patches or any `package.json` change, so this comes back whenever dependencies do.
 
 ## Setup: the app's tsconfig turns off two of the repo's strict flags
 
-Treflex ships as TypeScript source, so the app's typecheck covers it. Reflex failed `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`, so the app's `tsconfig.json` turns both off. Treflex at the pin passes both; with them on, only the app's `threadHistory.ts` fails, on the `signal` it passes to `fetch`.
+The app's `tsconfig.json` turns off `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`, because treflex's source once failed them. Treflex 0.1.0 ships declarations, which pass both. With them on, the app's own code has 16 errors in 12 files.
 
 ## Gap: the connection runtime has one public door
 
@@ -66,7 +62,6 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 ## Feedback for treflex
 
 - `merge` is gone, and `reconcileRows` takes one array of keyed rows at a time, refuses an incoming row without a key, and is a generator an action has to `yield*`. Folding a wire payload with nested keyless arrays into a held node in place, from the synchronous apply code, needed an app-side helper (`reconcile` in `rows.ts`). `reconcileRows` doesn't accept records, and the replica keys its rows by id in records to keep a delta's lookups constant, so the runtime requests' entity-aware fold (`reconcileEntities`, `putEntity`) is app-side too.
-- `reconcileRows` throws a `TypeError` without `update`, where the table in `docs/advanced/state-tree.md` says a missing `update` keeps a matched row's contents.
 - Selectors that return fresh objects remount `<For>` rows and wake any parent selector, because a memo compares with `===`. An opt-in equality setting or structural sharing would cover both.
 - `inFlight(action, owner)` has no per-argument form, so a per-argument mark has to be composed, and one action can't stop another's run on the same entity. The entities in the limit above follow from that.
 - A transient costs a named helper and a selector for each view that reads it. Nothing here snapshots, so they buy no behaviour in this app.
@@ -77,7 +72,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Keeping an entity for a while after its view leaves has no mechanism of its own. Retaining a left thread composes one: close its stream, start an expiry timer on it, and on the tick publish to the parent, because an entity can't remove itself inside its own delivery.
 - The timeline's `<For>` iterates ids from the `timelineIds` selector, a plain `[...draft.Timeline]` copy. Each row-adding delta re-runs the copy, which reads every id through the view proxy: about 31 ms p50 at 20,000 rows. The history window keeps a cold open near 500 rows, so this doesn't show at real sizes. If it does, send treflex the size and the timing; they've said they'd make the whole-array copy cheaper inside treflex rather than add an API.
 - A resource has one `r.status` detail string, and the terminal's connection phase already uses it, so the shell process's status goes through `emit` into a transient.
-- `treflex-eslint`'s rules aren't on. `no-edit-after-write` and `no-hidden-open` need type information, which the repo's oxlint JS plugins don't provide. `no-yield-in-finally` and `no-global-open` don't, but oxlint loads a JS plugin with Node's own import, where the package's extensionless imports don't resolve, and every rule imports `@typescript-eslint/utils`, which the repo doesn't install.
+- `treflex-eslint`'s rules aren't on. `no-edit-after-write` and `no-hidden-open` need type information, which the repo's oxlint JS plugins don't provide. `no-yield-in-finally` and `no-global-open` don't, and 0.1.0 ships them built to JavaScript, but every rule imports `@typescript-eslint/utils`, which the repo doesn't install, and the lint config is upstream's root `vite.config.ts`. Treflex's `require-yield-star` check, including a missing `yield*` before `someGen`, `filterGen` or `mapGen`, is a Biome plugin, which oxlint can't load.
 - "Do not create an entity only so that its removal closes a resource" sits against component state being a documented resource owner: `CommandOutput` mounts an empty `useComponentState` for nothing but owning its subscription.
 - Persistence is whole-runtime only: a snapshot carries the whole tree, and nothing persists one slice, such as `Local`'s preferences, across a reload. Each kind of preference was persisted its own way until it converged on a read effect at creation plus a write effect per change (`Infrastructure/preferences.ts`, `draftMemory.ts`). A persisted slice, read before the first render and written per change, would replace those effects and the pre-paint read of the colour scheme in `index.tsx`.
 - There's no clock in the model. The sidebar's snooze split reads `Local.Now`, which a minute timer writes through an app-side `clockNow` effect.

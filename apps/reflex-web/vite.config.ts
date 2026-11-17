@@ -11,7 +11,7 @@ const backend = `http://localhost:${process.env.T3CODE_PORT ?? 13773}/`;
 
 export default defineConfig(({ mode }) => ({
   plugins: [solidPlugin(), tailwindcss()],
-  // Treflex ships as source; pre-bundling would give the app a second copy of its contexts.
+  // Pre-bundling would give the app a second copy of treflex's contexts.
   optimizeDeps: { exclude: ["treflex", "treflex-solid"] },
   build: { target: "esnext" },
   ...(mode === "bench" ? { define: { "import.meta.env.DEV": "false" } } : {}),

@@ -888,11 +888,11 @@ importers:
         specifier: ^1.9.12
         version: 1.9.19
       treflex:
-        specifier: file:../../.t3/treflex/packages/core
-        version: file:.t3/treflex/packages/core(solid-js@1.9.19)
+        specifier: file:vendor/treflex-0.1.0.tgz
+        version: file:apps/reflex-web/vendor/treflex-0.1.0.tgz(solid-js@1.9.19)
       treflex-solid:
-        specifier: file:../../.t3/treflex/packages/solid
-        version: file:.t3/treflex/packages/solid(solid-js@1.9.19)(treflex@file:.t3/treflex/packages/core(solid-js@1.9.19))
+        specifier: file:vendor/treflex-solid-0.1.0.tgz
+        version: file:apps/reflex-web/vendor/treflex-solid-0.1.0.tgz(solid-js@1.9.19)(treflex@file:apps/reflex-web/vendor/treflex-0.1.0.tgz(solid-js@1.9.19))
     devDependencies:
       '@tailwindcss/vite':
         specifier: 4.3.3
@@ -12500,16 +12500,16 @@ packages:
     resolution: {integrity: sha512-6+cemagaGsOC8X3XWPCn7Ek+jjwyH2/NdTyBcEH7FtFjC3Ciyih2Xx6/GSRirZolxmxENtbvfwu1WV5RzutgCw==}
     engines: {node: '>=22'}
 
-  treflex-solid@file:.t3/treflex/packages/solid:
-    resolution: {directory: .t3/treflex/packages/solid, type: directory}
-    engines: {node: '>=20.3.0'}
+  treflex-solid@file:apps/reflex-web/vendor/treflex-solid-0.1.0.tgz:
+    resolution: {integrity: sha512-XS6YjXapuIyOWEGiHDpOiNZ+i+VPRYUvU/bPfd83H2DRrPkNsa3WTWpWg/95TWfM/3WKYSmxtar3OTRxR5wmJg==, tarball: file:apps/reflex-web/vendor/treflex-solid-0.1.0.tgz}
+    version: 0.1.0
     peerDependencies:
       solid-js: ^1.9.7
-      treflex: 1.0.0
+      treflex: 0.1.0
 
-  treflex@file:.t3/treflex/packages/core:
-    resolution: {directory: .t3/treflex/packages/core, type: directory}
-    engines: {node: '>=20.3.0'}
+  treflex@file:apps/reflex-web/vendor/treflex-0.1.0.tgz:
+    resolution: {integrity: sha512-1CELsv3PPomPoCvY5ks0bbFBDhD7kqhc9pm7IQ4Jw5rtx08WFdtVuCDT+iwRg1UVYjjHrcf09TIUhib+l/pLEQ==, tarball: file:apps/reflex-web/vendor/treflex-0.1.0.tgz}
+    version: 0.1.0
     peerDependencies:
       solid-js: ^1.9.7
 
@@ -23733,13 +23733,12 @@ snapshots:
       '@transcribe-cpp/linux-x64-cpu-vulkan': 0.4.1
       '@transcribe-cpp/win32-x64-cpu-vulkan': 0.4.1
 
-  treflex-solid@file:.t3/treflex/packages/solid(solid-js@1.9.19)(treflex@file:.t3/treflex/packages/core(solid-js@1.9.19)):
+  treflex-solid@file:apps/reflex-web/vendor/treflex-solid-0.1.0.tgz(solid-js@1.9.19)(treflex@file:apps/reflex-web/vendor/treflex-0.1.0.tgz(solid-js@1.9.19)):
     dependencies:
       solid-js: 1.9.19
-      treflex: file:.t3/treflex/packages/core(solid-js@1.9.19)
-      uuid: 11.1.1
+      treflex: file:apps/reflex-web/vendor/treflex-0.1.0.tgz(solid-js@1.9.19)
 
-  treflex@file:.t3/treflex/packages/core(solid-js@1.9.19):
+  treflex@file:apps/reflex-web/vendor/treflex-0.1.0.tgz(solid-js@1.9.19):
     dependencies:
       solid-js: 1.9.19
       uuid: 11.1.1
