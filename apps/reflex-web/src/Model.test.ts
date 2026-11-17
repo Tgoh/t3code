@@ -116,8 +116,8 @@ import {
   latestDiffTurn,
   latestRun,
   pendingApprovalIds,
-  pendingRequest,
   RETAIN_MS,
+  requestItems,
   ThreadReceiver,
   threadSynchronized,
   timelineEntries,
@@ -2560,6 +2560,8 @@ describe("writing to the server", () => {
 
     it("a typed /compact is the compaction, so it sends alone", async () => {
       const { server, sent } = await staleClaudeThread();
+      await server.runtime.dispatch(setDraft, server.sessionId(), "/compact keep the plan");
+      expect(offer(server)).toBeNull();
       await server.runtime.dispatch(setDraft, server.sessionId(), "/compact");
       expect(offer(server)).toBeNull();
       await server.runtime.dispatch(send, server.sessionId());
@@ -2598,7 +2600,9 @@ describe("writing to the server", () => {
       ),
     );
     expect(pendingOf(server)).toEqual(["r-1", "r-2"]);
-    expect(pendingRequest(server.thread(), "r-1")?.Item?.type).toBe("approval_request");
+    expect(server.runtime.processSelector(requestItems, () => server.thread())["r-1"]?.type).toBe(
+      "approval_request",
+    );
 
     const node = (id: string) => server.thread().RuntimeRequests[id]!;
     const busy = (id: string) =>
@@ -2648,6 +2652,19 @@ describe("writing to the server", () => {
     );
     expect(pendingOf(server)).toEqual(["r-2"]);
     expect(node("r-2")).toBe(held);
+
+    await server.sendThread({
+      kind: "event",
+      sequence: 4,
+      event: event("runtime-request.updated", request("r-3")),
+    } as IWireThreadItem);
+    expect(pendingOf(server)).toEqual(["r-2"]);
+    await server.sendThread({
+      kind: "event",
+      sequence: 5,
+      event: event("turn-item.updated", requestItem("r-3")),
+    } as IWireThreadItem);
+    expect(pendingOf(server)).toEqual(["r-2", "r-3"]);
   });
 
   it("holds a question's answer per request until it's complete, and sends only what the provider can take", async () => {

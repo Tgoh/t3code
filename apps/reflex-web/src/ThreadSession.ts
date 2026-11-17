@@ -11,6 +11,7 @@ import {
   resolveLatestMergeBackRun,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
+import { COMPACT_COMMAND_PATTERN } from "@t3tools/client-runtime/state/context-window";
 import { DEFAULT_TERMINAL_ID, PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
 import {
   answer,
@@ -748,6 +749,12 @@ function* uploadAndStart(
  * Follows `resumeCompactionTokens` in apps/web/src/components/ChatView.tsx.
  */
 export function* compactionOffer(draft: IThreadSession): ISelectorGenerator<number | null> {
+  const tokens = yield* select(compactionCandidate);
+  return tokens === null || COMPACT_COMMAND_PATTERN.test(draft.Draft.trim()) ? null : tokens;
+}
+
+// Must not read the draft text: it walks the whole timeline, so its memo has to survive typing.
+function* compactionCandidate(draft: IThreadSession): ISelectorGenerator<number | null> {
   if (draft.NewThreadProjectId !== null) return null;
   const replica = yield* getData(draft, "Replica");
   const open = replica?.OpenThreads[draft.ThreadId];
@@ -761,7 +768,6 @@ export function* compactionOffer(draft: IThreadSession): ISelectorGenerator<numb
       open.Timeline.filter((id) => isRowVisible(open, id)).map((id) => timelineItem(open, id)!),
     Selection: selection,
     Config: config,
-    Text: draft.Draft.trim(),
     Idle: Object.values(open.Runs).every(
       (run) => !ACTIVE_RUN.has(run.status) && run.status !== "queued",
     ),

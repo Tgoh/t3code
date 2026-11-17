@@ -20,6 +20,7 @@ import {
   openResource,
   publishToNearest,
   receiver,
+  select,
   startTimer,
   stopTimer,
   transient,
@@ -96,6 +97,8 @@ export interface IOpenThread extends IEntity {
   ContextHandoffs: Record<string, IWireProjection["contextHandoffs"][number]>;
   ContextTransfers: Record<string, IWireProjection["contextTransfers"][number]>;
   TurnItems: Record<string, IWireTurnItem>;
+  /** Runtime request id to the turn item that asks it. */
+  RequestItemIds: Record<string, string>;
   InheritedItems: Record<string, IWireTurnItem>;
   Timeline: string[];
   Rows: Record<string, ITimelineRow>;
@@ -131,6 +134,7 @@ export function getDefaultOpenThread(
     ContextHandoffs: {},
     ContextTransfers: {},
     TurnItems: {},
+    RequestItemIds: {},
     InheritedItems: {},
     Timeline: [],
     Rows: {},
@@ -279,12 +283,17 @@ function restoreQueuedUserRows(draft: IOpenThread, runId: string): void {
   }
 }
 
+function indexRequestItem(index: Record<string, string>, item: IWireTurnItem): void {
+  if ("requestId" in item && typeof item.requestId === "string") index[item.requestId] ??= item.id;
+}
+
 function applyTurnItem(draft: IOpenThread, wire: IWireTurnItem): void {
   const held = draft.TurnItems[wire.id];
   const payload = restoreBodies(wire, draft);
   if (held === undefined && hasPartialWindow(draft) && isUnloadedHistory(draft, payload)) return;
   const heldOrdinal = held?.ordinal;
   put(draft.TurnItems, payload);
+  indexRequestItem(draft.RequestItemIds, payload);
   placeRow(draft, payload, heldOrdinal);
   const watermark = draft.LatestLocalTurnOrdinal;
   if (hasPartialWindow(draft) && (watermark === null || payload.ordinal > watermark)) {
@@ -464,6 +473,9 @@ function applySnapshot(
   reconcile(draft.ContextHandoffs, byId(projection.contextHandoffs));
   reconcile(draft.ContextTransfers, byId(projection.contextTransfers));
   reconcile(draft.TurnItems, turnItems);
+  const requestItemIds: Record<string, string> = {};
+  for (const held of Object.values(turnItems)) indexRequestItem(requestItemIds, held);
+  reconcile(draft.RequestItemIds, requestItemIds);
   reconcile(draft.InheritedItems, inherited);
   reconcile(draft.Rows, rows);
   reconcile(draft.Timeline, timeline);
@@ -601,7 +613,10 @@ function mergeOlderRows(draft: IOpenThread, items: IWireHistoryPage["items"]): v
     if (hasRow) continue;
     draft.Rows[id] = shape;
     if (!local) draft.InheritedItems[id] = item;
-    else draft.TurnItems[id] ??= item;
+    else {
+      draft.TurnItems[id] ??= item;
+      indexRequestItem(draft.RequestItemIds, draft.TurnItems[id]!);
+    }
   }
   if (head.length === 0) return;
   draft.Timeline = [...head, ...draft.Timeline.filter((id) => !inPage.has(id))];
@@ -717,44 +732,47 @@ export function runMessage(
   return messageId == null ? undefined : draft.Messages[messageId];
 }
 
-export interface IPendingRequest {
-  Id: string;
-  Kind: string;
-  Item: IWireTurnItem | null;
-}
-
-export function pendingRequest(draft: IOpenThread, id: string): IPendingRequest | null {
-  const request = draft.RuntimeRequests[id];
-  if (request === undefined) return null;
-  const item = Object.values(draft.TurnItems).find(
-    (held) => "requestId" in held && held.requestId === id,
-  );
-  return { Id: id, Kind: request.kind, Item: item ?? null };
-}
-
 const pendingIds = (draft: IOpenThread): string[] =>
   Object.values(draft.RuntimeRequests)
     .filter((request) => request.status === "pending")
     .map((request) => request.id);
 
-const isApproval = (draft: IOpenThread, id: string): boolean =>
-  pendingRequest(draft, id)?.Item?.type === "approval_request";
+/** Each pending request's turn item, by request id. */
+export function* requestItems(
+  draft: IOpenThread,
+): ISelectorGenerator<Record<string, IWireTurnItem>> {
+  const items: Record<string, IWireTurnItem> = {};
+  for (const id of pendingIds(draft)) {
+    const itemId = draft.RequestItemIds[id];
+    const item = itemId === undefined ? undefined : draft.TurnItems[itemId];
+    if (item !== undefined) items[id] = item;
+  }
+  return items;
+}
+
+function* pendingIdsOfType(
+  draft: IOpenThread,
+  matches: (type: IWireTurnItem["type"] | undefined) => boolean,
+): ISelectorGenerator<string[]> {
+  const items = yield* select(requestItems);
+  return pendingIds(draft).filter((id) => matches(items[id]?.type));
+}
 
 // Ids, because <For> keys by reference and a fresh row object would remount a half-answered form.
 export function* pendingApprovalIds(draft: IOpenThread): ISelectorGenerator<string[]> {
-  return pendingIds(draft).filter((id) => isApproval(draft, id));
+  return yield* pendingIdsOfType(draft, (type) => type === "approval_request");
 }
 
-const isQuestion = (draft: IOpenThread, id: string): boolean =>
-  pendingRequest(draft, id)?.Item?.type === "user_input_request";
-
 export function* pendingQuestionIds(draft: IOpenThread): ISelectorGenerator<string[]> {
-  return pendingIds(draft).filter((id) => isQuestion(draft, id));
+  return yield* pendingIdsOfType(draft, (type) => type === "user_input_request");
 }
 
 /** Secret, link and other requests this client can show but not answer. */
 export function* pendingOtherIds(draft: IOpenThread): ISelectorGenerator<string[]> {
-  return pendingIds(draft).filter((id) => !isApproval(draft, id) && !isQuestion(draft, id));
+  return yield* pendingIdsOfType(
+    draft,
+    (type) => type !== "approval_request" && type !== "user_input_request",
+  );
 }
 
 export default createEntityFeature<IOpenThread>(import.meta.url)(
@@ -765,6 +783,7 @@ export default createEntityFeature<IOpenThread>(import.meta.url)(
     pendingQuestionIds,
     pendingOtherIds,
     queuedRunIds,
+    requestItems,
     threadSynchronized,
     timelineIds,
   },

@@ -85,7 +85,6 @@ function input(patch: Partial<ICompactionInput> = {}): ICompactionInput {
       providers: [claudeProvider()],
       settings: { providerInstances: {}, compactIdleThreads: false },
     } as never,
-    Text: "carry on",
     Idle: true,
     Now: Date.parse(USED_AT) + 2 * HOUR,
     EnvironmentId: "env",
@@ -155,11 +154,6 @@ describe("compactBeforeSendTokens", () => {
     const held = claudeThread();
     held.Runs["run-2"] = { ...run("run-2", 2, "queued"), queueHeld: true } as never;
     expect(compactBeforeSendTokens(input({ Thread: held }))).toBeNull();
-  });
-
-  it("leaves a typed /compact alone, since it is the compaction", () => {
-    expect(compactBeforeSendTokens(input({ Text: "/compact" }))).toBeNull();
-    expect(compactBeforeSendTokens(input({ Text: "/compact keep the plan" }))).toBeNull();
   });
 
   it("needs a conversation beyond earlier compactions", () => {

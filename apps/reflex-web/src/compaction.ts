@@ -1,6 +1,5 @@
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
 import {
-  COMPACT_COMMAND_PATTERN,
   hasDismissedResumeCompaction,
   latestProviderTurnTokenUsage,
   shouldOfferResumeCompaction,
@@ -34,7 +33,6 @@ export interface ICompactionInput {
   Items: () => IWireTurnItem[];
   Selection: IWireModelSelection;
   Config: Pick<IWireServerConfig, "providers" | "settings">;
-  Text: string;
   Idle: boolean;
   Now: number;
   EnvironmentId: string;
@@ -107,7 +105,6 @@ export function compactBeforeSendTokens(input: ICompactionInput): number | null 
     provider === undefined ||
     input.Dismissed.includes(compactionDismissalKey(input.EnvironmentId, provider.instanceId)) ||
     !input.Idle ||
-    COMPACT_COMMAND_PATTERN.test(input.Text) ||
     !provider.slashCommands.some((command) => command.name === "compact") ||
     resolveIdleCompaction(
       input.Config.settings as never,
