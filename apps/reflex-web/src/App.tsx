@@ -22,7 +22,9 @@ import { SettingsView } from "./SettingsView";
 import { createKeyDispatcher, runPanelShortcut } from "./shortcuts";
 import { Sidebar, SidebarToggle } from "./Sidebar";
 import ThreadSession, { closeRightPanel } from "./ThreadSession";
-import { ThreadView } from "./ThreadView";
+import { CHAT_STAGE, ThreadView } from "./ThreadView";
+import { EMPTY_NOTE } from "./ui/notes";
+import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { TooltipHost } from "./ui/tooltip";
 import { UsageView } from "./UsageView";
 import { ViewportDebug } from "./ViewportDebug";
@@ -42,19 +44,19 @@ const NewThreadView = ThreadSession.provider(() => {
   const projectName = () => session.projectName() ?? "Unknown project";
   return (
     <FileDropSection>
-      <header class="thread-header">
+      <PageHeader>
         <SidebarToggle />
-        <div class="breadcrumb">
+        <div class={BREADCRUMB}>
           <ProjectBadge
             project={environment.state.Replica.Shell.Projects[session.projectId() ?? ""]}
             size={14}
           />
-          <span class="crumb-project">{projectName()}</span>
-          <span class="crumb-separator">/</span>
-          <h1>New thread</h1>
+          <span class={CRUMB_MUTED}>{projectName()}</span>
+          <span class={CRUMB_SEPARATOR}>/</span>
+          <h1 class={CRUMB_TITLE}>New thread</h1>
         </div>
-      </header>
-      <div class="chat-stage">
+      </PageHeader>
+      <div class={CHAT_STAGE}>
         <div class="min-h-0 flex-1" />
         <div class={COMPOSER_LANE}>
           <Composer />
@@ -157,7 +159,8 @@ const EnvironmentView = Environment.provider(() => {
         keybindings(),
         {
           terminalFocus:
-            event.target instanceof Element && event.target.closest(".terminal-drawer") !== null,
+            event.target instanceof Element &&
+            event.target.closest("[data-terminal-drawer]") !== null,
           editableFocus: isEditable(event.target),
         },
         platform,
@@ -231,16 +234,16 @@ function EnvironmentMain() {
   const environment = Environment.use();
   const sidebar = useSidebarSheet();
   return (
-    <main inert={sidebar.open()}>
+    <main class="h-full min-h-0 min-w-0 bg-background" inert={sidebar.open()}>
       <Switch
         fallback={
           <>
             <Show when={sidebar.sheet() || sidebar.collapsed()}>
-              <header class="thread-header">
+              <PageHeader>
                 <SidebarToggle />
-              </header>
+              </PageHeader>
             </Show>
-            <p class="empty">Select a thread.</p>
+            <p class={EMPTY_NOTE}>Select a thread.</p>
           </>
         }
       >
@@ -275,10 +278,10 @@ export const App = Root.provider(() => {
     <>
       <Switch>
         <Match when={root.state.Phase === "loading"}>
-          <p class="empty">Loading…</p>
+          <p class={EMPTY_NOTE}>Loading…</p>
         </Match>
         <Match when={root.state.Phase === "unpaired"}>
-          <p class="empty">
+          <p class={EMPTY_NOTE}>
             Not paired with {root.state.Label}. Open this page with a pairing token: run{" "}
             <code>node apps/server/src/bin.ts pair</code> and add <code>#token=…</code> to the
             address.

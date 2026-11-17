@@ -48,6 +48,7 @@ import OpenThread, {
 import ThreadSession from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
 import { iconButton } from "./ui/IconButton";
+import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 import { viewOf } from "./turnItemView";
 import {
   attribution,
@@ -290,9 +291,9 @@ function* markFailed(draft: IAttachmentImage): IActionGenerator {
 
 function DiffCounts(props: { additions: number; deletions: number }) {
   return (
-    <span class="diff-counts">
-      <span class="added-text">+{props.additions}</span>{" "}
-      <span class="removed-text">-{props.deletions}</span>
+    <span class={DIFF_COUNTS}>
+      <span class={ADDED_TEXT}>+{props.additions}</span>{" "}
+      <span class={REMOVED_TEXT}>-{props.deletions}</span>
     </span>
   );
 }

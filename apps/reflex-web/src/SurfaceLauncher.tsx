@@ -9,12 +9,26 @@ import {
   MessagesSquare,
   Smartphone,
   SquareTerminal,
-  X,
 } from "./icons";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { useNavigation } from "./navigation";
+import { PanelHeader } from "./RightPanel";
 import { type ISurfaceAction, type ISurfaceKind, shortcutAction } from "./surfaces";
-import { IconButton } from "./ui/IconButton";
+
+const ITEM =
+  "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-0 text-left text-[14px] text-foreground hover:not-aria-disabled:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] data-highlighted:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] aria-disabled:cursor-default aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:flex-none";
+
+function ItemContent(props: { action: ISurfaceAction }) {
+  return (
+    <>
+      {ICONS[props.action.Kind]()}
+      <span class="min-w-0 flex-1 truncate">{props.action.Label}</span>
+      <kbd class="rounded-sm border border-border bg-muted px-1 py-0 font-[family-name:inherit] text-[11px] leading-4 text-muted-foreground">
+        {props.action.Shortcut}
+      </kbd>
+    </>
+  );
+}
 
 const ICONS: Record<ISurfaceKind, () => JSX.Element> = {
   browser: () => <Globe />,
@@ -62,43 +76,39 @@ export function SurfaceLauncher(props: {
     }
   };
   return (
-    <aside class="right-panel">
-      <header class="panel-header">
-        <span class="composer-spacer" />
-        <IconButton aria-label="Close panel" data-tip="Close panel" onClick={props.onClose}>
-          <X />
-        </IconButton>
-      </header>
-      <div class="surface-launcher" tabIndex={0} aria-label="Open a surface" onKeyDown={onKeyDown}>
-        <div class="surface-launcher-body">
-          <h3>Open a surface</h3>
-          <div class="surface-list">
+    <>
+      <PanelHeader closeLabel="Close panel" onClose={props.onClose} />
+      <div
+        class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pt-0 pb-(--topbar-height) outline-none"
+        tabIndex={0}
+        aria-label="Open a surface"
+        onKeyDown={onKeyDown}
+      >
+        <div class="w-full max-w-80 py-6">
+          <h3 class="mx-0 mt-0 mb-3 text-center text-[14px] font-medium">Open a surface</h3>
+          <div class="flex flex-col gap-0.5">
             <For each={props.actions}>
               {(action) => (
                 <Show
                   when={action.Unavailable === null}
                   fallback={
                     <div
-                      class="surface-item"
+                      class={ITEM}
                       tabIndex={0}
                       aria-disabled="true"
                       data-tip={action.Unavailable ?? undefined}
                     >
-                      {ICONS[action.Kind]()}
-                      <span class="surface-label">{action.Label}</span>
-                      <kbd>{action.Shortcut}</kbd>
+                      <ItemContent action={action} />
                     </div>
                   }
                 >
                   <button
-                    class="surface-item"
-                    classList={{ highlighted: available()[highlight()] === action }}
+                    class={ITEM}
+                    data-highlighted={available()[highlight()] === action ? "" : undefined}
                     onMouseEnter={() => setHighlight(available().indexOf(action))}
                     onClick={() => props.onRun(action.Kind)}
                   >
-                    {ICONS[action.Kind]()}
-                    <span class="surface-label">{action.Label}</span>
-                    <kbd>{action.Shortcut}</kbd>
+                    <ItemContent action={action} />
                   </button>
                 </Show>
               )}
@@ -106,6 +116,6 @@ export function SurfaceLauncher(props: {
           </div>
         </div>
       </div>
-    </aside>
+    </>
   );
 }

@@ -8,6 +8,7 @@ import { useComponentState, useResource } from "treflex-solid";
 import { createEffect, createMemo, createSignal, Index, onMount, Show } from "solid-js";
 
 import Environment from "./Environment";
+import { ERROR_NOTE } from "./ui/notes";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -64,7 +65,7 @@ export function CommandOutput(props: { environmentId: string; threadId: string; 
       {(shown) => (
         <>
           <Show when={shown().Error}>
-            <p class="composer-error">Couldn't load output: {shown().Error}</p>
+            <p class={ERROR_NOTE}>Couldn't load output: {shown().Error}</p>
           </Show>
           <Show when={shown().Truncated}>
             <p class={NOTE}>Earlier output not shown.</p>

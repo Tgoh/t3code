@@ -39,6 +39,7 @@ import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
 import { IconButton, iconButton } from "./ui/IconButton";
 import { MenuCheck, MenuHeading, MenuItem, Popup } from "./ui/Menu";
+import { EMPTY_NOTE } from "./ui/notes";
 import { useSidebarSheet } from "./viewport";
 
 const CONNECTION_LABEL: Record<string, string> = {
@@ -552,7 +553,7 @@ export const Sidebar = Shell.provider(() => {
         <Show
           when={results().length > 0}
           fallback={
-            <p class="empty" role="status">
+            <p class={EMPTY_NOTE} role="status">
               {messageSearch.pending() ? "Searching thread messages…" : "No threads found"}
             </p>
           }
@@ -602,7 +603,7 @@ export const Sidebar = Shell.provider(() => {
         when={!searching() && (visibleThreads().length > 0 || folders().size > 0)}
         fallback={
           <Show when={!searching()}>
-            <p class="empty">
+            <p class={EMPTY_NOTE}>
               {!shell.shellSynchronized()
                 ? "Loading threads…"
                 : scope().size > 0
@@ -679,7 +680,7 @@ export const Sidebar = Shell.provider(() => {
             </Show>
           </Show>
           <Show when={sections().Pinned.length === 0 && sections().Active.length === 0}>
-            <li class="empty list-none px-2.5 py-2">All clear.</li>
+            <li class="list-none px-2.5 py-2 text-[14px] text-muted-foreground">All clear.</li>
           </Show>
           <Show when={sections().Snoozed.length > 0}>
             <SectionHeader

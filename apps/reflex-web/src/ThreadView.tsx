@@ -46,9 +46,39 @@ import {
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import { EMPTY_NOTE } from "./ui/notes";
+import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { createMediaQuery, PANEL_SHEET_QUERY } from "./viewport";
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
+
+/** `chat-stage` and `with-details` have no rule: the timeline and the composer lane key on them. */
+export const CHAT_STAGE =
+  "chat-stage relative flex min-h-0 flex-1 flex-col [--turn-status-height:24px] data-checklist:[--checklist-row-height:22px] data-checklist:[--turn-status-height:calc(var(--checklist-rows)*var(--checklist-row-height)+8px)]";
+
+const NOTICE =
+  "mx-auto my-0 w-full max-w-(--chat-content-max-width) py-1 text-[14px] text-warning-foreground";
+
+// .panel-sheet marks the narrow layout, where panels float over the thread as sheets. .panel-motion
+// arrives two frames after mount, so panels already open on a thread switch don't slide in again.
+const PANEL_MOTION =
+  "in-[.panel-motion]:motion-safe:transition-[translate,opacity] in-[.panel-motion]:motion-safe:duration-200 in-[.panel-motion]:motion-safe:ease-in-out";
+
+const RIGHT_PANEL = [
+  "flex h-full min-w-0 flex-[0_0_min(42rem,53%)] flex-col border-l border-border bg-background",
+  "in-[.panel-sheet]:absolute in-[.panel-sheet]:inset-y-0 in-[.panel-sheet]:right-0 in-[.panel-sheet]:z-60 in-[.panel-sheet]:pr-[env(safe-area-inset-right)] in-[.panel-sheet]:shadow-[0_8px_24px_rgb(0_0_0/12%)]",
+  "not-max-[761px]:in-[.panel-sheet]:w-[min(42vw,28rem)] not-max-[761px]:in-[.panel-sheet]:min-w-80 max-[761px]:in-[.panel-sheet]:w-[min(88vw,24rem)]",
+  `${PANEL_MOTION} starting:in-[.panel-sheet]:translate-x-full starting:not-in-[.panel-sheet]:translate-x-8 starting:not-in-[.panel-sheet]:opacity-0`,
+].join(" ");
+
+const BACKDROP =
+  "absolute inset-0 z-55 bg-(--dialog-backdrop) backdrop-blur-[4px] in-[.panel-motion]:motion-safe:transition-opacity in-[.panel-motion]:motion-safe:duration-200 starting:opacity-0";
+
+const CRUMB_LINK =
+  "group/crumb inline-flex flex-none cursor-pointer items-center gap-1.5 rounded-xs border-0 bg-transparent p-0 text-muted-foreground hover:text-foreground";
+
+const SCROLL_TO_END =
+  "absolute bottom-[calc(100%+var(--turn-status-height)+4px)] left-1/2 z-30 inline-flex h-6 -translate-x-1/2 cursor-pointer items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--border)_60%,transparent)] bg-[color-mix(in_srgb,var(--background)_var(--glass-opacity),transparent)] px-[7px] py-0 text-[12px] font-medium whitespace-nowrap shadow-[0_1px_2px_rgb(0_0_0/5%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) hover:border-border [&_svg]:size-3.5";
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
@@ -64,7 +94,7 @@ const LoadEarlier = HistoryWindow.provider(() => {
         </Button>
       </Show>
       <Show when={history.state.Error}>
-        <p class="thread-notice">{history.state.Error}</p>
+        <p class={NOTICE}>{history.state.Error}</p>
       </Show>
     </>
   );
@@ -160,6 +190,8 @@ const ThreadBody = ThreadSession.provider(() => {
   const launcherOpen = () => session.state.Panels.Launcher.Open && !diffOpen();
   const rightPanelOpen = () => diffOpen() || launcherOpen();
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
+  const [panelMotion, setPanelMotion] = createSignal(false);
+  onMount(() => requestAnimationFrame(() => requestAnimationFrame(() => setPanelMotion(true))));
   const closeTopSheet = () =>
     rightPanelOpen() ? session.closeRightPanel() : session.closeTerminal();
   const [stageSize, setStageSize] = createSignal({ Width: 0, Height: 0 });
@@ -361,16 +393,19 @@ const ThreadBody = ThreadSession.provider(() => {
     });
   });
   return (
-    <div class="thread-layout" classList={{ "panel-sheet": panelSheet() }}>
+    <div
+      class="relative flex h-full"
+      classList={{ "panel-sheet": panelSheet(), "panel-motion": panelMotion() }}
+    >
       <FileDropSection>
-        <header class="thread-header">
+        <PageHeader>
           <SidebarToggle />
-          <div class="breadcrumb">
+          <div class={BREADCRUMB}>
             <Show when={session.projectName()}>
               {(name) => (
                 <>
                   <button
-                    class="crumb-link"
+                    class={CRUMB_LINK}
                     aria-label={`New thread in ${name()}`}
                     data-tip={`New thread in ${name()}`}
                     onClick={() => {
@@ -382,20 +417,20 @@ const ThreadBody = ThreadSession.provider(() => {
                       project={environment.state.Replica.Shell.Projects[session.projectId() ?? ""]}
                       size={14}
                     />
-                    <span class="crumb-project">{name()}</span>
+                    <span class={`${CRUMB_MUTED} group-hover/crumb:text-foreground`}>{name()}</span>
                   </button>
-                  <span class="crumb-separator">/</span>
+                  <span class={CRUMB_SEPARATOR}>/</span>
                 </>
               )}
             </Show>
-            <h1 data-tip={thread.state.Thread?.title}>
+            <h1 class={CRUMB_TITLE} data-tip={thread.state.Thread?.title}>
               {thread.state.Thread?.title ?? "Loading thread…"}
             </h1>
             <Show when={!thread.threadSynchronized()}>
-              <span class="crumb-note">syncing</span>
+              <span class="flex-none text-[12px] font-normal text-muted-foreground">syncing</span>
             </Show>
           </div>
-          <div class="panel-controls">
+          <div class="flex flex-none gap-1">
             <Show when={checkout() !== null}>
               <IconButton
                 ref={detailsToggle}
@@ -447,16 +482,17 @@ const ThreadBody = ThreadSession.provider(() => {
               <Bug />
             </IconButton>
           </div>
-        </header>
+        </PageHeader>
         <Show when={endedReason()}>
-          {(reason) => <p class="thread-notice">This thread's stream ended: {reason()}</p>}
+          {(reason) => <p class={NOTICE}>This thread's stream ended: {reason()}</p>}
         </Show>
         <Show when={retrying()}>
-          <p class="thread-notice">Can't load this thread right now. Retrying.</p>
+          <p class={NOTICE}>Can't load this thread right now. Retrying.</p>
         </Show>
         <div
-          class="chat-stage"
-          classList={{ "has-checklist": checklist() !== null, "with-details": detailsInline() }}
+          class={CHAT_STAGE}
+          classList={{ "with-details": detailsInline() }}
+          data-checklist={checklist() === null ? undefined : ""}
           ref={stage}
           style={{
             "--checklist-rows": statusRows(),
@@ -485,6 +521,7 @@ const ThreadBody = ThreadSession.provider(() => {
           <div
             class="min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-x-hidden overflow-y-auto px-[calc(var(--gutter)-var(--scrollbar-width))] pt-2 pb-[calc(var(--composer-height,0px)+var(--turn-status-height))] [mask-image:linear-gradient(to_bottom,transparent_0,black_1.5rem)] focus-visible:outline-none"
             ref={scroller}
+            data-timeline
             tabIndex={-1}
             onScroll={() => {
               const next = position();
@@ -541,13 +578,13 @@ const ThreadBody = ThreadSession.provider(() => {
                 {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
               </For>
               <Show when={thread.state.Thread !== null && thread.state.Timeline.length === 0}>
-                <p class="empty">Nothing here yet.</p>
+                <p class={EMPTY_NOTE}>Nothing here yet.</p>
               </Show>
             </div>
           </div>
           <div class={COMPOSER_LANE} ref={lane}>
             <Show when={!stuck()}>
-              <button class="scroll-to-end" onClick={scrollToEnd}>
+              <button class={SCROLL_TO_END} onClick={scrollToEnd}>
                 <ChevronDown />
                 Scroll to end
               </button>
@@ -581,17 +618,23 @@ const ThreadBody = ThreadSession.provider(() => {
         </Show>
       </FileDropSection>
       <Show when={panelSheet() && (rightPanelOpen() || terminalOpen())}>
-        <div class="panel-backdrop" aria-hidden="true" onClick={closeTopSheet} />
+        <div class={BACKDROP} aria-hidden="true" onClick={closeTopSheet} />
       </Show>
-      <Show when={diffOpen()}>
-        <DiffPanel />
-      </Show>
-      <Show when={launcherOpen()}>
-        <SurfaceLauncher
-          actions={launcher()}
-          onRun={openSurface}
-          onClose={() => session.closeLauncher()}
-        />
+      <Show when={rightPanelOpen()}>
+        <aside class={RIGHT_PANEL}>
+          <Show
+            when={diffOpen()}
+            fallback={
+              <SurfaceLauncher
+                actions={launcher()}
+                onRun={openSurface}
+                onClose={() => session.closeLauncher()}
+              />
+            }
+          >
+            <DiffPanel />
+          </Show>
+        </aside>
       </Show>
     </div>
   );

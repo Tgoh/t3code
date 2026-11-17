@@ -15,7 +15,7 @@ function sample(probe: HTMLElement): Array<[string, string]> {
   const root = document.documentElement;
   const stage = document.querySelector(".chat-stage");
   const lane = document.querySelector<HTMLElement>(".composer-lane");
-  const timeline = document.querySelector<HTMLElement>(".chat-stage > .timeline");
+  const timeline = document.querySelector<HTMLElement>("[data-timeline]");
   const insets = getComputedStyle(probe);
   const toEnd =
     timeline === null
