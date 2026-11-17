@@ -31,6 +31,8 @@ export interface IEntryFacts {
   FailedRun: "usage_limit" | "other" | null;
   Persistent: boolean;
   LiveSubagent: boolean;
+  /** A subagent's provider turn, which with its run decides the subagents it groups with. */
+  Turn: string | null;
 }
 
 const STANDALONE_EVENTS = new Set<IWireTurnItem["type"]>([
@@ -88,6 +90,7 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
     Streaming: false,
     Persistent: PERSISTENT_TYPES.has(item.type),
     LiveSubagent: item.type === "subagent" && isOrchestrationV2WorkActive(item.status),
+    Turn: item.type === "subagent" ? item.providerTurnId : null,
     ...NO_WORK,
   };
   switch (item.type) {
@@ -173,6 +176,7 @@ export type ILayoutRow =
   | { Kind: "item"; Key: string; Id: string; Meta: boolean }
   | { Kind: "single"; Key: string; Id: string }
   | { Kind: "group"; Key: string; Ids: string[]; Expanded: boolean; At: string }
+  | { Kind: "subagents"; Key: string; Ids: string[]; Expanded: boolean }
   | {
       Kind: "fold";
       Key: string;
@@ -185,6 +189,8 @@ export type ILayoutRow =
   | { Kind: "meta"; Key: string; Id: string; Files: string | null };
 
 export const groupKey = (anchorId: string) => `group:${anchorId}`;
+
+const subagentsKey = (firstId: string) => `subagents:${firstId}`;
 
 function elapsedMs(start: string, end: string): number | null {
   const from = Date.parse(start);
@@ -459,6 +465,12 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
   );
   const rows: ILayoutRow[] = [];
   const rowRuns: IRowRun[] = [];
+  let subagents: {
+    Index: number;
+    Ids: string[];
+    RunId: string | null;
+    Turn: string | null;
+  } | null = null;
   const push = (row: ILayoutRow, runId: string | null = null, trail: ITrail = "other") => {
     rows.push(row);
     rowRuns.push({ RunId: runId, Trail: trail });
@@ -494,6 +506,28 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
     if (collapsed.has(entry.Id)) continue;
     if (entry.Kind === "user" && entry.Compaction && compactedRuns.has(entry.RunId)) continue;
 
+    // Follows deriveMessagesTimelineRows: back-to-back subagents of one provider turn share a row.
+    if (entry.Type === "subagent") {
+      if (
+        subagents !== null &&
+        subagents.Index === rows.length - 1 &&
+        subagents.RunId === entry.RunId &&
+        subagents.Turn === entry.Turn
+      ) {
+        subagents.Ids.push(entry.Id);
+        const key = subagentsKey(subagents.Ids[0]!);
+        rows[subagents.Index] = {
+          Kind: "subagents",
+          Key: key,
+          Ids: [...subagents.Ids],
+          Expanded: input.Expanded(key),
+        };
+        continue;
+      }
+      push({ Kind: "item", Key: entry.Id, Id: entry.Id, Meta: false }, entry.RunId);
+      subagents = { Index: rows.length - 1, Ids: [entry.Id], RunId: entry.RunId, Turn: entry.Turn };
+      continue;
+    }
     if (entry.Kind !== "work") {
       const meta =
         entry.Kind === "assistant" &&

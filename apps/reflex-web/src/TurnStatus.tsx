@@ -1,21 +1,10 @@
-// @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for the working timer, outside any Effect runtime.
+// @effect-diagnostics globalDate:off -- A view-only working timer, outside any Effect runtime.
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
-import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
-import { deriveSubagentElapsedMs, formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { useInFlight } from "treflex-solid";
-import {
-  type Accessor,
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  Index,
-  onCleanup,
-  Show,
-} from "solid-js";
+import { type Accessor, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
 
-import { compactElapsed, type ILineageAgent } from "./lineage";
-
+import { SECOND, useTick } from "./AgentElapsed";
 import {
   activeStepIndex,
   CHECKLIST_ROWS,
@@ -44,8 +33,6 @@ import {
   workLogEntry,
 } from "./workLog";
 
-const SECOND = 1_000;
-
 const POPOVER =
   "absolute right-0 bottom-[calc(100%+4px)] left-0 z-40 max-h-[min(24rem,50dvh)] overflow-y-auto rounded-xl border border-border bg-popover px-3.5 pt-2.5 pb-3 text-[14px] text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]";
 
@@ -73,35 +60,6 @@ export function useWorkingTimer(): Accessor<string | null> {
     const since = row === undefined ? null : workingStartedAt(row);
     return since === null ? null : workingTimer(since, now());
   };
-}
-
-function useTick(live: Accessor<boolean>): Accessor<number> {
-  const [now, setNow] = createSignal(Date.now());
-  createEffect(() => {
-    if (!live()) return;
-    const tick = setInterval(() => setNow(Date.now()), SECOND);
-    onCleanup(() => clearInterval(tick));
-  });
-  return now;
-}
-
-/** A subagent task's run time, ticking each second while it runs. */
-export function AgentElapsed(props: { agent: ILineageAgent }) {
-  const now = useTick(() => isOrchestrationV2WorkActive(props.agent.Status as never));
-  return (
-    <>
-      {compactElapsed(
-        deriveSubagentElapsedMs(
-          {
-            status: props.agent.Status as never,
-            startedAt: props.agent.StartedAt,
-            completedAt: props.agent.CompletedAt,
-          },
-          now(),
-        ) ?? 0,
-      )}
-    </>
-  );
 }
 
 // What the turn is doing now: the latest tool or thought after the reply that's on screen.

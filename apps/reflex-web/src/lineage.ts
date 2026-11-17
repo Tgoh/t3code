@@ -218,6 +218,16 @@ export function compactElapsed(milliseconds: number): string {
   return `${Math.floor(minutes / 6) / 10}h`;
 }
 
+// Follows formatElapsedSeconds in apps/web/src/components/chat/AgentElapsed.tsx.
+export function fullElapsed(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  if (minutes === 0) return `${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours === 0) return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
 // Follows threadRelationshipStatusLabel in apps/web/src/components/chat/ThreadRelationshipIcon.tsx.
 export function lineageStatusLabel(status: string | null): string {
   switch (status) {

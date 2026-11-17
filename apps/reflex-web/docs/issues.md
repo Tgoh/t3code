@@ -36,6 +36,8 @@ Replay and one provider are verified. A real Claude Haiku turn from this client 
 
 The RPC client decodes each stream item into `DateTime`s and the app encodes it back to hold plain data in the tree. This is negligible per delta (about 0.03 ms each way) but about 80 ms on a 1,000-item snapshot. If that matters, the fix is a protocol client without the decode, which `client-runtime` doesn't offer.
 
+The tree therefore holds the encoded form, but `Wire<T>` in `Infrastructure/wire.ts` types it as the decoded one with strings for dates. They differ wherever a schema transforms more than a date: a subagent's notification source is `background_task` with `work: "subagent"` in the tree, where stock's decoded `kind` is `subagent`. `notificationSource` in `subagents.ts` decodes that one. Reading another transformed field needs the same care, until the tree holds the decoded type or `Wire<T>` follows the encoded one.
+
 ## Mismatch: a cold open takes a full socket snapshot
 
 The stock client loads the first snapshot over HTTP and falls back to the socket, and seeds it from a thread cache it persists. This client always uses the socket and persists nothing, so a reload, or opening a thread not viewed in the last five minutes, waits for a snapshot. Reconnects and returns to a retained thread resume from the cursor.
@@ -151,7 +153,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Projects: a clone that fails or finishes while its project isn't open shows nothing until you open it; stock raises a toast.
 - Sidebar: Limited and a waiting guest message's Request aren't distinct states, drafts have no card, and the thread list shows no scrollbar.
 - Sidebar hover card: no environment, terminal process or pull request lines, and a long branch is cut at the end rather than the middle.
-- Sidebar and composer: only Claude and OpenAI provider icons are copied; Replay, Cursor, Grok, OpenCode, Antigravity and Kiro show none, and instance badges aren't drawn.
+- Provider icons: Antigravity's bundled image and an ACP Registry agent's registry icon aren't drawn, so those providers (Replay among them) show none, and instance badges and accent colours aren't drawn.
 - New thread: a pen button targets the current project, and a small native select beside it picks another, where stock has one button.
 - Header: no title menu.
 - Thread details: no environment or worktree pickers (the machine row only names it), no usage, context, servers, automations, side chats or linked pull request rows, no "Choose what to show" menu, and no compact or essential density for a short window. Only an open thread has the card; a new-thread draft doesn't. Its open state is per thread and resets on reload, where stock keeps it.
@@ -163,8 +165,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Tooltips: a quick move between triggers opens instantly everywhere, where stock does that only inside the sidebar.
 - Timeline: the fold and work groups leave out stock's superseded-attempt folds ("Superseded attempt"), the tool-call visibility setting (zen and hide-successful), hiding delegation rows that a subagent card replaces, compaction dividers and `/compact` turns, viewed-image strips, html-render and MCP app rows, the "Waiting on N subagents" label and the timestamp setting. Resumed subagents fold with the response they appear in, not their original turn. Stock's tool icons and shimmer aren't copied, and an expanded group grows to a fixed height rather than by its open entries.
 - Timeline: an expanded work entry's body is this client's (`viewOf`), not stock's per-tool detail.
-- Timeline: a subagent finishing is a plain "Subagent … finished" row with the question-mark icon, where stock shows a card with the provider icon, the title, a result line, "Finished <time>" and a chevron that opens the subagent.
-- Timeline: "Background activity updated" falls back to the question-mark icon, where stock gives it a lightning icon.
+- Timeline, subagent cards: no hover card with the model, project and branch, a task on a linked environment doesn't open, and a path-like result line is cut at the end rather than the middle.
 - Timeline: no minimap, and the scroll-to-end pill doesn't summarise what's waiting below.
 - Running turn (a deliberate divergence, see the README): a turn that did no work drops its fold when it settles, as stock's does, so its reply moves up a row then. A stopped or failed turn unfolds its work, as stock's does. The status line keeps its row above the composer while idle, and the queue is a popover rather than stock's control above the composer.
 - Message actions: no reply or prompt link action. Fork shows only on a settled response's last reply, where stock offers it on every finished reply, including in a running turn. Edit from here doesn't wait for attachments still being read in (stock refuses while they prepare), restores a message's text without its thread and environment mention records, and doesn't check the environment's operate scope (see "the command path assumes atoms"). Stock's busy fork button pulses; this one only disables.

@@ -30,6 +30,7 @@ import {
 } from "./icons";
 import OpenThread, { isRowVisible, timelineItem } from "./OpenThread";
 import { runStatus } from "./Shell";
+import { SubagentGroup } from "./SubagentRows";
 import ThreadSession from "./ThreadSession";
 import {
   entryFacts,
@@ -128,6 +129,9 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined }) {
       <Match when={of("item")}>{(row) => <TimelineRow id={row().Id} meta={row().Meta} />}</Match>
       <Match when={of("single")}>{(row) => <WorkRow id={row().Id} single />}</Match>
       <Match when={of("group")}>{(row) => <GroupRow row={row()} />}</Match>
+      <Match when={of("subagents")}>
+        {(row) => <SubagentGroup rowKey={row().Key} ids={row().Ids} expanded={row().Expanded} />}
+      </Match>
       <Match when={of("fold")}>{(row) => <FoldRow row={row()} />}</Match>
       <Match when={of("meta")}>
         {(row) => <MessageMeta id={row().Id} files={row().Files} standalone />}
