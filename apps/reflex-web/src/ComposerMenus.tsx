@@ -2,7 +2,7 @@ import { selectableProviderOptionChoices } from "@t3tools/client-runtime/model-t
 import { type Component, createMemo, createSignal, For, type JSX, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
-import { ProviderIcon } from "./brand";
+import { hasProviderIcon, ProviderIcon } from "./brand";
 import { formatContextTokens } from "./compaction";
 import Environment from "./Environment";
 import {
@@ -350,7 +350,7 @@ export function ModelPicker() {
 function ProviderGlyph(props: { driver: string | undefined; name: string; size?: number }) {
   return (
     <Show
-      when={props.driver === "claudeAgent" || props.driver === "codex"}
+      when={hasProviderIcon(props.driver)}
       fallback={<span class="text-[13px] font-semibold">{props.name.slice(0, 1)}</span>}
     >
       <ProviderIcon driver={props.driver} size={props.size} />

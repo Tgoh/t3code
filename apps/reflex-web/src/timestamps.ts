@@ -48,6 +48,11 @@ export function dayAwareTimestamp(iso: string): string {
   return `${formatter.format(wallClock)} ${time}`;
 }
 
+// Follows formatShortTimestamp in apps/web/src/timestampFormat.ts.
+export function shortTimestamp(iso: string): string {
+  return timeFormatter.format(wallClockAsUtc(new Date(iso)));
+}
+
 export function fullTimestamp(iso: string): string {
   const date = new Date(iso);
   const wallClock = wallClockAsUtc(date);

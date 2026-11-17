@@ -98,6 +98,8 @@ const shape = (rows: ILayoutRow[]) =>
         return `single ${row.Id}`;
       case "group":
         return `group ${row.Ids.join(",")}`;
+      case "subagents":
+        return `subagents ${row.Ids.join(",")}`;
       case "fold":
         return row.Running ? "fold running" : `fold ${row.Label}`;
       case "meta":
@@ -173,6 +175,29 @@ describe("the timeline's turn folds", () => {
     expect(shape(layout(stopped))).toEqual(["u", "group t,c1", "i"]);
     const streaming = [...turn.slice(0, 3), reply("a", 3, { streaming: true })];
     expect(shape(layout(streaming))).toEqual(["u", "group t,c1", "a +meta"]);
+  });
+
+  it("puts back-to-back subagents of one provider turn in one row", () => {
+    const subagent = (id: string, second: number, turn: string) =>
+      item("subagent", id, second, { providerTurnId: turn, subagentId: id, driver: "codex" });
+    const launched = [
+      user("u", 0),
+      subagent("s1", 1, "p1"),
+      subagent("s2", 2, "p1"),
+      subagent("s3", 3, "p2"),
+      command("c", 4),
+      subagent("s4", 5, "p2"),
+      reply("a", 9),
+    ];
+    expect(shape(layout(launched, { expanded: ["fold:run-1"] }))).toEqual([
+      "u",
+      "fold Worked for 15s",
+      "subagents s1,s2",
+      "s3",
+      "single c",
+      "s4",
+      "a +meta",
+    ]);
   });
 
   it("says when the user stopped the latest run", () => {

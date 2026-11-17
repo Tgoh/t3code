@@ -70,7 +70,7 @@ import ThreadDetails, {
 } from "./ThreadDetails";
 import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession, { mergeBack } from "./ThreadSession";
-import { AgentElapsed } from "./TurnStatus";
+import { AgentElapsed } from "./AgentElapsed";
 import { Button } from "./ui/Button";
 import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";

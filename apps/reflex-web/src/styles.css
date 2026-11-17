@@ -45,6 +45,7 @@
   --destructive: var(--error);
   --border: var(--zinc-200);
   --input: var(--zinc-300);
+  --info: oklch(62.3% 0.214 259.815);
   --info-foreground: oklch(48.8% 0.243 264.376);
   --thread-link: #006f6b;
   --file-link: oklch(0.5 0.11 215);
@@ -215,6 +216,7 @@ body {
 @media (pointer: coarse) and (max-height: 500px) {
   :root {
     --composer-gap: 4px;
+    --topbar-height: 40px;
   }
 }
 

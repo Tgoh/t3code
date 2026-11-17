@@ -37,7 +37,12 @@ import {
   SquarePen,
   Terminal,
   Wrench,
+  Eye,
+  Zap,
 } from "./icons";
+import { T3Mark } from "./brand";
+import { SubagentNotification, SubagentRow } from "./SubagentRows";
+import { notificationSource, notifiedSubagent } from "./subagents";
 import Environment from "./Environment";
 import { assetUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
 import type { IWireTurnItem } from "./Infrastructure/wire";
@@ -141,7 +146,6 @@ const ROW_ICONS: Record<string, Component> = {
   file_search: FileSearch,
   web_search: Globe,
   dynamic_tool: Wrench,
-  subagent: Bot,
   approval_request: ShieldQuestion,
   user_input_request: MessageCircleQuestion,
   secret_request: ShieldQuestion,
@@ -150,6 +154,30 @@ const ROW_ICONS: Record<string, Component> = {
   fork: GitFork,
   compaction: Minimize2,
 };
+
+const NOTIFICATION_ICONS: Record<string, Component> = {
+  subagent: Bot,
+  delegated_task: Bot,
+  command: Terminal,
+  monitor: Eye,
+  background_task: Zap,
+  system: T3Mark,
+};
+
+// Follows workEntryIconName in apps/web/src/components/chat/TimelineWorkEntryRow.logic.ts.
+function NotificationIcon(props: { item: Extract<IWireTurnItem, { type: "notification" }> }) {
+  return (
+    <span class={WORK_ICON}>
+      <Dynamic
+        component={
+          props.item.outcome === "failed"
+            ? CircleAlert
+            : (NOTIFICATION_ICONS[notificationSource(props.item).kind] ?? Zap)
+        }
+      />
+    </span>
+  );
+}
 
 export function RowIcon(props: { type: string }) {
   return (
@@ -767,7 +795,6 @@ const EVENT_TYPES = new Set<IWireTurnItem["type"]>([
   "run_interrupt_result",
   "secret_request",
   "link_request",
-  "subagent",
   "checkpoint",
 ]);
 
@@ -807,13 +834,19 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
     return held === undefined ? null : diffTurnOf(thread.state, held);
   });
   const expanded = () => session.expandedTimelineRows()[props.id] === true;
+  const notification = () => {
+    const held = item();
+    return held?.type === "notification" ? held : null;
+  };
   const live = () => {
     const status = item()?.status;
     return status === "running" || status === "pending" || status === "waiting" ? status : null;
   };
   const label = () => (
     <>
-      <RowIcon type={item()?.type ?? ""} />
+      <Show when={notification()} fallback={<RowIcon type={item()?.type ?? ""} />}>
+        {(held) => <NotificationIcon item={held()} />}
+      </Show>
       <span class="min-w-0 flex-initial truncate">{view()?.Label}</span>
       <Show when={counts()}>
         {(held) => <DiffCounts additions={held().additions} deletions={held().deletions} />}
@@ -887,11 +920,28 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
   );
 }
 
+function NotificationRow(props: IRowProps) {
+  const { thread, item, inherited } = useRow(props);
+  const card = createMemo(() => {
+    const held = item();
+    if (held?.type !== "notification" || inherited()) return null;
+    const agent = notifiedSubagent(thread.state.Subagents, held);
+    return agent === null ? null : { Item: held, Agent: agent };
+  });
+  return (
+    <Show when={card()} fallback={<WorkRow id={props.id} />}>
+      {(held) => <SubagentNotification item={held().Item} agent={held().Agent} />}
+    </Show>
+  );
+}
+
 const ROWS: Record<string, Component<IRowProps & { meta: boolean }>> = {
   user: UserRow,
   message: MessageRow,
   "changed-files": ChangedFilesRow,
   work: WorkRow,
+  subagent: SubagentRow,
+  notification: NotificationRow,
 };
 
 function rowKind(item: IWireTurnItem): string | null {
@@ -908,6 +958,9 @@ function rowKind(item: IWireTurnItem): string | null {
       return item.status === "waiting" ? null : "work";
     case "dynamic_tool":
       return viewOf(item).Tone === "assistant" ? "message" : "work";
+    case "subagent":
+    case "notification":
+      return item.type;
     default:
       return "work";
   }

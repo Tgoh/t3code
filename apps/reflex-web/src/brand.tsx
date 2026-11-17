@@ -1,3 +1,4 @@
+import { getProviderClient } from "@t3tools/client-runtime/provider-clients";
 import type { ProjectIconColor } from "@t3tools/contracts";
 import { useResource } from "treflex-solid";
 import {
@@ -5,6 +6,8 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  createUniqueId,
+  For,
   Match,
   on,
   Show,
@@ -216,6 +219,74 @@ export function ProviderIcon(props: { driver: string | undefined; size?: number 
           />
         </svg>
       </Show>
+      <Show when={packageIcon(props.driver)}>
+        {(icon) => <PackageIcon icon={icon()} size={size()} />}
+      </Show>
     </>
+  );
+}
+
+/** Whether `ProviderIcon` draws a mark for this driver, rather than nothing. */
+export const hasProviderIcon = (driver: string | undefined) =>
+  driver === "claudeAgent" || driver === "codex" || packageIcon(driver) !== undefined;
+
+type IPackageIcon = NonNullable<NonNullable<ReturnType<typeof getProviderClient>>["icon"]>;
+
+// Stock draws an ACP Registry agent from the registry's own icon, not the driver's package mark.
+const packageIcon = (driver: string | undefined) =>
+  driver === "acpRegistry" ? undefined : getProviderClient(driver)?.icon;
+
+// Follows ProviderPackageIcon in apps/web/src/components/chat/ProviderPackageIcon.tsx. The fill
+// swaps on the `dark:` variant, which follows the appearance setting, not the OS scheme.
+function PackageIcon(props: { icon: IPackageIcon; size: number }) {
+  const gradientId = createUniqueId();
+  return (
+    <svg
+      class="provider-icon flex-none fill-(--icon-light) dark:fill-(--icon-dark)"
+      viewBox={props.icon.viewBox}
+      width={props.size}
+      height={props.size}
+      fill="none"
+      aria-hidden="true"
+      style={{ "--icon-light": props.icon.fill.light, "--icon-dark": props.icon.fill.dark }}
+    >
+      <Show when={props.icon.paths.some((path) => path.gradient)}>
+        <defs>
+          <For each={props.icon.paths}>
+            {(path, index) => (
+              <Show when={path.gradient}>
+                {(gradient) => (
+                  <linearGradient
+                    id={`${gradientId}-${index()}`}
+                    x1={gradient().x1}
+                    y1={gradient().y1}
+                    x2={gradient().x2}
+                    y2={gradient().y2}
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <For each={gradient().stops}>
+                      {(stop) => <stop offset={stop.offset} stop-color={stop.color} />}
+                    </For>
+                  </linearGradient>
+                )}
+              </Show>
+            )}
+          </For>
+        </defs>
+      </Show>
+      <For each={props.icon.paths}>
+        {(path, index) => (
+          <path
+            d={path.d}
+            fill-rule={path.fillRule}
+            fill={path.gradient ? `url(#${gradientId}-${index()})` : undefined}
+            class={path.fill ? "fill-(--path-light) dark:fill-(--path-dark)" : undefined}
+            style={
+              path.fill ? { "--path-light": path.fill.light, "--path-dark": path.fill.dark } : {}
+            }
+          />
+        )}
+      </For>
+    </svg>
   );
 }
