@@ -8,11 +8,13 @@ import type { ThreadId } from "@t3tools/contracts";
 
 import type { IWireProjection, IWireThreadShell } from "./Infrastructure/wire";
 
+export type ILineageRelation = "parent" | "fork";
+
 export interface ILineageRow {
   ThreadId: string;
   /** Null for a thread the shell doesn't carry, such as an older settled parent. */
   Title: string | null;
-  Parent: boolean;
+  Relation: ILineageRelation;
   Status: string | null;
   CreatedAt: string;
 }
@@ -22,7 +24,7 @@ export interface ILineageRow {
  * Follows ThreadRelationshipsPanel in apps/web/src/components/chat/ThreadRelationshipsControl.tsx,
  * leaving out subagents, context transfers and side chats.
  */
-export function forkLineage(
+export function threadLineage(
   thread: IWireProjection["thread"],
   shells: ReadonlyArray<IWireThreadShell>,
 ): ILineageRow[] {
@@ -42,7 +44,7 @@ export function forkLineage(
         {
           ThreadId: row.threadId,
           Title: shell?.title ?? null,
-          Parent: parent,
+          Relation: parent ? ("parent" as const) : ("fork" as const),
           Status: threadRelationshipRowStatus(graph, row),
           CreatedAt: shell?.createdAt ?? "",
         },
@@ -50,7 +52,8 @@ export function forkLineage(
     })
     .toSorted(
       (left, right) =>
-        Number(right.Parent) - Number(left.Parent) || right.CreatedAt.localeCompare(left.CreatedAt),
+        Number(right.Relation === "parent") - Number(left.Relation === "parent") ||
+        right.CreatedAt.localeCompare(left.CreatedAt),
     );
 }
 

@@ -3,6 +3,7 @@ import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
 import { useResource } from "treflex-solid";
 import { Dynamic, Portal } from "solid-js/web";
 import {
+  type Component,
   createEffect,
   createMemo,
   createSignal,
@@ -47,7 +48,12 @@ import {
   X,
 } from "./icons";
 import GitWork, { type IActionContext } from "./GitWork";
-import { forkLineage, lineageStatusLabel } from "./lineage";
+import {
+  type ILineageRelation,
+  type ILineageRow,
+  lineageStatusLabel,
+  threadLineage,
+} from "./lineage";
 import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
@@ -368,6 +374,63 @@ const newScriptId = (name: string, scripts: readonly ProjectScript[]) => {
   return id;
 };
 
+const RELATIONS: Record<ILineageRelation, { Icon: Component; Name: string; Untitled: string }> = {
+  parent: { Icon: CornerLeftUp, Name: "parent thread", Untitled: "Parent thread" },
+  fork: { Icon: GitFork, Name: "fork", Untitled: "Fork" },
+};
+
+function LineageRow(props: { row: ILineageRow }) {
+  const environment = Environment.use();
+  const relation = () => RELATIONS[props.row.Relation];
+  const title = () => props.row.Title ?? relation().Untitled;
+  return (
+    <li>
+      <button
+        class={`group/lineage ${ROW}`}
+        data-tip={`Open ${relation().Name}: ${title()}`}
+        data-failed={props.row.Status === "failed" || props.row.Status === "error" ? "" : undefined}
+        onClick={() => void environment.selectThread(props.row.ThreadId)}
+      >
+        <Dynamic component={relation().Icon} />
+        <span class={LABEL}>{title()}</span>
+        <ArrowRight class="size-3! flex-none opacity-0 group-hover/lineage:opacity-100" />
+        <span class="flex-none text-[11px] font-normal text-muted-foreground group-data-failed/lineage:text-destructive">
+          {lineageStatusLabel(props.row.Status)}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+// Follows ThreadRelationshipsPanel in apps/web/src/components/chat/ThreadRelationshipsControl.tsx.
+function LineageSection(props: { threadId: string }) {
+  const environment = Environment.use();
+  const rows = createMemo(() => {
+    const thread = environment.state.Replica.OpenThreads[props.threadId]?.Thread;
+    return thread == null
+      ? []
+      : threadLineage(thread, Object.values(environment.state.Replica.Shell.Threads));
+  });
+  return (
+    <Show when={rows().length > 0}>
+      <section
+        class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
+        aria-labelledby="thread-details-lineage-heading"
+      >
+        <h3
+          id="thread-details-lineage-heading"
+          class="m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none"
+        >
+          Lineage
+        </h3>
+        <ul class="m-0 list-none p-0" aria-label="Related threads">
+          <For each={rows()}>{(row) => <LineageRow row={row} />}</For>
+        </ul>
+      </section>
+    </Show>
+  );
+}
+
 interface IDetailsProps {
   checkout: ICheckout;
   /** The thread's branch, which stands in for git status until status arrives. */
@@ -405,12 +468,6 @@ const Body = (props: IDetailsProps) => {
     ),
   );
 
-  const lineage = createMemo(() => {
-    const thread = environment.state.Replica.OpenThreads[session.state.ThreadId]?.Thread;
-    return thread == null
-      ? []
-      : forkLineage(thread, Object.values(environment.state.Replica.Shell.Threads));
-  });
   const terminology = () => changeRequestTerminologyFor(git());
   const busy = () => work.gitBusy();
   const quick = createMemo(() =>
@@ -655,46 +712,7 @@ const Body = (props: IDetailsProps) => {
         </section>
       </Show>
 
-      <Show when={lineage().length > 0}>
-        <section
-          class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
-          aria-labelledby="thread-details-lineage-heading"
-        >
-          <h3
-            id="thread-details-lineage-heading"
-            class="m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none"
-          >
-            Lineage
-          </h3>
-          <ul class="m-0 list-none p-0" aria-label="Related threads">
-            <For each={lineage()}>
-              {(row) => {
-                const title = () => row.Title ?? (row.Parent ? "Parent thread" : "Fork");
-                const relation = row.Parent ? "parent thread" : "fork";
-                return (
-                  <li>
-                    <button
-                      class={`group/lineage ${ROW}`}
-                      data-tip={`Open ${relation}: ${title()}`}
-                      data-failed={
-                        row.Status === "failed" || row.Status === "error" ? "" : undefined
-                      }
-                      onClick={() => void environment.selectThread(row.ThreadId)}
-                    >
-                      <Dynamic component={row.Parent ? CornerLeftUp : GitFork} />
-                      <span class={LABEL}>{title()}</span>
-                      <ArrowRight class="size-3! flex-none opacity-0 group-hover/lineage:opacity-100" />
-                      <span class="flex-none text-[11px] font-normal text-muted-foreground group-data-failed/lineage:text-destructive">
-                        {lineageStatusLabel(row.Status)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              }}
-            </For>
-          </ul>
-        </section>
-      </Show>
+      <LineageSection threadId={session.state.ThreadId} />
 
       <Show when={menu()}>
         {(open) => (
