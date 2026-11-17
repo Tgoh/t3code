@@ -19,6 +19,6 @@ Read [README.md](./README.md) first. It covers the state model, the logic copied
   cd /g/Sorted/Code/t3code && chcp.com 65001 >/dev/null; pwsh -NoProfile -File ./dev-stack.ps1 -Restart -Only reflex
   ```
 
-  The merge isn't done until that exits 0 and prints `reflex: ready at http://localhost:5734, serving the build in …`. A failed build exits 1 and leaves the old build serving, with its output in `G:\Sorted\Code\t3code-dev-home\dev-stack\reflex-build.log`. A missing module there means the install was skipped: run `vp i -- --yes` and restart again. A code error means `reflex-main` is broken: fix it on your branch, recheck, fast-forward, and restart again. Never leave `reflex-main` ahead of what 5734 serves without telling Tam.
+  The merge isn't done until that exits 0 and prints `reflex: serving the build in …`. A failed build exits 1 and leaves the old build serving, with its output in `G:\Sorted\Code\t3code-dev-home\dev-stack\reflex-build.log`. A missing module there means the install was skipped: run `vp i -- --yes` and restart again. A code error means `reflex-main` is broken: fix it on your branch, recheck, fast-forward, and restart again. Never leave `reflex-main` ahead of what 5734 serves without telling Tam.
 
   Then stop your test client by the task you started it with, and settle your own thread with `t3_thread_organize` (`action: "settle"`, no `threadId`).

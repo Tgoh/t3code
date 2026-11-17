@@ -6,8 +6,10 @@
 #   ./dev-stack.ps1 -Restart  stop, then start
 #   ./dev-stack.ps1 -Restart -Only reflex   restart one service (server, reflex or stock)
 #
-# The reflex client is a production build served by `vp preview`, rebuilt whenever it starts. A failed
-# build leaves the running client and apps/reflex-web/dist alone and exits 1.
+# A service's optional hooks run before it is stopped (Prepare), between stop and start (Install), and
+# once its port answers (Verify). A failing hook makes the run exit 1, and a failing Prepare skips the
+# restart, so a running service keeps running as it was.
+# The reflex client's hooks build it with apps/reflex-web/scripts/driver-build.ps1.
 #
 # Starting and stopping run elevated: an unelevated run reopens itself as administrator.
 [CmdletBinding()]
@@ -39,6 +41,7 @@ $stateDir = Join-Path $homeDir "dev-stack"
 $statePath = Join-Path $stateDir "processes.json"
 $node = (Get-Command node).Source
 $vp = (Get-Command vp).Source
+$driverBuild = Join-Path $root "apps/reflex-web/scripts/driver-build.ps1"
 
 $services = @(
   @{
@@ -54,6 +57,9 @@ $services = @(
     File = $vp
     Arguments = @("preview", "--port", "5734", "--strictPort")
     Directory = Join-Path $root "apps/reflex-web"
+    Prepare = { & $driverBuild -Build -StateDir $stateDir }
+    Install = { & $driverBuild -Install -StateDir $stateDir }
+    Verify = { & $driverBuild -Verify -Port 5734 }
   },
   @{
     Name = "stock"
@@ -136,59 +142,17 @@ if ($Stop) {
   return
 }
 
-$reflexDir = Join-Path $root "apps/reflex-web"
-$dist = Join-Path $reflexDir "dist"
-$nextBuild = Join-Path $stateDir "reflex-next"
-$buildFailed = $false
-
-function Build-Reflex {
-  $log = Join-Path $stateDir "reflex-build.log"
-  if (Test-Path $nextBuild) { Remove-Item -Recurse -Force $nextBuild }
-  Write-Host "reflex: building"
-  # A baked-in origin breaks every browser that reaches the client through Tailscale.
-  Remove-Item Env:VITE_HTTP_URL, Env:VITE_WS_URL -ErrorAction SilentlyContinue
-  Push-Location $reflexDir
-  try {
-    & $vp build --outDir $nextBuild --emptyOutDir *> $log
-    $built = $LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $nextBuild "sw.js"))
-  } finally {
-    Pop-Location
-  }
-  if ($built) { return $true }
-  if (Test-Path $nextBuild) { Remove-Item -Recurse -Force $nextBuild }
-  Write-Warning "reflex: build failed, so the running client and dist are unchanged. See $log"
-  $false
-}
-
-# Runs with the client stopped: Windows can't rename a folder the preview server holds open.
-function Install-ReflexBuild {
-  $old = Join-Path $stateDir "reflex-old"
-  if (Test-Path $old) { Remove-Item -Recurse -Force $old }
-  if (Test-Path $dist) { Move-Item $dist $old }
-  try {
-    Move-Item $nextBuild $dist
-  } catch {
-    if (Test-Path $old) { Move-Item $old $dist }
-    throw
-  }
-  if (Test-Path $old) { Remove-Item -Recurse -Force $old }
-}
-
-function Test-ReflexServed {
-  $served = (Invoke-WebRequest "http://localhost:5734/" -UseBasicParsing -TimeoutSec 10).Content
-  $served -eq (Get-Content (Join-Path $dist "index.html") -Raw)
-}
-
 New-Item -ItemType Directory -Force $stateDir | Out-Null
-$reflex = $services | Where-Object { $_.Name -eq "reflex" }
-if ($reflex -and ($Restart -or -not (Test-Port $reflex.Port))) {
-  if (-not (Build-Reflex)) {
-    $buildFailed = $true
-    if ($Restart -or -not (Test-Path (Join-Path $dist "index.html"))) {
-      $services = @($services | Where-Object { $_.Name -ne "reflex" })
-    } else {
-      "reflex: serving the previous build"
-    }
+$failed = $false
+$prepared = @()
+foreach ($service in @($services)) {
+  if (-not $service.Prepare -or (-not $Restart -and (Test-Port $service.Port))) { continue }
+  & $service.Prepare
+  if ($LASTEXITCODE -eq 0) {
+    $prepared += $service.Name
+  } else {
+    $failed = $true
+    if ($Restart) { $services = @($services | Where-Object { $_.Name -ne $service.Name }) }
   }
 }
 
@@ -210,9 +174,13 @@ $started = @()
 foreach ($service in $services) {
   if (Test-Port $service.Port) {
     "{0}: already running on {1}" -f $service.Name, $service.Port
+    if ($prepared -contains $service.Name) {
+      Write-Warning ("{0}: something this script didn't start holds the port, so it still runs the old version" -f $service.Name)
+      $failed = $true
+    }
     continue
   }
-  if ($service.Name -eq "reflex" -and (Test-Path $nextBuild)) { Install-ReflexBuild }
+  if ($service.Install) { & $service.Install }
   $log = Join-Path $stateDir "$($service.Name).log"
   $errorLog = Join-Path $stateDir "$($service.Name).err.log"
   $command = "set `"T3CODE_HOME=$homeDir`"&& set `"T3CODE_TELEMETRY_ENABLED=false`"&& set `"T3CODE_OTEL_SDK_DISABLED=true`"&& `"$($service.File)`" $($service.Arguments -join ' ') > `"$log`" 2> `"$errorLog`""
@@ -239,19 +207,13 @@ foreach ($service in $started) {
   while (-not (Test-Port $service.Port) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
   if (-not (Test-Port $service.Port)) {
     Write-Warning ("{0} didn't answer in time. See {1}" -f $service.Name, (Join-Path $stateDir "$($service.Name).err.log"))
-  } elseif ($service.Name -ne "reflex") {
-    "{0}: ready at http://localhost:{1}" -f $service.Name, $service.Port
-  } elseif (Test-ReflexServed) {
-    "reflex: ready at http://localhost:5734, serving the build in {0}" -f $dist
-  } else {
-    Write-Warning "reflex: port 5734 answers but doesn't serve $dist\index.html"
-    $buildFailed = $true
+    continue
+  }
+  "{0}: ready at http://localhost:{1}" -f $service.Name, $service.Port
+  if ($service.Verify) {
+    & $service.Verify
+    if ($LASTEXITCODE -ne 0) { $failed = $true }
   }
 }
-if (Test-Path $nextBuild) {
-  Write-Warning "reflex: built, but something this script didn't start holds port 5734, so it still serves the old client"
-  Remove-Item -Recurse -Force $nextBuild
-  $buildFailed = $true
-}
 if ($Pause) { Read-Host "Press Enter to close" | Out-Null }
-if ($buildFailed) { exit 1 }
+if ($failed) { exit 1 }
