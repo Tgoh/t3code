@@ -4,6 +4,7 @@ import {
 } from "@t3tools/client-runtime/state/pending-user-input";
 import {
   deriveThreadQueueWorkflowState,
+  resolveLatestMergeBackRun,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
 import { DEFAULT_TERMINAL_ID, PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
@@ -41,6 +42,7 @@ import { createEntityFeature } from "treflex-solid";
 import {
   closeTerminalEffect,
   forkThreadEffect,
+  mergeBackEffect,
   type IDispatchMode,
   type IModelFavorite,
   type IProviderOption,
@@ -129,6 +131,7 @@ declare module "treflex" {
   interface IMessageRegistry {
     "Thread/Started": { ThreadId: string };
     "Thread/Forked": { ThreadId: string };
+    "Thread/MergedBack": { ThreadId: string };
   }
   interface ITimerRegistry {
     "Rewind/Timeout": {};
@@ -218,6 +221,7 @@ export interface IThreadSession extends IEntity {
   QueueError?: string;
   RewindError?: string;
   ForkError?: string;
+  MergeError?: string;
   QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
   QuestionIndex: Record<string, number>;
   QuestionNotice?: string;
@@ -1103,6 +1107,39 @@ export function* forkFromRun(
 }
 leading(forkFromRun);
 
+function* mergeBackRunId(draft: IThreadSession): ISelectorGenerator<string | null> {
+  const replica = yield* getData(draft, "Replica");
+  const runs = Object.values(replica?.OpenThreads[draft.ThreadId]?.Runs ?? {});
+  return resolveLatestMergeBackRun({ runs } as never)?.id ?? null;
+}
+
+// Follows merge in ThreadRelationshipsPanel, apps/web/src/components/chat/ThreadRelationshipsControl.tsx.
+export function* mergeBack(draft: IThreadSession, targetThreadId: string): IOpenGenerator {
+  delete draft.MergeError;
+  const runId = yield* select(mergeBackRunId);
+  if (runId === null) return;
+  const environmentId = draft.EnvironmentId;
+  const sourceThreadId = draft.ThreadId;
+  try {
+    yield* open(
+      withCommandId((commandId) =>
+        mergeBackEffect({
+          EnvironmentId: environmentId,
+          CommandId: commandId,
+          SourceThreadId: sourceThreadId,
+          TargetThreadId: targetThreadId,
+          RunId: runId,
+        }),
+      ),
+    );
+  } catch (error) {
+    draft.MergeError = errorText(error);
+    return;
+  }
+  yield* publishToNearest(draft, "Thread/MergedBack", { ThreadId: targetThreadId });
+}
+leading(mergeBack);
+
 function heldDrafts(draft: IThreadSession, requestId: string): Record<string, IQuestionDraft> {
   const held = draft.QuestionAnswers[requestId];
   if (held !== undefined) return held;
@@ -1432,6 +1469,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     editFromHere,
     chooseRewind,
     forkFromRun,
+    mergeBack,
     setQuestionCustomAnswer,
     toggleQuestionOption,
     setQuestionIndex,
@@ -1468,6 +1506,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     revertTargets,
     threadWorking,
     rewindConfirm,
+    mergeBackRunId,
     diffLoading,
     terminalAttachment,
     expandedTimelineRows,

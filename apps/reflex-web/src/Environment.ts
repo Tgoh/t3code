@@ -624,6 +624,9 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Thread/Forked"(draft, { ThreadId }) {
     yield* selectThread(draft, ThreadId);
   },
+  *"Thread/MergedBack"(draft, { ThreadId }) {
+    yield* selectThread(draft, ThreadId);
+  },
   *"Thread/Expired"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);
   },

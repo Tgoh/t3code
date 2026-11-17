@@ -10,6 +10,7 @@ import {
   forkThreadFromRun,
   interruptThreadTurn,
   markThreadUnread,
+  mergeThreadBack,
   pinThread,
   respondToThreadApproval,
   respondToThreadUserInput,
@@ -67,6 +68,7 @@ import {
   projectCommandEffect,
   queueCommandEffect,
   forkThreadEffect,
+  mergeBackEffect,
   respondRequestEffect,
   rewindEffect,
   serverProvidersEffect,
@@ -76,6 +78,7 @@ import {
   stopThreadEffect,
   threadCommandEffect,
   threadDiffEffect,
+  threadTitlesEffect,
 } from "./commandEffects";
 import { applyModelPreferences } from "../modelOptions";
 import { connectionRuntime } from "./connection";
@@ -176,6 +179,28 @@ export const forkThreadImpl = implementation(forkThreadEffect, async (input) => 
     }),
   );
 });
+
+export const mergeBackImpl = implementation(mergeBackEffect, async (input) => {
+  await inEnvironment(
+    input.EnvironmentId,
+    mergeThreadBack({
+      commandId: CommandId.make(input.CommandId),
+      sourceThreadId: ThreadId.make(input.SourceThreadId),
+      targetThreadId: ThreadId.make(input.TargetThreadId),
+      runId: RunId.make(input.RunId),
+    }),
+  );
+});
+
+export const threadTitlesImpl = implementation(threadTitlesEffect, async (input, action) => ({
+  Titles: await inEnvironment(
+    input.EnvironmentId,
+    request(ORCHESTRATION_V2_WS_METHODS.getThreadTitles, {
+      threadIds: input.ThreadIds.map((id) => ThreadId.make(id)),
+    }),
+    action?.signal,
+  ),
+}));
 
 export const respondRequestImpl = implementation(respondRequestEffect, async (input) => {
   const common = {

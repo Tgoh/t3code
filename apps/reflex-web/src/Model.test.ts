@@ -62,6 +62,7 @@ import type { Tokens } from "marked";
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import type {
   IForkThread,
+  IMergeBack,
   IQueueCommand,
   IRespondRequest,
   IRewind,
@@ -127,6 +128,7 @@ import {
   editFromHere,
   forkFromRun,
   type IRewindChoice,
+  mergeBack,
   revertTargets,
   RewindReceiver,
   rewindConfirm,
@@ -4022,5 +4024,32 @@ describe("rewinding and forking", () => {
     ]);
     expect(server.environment().Local.SelectedThreadId).toBe(rig.forks[0]!.TargetThreadId);
     expect(server.environment().Replica.OpenThreads[rig.forks[0]!.TargetThreadId]).toBeDefined();
+  });
+
+  it("merge back sends the latest finished run to the parent and opens it, keeping a failure", async () => {
+    const merges: IMergeBack[] = [];
+    let fail = true;
+    const { server } = await rewindServer(undefined, {
+      mergeBack: (effect: IMergeBack) => {
+        merges.push(effect);
+        if (fail) throw new Error("No checkpoint yet");
+      },
+    });
+    await server.runtime.dispatch(mergeBack, server.sessionId(), "parent-1");
+    await settled();
+    expect(server.session().MergeError).toBe("No checkpoint yet");
+    expect(server.environment().Local.SelectedThreadId).not.toBe("parent-1");
+
+    fail = false;
+    await server.runtime.dispatch(mergeBack, server.sessionId(), "parent-1");
+    await settled();
+    expect(merges.at(-1)).toMatchObject({
+      EnvironmentId: ENV,
+      SourceThreadId: THREAD_ID,
+      TargetThreadId: "parent-1",
+      RunId: "run-2",
+    });
+    expect(server.session().MergeError).toBeUndefined();
+    expect(server.environment().Local.SelectedThreadId).toBe("parent-1");
   });
 });
