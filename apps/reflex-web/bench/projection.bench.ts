@@ -9,6 +9,7 @@ import { createTestRuntime, guids, settled } from "treflex";
 import { expect, it } from "vite-plus/test";
 
 import { EnvironmentReceiver, openThread } from "../src/Environment";
+import { readPreferences } from "../src/Infrastructure/preferences";
 import type {
   IWireProjection,
   IWireThreadEvent,
@@ -70,6 +71,23 @@ async function connected(projection: IWireProjection) {
       serverProviders: () => [],
       generateGuid: guids("bench"),
       rememberedTerminal: () => null,
+      storedPreferences: readPreferences,
+      storePreferences: () => {},
+      storedEditor: () => null,
+      storeEditor: () => {},
+      clockNow: () => 0,
+      storedDraft: () => null,
+      storedNewThread: () => null,
+      storeDraft: () => {},
+      storedDraftFiles: () => [],
+      storeDraftFiles: () => {},
+      setAddressThread: () => {},
+      addressView: () => null,
+      setAddressView: () => {},
+      rememberTerminal: () => {},
+      modelFavorites: () => [],
+      rememberedModels: () => ({}),
+      rememberModel: () => {},
     },
     { onError: (error) => console.error("action failed:", error) },
   );
