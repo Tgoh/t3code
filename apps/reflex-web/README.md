@@ -219,7 +219,7 @@ Tailwind v4, like stock. `src/index.css` is the entry: it maps stock's theme (`b
 - `hover:` applies only where the pointer can hover, as in stock. The old `:hover` rules also fired on touch.
 - Tailwind reads class names from the source text, so a class glued to an interpolation (`` `py-4${extra}` ``) is never generated. Leave a space before the `${`.
 - Without preflight, a `<button>` or `<input>` keeps the browser's padding: an old `padding: 0 8px` is `px-2 py-0`.
-- An old rule in another component that reached into a migrated element (`.composer.collapsed .composer-bar > *` hiding it) now loses to its utilities. Carry it over on the element, as `in-[.composer.collapsed]:hidden`.
+- An old rule in another component that reached into a migrated element (`.chat-stage.with-details .composer-lane` narrowing it) now loses to its utilities. Carry it over on the element, as `in-[.chat-stage.with-details]:max-w-…`.
 
 ### Shared controls
 
