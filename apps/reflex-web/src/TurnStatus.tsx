@@ -1,8 +1,20 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for the working timer, outside any Effect runtime.
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
-import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
+import { deriveSubagentElapsedMs, formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { useInFlight } from "treflex-solid";
-import { type Accessor, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
+import {
+  type Accessor,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  onCleanup,
+  Show,
+} from "solid-js";
+
+import { compactElapsed, type ILineageAgent } from "./lineage";
 
 import {
   activeStepIndex,
@@ -13,6 +25,7 @@ import {
   type IChecklistStep,
   liveSteps,
 } from "./checklist";
+import { isAlternate, MOD_LABEL } from "./Composer";
 import Environment from "./Environment";
 import { ChevronUp, CornerUpRight, PenLine, Square, SquareCheck, X } from "./icons";
 import OpenThread, { isRowVisible, runMessage, timelineItem } from "./OpenThread";
@@ -54,14 +67,41 @@ function workingTimer(since: string, now: number): string {
 export function useWorkingTimer(): Accessor<string | null> {
   const thread = OpenThread.use();
   const environment = Environment.use();
-  const [now, setNow] = createSignal(Date.now());
-  const tick = setInterval(() => setNow(Date.now()), SECOND);
-  onCleanup(() => clearInterval(tick));
+  const now = useTick(() => true);
   return () => {
     const row = environment.state.Replica.Shell.Threads[thread.state.ThreadId];
     const since = row === undefined ? null : workingStartedAt(row);
     return since === null ? null : workingTimer(since, now());
   };
+}
+
+function useTick(live: Accessor<boolean>): Accessor<number> {
+  const [now, setNow] = createSignal(Date.now());
+  createEffect(() => {
+    if (!live()) return;
+    const tick = setInterval(() => setNow(Date.now()), SECOND);
+    onCleanup(() => clearInterval(tick));
+  });
+  return now;
+}
+
+/** A subagent task's run time, ticking each second while it runs. */
+export function AgentElapsed(props: { agent: ILineageAgent }) {
+  const now = useTick(() => isOrchestrationV2WorkActive(props.agent.Status as never));
+  return (
+    <>
+      {compactElapsed(
+        deriveSubagentElapsedMs(
+          {
+            status: props.agent.Status as never,
+            startedAt: props.agent.StartedAt,
+            completedAt: props.agent.CompletedAt,
+          },
+          now(),
+        ) ?? 0,
+      )}
+    </>
+  );
 }
 
 // What the turn is doing now: the latest tool or thought after the reply that's on screen.
@@ -257,22 +297,16 @@ function QueuedRow(props: { runId: string }) {
   const editable = () => message()?.context?.guest === undefined;
   const workflow = () => session.queueWorkflow();
   const canSendNow = () => workflow().CanSendNow || workflow().CanSteer;
-  const save = () => {
+  const save = (alternate: boolean) => {
     const text = editing()?.trim() ?? "";
     if (text === "") return;
-    session.queueAction({ Kind: "edit", RunId: props.runId, Text: text });
+    session.queueAction({ Kind: "edit", RunId: props.runId, Text: text, Alternate: alternate });
     setEditing(null);
   };
   return (
     <div class="mt-1.5 flex items-center gap-2 wrap-anywhere">
       <Show when={editing() !== null} fallback={<QueuedMessage runId={props.runId} />}>
-        <form
-          class="flex min-w-0 flex-1 flex-col gap-1.5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            save();
-          }}
-        >
+        <div class="flex min-w-0 flex-1 flex-col gap-1.5">
           <textarea
             class="resize-y rounded-[10px] border border-input bg-background px-2.5 py-1.5"
             aria-label="Edit queued message"
@@ -286,17 +320,26 @@ function QueuedRow(props: { runId: string }) {
                 setEditing(null);
               } else if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
                 event.preventDefault();
-                save();
+                save(isAlternate(event));
               }
             }}
           />
           <div class="flex justify-end gap-1.5">
             <Button onClick={() => setEditing(null)}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={queueing()}>
+            <Button
+              variant="primary"
+              disabled={queueing()}
+              data-tip={
+                workflow().CanSteer && session.followUpBehavior() === "queue"
+                  ? `${MOD_LABEL}-click or ${MOD_LABEL}+Enter to save and steer`
+                  : undefined
+              }
+              onClick={(event) => save(isAlternate(event))}
+            >
               Save
             </Button>
           </div>
-        </form>
+        </div>
       </Show>
       <Show when={editing() === null}>
         <div class="flex flex-none gap-0.5 [&_svg]:size-3.5">

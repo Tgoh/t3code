@@ -38,6 +38,8 @@ export interface IStartTurn {
   InteractionMode: IWireInteractionMode;
   DispatchMode: IDispatchMode;
   NewThread: { ProjectId: string; Title: string } | null;
+  /** Marks a `/compact` this client sent on its own before the user's message. */
+  IdleCompaction?: "onReturn";
 }
 
 export interface IStopThread {
@@ -100,6 +102,32 @@ interface IForkThreadEffect extends IEffect, IForkThread {
 
 export const forkThreadEffect = defineEffect<IForkThreadEffect, void>("forkThread");
 
+export interface IMergeBack {
+  EnvironmentId: string;
+  CommandId: string;
+  SourceThreadId: string;
+  TargetThreadId: string;
+  RunId: string;
+}
+
+interface IMergeBackEffect extends IEffect, IMergeBack {
+  Type: "mergeBack";
+}
+
+export const mergeBackEffect = defineEffect<IMergeBackEffect, void>("mergeBack");
+
+interface IThreadTitlesEffect extends IEffect {
+  Type: "threadTitles";
+  EnvironmentId: string;
+  ThreadIds: string[];
+}
+
+/** Deleted and unknown threads are absent from the titles. */
+export const threadTitlesEffect = defineEffect<
+  IThreadTitlesEffect,
+  { Titles: Record<string, string> }
+>("threadTitles");
+
 export interface IProviderOption {
   InstanceId: string;
   Driver?: string;
@@ -108,6 +136,8 @@ export interface IProviderOption {
   SupportedRuntimeModes?: IWireRuntimeMode[];
   SlashCommands?: ServerProviderSlashCommand[];
   Skills?: ServerProviderSkill[];
+  /** Slugs the user hid; `Models` already leaves them out. */
+  HiddenModels?: string[];
   Models: Array<{
     Slug: string;
     Name: string;
