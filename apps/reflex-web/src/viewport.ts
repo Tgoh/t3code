@@ -40,8 +40,8 @@ const KEYBOARD_MIN_HEIGHT = 150;
 /**
  * Sizes the app to the visual viewport, which iOS Safari shrinks for the on-screen keyboard while
  * the layout viewport stays full height. Pinch zoom also shrinks it, so a zoomed page is left alone.
- * iOS can deliver the viewport's events late around a focus change, so the size is also polled for
- * a moment then.
+ * iOS can deliver the viewport's events late around a focus change or a rotation, so the size is
+ * also polled for a moment then.
  */
 export function trackVisualViewport(target: HTMLElement) {
   const viewport = window.visualViewport;
@@ -54,10 +54,16 @@ export function trackVisualViewport(target: HTMLElement) {
       return;
     }
     target.style.setProperty("--viewport-height", `${viewport.height}px`);
-    target.style.setProperty("--viewport-top", `${viewport.offsetTop}px`);
-    if (target.clientHeight - viewport.height > KEYBOARD_MIN_HEIGHT)
+    if (target.clientHeight - viewport.height > KEYBOARD_MIN_HEIGHT) {
       target.dataset.keyboard = "open";
-    else delete target.dataset.keyboard;
+      target.style.setProperty("--viewport-top", `${viewport.offsetTop}px`);
+      return;
+    }
+    delete target.dataset.keyboard;
+    // A rotating iOS home-screen app can leave the document scrolled by the status bar's height,
+    // which with no keyboard up is never a scroll the app wants.
+    target.style.setProperty("--viewport-top", "0px");
+    if (window.scrollY !== 0) window.scrollTo(0, 0);
   };
   let frame = 0;
   const follow = () => {
@@ -73,6 +79,8 @@ export function trackVisualViewport(target: HTMLElement) {
   viewport.addEventListener("resize", update);
   viewport.addEventListener("scroll", update);
   window.addEventListener("scroll", update);
+  window.addEventListener("resize", follow);
+  window.addEventListener("orientationchange", follow);
   document.addEventListener("focusin", follow);
   document.addEventListener("focusout", follow);
   onCleanup(() => {
@@ -80,6 +88,8 @@ export function trackVisualViewport(target: HTMLElement) {
     viewport.removeEventListener("resize", update);
     viewport.removeEventListener("scroll", update);
     window.removeEventListener("scroll", update);
+    window.removeEventListener("resize", follow);
+    window.removeEventListener("orientationchange", follow);
     document.removeEventListener("focusin", follow);
     document.removeEventListener("focusout", follow);
   });

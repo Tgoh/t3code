@@ -155,6 +155,11 @@ body,
   margin: 0;
 }
 
+html {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   background-color: var(--background);
   background-image: var(--surface-grain);

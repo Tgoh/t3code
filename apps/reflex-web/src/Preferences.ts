@@ -95,6 +95,10 @@ export function* showMoreSettled(draft: IEnvironment): IActionGenerator {
   draft.Local.Shelves.SettledShown += SETTLED_PAGE;
 }
 
+export function* toggleViewportDebug(draft: IEnvironment): IActionGenerator {
+  draft.Local.ViewportDebug = !draft.Local.ViewportDebug;
+}
+
 export function* setAppearanceMode(draft: IEnvironment, mode: IAppearanceMode): IActionGenerator {
   yield* setPreferences(draft, { AppearanceMode: mode });
   yield* applyColorScheme(draft);

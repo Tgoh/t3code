@@ -261,7 +261,7 @@ function EnvironmentMain() {
           {(session) => <NewThreadView state={session} />}
         </Match>
       </Switch>
-      <Show when={environment.state.Local.Preferences.ViewportDebug}>
+      <Show when={environment.state.Local.ViewportDebug}>
         <ViewportDebug />
       </Show>
     </main>

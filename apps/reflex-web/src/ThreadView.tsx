@@ -438,15 +438,11 @@ const ThreadBody = ThreadSession.provider(() => {
               <PanelRight />
             </IconButton>
             <IconButton
-              pressed={environment.state.Local.Preferences.ViewportDebug}
+              pressed={environment.state.Local.ViewportDebug}
               aria-label="Toggle layout debug"
               data-tip="Toggle layout debug"
-              aria-pressed={environment.state.Local.Preferences.ViewportDebug}
-              onClick={() =>
-                void environment.setPreferences({
-                  ViewportDebug: !environment.state.Local.Preferences.ViewportDebug,
-                })
-              }
+              aria-pressed={environment.state.Local.ViewportDebug}
+              onClick={() => void environment.toggleViewportDebug()}
             >
               <Bug />
             </IconButton>

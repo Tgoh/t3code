@@ -172,7 +172,6 @@ const storedPreferences: IPreferences = {
   HiddenProjects: [],
   ProjectScope: [],
   SidebarCollapsed: false,
-  ViewportDebug: false,
   AppearanceMode: "system",
   Usage: { Metric: "limits", Days: 30 },
 };

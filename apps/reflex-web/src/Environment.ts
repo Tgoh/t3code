@@ -69,6 +69,7 @@ import {
   toggleFolder,
   toggleProjectScope,
   toggleShelf,
+  toggleViewportDebug,
 } from "./Preferences";
 import { type IShelves, SETTLED_PAGE } from "./sidebarLayout";
 import type { IWireClientSettings } from "./Infrastructure/settings";
@@ -127,6 +128,7 @@ export interface IEnvironment extends IEntity {
     /** The clock the sidebar reads, a minute at a time. */
     Now: number;
     SystemDark: boolean;
+    ViewportDebug: boolean;
   };
 }
 
@@ -154,6 +156,7 @@ export function* newEnvironment(
     Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: SETTLED_PAGE },
     Now: yield* clockNowEffect(),
     SystemDark: false,
+    ViewportDebug: false,
   });
   return yield* entity<IEnvironment>({
     EnvironmentId: environmentId,
@@ -640,6 +643,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     toggleFolder,
     toggleProjectScope,
     toggleShelf,
+    toggleViewportDebug,
     showMoreSettled,
     setAppearanceMode,
   },
