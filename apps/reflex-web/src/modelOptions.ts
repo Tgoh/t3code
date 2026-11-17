@@ -6,13 +6,14 @@ import {
   replaceDescriptorCurrentValue,
 } from "@t3tools/client-runtime/model-traits";
 import { rankModelPickerSearch } from "@t3tools/client-runtime/model-search";
-import type {
-  ModelCapabilities,
-  ModelSelection,
-  ProviderDriverKind,
-  ProviderInstanceId,
-  ProviderOptionDescriptor,
-  ProviderOptionSelection,
+import {
+  DEFAULT_MODEL_BY_PROVIDER,
+  type ModelCapabilities,
+  type ModelSelection,
+  type ProviderDriverKind,
+  type ProviderInstanceId,
+  type ProviderOptionDescriptor,
+  type ProviderOptionSelection,
 } from "@t3tools/contracts";
 import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
@@ -57,10 +58,14 @@ export const providerOf = (
   selection: IWireModelSelection,
 ) => providers.find((provider) => provider.InstanceId === selection.instanceId);
 
-// Opencode and Cursor run models outside their catalog; their saved options pass through as-is.
+// Follows keepsUnavailableModelOptions in apps/web/src/providerModels.ts: these drivers discover
+// models at runtime, so a saved model missing from the catalog keeps its options as-is.
+const RUNTIME_CATALOG_DRIVERS = new Set(["opencode", "cursor", "pi", "acpRegistry"]);
+
 function isOffCatalog(provider: IProviderOption | undefined, model: string): boolean {
   const driver = driverOf(provider);
-  if (driver !== "opencode" && driver !== "cursor") return false;
+  if (!RUNTIME_CATALOG_DRIVERS.has(driver)) return false;
+  if (driver === "acpRegistry" && model === DEFAULT_MODEL_BY_PROVIDER[driver]) return false;
   const slug = normalizeModelSlug(model, driver);
   return !(provider?.Models ?? []).some((candidate) => candidate.Slug === slug);
 }

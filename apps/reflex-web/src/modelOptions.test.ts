@@ -127,6 +127,28 @@ describe("model options", () => {
       options: [{ id: "variant", value: "deep" }],
     });
     expect(modelTraits(opencode, selection).Effort).toBeNull();
+    for (const driver of ["pi", "acpRegistry"]) {
+      const runtime: IProviderOption = {
+        InstanceId: driver,
+        Driver: driver,
+        Name: driver,
+        Models: [],
+      };
+      const picked = { ...selection, instanceId: driver } as IWireModelSelection;
+      expect(dispatchSelection(runtime, picked)).toEqual({
+        instanceId: driver,
+        model: "custom/model",
+        options: [{ id: "variant", value: "deep" }],
+      });
+    }
+    const acp: IProviderOption = {
+      InstanceId: "acp",
+      Driver: "acpRegistry",
+      Name: "ACP",
+      Models: [],
+    };
+    const aliased = { ...selection, instanceId: "acp", model: "default" } as IWireModelSelection;
+    expect(dispatchSelection(acp, aliased).options).toBeUndefined();
   });
 
   it("carries remembered options to a picked model, else the thread's own for its model", () => {
