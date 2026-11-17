@@ -1,6 +1,11 @@
 import type { IResourceImplementation } from "treflex";
 
-import { type IAppearanceMode, type IColorScheme, SYSTEM_DARK_QUERY } from "../colorScheme";
+import {
+  type IAppearanceMode,
+  type IColorScheme,
+  SCHEME_BACKGROUND,
+  SYSTEM_DARK_QUERY,
+} from "../colorScheme";
 import { APPEARANCE_MODE_KEY, storedAppearanceMode } from "./preferences";
 
 declare module "treflex" {
@@ -30,6 +35,8 @@ export const appearance: IResourceImplementation<"appearance"> = (_params, r) =>
   r.methods({
     apply: (_ctx, scheme) => {
       document.documentElement.dataset.theme = scheme;
+      for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'))
+        meta.content = SCHEME_BACKGROUND[scheme];
     },
   });
   onSystem();
