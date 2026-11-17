@@ -14,6 +14,7 @@ import {
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { useNavigation } from "./navigation";
 import { type ISurfaceAction, type ISurfaceKind, shortcutAction } from "./surfaces";
+import { IconButton } from "./ui/IconButton";
 
 const ICONS: Record<ISurfaceKind, () => JSX.Element> = {
   browser: () => <Globe />,
@@ -64,14 +65,9 @@ export function SurfaceLauncher(props: {
     <aside class="right-panel">
       <header class="panel-header">
         <span class="composer-spacer" />
-        <button
-          class="icon-button"
-          aria-label="Close panel"
-          data-tip="Close panel"
-          onClick={props.onClose}
-        >
+        <IconButton aria-label="Close panel" data-tip="Close panel" onClick={props.onClose}>
           <X />
-        </button>
+        </IconButton>
       </header>
       <div class="surface-launcher" tabIndex={0} aria-label="Open a surface" onKeyDown={onKeyDown}>
         <div class="surface-launcher-body">

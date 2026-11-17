@@ -11,7 +11,6 @@ import type { IWireArchivedShell } from "./Infrastructure/settings";
 import type { IWireProject } from "./Infrastructure/wire";
 import { keybindingGroups, keyCaps } from "./keybindingRows";
 import { arrowStep, stepHighlight } from "./listNavigation";
-import { Modal } from "./Modal";
 import { RemoveProjectDialog } from "./ProjectFolder";
 import {
   allBuiltInHidden,
@@ -41,6 +40,11 @@ import {
 import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow, relativeTime } from "./timestamps";
+import { Button, button, buttonLink } from "./ui/Button";
+import { Input, Select, Textarea } from "./ui/Field";
+import { IconButton } from "./ui/IconButton";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import { Switch as Toggle } from "./ui/Switch";
 
 const PRIVACY_POLICY_URL = "https://t3.codes/privacy-policy";
 
@@ -57,14 +61,13 @@ export function SettingsView(props: { page: string }) {
           <span class="crumb-separator">/</span>
           <h1>{label()}</h1>
         </div>
-        <button
-          class="icon-button settings-close"
+        <IconButton
           aria-label="Close settings"
           data-tip="Close"
           onClick={() => environment.openView(null)}
         >
           <Icons.X />
-        </button>
+        </IconButton>
       </header>
       <div class="settings-body">
         <SettingsNav page={page()} />
@@ -183,8 +186,8 @@ function SettingsNav(props: { page: string }) {
           when={searching()}
           fallback={<kbd class="rounded-sm border bg-muted px-[5px] font-sans text-[11px]">/</kbd>}
         >
-          <button
-            class="icon-button small"
+          <IconButton
+            size="sm"
             aria-label="Clear settings search"
             onClick={() => {
               setQuery("");
@@ -192,7 +195,7 @@ function SettingsNav(props: { page: string }) {
             }}
           >
             <Icons.X />
-          </button>
+          </IconButton>
         </Show>
       </div>
       <Show when={searching()}>
@@ -332,27 +335,6 @@ function Sections(props: { sections: ISettingsSection[] }) {
   );
 }
 
-export function Toggle(props: {
-  checked: boolean;
-  label: string;
-  disabled?: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      class="switch"
-      aria-checked={props.checked}
-      aria-label={props.label}
-      disabled={props.disabled}
-      onClick={() => props.onChange(!props.checked)}
-    >
-      <span class="switch-thumb" />
-    </button>
-  );
-}
-
 function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
   const environment = Environment.use();
   const value = () => props.row.Read(props.held);
@@ -366,8 +348,8 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
         return <Toggle checked={current === true} label={props.row.Title} onChange={write} />;
       case "select":
         return (
-          <select
-            class="settings-select"
+          <Select
+            class="min-w-44"
             aria-label={props.row.Title}
             value={String(current)}
             onChange={(event) => write(event.currentTarget.value)}
@@ -375,12 +357,12 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
             <For each={control.Options}>
               {(option) => <option value={option.Value}>{option.Label}</option>}
             </For>
-          </select>
+          </Select>
         );
       case "number":
         return (
-          <input
-            class="settings-input number"
+          <Input
+            class="w-20 min-w-0"
             type="number"
             min={control.Min}
             max={control.Max}
@@ -391,8 +373,8 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
         );
       case "text":
         return (
-          <input
-            class="settings-input"
+          <Input
+            class="min-w-44"
             aria-label={props.row.Title}
             placeholder={control.Placeholder}
             value={String(current)}
@@ -406,8 +388,8 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
         );
       case "textarea":
         return (
-          <textarea
-            class="settings-input textarea"
+          <Textarea
+            class="min-w-72 max-md:w-full max-md:min-w-0"
             aria-label={props.row.Title}
             placeholder={control.Placeholder}
             value={String(current)}
@@ -574,8 +556,8 @@ function ProvidersPage() {
                       </p>
                       <div class="model-toolbar">
                         <Show when={row.Models.length > MODEL_FILTER_THRESHOLD}>
-                          <input
-                            class="settings-input model-filter"
+                          <Input
+                            class="w-56"
                             placeholder="Filter models"
                             aria-label="Filter models"
                             spellcheck={false}
@@ -584,24 +566,24 @@ function ProvidersPage() {
                           />
                         </Show>
                         <Show when={row.Models.some((model) => !model.Custom)}>
-                          <button
-                            class="button ghost"
+                          <Button
+                            variant="ghost"
                             onClick={() => {
                               const patch = bulkHiddenPatch(row);
                               if (patch !== null) void environment.updateServerSettings(patch);
                             }}
                           >
                             {allBuiltInHidden(row) ? "Enable all" : "Disable all"}
-                          </button>
+                          </Button>
                         </Show>
                         <span class="model-count">{modelCount(row)}</span>
                       </div>
                       <For each={filterModels(row.Models, modelFilter())}>
                         {(model) => (
                           <div class="model-row" classList={{ unlisted: model.Hidden }}>
-                            <button
-                              class="icon-button small"
-                              classList={{ pressed: model.Favorite }}
+                            <IconButton
+                              size="sm"
+                              pressed={model.Favorite}
                               aria-label={model.Favorite ? "Remove favorite" : "Add favorite"}
                               aria-pressed={model.Favorite}
                               data-tip={model.Favorite ? "Remove favorite" : "Add favorite"}
@@ -612,7 +594,7 @@ function ProvidersPage() {
                               }
                             >
                               <Icons.Star class={model.Favorite ? "star-on" : undefined} />
-                            </button>
+                            </IconButton>
                             <span class="model-name">
                               {model.Name}
                               <code class="model-slug">{model.Slug}</code>
@@ -623,8 +605,8 @@ function ProvidersPage() {
                             <For each={model.Tags}>
                               {(tag) => <span class="model-tag">{tag}</span>}
                             </For>
-                            <button
-                              class="icon-button small"
+                            <IconButton
+                              size="sm"
                               aria-label="Move up"
                               data-tip="Move up"
                               disabled={row.Models.indexOf(model) === 0}
@@ -634,9 +616,9 @@ function ProvidersPage() {
                               }}
                             >
                               <Icons.ArrowUp />
-                            </button>
-                            <button
-                              class="icon-button small"
+                            </IconButton>
+                            <IconButton
+                              size="sm"
                               aria-label="Move down"
                               data-tip="Move down"
                               disabled={row.Models.indexOf(model) === row.Models.length - 1}
@@ -646,8 +628,9 @@ function ProvidersPage() {
                               }}
                             >
                               <Icons.ArrowDown />
-                            </button>
+                            </IconButton>
                             <Toggle
+                              class="ml-2"
                               checked={!model.Hidden}
                               label={`Show ${model.Name} in the model picker`}
                               disabled={model.Custom}
@@ -689,15 +672,15 @@ const ProjectsPage = Shell.provider(() => {
     <>
       <div class="settings-scope">
         <span>Applying settings for</span>
-        <select
-          class="settings-select"
+        <Select
+          class="min-w-44"
           aria-label="Project"
           value={project()?.id ?? ""}
           onChange={(event) => setPicked(event.currentTarget.value || null)}
         >
           <option value="">Choose a project</option>
           <For each={projects()}>{(entry) => <option value={entry.id}>{entry.title}</option>}</For>
-        </select>
+        </Select>
       </div>
       <Show
         when={project()}
@@ -715,8 +698,8 @@ const ProjectsPage = Shell.provider(() => {
                 title="Name"
                 description="The shared name for this project group in the sidebar and thread lists."
                 control={
-                  <input
-                    class="settings-input"
+                  <Input
+                    class="min-w-44"
                     aria-label="Project name"
                     value={current.title}
                     onKeyDown={(event) => {
@@ -766,8 +749,7 @@ const ProjectsPage = Shell.provider(() => {
                     : "Hides the project from project pickers. Threads and files are kept."
                 }
                 control={
-                  <button
-                    class="button"
+                  <Button
                     onClick={() =>
                       void environment.projectCommand(current.id, {
                         Kind: current.archivedAt != null ? "unarchive" : "archive",
@@ -775,7 +757,7 @@ const ProjectsPage = Shell.provider(() => {
                     }
                   >
                     {current.archivedAt != null ? "Unarchive" : "Archive"}
-                  </button>
+                  </Button>
                 }
               />
             </SettingsSection>
@@ -784,9 +766,9 @@ const ProjectsPage = Shell.provider(() => {
                 title="Remove project"
                 description="Removes this project and its threads from this environment."
                 control={
-                  <button class="button destructive" onClick={() => setRemoving(current)}>
+                  <Button variant="destructive" onClick={() => setRemoving(current)}>
                     Remove
-                  </button>
+                  </Button>
                 }
               />
             </SettingsSection>
@@ -828,8 +810,8 @@ function KeybindingsPage() {
       {(config) => (
         <>
           <div class="settings-toolbar">
-            <input
-              class="settings-input search"
+            <Input
+              class="w-full min-w-44"
               type="search"
               placeholder="Search keybindings"
               aria-label="Search keybindings"
@@ -937,8 +919,8 @@ function ArchivedPage() {
                       description={`Archived ${relativeTime(thread.archivedAt ?? thread.createdAt, now())} ago · Created ${relativeTime(thread.createdAt, now())} ago`}
                       control={
                         <span class="settings-actions">
-                          <button
-                            class="icon-button outlined"
+                          <IconButton
+                            variant="outline"
                             aria-label="Unarchive"
                             data-tip="Unarchive"
                             onClick={() =>
@@ -946,15 +928,15 @@ function ArchivedPage() {
                             }
                           >
                             <Icons.ArchiveX />
-                          </button>
-                          <button
-                            class="icon-button outlined destructive"
+                          </IconButton>
+                          <IconButton
+                            variant="outline-destructive"
                             aria-label="Delete"
                             data-tip="Delete"
                             onClick={() => setDeleting(thread)}
                           >
                             <Icons.Trash2 />
-                          </button>
+                          </IconButton>
                         </span>
                       }
                     />
@@ -965,34 +947,30 @@ function ArchivedPage() {
           </For>
           <Show when={deleting()} keyed>
             {(thread) => (
-              <Modal
-                class="confirm-dialog"
-                aria-labelledby="delete-archived-title"
-                onClose={() => setDeleting(null)}
-              >
-                <div class="confirm-header">
-                  <h2 id="delete-archived-title" class="confirm-title">
+              <Dialog aria-labelledby="delete-archived-title" onClose={() => setDeleting(null)}>
+                <DialogHeader>
+                  <DialogTitle id="delete-archived-title">
                     Delete thread "{thread.title}"?
-                  </h2>
-                  <p class="confirm-description">
+                  </DialogTitle>
+                  <DialogDescription>
                     This permanently clears conversation history for this thread.
-                  </p>
-                </div>
-                <div class="confirm-actions">
-                  <button class="button" autofocus onClick={() => setDeleting(null)}>
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button autofocus onClick={() => setDeleting(null)}>
                     Cancel
-                  </button>
-                  <button
-                    class="button destructive"
+                  </Button>
+                  <Button
+                    variant="destructive"
                     onClick={() => {
                       setDeleting(null);
                       void environment.archivedThreadCommand(thread.id, "delete");
                     }}
                   >
                     Delete
-                  </button>
-                </div>
-              </Modal>
+                  </Button>
+                </DialogFooter>
+              </Dialog>
             )}
           </Show>
         </Show>
@@ -1035,7 +1013,12 @@ function AboutPage() {
           title="Privacy policy"
           description="How we handle your data, including the anonymous usage data T3 Code collects."
           control={
-            <a class="button" href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">
+            <a
+              class={`${button()} ${buttonLink}`}
+              href={PRIVACY_POLICY_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
               View policy
             </a>
           }

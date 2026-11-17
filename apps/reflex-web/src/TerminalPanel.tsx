@@ -3,6 +3,7 @@ import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 
 import { Trash2, X } from "./icons";
 import ThreadSession from "./ThreadSession";
+import { IconButton } from "./ui/IconButton";
 
 const RECONNECTING = new Set(["connecting", "backoff", "offline", "blocked"]);
 
@@ -38,23 +39,23 @@ export function TerminalPanel() {
         <Show when={state() !== "running"}>
           <span class="terminal-state">{state()}</span>
         </Show>
-        <button
-          class="icon-button small"
+        <IconButton
+          size="sm"
           aria-label="End shell"
           data-tip="End shell"
           disabled={session.ending()}
           onClick={() => session.endTerminal()}
         >
           <Trash2 />
-        </button>
-        <button
-          class="icon-button small"
+        </IconButton>
+        <IconButton
+          size="sm"
           aria-label="Hide terminal"
           data-tip="Hide terminal"
           onClick={() => session.closeTerminal()}
         >
           <X />
-        </button>
+        </IconButton>
       </div>
       <Show when={error()}>
         <p class="composer-error terminal-error">{error()}</p>

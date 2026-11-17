@@ -19,10 +19,18 @@ import {
 } from "./icons";
 import type { IProjectCommand } from "./Infrastructure/commandEffects";
 import type { IWireProject } from "./Infrastructure/wire";
-import { MenuItem, Popup } from "./Menu";
-import { Modal } from "./Modal";
 import Shell, { type IProjectFolder, isBusy, sidebarStatus } from "./Shell";
 import { RenameInput } from "./ThreadCard";
+import { Button } from "./ui/Button";
+import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
+import {
+  Dialog,
+  DialogDescription,
+  DialogError,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/Modal";
 
 export function ProjectMenu(props: {
   project: IWireProject;
@@ -75,7 +83,7 @@ export function ProjectMenu(props: {
         onSelect={() => choose(() => environment.openInFileManager(props.project.workspaceRoot))}
       />
       <MenuItem icon={<EyeOff />} label="Hide project" onSelect={() => choose(props.onHide)} />
-      <div class="menu-separator" />
+      <MenuSeparator />
       <MenuItem
         icon={<Trash2 />}
         label="Remove project"
@@ -123,27 +131,25 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
     else setFailure(`Failed to remove "${props.project.title}": ${error}`);
   };
   return (
-    <Modal class="confirm-dialog" aria-labelledby="remove-project-title" onClose={props.onClose}>
-      <div class="confirm-header">
-        <h2 id="remove-project-title" class="confirm-title">
-          {copy().Title}
-        </h2>
-        <p class="confirm-description">{copy().Description}</p>
-        <Show when={failure()}>{(text) => <p class="confirm-error">{text()}</p>}</Show>
-      </div>
-      <div class="confirm-actions">
-        <button class="button" autofocus onClick={props.onClose}>
+    <Dialog aria-labelledby="remove-project-title" onClose={props.onClose}>
+      <DialogHeader>
+        <DialogTitle id="remove-project-title">{copy().Title}</DialogTitle>
+        <DialogDescription>{copy().Description}</DialogDescription>
+        <Show when={failure()}>{(text) => <DialogError>{text()}</DialogError>}</Show>
+      </DialogHeader>
+      <DialogFooter>
+        <Button autofocus onClick={props.onClose}>
           Cancel
-        </button>
-        <button
-          class="button destructive"
+        </Button>
+        <Button
+          variant="destructive"
           disabled={environment.removingProject()}
           onClick={() => void confirm()}
         >
           Confirm
-        </button>
-      </div>
-    </Modal>
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 

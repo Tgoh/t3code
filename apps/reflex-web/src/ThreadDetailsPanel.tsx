@@ -43,8 +43,6 @@ import {
   X,
 } from "./icons";
 import GitWork, { type IActionContext } from "./GitWork";
-import { Popup } from "./Menu";
-import { Modal } from "./Modal";
 import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
@@ -54,6 +52,9 @@ import ThreadDetails, {
 } from "./ThreadDetails";
 import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession from "./ThreadSession";
+import { Button } from "./ui/Button";
+import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 
 const COMMIT_DIALOG_TITLE = "Commit changes";
 const COMMIT_DIALOG_DESCRIPTION =
@@ -202,16 +203,10 @@ function CommitDialog(props: {
       return next;
     });
   return (
-    <Modal
-      class="confirm-dialog commit-dialog"
-      aria-labelledby="commit-dialog-title"
-      onClose={props.onClose}
-    >
-      <div class="confirm-header">
-        <h2 id="commit-dialog-title" class="confirm-title">
-          {COMMIT_DIALOG_TITLE}
-        </h2>
-        <p class="confirm-description">{COMMIT_DIALOG_DESCRIPTION}</p>
+    <Dialog aria-labelledby="commit-dialog-title" onClose={props.onClose}>
+      <DialogHeader>
+        <DialogTitle id="commit-dialog-title">{COMMIT_DIALOG_TITLE}</DialogTitle>
+        <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
         <div class="commit-summary">
           <span class="commit-summary-key">Branch</span>
           <span class="commit-summary-value">
@@ -262,23 +257,17 @@ function CommitDialog(props: {
           value={message()}
           onInput={(event) => setMessage(event.currentTarget.value)}
         />
-      </div>
-      <div class="confirm-actions">
-        <button class="button" onClick={props.onClose}>
-          Cancel
-        </button>
-        <button class="button" disabled={selected().length === 0} onClick={() => submit(true)}>
+      </DialogHeader>
+      <DialogFooter>
+        <Button onClick={props.onClose}>Cancel</Button>
+        <Button disabled={selected().length === 0} onClick={() => submit(true)}>
           Commit on new branch
-        </button>
-        <button
-          class="button primary"
-          disabled={selected().length === 0}
-          onClick={() => submit(false)}
-        >
+        </Button>
+        <Button variant="primary" disabled={selected().length === 0} onClick={() => submit(false)}>
           Commit
-        </button>
-      </div>
-    </Modal>
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -290,7 +279,7 @@ function AddScriptDialog(props: {
   const [command, setCommand] = createSignal("");
   const ready = () => name().trim() !== "" && command().trim() !== "";
   return (
-    <Modal class="confirm-dialog" aria-labelledby="add-script-title" onClose={props.onClose}>
+    <Dialog aria-labelledby="add-script-title" onClose={props.onClose}>
       <form
         method="dialog"
         onSubmit={(event) => {
@@ -300,13 +289,11 @@ function AddScriptDialog(props: {
           props.onClose();
         }}
       >
-        <div class="confirm-header">
-          <h2 id="add-script-title" class="confirm-title">
-            Add project script
-          </h2>
-          <p class="confirm-description">
+        <DialogHeader>
+          <DialogTitle id="add-script-title">Add project script</DialogTitle>
+          <DialogDescription>
             Scripts run in this thread's terminal, from its working folder.
-          </p>
+          </DialogDescription>
           <label class="commit-message-label" for="script-name">
             Name
           </label>
@@ -326,17 +313,15 @@ function AddScriptDialog(props: {
             value={command()}
             onInput={(event) => setCommand(event.currentTarget.value)}
           />
-        </div>
-        <div class="confirm-actions">
-          <button type="button" class="button" onClick={props.onClose}>
-            Cancel
-          </button>
-          <button type="submit" class="button primary" disabled={!ready()}>
+        </DialogHeader>
+        <DialogFooter>
+          <Button onClick={props.onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" disabled={!ready()}>
             Add script
-          </button>
-        </div>
+          </Button>
+        </DialogFooter>
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -638,46 +623,40 @@ const Body = (props: IDetailsProps) => {
                 <Show when={open().Kind === "editor"}>
                   <For each={details.state.Editors?.Available ?? []}>
                     {(editor) => (
-                      <button
-                        class="menu-item"
-                        role="menuitem"
-                        onClick={() => {
+                      <MenuItem
+                        truncate
+                        icon={<EditorIcon editor={editor.Id} />}
+                        label={editor.Label}
+                        onSelect={() => {
                           closeMenu();
                           openEditor(editor.Id);
                         }}
-                      >
-                        <EditorIcon editor={editor.Id} />
-                        <span class="menu-label">{editor.Label}</span>
-                      </button>
+                      />
                     )}
                   </For>
                 </Show>
                 <Show when={open().Kind === "scripts"}>
                   <For each={props.scripts}>
                     {(script) => (
-                      <button
-                        class="menu-item"
-                        role="menuitem"
+                      <MenuItem
+                        truncate
+                        icon={<Play />}
+                        label={script.name}
                         data-tip={script.command}
-                        onClick={() => void runScript(script)}
-                      >
-                        <Play />
-                        <span class="menu-label">{script.name}</span>
-                      </button>
+                        onSelect={() => void runScript(script)}
+                      />
                     )}
                   </For>
-                  <div class="menu-separator" />
-                  <button
-                    class="menu-item"
-                    role="menuitem"
-                    onClick={() => {
+                  <MenuSeparator />
+                  <MenuItem
+                    truncate
+                    icon={<Plus />}
+                    label="Add project script"
+                    onSelect={() => {
                       closeMenu();
                       setAddingScript(true);
                     }}
-                  >
-                    <Plus />
-                    <span class="menu-label">Add project script</span>
-                  </button>
+                  />
                 </Show>
                 <Show when={open().Kind === "git"}>
                   <For each={menuItems()}>
@@ -690,17 +669,15 @@ const Body = (props: IDetailsProps) => {
                           hasPrimaryRemote: git()?.hasPrimaryRemote ?? false,
                         });
                       return (
-                        <button
-                          class="menu-item"
-                          role="menuitem"
+                        <MenuItem
+                          truncate
+                          icon={<MenuIcon item={item} status={git()} />}
+                          label={item.label}
                           aria-disabled={item.disabled ? "true" : undefined}
                           data-tip={reason() ?? undefined}
                           data-tip-side="right"
-                          onClick={() => runMenuItem(item)}
-                        >
-                          <MenuIcon item={item} status={git()} />
-                          <span class="menu-label">{item.label}</span>
-                        </button>
+                          onSelect={() => runMenuItem(item)}
+                        />
                       );
                     }}
                   </For>
@@ -739,22 +716,18 @@ const Body = (props: IDetailsProps) => {
                       {(ref) => {
                         const blocked = () => blockedByWorktree(ref, props.checkout.Cwd);
                         return (
-                          <button
-                            class="menu-item"
-                            role="menuitem"
+                          <MenuItem
+                            truncate
+                            icon={<GitBranch />}
+                            label={ref.Name}
+                            detail={ref.Current ? "current" : ref.IsDefault ? "default" : undefined}
                             aria-disabled={blocked() ? "true" : undefined}
                             data-tip={blocked() ? `Checked out in ${ref.WorktreePath}` : undefined}
-                            onClick={() => {
+                            onSelect={() => {
                               closeMenu();
                               void details.selectBranch(ref);
                             }}
-                          >
-                            <GitBranch />
-                            <span class="menu-label">{ref.Name}</span>
-                            <Show when={ref.Current || ref.IsDefault}>
-                              <span class="menu-detail">{ref.Current ? "current" : "default"}</span>
-                            </Show>
-                          </button>
+                          />
                         );
                       }}
                     </For>
@@ -766,17 +739,15 @@ const Body = (props: IDetailsProps) => {
                         )
                       }
                     >
-                      <button
-                        class="menu-item"
-                        role="menuitem"
-                        onClick={() => {
+                      <MenuItem
+                        truncate
+                        icon={<GitBranchPlus />}
+                        label={`Create branch "${branchQuery().trim()}"`}
+                        onSelect={() => {
                           closeMenu();
                           void details.createBranch(branchQuery());
                         }}
-                      >
-                        <GitBranchPlus />
-                        <span class="menu-label">Create branch "{branchQuery().trim()}"</span>
-                      </button>
+                      />
                     </Show>
                     <Show when={details.state.BranchError}>
                       {(error) => <p class="details-menu-note error">{error()}</p>}
@@ -831,43 +802,44 @@ const Body = (props: IDetailsProps) => {
 
       <Show when={pendingCopy()}>
         {(copy) => (
-          <Modal
-            class="confirm-dialog branch-confirm"
+          <Dialog
             aria-labelledby="default-branch-title"
             onClose={() => void work.cancelDefaultBranch()}
           >
-            <div class="confirm-header">
-              <h2 id="default-branch-title" class="confirm-title">
-                {copy().title}
-              </h2>
-              <p class="confirm-description">{copy().description}</p>
+            <DialogHeader>
+              <DialogTitle id="default-branch-title">{copy().title}</DialogTitle>
+              <DialogDescription>{copy().description}</DialogDescription>
               <Show when={featureBranchBlock()}>
-                {(reason) => <p class="confirm-note">{reason()}</p>}
+                {(reason) => <p class="m-0 text-[12px] text-muted-foreground">{reason()}</p>}
               </Show>
-            </div>
-            <div class="confirm-actions">
-              <button class="button" onClick={() => void work.cancelDefaultBranch()}>
+            </DialogHeader>
+            <DialogFooter class="flex-wrap">
+              <Button
+                class="mr-auto whitespace-nowrap"
+                onClick={() => void work.cancelDefaultBranch()}
+              >
                 Abort
-              </button>
-              <button
-                class="button"
+              </Button>
+              <Button
+                class="whitespace-nowrap"
                 onClick={() =>
                   void work.continueDefaultBranch(props.checkout, false, actionContext(git()))
                 }
               >
                 {copy().continueLabel}
-              </button>
-              <button
-                class="button primary"
+              </Button>
+              <Button
+                variant="primary"
+                class="whitespace-nowrap"
                 disabled={featureBranchBlock() !== null}
                 onClick={() =>
                   void work.continueDefaultBranch(props.checkout, true, actionContext(git()))
                 }
               >
                 Check out feature branch & continue
-              </button>
-            </div>
-          </Modal>
+              </Button>
+            </DialogFooter>
+          </Dialog>
         )}
       </Show>
     </div>

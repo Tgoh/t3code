@@ -52,13 +52,18 @@ function place(popup: HTMLElement, trigger: HTMLElement): void {
   popup.style.top = `${clamp(top, height, window.innerHeight)}px`;
 }
 
+const TIP =
+  "pointer-events-none fixed top-0 left-0 z-[140] max-w-80 rounded-md border px-2 py-1 text-[12px] leading-snug text-foreground wrap-anywhere transition-[opacity,scale] duration-150 ease-[ease] starting:scale-[0.98] starting:opacity-0 data-instant:transition-none";
+const PLAIN = "border-border bg-popover text-balance shadow-[0_2px_6px_rgb(0_0_0/5%)]";
+const CARD =
+  "border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--popover)_18%,color-mix(in_srgb,var(--popover)_var(--glass-opacity),transparent))] text-wrap shadow-[0_20px_25px_-5px_rgb(0_0_0/25%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)";
+
 function TipPopup(props: { tip: IOpenTip }) {
   const card = cards.get(props.tip.Trigger);
   return (
     <div
       ref={(popup) => queueMicrotask(() => place(popup, props.tip.Trigger))}
-      class="tooltip"
-      classList={{ card: card !== undefined }}
+      class={`${TIP} ${card === undefined ? PLAIN : CARD}`}
       role="tooltip"
       data-instant={props.tip.Instant ? "" : undefined}
     >

@@ -44,6 +44,8 @@ import {
 } from "./timelineWindow";
 
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
 import { createMediaQuery, PANEL_SHEET_QUERY } from "./viewport";
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
@@ -53,13 +55,13 @@ const LoadEarlier = HistoryWindow.provider(() => {
   return (
     <>
       <Show when={history.state.HasMore}>
-        <button
-          class="button load-earlier"
+        <Button
+          class="load-earlier"
           disabled={history.loadingEarlier()}
           onClick={() => history.loadEarlier()}
         >
           {history.loadingEarlier() ? "Loading…" : "Load earlier"}
-        </button>
+        </Button>
       </Show>
       <Show when={history.state.Error}>
         <p class="thread-notice">{history.state.Error}</p>
@@ -392,10 +394,9 @@ const ThreadBody = ThreadSession.provider(() => {
           </div>
           <div class="panel-controls">
             <Show when={checkout() !== null}>
-              <button
+              <IconButton
                 ref={detailsToggle}
-                class="icon-button toggle"
-                classList={{ pressed: detailsShown() }}
+                pressed={detailsShown()}
                 aria-label="Toggle thread details panel"
                 data-tip={withShortcut(
                   "Toggle thread details",
@@ -405,12 +406,11 @@ const ThreadBody = ThreadSession.provider(() => {
                 onClick={() => session.toggleDetails()}
               >
                 <SquareMenu />
-              </button>
+              </IconButton>
             </Show>
             <Show when={thread.state.Thread !== null}>
-              <button
-                class="icon-button toggle"
-                classList={{ pressed: terminalOpen() }}
+              <IconButton
+                pressed={terminalOpen()}
                 aria-label="Toggle terminal drawer"
                 data-tip={withShortcut(
                   "Toggle terminal drawer",
@@ -420,11 +420,10 @@ const ThreadBody = ThreadSession.provider(() => {
                 onClick={() => session.toggleTerminal()}
               >
                 <PanelBottom />
-              </button>
+              </IconButton>
             </Show>
-            <button
-              class="icon-button toggle"
-              classList={{ pressed: rightPanelOpen() }}
+            <IconButton
+              pressed={rightPanelOpen()}
               aria-label="Toggle right panel"
               data-tip={withShortcut(
                 "Toggle right panel",
@@ -434,7 +433,7 @@ const ThreadBody = ThreadSession.provider(() => {
               onClick={() => session.toggleRightPanel()}
             >
               <PanelRight />
-            </button>
+            </IconButton>
           </div>
         </header>
         <Show when={endedReason()}>

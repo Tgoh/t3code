@@ -3,6 +3,8 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { type IDiffFile, parseDiff, patchRows } from "./diffView";
 import { ChevronRight, FileDiff, X } from "./icons";
 import ThreadSession from "./ThreadSession";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
 
 const LINE_CAP = 2000;
 
@@ -23,9 +25,7 @@ function Patch(props: { patch: string }) {
         </For>
       </pre>
       <Show when={!all() && rows().length > LINE_CAP}>
-        <button class="button" onClick={() => setAll(true)}>
-          Show all {rows().length} lines
-        </button>
+        <Button onClick={() => setAll(true)}>Show all {rows().length} lines</Button>
       </Show>
     </>
   );
@@ -71,14 +71,13 @@ export function DiffPanel() {
           Diff
         </span>
         <span class="composer-spacer" />
-        <button
-          class="icon-button"
+        <IconButton
           aria-label="Close diff"
           data-tip="Close diff"
           onClick={() => session.closeDiff()}
         >
           <X />
-        </button>
+        </IconButton>
       </header>
       <div class="panel-subheader">
         <span class="panel-chip">{title()}</span>

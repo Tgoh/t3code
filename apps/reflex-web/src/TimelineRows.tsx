@@ -47,6 +47,7 @@ import OpenThread, {
 } from "./OpenThread";
 import ThreadSession from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
+import { iconButton } from "./ui/IconButton";
 import { viewOf } from "./turnItemView";
 import {
   attribution,
@@ -187,7 +188,7 @@ function AttachmentFile(props: { file: IWireAttachment; url: string | null }) {
               {identity()}
             </a>
             <a
-              class="icon-button"
+              class={iconButton()}
               href={url()}
               download={props.file.name}
               aria-label={`Download ${label()}`}

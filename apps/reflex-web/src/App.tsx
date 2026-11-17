@@ -23,7 +23,7 @@ import { createKeyDispatcher, runPanelShortcut } from "./shortcuts";
 import { Sidebar, SidebarToggle } from "./Sidebar";
 import ThreadSession, { closeRightPanel } from "./ThreadSession";
 import { ThreadView } from "./ThreadView";
-import { TooltipHost } from "./tooltip";
+import { TooltipHost } from "./ui/tooltip";
 import { UsageView } from "./UsageView";
 import {
   createMediaQuery,

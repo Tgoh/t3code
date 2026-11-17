@@ -31,6 +31,8 @@ import { caretOnEdge, type IPromptHistoryPosition, stepPromptHistory } from "./p
 import { advanceLabel, answerPlaceholder, type IAnswering } from "./questions";
 import { StageArt } from "./StageArt";
 import ThreadSession, { DEFAULT_RUNTIME_MODE } from "./ThreadSession";
+import { Button } from "./ui/Button";
+import { iconButton } from "./ui/IconButton";
 import { composerCollapses, createMediaQuery, PHONE_QUERY } from "./viewport";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -227,9 +229,9 @@ function AnswerActions(props: { question: IAnswering }) {
   return (
     <>
       <Show when={progress().QuestionIndex > 0}>
-        <button
-          type="button"
-          class="button answer-previous"
+        <Button
+          size="icon"
+          class="ml-[5px] [&_svg]:size-3.5"
           aria-label="Previous question"
           data-tip="Previous question"
           disabled={responding()}
@@ -237,7 +239,7 @@ function AnswerActions(props: { question: IAnswering }) {
           onClick={() => props.question.previous()}
         >
           <ChevronLeft />
-        </button>
+        </Button>
       </Show>
       <button
         type="submit"
@@ -568,7 +570,10 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         </Show>
         <div class="composer-bar" onPointerDown={keepPromptFocus}>
           <Show when={!answering()}>
-            <label class="icon-button attach" data-tip="Attach files">
+            <label
+              class={`${iconButton()} attach in-[.composer.collapsed]:hidden`}
+              data-tip="Attach files"
+            >
               <Paperclip />
               <input
                 type="file"

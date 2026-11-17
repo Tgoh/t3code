@@ -52,6 +52,7 @@ import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownToke
 import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml } from "./sanitize";
 import ThreadSession from "./ThreadSession";
+import { IconButton } from "./ui/IconButton";
 import {
   contextThreadTarget,
   type ILinkTarget,
@@ -690,18 +691,18 @@ function CodeToken(props: ITokenProps) {
       <div class="code-block-header">
         <CodeTitle fence={fence()} />
         <span class="code-actions" role="toolbar" aria-label="Code block actions">
-          <button
-            type="button"
-            class="icon-button small"
-            classList={{ pressed: wrapped() }}
+          <IconButton
+            variant="muted"
+            size="xs"
+            pressed={wrapped()}
             aria-pressed={wrapped()}
             aria-label={wrapLabel()}
             data-tip={wrapLabel()}
             onClick={toggleWrap}
           >
             <WrapText />
-          </button>
-          <CopyButton text={code().text} label="Copy code" />
+          </IconButton>
+          <CopyButton size="xs" text={code().text} label="Copy code" />
         </span>
       </div>
       <Show

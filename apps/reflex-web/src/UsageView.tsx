@@ -42,6 +42,8 @@ import { ChartNoAxesColumn, RefreshCw, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
+import { IconButton } from "./ui/IconButton";
+import { Segment, Segmented } from "./ui/Segmented";
 import {
   costTypeSegments,
   type IShareSegment,
@@ -147,35 +149,32 @@ export function UsageView() {
         </div>
         <div class="usage-controls">
           <Show when={metric() !== "limits"}>
-            <div class="segmented" role="group" aria-label="Period">
+            <Segmented variant="card" role="group" aria-label="Period">
               <For each={WINDOWS}>
                 {(entry) => (
-                  <button
-                    classList={{ active: days() === entry.Days }}
+                  <Segment
                     aria-pressed={days() === entry.Days}
                     onClick={() => choose(metric(), entry.Days)}
                   >
                     {entry.Label}
-                  </button>
+                  </Segment>
                 )}
               </For>
-            </div>
+            </Segmented>
           </Show>
-          <div class="segmented" role="group" aria-label="Metric">
+          <Segmented variant="card" role="group" aria-label="Metric">
             <For each={METRICS}>
               {(entry) => (
-                <button
-                  classList={{ active: metric() === entry.Value }}
+                <Segment
                   aria-pressed={metric() === entry.Value}
                   onClick={() => choose(entry.Value, days())}
                 >
                   {entry.Label}
-                </button>
+                </Segment>
               )}
             </For>
-          </div>
-          <button
-            class="icon-button"
+          </Segmented>
+          <IconButton
             aria-label={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             data-tip={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             disabled={environment.refreshingUsage()}
@@ -186,15 +185,14 @@ export function UsageView() {
             }
           >
             <RefreshCw classList={{ spinning: environment.refreshingUsage() }} />
-          </button>
-          <button
-            class="icon-button"
+          </IconButton>
+          <IconButton
             aria-label="Close usage"
             data-tip="Close"
             onClick={() => environment.openView(null)}
           >
             <X />
-          </button>
+          </IconButton>
         </div>
       </header>
       <div class="usage-content">
@@ -374,22 +372,14 @@ function UsageOverview(props: {
       <section class="usage-breakdown">
         <div class="usage-breakdown-head">
           <h2 class="usage-heading">Breakdown</h2>
-          <div class="segmented" role="group" aria-label="Usage breakdown">
-            <button
-              classList={{ active: breakdown() === "model" }}
-              aria-pressed={breakdown() === "model"}
-              onClick={() => setBreakdown("model")}
-            >
+          <Segmented variant="card" role="group" aria-label="Usage breakdown">
+            <Segment aria-pressed={breakdown() === "model"} onClick={() => setBreakdown("model")}>
               Model
-            </button>
-            <button
-              classList={{ active: breakdown() === "time" }}
-              aria-pressed={breakdown() === "time"}
-              onClick={() => setBreakdown("time")}
-            >
+            </Segment>
+            <Segment aria-pressed={breakdown() === "time"} onClick={() => setBreakdown("time")}>
               {hourly() ? "Hour" : "Day"}
-            </button>
-          </div>
+            </Segment>
+          </Segmented>
         </div>
         <Show when={breakdown() === "time"}>
           <div

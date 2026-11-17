@@ -32,12 +32,13 @@ import { createProjectDrag } from "./projectDrag";
 import { isProjectSort, PROJECT_SORT_LABELS } from "./projectOrder";
 import Root from "./Root";
 import { arrowStep, stepHighlight } from "./listNavigation";
-import { MenuItem, Popup } from "./Menu";
 import Shell, { isBusy, sidebarStatus } from "./Shell";
 import { SidebarFooter } from "./SidebarFooter";
 import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
+import { IconButton, iconButton } from "./ui/IconButton";
+import { MenuCheck, MenuHeading, MenuItem, Popup } from "./ui/Menu";
 import { useSidebarSheet } from "./viewport";
 
 const CONNECTION_LABEL: Record<string, string> = {
@@ -84,15 +85,16 @@ export function SidebarToggle(props: { inSidebar?: boolean }) {
   const shown = () => (props.inSidebar === true ? true : sidebar.sheet() || sidebar.collapsed());
   return (
     <Show when={shown()}>
-      <button
-        class="icon-button sidebar-toggle"
+      <IconButton
+        variant={props.inSidebar === true ? "brand" : "ghost"}
+        class={props.inSidebar === true ? "relative mr-2 -ml-1" : undefined}
         aria-label="Toggle main sidebar"
         data-tip={withShortcut("Toggle sidebar", navigation.shortcut("sidebar.toggle"))}
         aria-expanded={sidebar.sheet() ? sidebar.open() : !sidebar.collapsed()}
         onClick={() => sidebar.toggle()}
       >
         <PanelLeft />
-      </button>
+      </IconButton>
     </Show>
   );
 }
@@ -350,22 +352,21 @@ export const Sidebar = Shell.provider(() => {
             onKeyDown={onSearchKey}
           />
           <Show when={searching()}>
-            <button
-              type="button"
-              class="icon-button small"
+            <IconButton
+              variant="sidebar-field"
+              size="sm"
               aria-label="Clear thread search"
               data-tip="Clear search"
               onMouseDown={(event) => event.preventDefault()}
               onClick={clearSearch}
             >
               <X />
-            </button>
+            </IconButton>
           </Show>
         </div>
-        <button
-          type="button"
-          class="icon-button"
-          classList={{ pressed: scope().size > 0 }}
+        <IconButton
+          variant="sidebar"
+          pressed={scope().size > 0}
           aria-label="Filter projects"
           data-tip={`Projects: ${scopeLabel()}`}
           aria-expanded={scopeMenu() !== null}
@@ -375,32 +376,37 @@ export const Sidebar = Shell.provider(() => {
           }}
         >
           <ListFilter />
-        </button>
-        <button
-          class="icon-button"
+        </IconButton>
+        <IconButton
+          variant="sidebar"
           aria-label="Add project"
           data-tip="Add project"
           aria-pressed={navigation.palette() === "add-project"}
           onClick={() => navigation.setPalette("add-project")}
         >
           <FolderPlus />
-        </button>
+        </IconButton>
         <Show when={targetProject()}>
           {(projectId) => (
-            <button
-              class="icon-button"
+            <IconButton
+              variant="sidebar"
               aria-label="New thread"
               data-tip={withShortcut("New thread", navigation.shortcut("chat.new"))}
               onClick={() => environment.newThread(projectId())}
             >
               <SquarePen />
-            </button>
+            </IconButton>
           )}
         </Show>
         <Show when={projects().length > 1}>
-          <label class="icon-button picker-overlay narrow" data-tip="New thread in project">
+          {/* A native select stretched invisibly over the icon, which keeps the native popup. */}
+          <label
+            class={`${iconButton("sidebar", "narrow")} relative has-[select:focus-visible]:outline-2 has-[select:focus-visible]:-outline-offset-2 has-[select:focus-visible]:outline-ring [&_svg]:size-3.5`}
+            data-tip="New thread in project"
+          >
             <ChevronDown />
             <select
+              class="absolute inset-0 w-full cursor-pointer opacity-0"
               aria-label="New thread in project"
               value=""
               onChange={(event) => {
@@ -417,8 +423,9 @@ export const Sidebar = Shell.provider(() => {
             </select>
           </label>
         </Show>
-        <button
-          class="icon-button narrow"
+        <IconButton
+          variant="sidebar"
+          size="narrow"
           aria-label="More sidebar options"
           data-tip="More options"
           aria-expanded={moreMenu() !== null}
@@ -428,13 +435,13 @@ export const Sidebar = Shell.provider(() => {
           }}
         >
           <Ellipsis />
-        </button>
+        </IconButton>
       </div>
       <Show when={scopeMenu()}>
         {(at) => (
           <Popup x={at().X} y={at().Y} label="Filter projects" onClose={() => setScopeMenu(null)}>
             <MenuItem
-              icon={scope().size === 0 ? <Check /> : <span class="menu-check" />}
+              icon={<MenuCheck on={scope().size === 0} />}
               label="All projects"
               onSelect={() => {
                 void environment.toggleProjectScope(null);
@@ -446,7 +453,7 @@ export const Sidebar = Shell.provider(() => {
             >
               {(project) => (
                 <MenuItem
-                  icon={scope().has(project.id) ? <Check /> : <span class="menu-check" />}
+                  icon={<MenuCheck on={scope().has(project.id)} />}
                   label={project.title}
                   onSelect={() => void environment.toggleProjectScope(project.id)}
                 />
@@ -469,14 +476,14 @@ export const Sidebar = Shell.provider(() => {
               onSelect={() => void environment.setPreferences({ GroupByProject: !grouped() })}
             />
             <Show when={grouped()}>
-              <p class="menu-heading">
+              <MenuHeading>
                 <ArrowUpDown />
                 Sort projects
-              </p>
+              </MenuHeading>
               <For each={Object.entries(PROJECT_SORT_LABELS)}>
                 {([value, label]) => (
                   <MenuItem
-                    icon={projectSort() === value ? <Check /> : <span class="menu-check" />}
+                    icon={<MenuCheck on={projectSort() === value} />}
                     label={label}
                     onSelect={() => {
                       if (isProjectSort(value))
@@ -487,10 +494,10 @@ export const Sidebar = Shell.provider(() => {
               </For>
             </Show>
             <Show when={hiddenList().length > 0}>
-              <p class="menu-heading">
+              <MenuHeading>
                 <EyeOff />
                 Hidden projects
-              </p>
+              </MenuHeading>
               <For each={hiddenList()}>
                 {(project) => (
                   <MenuItem
@@ -512,14 +519,14 @@ export const Sidebar = Shell.provider(() => {
         {(failure) => (
           <p class="sidebar-error">
             That didn't work: {failure()}
-            <button
-              class="icon-button small"
+            <IconButton
+              size="sm"
               aria-label="Dismiss"
               data-tip="Dismiss"
               onClick={() => root.dismissFailure()}
             >
               <X />
-            </button>
+            </IconButton>
           </p>
         )}
       </Show>

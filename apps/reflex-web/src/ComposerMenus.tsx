@@ -19,7 +19,9 @@ import {
 } from "./icons";
 import type { IWireRuntimeMode } from "./Infrastructure/commandEffects";
 import { arrowStep, focusStep } from "./listNavigation";
-import { Popup } from "./Menu";
+import { Popup } from "./ui/Menu";
+import { Segment, Segmented } from "./ui/Segmented";
+import { MenuSwitch } from "./ui/Switch";
 import {
   FAVORITES_TAB,
   type IBooleanDescriptor,
@@ -121,8 +123,7 @@ function PermissionsSection(props: {
   return (
     <div class="permissions-section">
       <div class="section-label">Permissions</div>
-      <div
-        class="segments"
+      <Segmented
         role="radiogroup"
         aria-label="Permissions"
         ref={setGroup}
@@ -140,10 +141,8 @@ function PermissionsSection(props: {
       >
         <For each={props.modes}>
           {(mode) => (
-            <button
-              type="button"
+            <Segment
               role="radio"
-              class="segment"
               aria-checked={mode === props.mode}
               aria-label={RUNTIME_MODE_CONFIG[mode].Label}
               tabIndex={mode === props.mode ? 0 : -1}
@@ -154,10 +153,10 @@ function PermissionsSection(props: {
               onClick={() => props.onPick(mode)}
             >
               <Dynamic component={RUNTIME_MODE_CONFIG[mode].Icon} />
-            </button>
+            </Segment>
           )}
         </For>
-      </div>
+      </Segmented>
       <div class="permissions-preview" aria-hidden="true">
         <span classList={{ current: (preview() ?? props.mode) === props.mode }}>
           {shown().Label}
@@ -798,7 +797,7 @@ function OptionSwitchRow(props: { descriptor: IBooleanDescriptor; traits: ITrait
         <span class="option-name">{props.descriptor.label}</span>
         <span>{checked() ? "On" : "Off"}</span>
       </span>
-      <span class="menu-switch" classList={{ on: checked() }} />
+      <MenuSwitch on={checked()} />
     </button>
   );
 }
@@ -813,13 +812,12 @@ function PickerFooter(props: { traits: ITraits | null }) {
     <div class="picker-footer">
       <Show when={props.traits?.Speed ?? null}>
         {(speed) => (
-          <div class="segments" role="radiogroup" aria-label={speed().label}>
+          <Segmented role="radiogroup" aria-label={speed().label}>
             <For each={selectableProviderOptionChoices(speed())}>
               {(option) => (
-                <button
-                  type="button"
+                <Segment
+                  labelled
                   role="radio"
-                  class="segment labelled"
                   aria-checked={pick.value(speed()) === option.id}
                   data-tip={option.description}
                   onClick={() => pick.select(props.traits!, speed(), option.id)}
@@ -828,21 +826,20 @@ function PickerFooter(props: { traits: ITraits | null }) {
                     <Zap class="fast-bolt" classList={{ ultra: option.label === "Ultrafast" }} />
                   </Show>
                   {option.label}
-                </button>
+                </Segment>
               )}
             </For>
-          </div>
+          </Segmented>
         )}
       </Show>
       <Show when={props.traits?.Speed === null ? props.traits.Fast : null}>
         {(fast) => (
-          <div class="segments" role="radiogroup" aria-label={fast().label}>
+          <Segmented role="radiogroup" aria-label={fast().label}>
             <For each={[false, true]}>
               {(value) => (
-                <button
-                  type="button"
+                <Segment
+                  labelled
                   role="radio"
-                  class="segment labelled"
                   aria-checked={(fast().currentValue === true) === value}
                   onClick={() => pick.toggle(props.traits!, fast().id, value)}
                 >
@@ -850,18 +847,17 @@ function PickerFooter(props: { traits: ITraits | null }) {
                     <Zap class="fast-bolt" />
                   </Show>
                   {value ? "Fast" : "Standard"}
-                </button>
+                </Segment>
               )}
             </For>
-          </div>
+          </Segmented>
         )}
       </Show>
       <Show when={props.traits?.Ultracode ?? null}>
         {(ultracode) => (
-          <div class="segments">
-            <button
-              type="button"
-              class="segment labelled"
+          <Segmented>
+            <Segment
+              labelled
               aria-pressed={ultracode().currentValue === true}
               onClick={() =>
                 pick.toggle(props.traits!, ultracode().id, ultracode().currentValue !== true)
@@ -869,8 +865,8 @@ function PickerFooter(props: { traits: ITraits | null }) {
             >
               <Workflow />
               {ultracode().label}
-            </button>
-          </div>
+            </Segment>
+          </Segmented>
         )}
       </Show>
       <button

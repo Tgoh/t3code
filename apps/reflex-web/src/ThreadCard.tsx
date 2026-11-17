@@ -28,7 +28,6 @@ import {
 } from "./icons";
 import type { IThreadCommand } from "./Infrastructure/commandEffects";
 import type { IWireThreadShell } from "./Infrastructure/wire";
-import { MenuItem, Popup } from "./Menu";
 import Shell, {
   activityAt,
   canSnooze,
@@ -40,8 +39,13 @@ import Shell, {
   workingStartedAt,
 } from "./Shell";
 import { relativeTime, timeUntil } from "./timestamps";
-import { hoverCard } from "./tooltip";
+import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
+import { hoverCard } from "./ui/tooltip";
 import { longPress, useSidebarSheet } from "./viewport";
+
+const HOVER_LINE =
+  "flex min-w-0 items-center gap-2 [&_.provider-icon]:opacity-60 [&_.provider-icon]:grayscale [&_span]:min-w-0 [&_span]:truncate [&_svg.lucide]:size-3";
+const hoverLine = `${HOVER_LINE} [&_span]:text-[color-mix(in_srgb,var(--foreground)_75%,transparent)]`;
 
 export const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "Setting up",
@@ -88,10 +92,10 @@ function ThreadHoverCard(props: {
 }) {
   const environment = Environment.use();
   return (
-    <div class="hover-card">
-      <div class="hover-card-title">{props.thread.title}</div>
-      <div class="hover-card-details">
-        <div class="hover-card-line">
+    <div class="flex min-w-0 flex-col gap-2 px-1 py-2">
+      <div class="truncate leading-tight font-medium">{props.thread.title}</div>
+      <div class="grid gap-1.5 pl-0.5 text-muted-foreground">
+        <div class={hoverLine}>
           <ProjectBadge
             project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
             size={12}
@@ -100,29 +104,29 @@ function ThreadHoverCard(props: {
         </div>
         <Show when={props.thread.branch}>
           {(branch) => (
-            <div class="hover-card-line">
+            <div class={hoverLine}>
               <GitBranch />
               <span>{branch()}</span>
             </div>
           )}
         </Show>
-        <div class="hover-card-line">
+        <div class={hoverLine}>
           <ProviderIcon driver={props.model.Driver} size={12} />
           <span>{props.model.Name}</span>
         </div>
         <Show when={props.previousProviders.length > 0}>
-          <div class="hover-card-line">
+          <div class={hoverLine}>
             <ArrowRightLeft />
             <span>Handed off from {props.previousProviders.join(", ")}</span>
           </div>
         </Show>
         <Show when={props.thread.lastError}>
           <div
-            class="hover-card-line"
-            classList={{
-              warning: props.thread.lastErrorClass === "usage_limit",
-              error: props.thread.lastErrorClass !== "usage_limit",
-            }}
+            class={
+              props.thread.lastErrorClass === "usage_limit"
+                ? `${HOVER_LINE} text-warning-foreground [&_span]:text-warning-foreground`
+                : `${HOVER_LINE} text-error-foreground [&_span]:text-error-foreground`
+            }
           >
             <CircleAlert />
             <span>
@@ -435,7 +439,7 @@ export function ThreadMenu(props: {
         />
       </Show>
       <Show when={presets().length > 0 || snoozed()}>
-        <div class="menu-separator" />
+        <MenuSeparator />
       </Show>
       <Show
         when={settled()}
@@ -468,7 +472,7 @@ export function ThreadMenu(props: {
         label="Mark unread"
         onSelect={() => choose({ Kind: "markUnread" })}
       />
-      <div class="menu-separator" />
+      <MenuSeparator />
       <Show
         when={confirmingDelete()}
         fallback={

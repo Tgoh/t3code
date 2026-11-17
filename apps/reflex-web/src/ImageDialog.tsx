@@ -1,5 +1,6 @@
 import { X } from "./icons";
-import { Modal } from "./Modal";
+import { IconButton } from "./ui/IconButton";
+import { Modal } from "./ui/Modal";
 
 export function ImageDialog(props: { src: string; alt: string; onClose: () => void }) {
   return (
@@ -9,9 +10,9 @@ export function ImageDialog(props: { src: string; alt: string; onClose: () => vo
       onClick={(event) => event.currentTarget.close()}
     >
       <img src={props.src} alt={props.alt} />
-      <button class="icon-button image-dialog-close" aria-label="Close preview">
+      <IconButton variant="media" class="absolute top-4 right-4" aria-label="Close preview">
         <X />
-      </button>
+      </IconButton>
     </Modal>
   );
 }

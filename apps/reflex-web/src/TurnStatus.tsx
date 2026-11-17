@@ -14,11 +14,13 @@ import {
 } from "./checklist";
 import Environment from "./Environment";
 import { ChevronUp, CornerUpRight, PenLine, Square, SquareCheck, X } from "./icons";
-import { Popup } from "./Menu";
 import OpenThread, { isRowVisible, runMessage, timelineItem } from "./OpenThread";
 import { workingStartedAt } from "./Shell";
 import ThreadSession from "./ThreadSession";
 import { QueuedMessage } from "./TimelineRows";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+import { Popup } from "./ui/Menu";
 import { useWorkspaceRoot } from "./workspaceRoot";
 import {
   liveWorkEntryLabel,
@@ -252,46 +254,41 @@ function QueuedRow(props: { runId: string }) {
             }}
           />
           <div class="queued-edit-actions">
-            <button type="button" class="button" onClick={() => setEditing(null)}>
-              Cancel
-            </button>
-            <button type="submit" class="button primary" disabled={session.queueing()}>
+            <Button onClick={() => setEditing(null)}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={session.queueing()}>
               Save
-            </button>
+            </Button>
           </div>
         </form>
       </Show>
       <Show when={editing() === null}>
         <div class="queued-actions">
-          <button
-            class="icon-button"
+          <IconButton
             aria-label="Send now"
             data-tip="Send now"
             disabled={session.queueing() || !canSendNow()}
             onClick={() => session.queueAction({ Kind: "sendNow", RunId: props.runId })}
           >
             <CornerUpRight />
-          </button>
+          </IconButton>
           <Show when={editable()}>
-            <button
-              class="icon-button"
+            <IconButton
               aria-label="Edit queued message"
               data-tip="Edit"
               disabled={session.queueing()}
               onClick={() => setEditing(message()?.text ?? "")}
             >
               <PenLine />
-            </button>
+            </IconButton>
           </Show>
-          <button
-            class="icon-button"
+          <IconButton
             aria-label="Remove queued message"
             data-tip="Remove"
             disabled={session.queueing()}
             onClick={() => session.queueAction({ Kind: "cancel", RunId: props.runId })}
           >
             <X />
-          </button>
+          </IconButton>
         </div>
       </Show>
     </div>
@@ -317,13 +314,12 @@ function QueuedPopover(props: {
       <div class="banner-title">
         <strong>Queued</strong>
         <Show when={!props.working}>
-          <button
-            class="button"
+          <Button
             disabled={session.queueing()}
             onClick={() => session.queueAction({ Kind: "resume" })}
           >
             Resume
-          </button>
+          </Button>
         </Show>
       </div>
       <For each={thread.queuedRunIds()}>{(runId) => <QueuedRow runId={runId} />}</For>

@@ -8,6 +8,7 @@ import { createMemo, Show } from "solid-js";
 
 import Environment from "./Environment";
 import { Download } from "./icons";
+import { Button } from "./ui/Button";
 
 // Follows useProjectClone in apps/web/src/state/projectClones.ts.
 export function useProjectClone(projectId: () => string | null) {
@@ -51,19 +52,15 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
               {cancelled() ? "Retry to bring in the repository." : props.clone.error}
             </pre>
             <div class="request-actions">
-              <button
-                class="button"
-                onClick={() => environment.projectCommand(projectId(), { Kind: "delete" })}
-              >
+              <Button onClick={() => environment.projectCommand(projectId(), { Kind: "delete" })}>
                 Remove project
-              </button>
-              <button
-                class="button"
+              </Button>
+              <Button
                 disabled={environment.cloneControlling()}
                 onClick={() => environment.cloneControl(projectId(), "retry")}
               >
                 Retry
-              </button>
+              </Button>
             </div>
           </>
         }
@@ -71,13 +68,12 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
         <div class="banner-title">
           <Download />
           <strong>Cloning {name()}</strong>
-          <button
-            class="button"
+          <Button
             disabled={environment.cloneControlling()}
             onClick={() => environment.cloneControl(projectId(), "cancel")}
           >
             Cancel
-          </button>
+          </Button>
         </div>
         <p class="banner-body">{projectCloneProgressSummary(props.clone)}</p>
       </Show>
