@@ -42,9 +42,10 @@ import { iconButton } from "./ui/IconButton";
 import { composerCollapses, createMediaQuery, PHONE_QUERY, SHORT_TOUCH_QUERY } from "./viewport";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
-const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
+export const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
 
-const isAlternate = (event: MouseEvent | KeyboardEvent) => (IS_MAC ? event.metaKey : event.ctrlKey);
+export const isAlternate = (event: MouseEvent | KeyboardEvent) =>
+  IS_MAC ? event.metaKey : event.ctrlKey;
 
 /** The strip at the foot of a thread that holds the composer, measured as --composer-height.
  * navigation.ts and ViewportDebug.tsx find it by `composer-lane`, which has no rule. */

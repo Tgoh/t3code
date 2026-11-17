@@ -13,6 +13,7 @@ import {
   type IChecklistStep,
   liveSteps,
 } from "./checklist";
+import { isAlternate, MOD_LABEL } from "./Composer";
 import Environment from "./Environment";
 import { ChevronUp, CornerUpRight, PenLine, Square, SquareCheck, X } from "./icons";
 import OpenThread, { isRowVisible, runMessage, timelineItem } from "./OpenThread";
@@ -257,22 +258,16 @@ function QueuedRow(props: { runId: string }) {
   const editable = () => message()?.context?.guest === undefined;
   const workflow = () => session.queueWorkflow();
   const canSendNow = () => workflow().CanSendNow || workflow().CanSteer;
-  const save = () => {
+  const save = (steer: boolean) => {
     const text = editing()?.trim() ?? "";
     if (text === "") return;
-    session.queueAction({ Kind: "edit", RunId: props.runId, Text: text });
+    session.queueAction({ Kind: "edit", RunId: props.runId, Text: text, Steer: steer });
     setEditing(null);
   };
   return (
     <div class="mt-1.5 flex items-center gap-2 wrap-anywhere">
       <Show when={editing() !== null} fallback={<QueuedMessage runId={props.runId} />}>
-        <form
-          class="flex min-w-0 flex-1 flex-col gap-1.5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            save();
-          }}
-        >
+        <div class="flex min-w-0 flex-1 flex-col gap-1.5">
           <textarea
             class="resize-y rounded-[10px] border border-input bg-background px-2.5 py-1.5"
             aria-label="Edit queued message"
@@ -286,17 +281,26 @@ function QueuedRow(props: { runId: string }) {
                 setEditing(null);
               } else if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
                 event.preventDefault();
-                save();
+                save(isAlternate(event));
               }
             }}
           />
           <div class="flex justify-end gap-1.5">
             <Button onClick={() => setEditing(null)}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={queueing()}>
+            <Button
+              variant="primary"
+              disabled={queueing()}
+              data-tip={
+                workflow().CanSteer
+                  ? `${MOD_LABEL}-click or ${MOD_LABEL}+Enter to save and steer`
+                  : undefined
+              }
+              onClick={(event) => save(isAlternate(event))}
+            >
               Save
             </Button>
           </div>
-        </form>
+        </div>
       </Show>
       <Show when={editing() === null}>
         <div class="flex flex-none gap-0.5 [&_svg]:size-3.5">

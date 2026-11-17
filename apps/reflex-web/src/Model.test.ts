@@ -2250,6 +2250,48 @@ describe("writing to the server", () => {
     ]);
   });
 
+  it("an edit saved to steer is saved first, then steered only while a run can take it", async () => {
+    const commands: IQueueCommand[] = [];
+    const server = await connect(undefined, null, {
+      queueCommand: (effect: IQueueCommand) => void commands.push(effect),
+    });
+    await server.open();
+    const save = (runId: string, steer: boolean) =>
+      server.runtime.dispatch(queueAction, server.sessionId(), {
+        Kind: "edit",
+        RunId: runId,
+        Text: "changed",
+        Steer: steer,
+      });
+    await server.sendThread(
+      snapshotOf({ ...emptyProjection(), runs: [run("run-2", 2, "queued")] }, 1),
+    );
+    await save("run-2", true);
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [
+            run("run-1", 1, "starting"),
+            run("run-2", 2, "queued"),
+            { ...run("run-3", 3, "queued"), freshContext: true },
+          ],
+        },
+        2,
+      ),
+    );
+    await save("run-2", false);
+    await save("run-2", true);
+    await save("run-3", true);
+    expect(commands.map((command) => command.Operation)).toEqual([
+      { Kind: "edit", RunId: "run-2", Text: "changed" },
+      { Kind: "edit", RunId: "run-2", Text: "changed" },
+      { Kind: "edit", RunId: "run-2", Text: "changed" },
+      { Kind: "steer", RunId: "run-2", TargetRunId: "run-1" },
+      { Kind: "edit", RunId: "run-3", Text: "changed" },
+    ]);
+  });
+
   it("a send carries the delivery the composer chose", async () => {
     const sent: IStartTurn[] = [];
     const server = await connect(undefined, null, {

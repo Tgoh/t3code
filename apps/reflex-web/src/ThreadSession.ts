@@ -315,13 +315,16 @@ export function* modelSwitch(draft: IThreadSession): ISelectorGenerator<IModelSw
 export interface IQueueWorkflow {
   CanSendNow: boolean;
   CanSteer: boolean;
+  PromoteSkipsCompaction: boolean;
   ActiveRunId: string | null;
 }
 
 export function* queueWorkflow(draft: IThreadSession): ISelectorGenerator<IQueueWorkflow> {
   const replica = yield* getData(draft, "Replica");
   const open = replica?.OpenThreads[draft.ThreadId];
-  if (open?.Thread == null) return { CanSendNow: false, CanSteer: false, ActiveRunId: null };
+  if (open?.Thread == null) {
+    return { CanSendNow: false, CanSteer: false, PromoteSkipsCompaction: false, ActiveRunId: null };
+  }
   const byOrdinal = <T extends { ordinal: number }>(rows: T[]) =>
     rows.sort((left, right) => left.ordinal - right.ordinal);
   const state = deriveThreadQueueWorkflowState({
@@ -335,8 +338,23 @@ export function* queueWorkflow(draft: IThreadSession): ISelectorGenerator<IQueue
   return {
     CanSendNow: state.canSendNow,
     CanSteer: state.canPromoteToSteer,
+    PromoteSkipsCompaction: state.promoteSkipsCompaction,
     ActiveRunId: state.activeRun?.id ?? null,
   };
+}
+
+// Follows canSendRun in apps/web/src/components/chat/QueuedRunsControl.tsx: a fresh-context
+// message starts its own turn, so it can skip a compaction but never steer into a turn.
+function* steerOperation(
+  draft: IThreadSession,
+  runId: string,
+): ISelectorGenerator<IQueueOperation | null> {
+  const workflow = yield* queueWorkflow(draft);
+  if (workflow.ActiveRunId === null || !workflow.CanSteer) return null;
+  const replica = yield* getData(draft, "Replica");
+  const freshContext = replica?.OpenThreads[draft.ThreadId]?.Runs[runId]?.freshContext === true;
+  if (freshContext && !workflow.PromoteSkipsCompaction) return null;
+  return { Kind: "steer", RunId: runId, TargetRunId: workflow.ActiveRunId };
 }
 
 function* effectiveModelDisplay(
@@ -733,25 +751,25 @@ export function* stopRun(draft: IThreadSession): IOpenGenerator {
 leading(stopRun);
 
 export type IQueuePress =
-  | Exclude<IQueueOperation, { Kind: "start" | "steer" }>
+  | Exclude<IQueueOperation, { Kind: "start" | "steer" | "edit" }>
+  | { Kind: "edit"; RunId: string; Text: string; Steer: boolean }
   | { Kind: "sendNow"; RunId: string };
 
-// Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx.
+// Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx, and saveEdit's
+// steer in apps/web/src/components/chat/useQueuedRunEdit.ts.
 export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGenerator {
   delete draft.QueueError;
-  let operation: IQueueOperation;
-  if (press.Kind !== "sendNow") operation = press;
-  else {
-    const workflow = yield* select(queueWorkflow);
-    if (workflow.CanSendNow) operation = { Kind: "start", RunId: press.RunId };
-    else if (workflow.ActiveRunId !== null && workflow.CanSteer) {
-      operation = { Kind: "steer", RunId: press.RunId, TargetRunId: workflow.ActiveRunId };
-    } else return;
-  }
+  let operation: IQueueOperation | null;
+  if (press.Kind === "edit") {
+    operation = { Kind: "edit", RunId: press.RunId, Text: press.Text };
+  } else if (press.Kind !== "sendNow") operation = press;
+  else if ((yield* select(queueWorkflow)).CanSendNow) {
+    operation = { Kind: "start", RunId: press.RunId };
+  } else operation = yield* select((held: IThreadSession) => steerOperation(held, press.RunId));
   const environmentId = draft.EnvironmentId;
   const threadId = draft.ThreadId;
-  try {
-    yield* open(
+  const run = (operation: IQueueOperation) =>
+    open(
       withCommandId((commandId) =>
         queueCommandEffect({
           EnvironmentId: environmentId,
@@ -761,6 +779,12 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
         }),
       ),
     );
+  try {
+    if (operation === null) return;
+    yield* run(operation);
+    if (press.Kind !== "edit" || !press.Steer) return;
+    const steer = yield* select((held: IThreadSession) => steerOperation(held, press.RunId));
+    if (steer !== null) yield* run(steer);
   } catch (error) {
     draft.QueueError = errorText(error);
   }
