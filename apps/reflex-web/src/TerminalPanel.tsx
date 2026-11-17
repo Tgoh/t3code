@@ -5,15 +5,15 @@ import { Trash2, X } from "./icons";
 import ThreadSession from "./ThreadSession";
 import { IconButton } from "./ui/IconButton";
 import { ERROR_TEXT } from "./ui/notice";
+import { enterPanel } from "./viewport";
 
 const RECONNECTING = new Set(["connecting", "backoff", "offline", "blocked"]);
 
-// ThreadView sets .panel-sheet on narrow screens and .panel-motion once the thread has mounted,
-// so a drawer already open on a thread switch doesn't slide in again.
+// ThreadView sets .panel-sheet on narrow screens.
 const DRAWER = [
   "relative flex min-h-0 flex-[0_0_280px] flex-col border-t border-border bg-(--terminal-background)",
   "in-[.panel-sheet]:absolute in-[.panel-sheet]:inset-x-0 in-[.panel-sheet]:bottom-0 in-[.panel-sheet]:z-56 in-[.panel-sheet]:h-[min(60%,420px)] in-[.panel-sheet]:overflow-hidden in-[.panel-sheet]:rounded-t-[12px] in-[.panel-sheet]:pb-(--safe-bottom) in-[.panel-sheet]:shadow-[0_-8px_24px_rgb(0_0_0/12%)]",
-  "in-[.panel-motion]:motion-safe:transition-[translate,opacity] in-[.panel-motion]:motion-safe:duration-200 in-[.panel-motion]:motion-safe:ease-in-out starting:in-[.panel-sheet]:translate-y-full starting:not-in-[.panel-sheet]:translate-y-2 starting:not-in-[.panel-sheet]:opacity-0",
+  "transition-[translate,opacity] duration-200 ease-in-out data-entering:in-[.panel-sheet]:translate-y-full data-entering:not-in-[.panel-sheet]:translate-y-2 data-entering:not-in-[.panel-sheet]:opacity-0",
 ].join(" ");
 
 export function TerminalPanel() {
@@ -43,7 +43,7 @@ export function TerminalPanel() {
     );
   });
   return (
-    <aside class={DRAWER} data-terminal-drawer>
+    <aside ref={enterPanel} class={DRAWER} data-terminal-drawer>
       <div class="absolute top-1 right-3.5 z-2 flex items-center gap-0.5 rounded-lg bg-(--terminal-background)">
         <Show when={state() !== "running"}>
           <span class="mr-1.5 text-[12px] text-muted-foreground">{state()}</span>
