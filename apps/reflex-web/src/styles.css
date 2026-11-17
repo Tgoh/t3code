@@ -158,6 +158,9 @@ body,
 html {
   overflow: hidden;
   overscroll-behavior: none;
+  /* iOS enlarges text in landscape and doesn't shrink it back on rotating to portrait. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
