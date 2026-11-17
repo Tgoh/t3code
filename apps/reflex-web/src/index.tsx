@@ -154,7 +154,9 @@ runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);
 runtime.registerResourceType("projectFavicons", projectFavicons);
 runtime.registerResourceType("serverKeybindings", serverKeybindings);
-runtime.registerResourceType("serverConfigStream", serverConfigStream);
+runtime.registerResourceType("serverConfigStream", serverConfigStream, {
+  endOnReceiverFailure: true,
+});
 runtime.registerResourceType("terminalSession", terminalSession);
 runtime.registerResourceType("dictation", dictation);
 runtime.registerImplementation(voiceStatusImpl);

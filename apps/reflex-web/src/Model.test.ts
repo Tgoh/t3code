@@ -1097,6 +1097,20 @@ describe("lifetimes", () => {
     expect(opened).toEqual(["Thread/Stream", "Shell/Stream"]);
     await deliverShell({ Type: "Shell/Stream", $Ended: { Reason: "receiver-failed" } });
     expect(server.runtime.timers(server.shellId())).toEqual([]);
+
+    const deliverConfig = (message: object) =>
+      server.runtime.dispatch(EnvironmentReceiver.handle, server.envId(), message as never, {
+        publisher: { Id: server.envId() },
+      });
+    const configTimers = () =>
+      server.runtime.timers(server.envId()).filter((row) => row.Key === "Server/ConfigReopen");
+    await deliverConfig({ Type: "Server/Config", $Ended: { Reason: "failed" } });
+    expect(configTimers()).toHaveLength(1);
+    await deliverConfig({ Type: "Server/ConfigReopen" });
+    expect(configTimers()).toEqual([]);
+    expect(opened).toEqual(["Thread/Stream", "Shell/Stream", "Server/Config"]);
+    await deliverConfig({ Type: "Server/Config", $Ended: { Reason: "receiver-failed" } });
+    expect(configTimers()).toEqual([]);
   });
 });
 

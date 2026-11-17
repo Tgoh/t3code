@@ -19,6 +19,8 @@ import {
   registerDataSource,
   resource,
   start,
+  startTimer,
+  stopTimer,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -127,7 +129,12 @@ declare module "treflex" {
     "Server/Keybindings": { Type: "serverKeybindings" };
     "Server/Config": { Type: "serverConfigStream" };
   }
+  interface ITimerRegistry {
+    "Server/ConfigReopen": {};
+  }
 }
+
+const CONFIG_REOPEN_MS = 1_000;
 
 export interface IEnvironment extends IEntity {
   EnvironmentId: string;
@@ -195,6 +202,13 @@ function* rememberCompactionDismissal(draft: IEnvironment, threadId: string): IA
   yield* setPreferences(draft, { CompactionDismissed: [...held, key] });
 }
 
+function* openConfigStream(draft: IEnvironment): IActionGenerator {
+  yield* openResource(draft, "Server/Config", EnvironmentReceiver, {
+    Type: "serverConfigStream",
+    EnvironmentId: draft.EnvironmentId,
+  });
+}
+
 export function* init(draft: IEnvironment): IActionGenerator {
   yield* registerDataSource(draft, "Replica", draft.Replica);
   yield* registerDataSource(draft, "Selection", draft.Local);
@@ -213,10 +227,7 @@ export function* init(draft: IEnvironment): IActionGenerator {
     Type: "serverKeybindings",
     EnvironmentId: draft.EnvironmentId,
   });
-  yield* openResource(draft, "Server/Config", EnvironmentReceiver, {
-    Type: "serverConfigStream",
-    EnvironmentId: draft.EnvironmentId,
-  });
+  yield* openConfigStream(draft);
   yield* openDictation(draft);
   yield* start(loadProviders, draft);
   const selected = yield* addressThread();
@@ -620,6 +631,14 @@ export function* currentProjectRoot(draft: IEnvironment): ISelectorGenerator<str
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
   *"Server/Config"(draft, message) {
     if (!isEnded(message)) applyConfigEvent(draft, message.Item);
+    // A batch the receiver failed would fail again on every reopen.
+    else if (message.$Ended.Reason !== "receiver-failed") {
+      yield* startTimer(draft, "Server/ConfigReopen", EnvironmentReceiver, CONFIG_REOPEN_MS);
+    }
+  },
+  *"Server/ConfigReopen"(draft) {
+    yield* stopTimer(draft, "Server/ConfigReopen");
+    yield* openConfigStream(draft);
   },
   *"Thread/Deleted"(draft, { ThreadId }) {
     delete draft.Replica.OpenThreads[ThreadId];
