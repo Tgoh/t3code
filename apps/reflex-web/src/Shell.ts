@@ -1,4 +1,5 @@
 import { hasQueuedTurnStart } from "@t3tools/client-runtime/state/thread-settled";
+import { resolveListedAncestorThreadRef } from "@t3tools/client-runtime/state/threads";
 import {
   resolveThreadActivityTimestamp,
   sortActiveThreadsByOrderKey,
@@ -251,6 +252,24 @@ export function* sidebarThreads(draft: IShell): ISelectorGenerator<IWireThreadSh
   return sortActiveThreadsByOrderKey(
     Object.values(draft.Threads).filter((thread) => isListedThreadLineage(thread.lineage as never)),
   );
+}
+
+/** The row that stands for the selected thread: a subagent, side chat or delegated task has none. */
+export function* sidebarRowThreadId(draft: IShell): ISelectorGenerator<string | null> {
+  const selected = yield* selectedThreadId(draft);
+  if (selected === null) return null;
+  const environmentId = draft.EnvironmentId;
+  const threads = Object.values(draft.Threads).map((thread) => ({
+    id: thread.id,
+    environmentId,
+    lineage: thread.lineage,
+    delegatedFrom: thread.delegatedFrom,
+    archivedAt: thread.archivedAt,
+  }));
+  return resolveListedAncestorThreadRef(
+    { environmentId, threadId: selected } as never,
+    threads as never,
+  ).threadId;
 }
 
 export type ISubagentRequest = "approval" | "user_input";
@@ -572,5 +591,5 @@ export function workingStartedAt(thread: IWireThreadShell): string | null {
 
 export default createEntityFeature<IShell>(import.meta.url)(
   {},
-  { sidebarThreads, shellSynchronized, subagentRequests },
+  { sidebarThreads, shellSynchronized, subagentRequests, sidebarRowThreadId },
 );

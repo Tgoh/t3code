@@ -109,6 +109,7 @@ import {
   projectFolders,
   ShellReceiver,
   sidebarSections,
+  sidebarRowThreadId,
   sidebarStatus,
   sidebarThreads,
   subagentRequests,
@@ -1229,6 +1230,56 @@ describe("the sidebar", () => {
     pendingRuntimeRequest: null,
     lineage: { rootThreadId: id, parentThreadId: null, relationshipToParent: null },
     ...extra,
+  });
+
+  it("an open thread without a row marks its nearest listed ancestor's row", async () => {
+    const server = await connect();
+    const under = (parentId: string, relationship: "subagent" | null, sideChat = false) => ({
+      archivedAt: null,
+      lineage: {
+        rootThreadId: "parent",
+        parentThreadId: parentId,
+        relationshipToParent: relationship,
+        ...(sideChat ? { sideChat } : {}),
+      },
+    });
+    const delegated = (parentId: string, archivedAt: string | null = null) => ({
+      archivedAt,
+      delegatedFrom: { environmentId: ENV, threadId: parentId, title: parentId },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "p-1", title: "One", workspaceRoot: "/1" }],
+        threads: [
+          row("parent", "p-1", at, { archivedAt: null }),
+          row("subagent", "p-1", at, under("parent", "subagent")),
+          row("nested", "p-1", at, under("subagent", "subagent")),
+          row("side", "p-1", at, under("parent", null, true)),
+          row("task", "p-1", at, delegated("parent")),
+          row("archived", "p-1", at, { archivedAt: at }),
+          row("orphan-task", "p-1", at, delegated("archived")),
+          row("orphan", "p-1", at, under("missing", "subagent")),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const rowOf = async (threadId: string) => {
+      await server.runtime.dispatch(selectThread, server.envId(), threadId);
+      return server.runtime.processSelector(
+        sidebarRowThreadId,
+        () => server.environment().Replica.Shell,
+      );
+    };
+    expect(await rowOf("parent")).toBe("parent");
+    expect(await rowOf("subagent")).toBe("parent");
+    expect(await rowOf("nested")).toBe("parent");
+    expect(await rowOf("side")).toBe("parent");
+    expect(await rowOf("task")).toBe("parent");
+    expect(await rowOf("orphan-task")).toBe("orphan-task");
+    expect(await rowOf("orphan")).toBe("orphan");
   });
 
   it("lists top-level threads and leaves subagents out, live", async () => {

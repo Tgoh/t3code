@@ -16,7 +16,7 @@ import {
   type IPreferences,
   storePreferencesEffect,
 } from "./Infrastructure/preferences";
-import { sidebarThreads, subagentRequests } from "./Shell";
+import { sidebarRowThreadId, sidebarThreads, subagentRequests } from "./Shell";
 import { type ISidebarLayout, layoutSidebar, SETTLED_PAGE } from "./sidebarLayout";
 import { followColorScheme } from "./ThreadSession";
 import { liveScope } from "./threadSearch";
@@ -121,7 +121,7 @@ export function* sidebarLayout(draft: IEnvironment): ISelectorGenerator<ISidebar
   return layoutSidebar({
     Threads: yield* sidebarThreads(shell),
     Projects: shell.Projects,
-    SelectedId: draft.Local.SelectedThreadId,
+    SelectedId: yield* sidebarRowThreadId(shell),
     Now: draft.Local.Now,
     Subagents: yield* subagentRequests(shell),
     Preferences: draft.Local.Preferences,
