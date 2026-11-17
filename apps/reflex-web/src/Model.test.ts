@@ -8,7 +8,7 @@ import {
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, onTestFinished } from "vite-plus/test";
 
 import {
   addFolder,
@@ -16,7 +16,6 @@ import {
   closeThread,
   EnvironmentReceiver,
   type IEnvironment,
-  loadProviders,
   newProject,
   newThread,
   openThread,
@@ -26,6 +25,7 @@ import {
   threadCommand,
   toggleModelFavorite,
 } from "./Environment";
+import { gitBusy, runGitAction } from "./GitWork";
 import { loadEarlier, loadingEarlier } from "./HistoryWindow";
 import {
   archivedThreadCommand,
@@ -137,8 +137,10 @@ import {
   stopRun,
   terminalAttachment,
   TerminalReceiver,
+  toggleCodeWrap,
   toggleQuestionOption,
   toggleRightPanel,
+  unwrappedCodeBlocks,
 } from "./ThreadSession";
 import {
   assistantItem,
@@ -148,8 +150,10 @@ import {
   localRow,
   longThread,
   message,
+  REPLICA_WRITERS,
   run,
   snapshotOf,
+  tapReplicaWriters,
   THREAD_ID,
 } from "./testing/threadFixture";
 import { orderFolders } from "./projectOrder";
@@ -272,6 +276,11 @@ async function connect(
       },
     },
   );
+  const strayWriters = new Set<string | null>();
+  tapReplicaWriters(runtime, (name) => {
+    if (!REPLICA_WRITERS.has(name)) strayWriters.add(name);
+  });
+  onTestFinished(() => expect([...strayWriters], "actions that wrote the replica").toEqual([]));
   runtime.registerReceiver(RootReceiver);
   runtime.registerReceiver(EnvironmentReceiver);
   runtime.registerReceiver(ShellReceiver);
@@ -2076,17 +2085,30 @@ describe("writing to the server", () => {
     expect(server.environment().Replica.OpenThreads[threadId]).toBeUndefined();
   });
 
-  it("stop sends one command", async () => {
+  it("stop sends one command, and a stop's and a queue change's failures keep their own names", async () => {
     const stops: IStopThread[] = [];
+    let refuse = false;
     const server = await connect(undefined, null, {
       stopThread: (effect: IStopThread) => {
         stops.push(effect);
+        if (refuse) throw new Error("no run");
+      },
+      queueCommand: () => {
+        if (refuse) throw new Error("queue moved on");
       },
     });
     await server.open();
     await server.runtime.dispatch(stopRun, server.sessionId());
     expect(stops.map((stop) => stop.ThreadId)).toEqual([THREAD_ID]);
     expect(server.runtime.processSelector(stopping, () => server.session())).toBe(false);
+    refuse = true;
+    await server.runtime.dispatch(stopRun, server.sessionId());
+    await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
+    expect(server.session()).toMatchObject({ StopError: "no run", QueueError: "queue moved on" });
+    refuse = false;
+    await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
+    expect(server.session().QueueError).toBeUndefined();
+    expect(server.session().StopError).toBe("no run");
   });
 
   it("a queue command drops every queue press until it's answered, as stock's one busy run does", async () => {
@@ -2124,6 +2146,44 @@ describe("writing to the server", () => {
     releases.forEach((release) => release());
     await second;
     expect(runIds()).toEqual(["run-a", "run-b"]);
+  });
+
+  it("a git action's result lands on the thread's session, which outlives the details card", async () => {
+    let finish = () => {};
+    const server = await connect(undefined, THREAD_ID, {
+      gitAction: () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({
+              Title: "Pushed",
+              Description: null,
+              Branch: null,
+              PrUrl: null,
+              PrCreated: false,
+            });
+        }),
+    });
+    const checkout = {
+      EnvironmentId: ENV,
+      ThreadId: THREAD_ID,
+      ProjectId: "project-1",
+      Cwd: "/repo",
+      ProjectRoot: "/repo",
+      WorktreePath: null,
+    };
+    const running = server.runtime.dispatch(
+      runGitAction,
+      server.session().Git.$Id,
+      checkout,
+      { Action: "push", CommitMessage: null, FilePaths: null, FeatureBranch: true },
+      { RefName: "feature", IsDefaultRef: false, HasWorkingTreeChanges: false },
+      false,
+    );
+    await settled();
+    expect(server.runtime.processSelector(gitBusy, () => server.session().Git)).toBe(true);
+    finish();
+    await running;
+    expect(server.session().Git.Notice).toMatchObject({ Tone: "success", Title: "Pushed" });
   });
 
   it("send now starts a queued run when idle and steers it into the active run otherwise", async () => {
@@ -2450,15 +2510,65 @@ describe("writing to the server", () => {
     expect(commands).toMatchObject([{ ThreadId: "t-1", Command: { Kind: "settle" } }]);
     await refused({ Kind: "pin" }, "server said no");
     expect(server.runtime.state.Failure).toBe("server said no");
-    await server.runtime.dispatch(threadCommand, server.envId(), "t-1", {
-      Kind: "visit",
-      VisitedAt: "2026-01-01T00:00:00.000Z",
-    });
-    expect(server.runtime.state.Failure).toBe("server said no");
     await refused({ Kind: "unpin" }, "still no");
     expect(server.runtime.state.Failure).toBe("still no");
     await server.runtime.dispatch(dismissFailure, "Root");
     expect(server.runtime.state.Failure).toBeUndefined();
+  });
+
+  it("marks the selected thread visited once per completion, and again when it's selected again", async () => {
+    const visits: string[] = [];
+    let refuse = false;
+    const server = await connect(undefined, THREAD_ID, {
+      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+        if (effect.Command.Kind !== "visit") return;
+        visits.push(effect.ThreadId);
+        if (refuse) throw new Error("visit refused");
+      },
+    });
+    let sequence = 1;
+    const row = (id: string, completedAt: string, visitedAt: string | null) =>
+      ({
+        id,
+        projectId: "project-1",
+        title: id,
+        updatedAt: completedAt,
+        latestRunCompletedAt: completedAt,
+        lastVisitedAt: visitedAt,
+        lineage: { rootThreadId: id, parentThreadId: null, relationshipToParent: null },
+      }) as never;
+    const deliver = (id: string, completedAt: string, visitedAt: string | null) =>
+      server.sendShell({
+        kind: "thread.updated",
+        sequence: (sequence += 1),
+        location: "active",
+        thread: row(id, completedAt, visitedAt),
+      } as unknown as IWireShellItem);
+    await deliver(THREAD_ID, "2026-01-01T01:00:00.000Z", null);
+    await settled();
+    expect(visits).toEqual([THREAD_ID]);
+    await deliver(THREAD_ID, "2026-01-01T01:00:00.000Z", null);
+    await settled();
+    expect(visits).toEqual([THREAD_ID]);
+    await deliver("other", "2026-01-01T01:00:00.000Z", null);
+    await settled();
+    expect(visits).toEqual([THREAD_ID]);
+
+    refuse = true;
+    await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", "2026-01-01T01:00:00.000Z");
+    await settled();
+    expect(visits).toEqual([THREAD_ID, THREAD_ID]);
+    expect(server.runtime.state.Failure).toBeUndefined();
+    await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", null);
+    await settled();
+    expect(visits).toEqual([THREAD_ID, THREAD_ID]);
+
+    refuse = false;
+    await server.runtime.dispatch(selectThread, server.envId(), "other");
+    await settled();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await settled();
+    expect(visits).toEqual([THREAD_ID, THREAD_ID, "other", THREAD_ID]);
   });
 
   const draftProjectOf = (server: Awaited<ReturnType<typeof connect>>) => {
@@ -2539,6 +2649,37 @@ describe("writing to the server", () => {
     expect(server.environment().Local.SelectedThreadId).toBe("t-busy");
     await server.runtime.dispatch(addFolder, server.envId(), "/code/done");
     expect(draftProjectOf(server)).toBe("p-done");
+  });
+
+  it("adding an archived folder whose project is removed during the unarchive opens nothing", async () => {
+    const server = await connect(undefined, null, {
+      projectCommand: () =>
+        server.sendShell({
+          kind: "project.removed",
+          sequence: 2,
+          projectId: "p-old",
+        } as unknown as IWireShellItem),
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [
+          {
+            id: "p-old",
+            title: "Old",
+            workspaceRoot: "/code/old",
+            archivedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        threads: [],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    expect(await server.runtime.dispatch(addFolder, server.envId(), "/code/old")).toBe(
+      "This project was removed while it was being added.",
+    );
+    expect(server.environment().Local.SelectedThreadId).toBeNull();
   });
 
   it("cloning opens the project as soon as the server takes the clone", async () => {
@@ -2624,19 +2765,53 @@ describe("writing to the server", () => {
       { Kind: "delete", Force: true },
     ]);
     expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
-    expect(server.environment().Replica.Shell.Threads[THREAD_ID]).toBeUndefined();
-    expect(server.environment().Replica.Shell.Threads.other).toBeDefined();
     expect(server.environment().Local.SelectedThreadId).toBeNull();
+    expect(server.environment().Replica.Shell.Threads[THREAD_ID]).toBeDefined();
   });
 
-  it("deleting forgets the thread even when it isn't open, and clears the selection", async () => {
+  it("removing a project forgets threads the stream already removed during the request", async () => {
+    let removeRows = () => Promise.resolve();
+    const server = await connect(undefined, THREAD_ID, {
+      projectCommand: () => removeRows(),
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/1" }],
+        threads: [{ id: THREAD_ID, projectId: "project-1", title: "T" }],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.runtime.dispatch(setDraft, server.sessionId(), "kept");
+    removeRows = async () => {
+      await server.sendShell({
+        kind: "thread.removed",
+        sequence: 2,
+        threadId: THREAD_ID,
+      } as unknown as IWireShellItem);
+    };
+    expect(await server.runtime.dispatch(removeProject, server.envId(), "project-1")).toBeNull();
+    expect(server.environment().Replica.Shell.Threads[THREAD_ID]).toBeUndefined();
+    expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
+    expect(server.stored.Drafts.has(THREAD_ID)).toBe(false);
+  });
+
+  it("deleting forgets the session and selection on the reply, and leaves the thread to its stream", async () => {
     const server = await connect(undefined, THREAD_ID, { threadCommand: () => undefined });
     await server.runtime.dispatch(setDraft, server.sessionId(), "gone");
     await server.runtime.dispatch(threadCommand, server.envId(), THREAD_ID, { Kind: "delete" });
     expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeUndefined();
-    expect(server.environment().Replica.OpenThreads[THREAD_ID]).toBeUndefined();
     expect(server.environment().Local.SelectedThreadId).toBeNull();
     expect(server.address.thread).toBeNull();
+    expect(server.environment().Replica.OpenThreads[THREAD_ID]).toBeDefined();
+    await server.sendThread({
+      kind: "event",
+      sequence: 1,
+      event: event("thread.deleted", {}),
+    } as IWireThreadItem);
+    await settled();
+    expect(server.environment().Replica.OpenThreads[THREAD_ID]).toBeUndefined();
   });
 
   it("keeps a pending request's id stable when an unrelated row arrives", async () => {
@@ -2749,6 +2924,26 @@ describe("drafts", () => {
     await server.runtime.dispatch(threadCommand, server.envId(), THREAD_ID, { Kind: "delete" });
     expect(server.stored.Drafts.has(THREAD_ID)).toBe(false);
     expect(server.stored.Files.has(THREAD_ID)).toBe(false);
+  });
+});
+
+describe("code blocks", () => {
+  it("keep a wrap choice per thread, and lose it with the thread's session", async () => {
+    const server = await connect(undefined, THREAD_ID, { threadCommand: () => undefined });
+    const unwrapped = (threadId: string) =>
+      server.runtime.processSelector(unwrappedCodeBlocks, () => server.session(threadId));
+    await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0");
+    expect(unwrapped(THREAD_ID)).toEqual({ "item-1:0:0": true });
+    await server.runtime.dispatch(selectThread, server.envId(), "other");
+    expect(unwrapped("other")).toEqual({});
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    expect(unwrapped(THREAD_ID)).toEqual({ "item-1:0:0": true });
+    await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0");
+    expect(unwrapped(THREAD_ID)).toEqual({});
+    await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0");
+    await server.runtime.dispatch(threadCommand, server.envId(), THREAD_ID, { Kind: "delete" });
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    expect(unwrapped(THREAD_ID)).toEqual({});
   });
 });
 
@@ -3299,101 +3494,5 @@ describe("settings and usage", () => {
     fake.stopRefreshing();
     await server.runtime.dispatch(loadUsage, server.envId(), "7", input as never);
     expect(fake.calls.filter((call) => call.Type === "usageSummary")).toHaveLength(3);
-  });
-});
-
-describe("the replica's writers", () => {
-  it("are the stream receivers, opening and closing, history pages, providers, and the settings, archive and usage reads, plus every action on a replica entity", async () => {
-    const server = await connect(
-      async () =>
-        ({
-          snapshotSequence: 1,
-          items: [localRow(commandItem("c-0", "run-1", 0), 0)],
-          nextCursor: null,
-          hasMoreHistory: false,
-        }) as unknown as IWireHistoryPage,
-      null,
-      {
-        ...settingsServer().commands,
-        startTurn: () => undefined,
-        stopThread: () => undefined,
-        threadDiff: () => "",
-        respondRequest: () => undefined,
-      },
-    );
-    const actions = new Map<string, { Name: string | null; Path: string[] }>();
-    const writers = new Set<string | null>();
-    const replica = server.environment().Replica.$Id;
-    server.runtime.on("record", (record) => {
-      if (record.Kind === "action:start") actions.set(record.ActionId, record);
-      if (record.Kind !== "step") return;
-      const action = actions.get(record.ActionId);
-      const onReplica =
-        action?.Path.includes(replica) ||
-        record.Changes.some((change) => change.Path.includes("Replica"));
-      if (onReplica) writers.add(action?.Name ?? null);
-    });
-    await server.open();
-    await server.sendThread({
-      ...snapshotOf(
-        {
-          ...longThread(3),
-          runtimeRequests: [
-            {
-              id: "r-1",
-              kind: "command",
-              status: "pending",
-              responseCapability: { type: "live" },
-            },
-          ],
-        } as never,
-        1,
-      ),
-      historyCursor: "older",
-      hasMoreHistory: true,
-    });
-    await server.sendShell({ kind: "synchronized" });
-    await server.runtime.dispatch(loadProviders, server.envId());
-    await server.runtime.dispatch(setDraft, server.sessionId(), "local only");
-    await server.runtime.dispatch(send, server.sessionId());
-    await server.runtime.dispatch(stopRun, server.sessionId());
-    await server.runtime.dispatch(openDiff, server.sessionId(), "thread", null);
-    await server.runtime.dispatch(openTerminal, server.sessionId());
-    await server.runtime.dispatch(closeTerminal, server.sessionId());
-    const request = server.thread().RuntimeRequests["r-1"]!.$Id;
-    await server.runtime.dispatch(answerRequest, request, ENV, THREAD_ID, "accept", null);
-    await server.runtime.dispatch(loadEarlier, server.thread().History!.$Id);
-    await server.sendThread({
-      kind: "event",
-      sequence: 2,
-      event: event("thread.deleted", {}),
-    } as IWireThreadItem);
-    await settled();
-    expect(server.thread()).toBeUndefined();
-    await server.open();
-    await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
-    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "archived" });
-    await settled();
-    await server.runtime.dispatch(writeSetting, server.envId(), {
-      Store: "server",
-      Patch: { ghqCloneLayout: true },
-    });
-    await server.runtime.dispatch(archivedThreadCommand, server.envId(), "t-9", "unarchive");
-    await server.runtime.dispatch(loadUsage, server.envId(), "30", {} as never);
-    expect([...writers].sort()).toEqual([
-      "EnvironmentReceiver",
-      "ShellReceiver",
-      "ThreadReceiver",
-      "answerRequest",
-      "archivedThreadCommand",
-      "closeThread",
-      "loadArchived",
-      "loadEarlier",
-      "loadProviders",
-      "loadSettings",
-      "loadUsage",
-      "openThread",
-      "writeSetting",
-    ]);
   });
 });

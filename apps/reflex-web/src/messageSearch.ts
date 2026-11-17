@@ -1,13 +1,13 @@
-// @effect-diagnostics globalTimers:off -- A view-only debounce, outside any Effect runtime.
 import { visibleThreadSearch } from "@t3tools/client-runtime/state/thread-search";
 import { THREAD_SEARCH_QUERY_MAX_LENGTH } from "@t3tools/contracts";
 import { messageSearchTokens } from "@t3tools/shared/paletteSearch";
 import { type IActionGenerator, type IEntity, latest } from "treflex";
 import { useComponentState } from "treflex-solid";
-import { type Accessor, createEffect, createMemo, onCleanup } from "solid-js";
+import { type Accessor, createEffect, createMemo } from "solid-js";
 
 import Environment from "./Environment";
 import { searchThreadsEffect } from "./Infrastructure/commandEffects";
+import { delay } from "./Infrastructure/delay";
 import type { IThreadSearchMatch } from "./threadSearch";
 
 const DEBOUNCE_MS = 120;
@@ -17,7 +17,14 @@ interface IMessageSearch extends IEntity {
   Matches: IThreadSearchMatch[];
 }
 
-function* search(draft: IMessageSearch, environmentId: string, query: string): IActionGenerator {
+/** Each keystroke replaces the search waiting before it, so only a settled query is sent. */
+export function* searchMessages(
+  draft: IMessageSearch,
+  environmentId: string,
+  query: string,
+): IActionGenerator {
+  if (query === draft.Query) return;
+  yield* delay(DEBOUNCE_MS);
   try {
     draft.Matches = (yield* searchThreadsEffect({
       EnvironmentId: environmentId,
@@ -28,7 +35,7 @@ function* search(draft: IMessageSearch, environmentId: string, query: string): I
   }
   draft.Query = query;
 }
-latest(search);
+latest(searchMessages);
 
 // Follows normalizedQuery in useThreadSearch, apps/web/src/state/queries.ts: a pasted wall of text
 // searches by its start rather than failing the request.
@@ -50,12 +57,7 @@ export function useMessageSearch(query: Accessor<string>) {
   const active = createMemo(() => searchesMessages(normalized()));
   createEffect(() => {
     const next = normalized();
-    if (!active() || next === held.state.Query) return;
-    const timer = setTimeout(
-      () => held.dispatch(search, environment.state.EnvironmentId, next),
-      DEBOUNCE_MS,
-    );
-    onCleanup(() => clearTimeout(timer));
+    if (active()) void held.dispatch(searchMessages, environment.state.EnvironmentId, next);
   });
   const visible = createMemo(() => {
     if (!active()) return { query: "", matches: [] as readonly IThreadSearchMatch[] };

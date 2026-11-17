@@ -50,6 +50,7 @@ import {
   storeDraftFilesEffect,
 } from "./Infrastructure/draftMemory";
 import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
+import { getDefaultGitWork, type IGitWork } from "./GitWork";
 import {
   clockNowEffect,
   type IPreferences,
@@ -90,7 +91,7 @@ import {
   updateServerSettings,
   writeSetting,
 } from "./Settings";
-import { dropThreadRow, getDefaultShell, type IShell, openShellStream } from "./Shell";
+import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
 import {
   detachTerminal,
   getDefaultThreadSession,
@@ -228,9 +229,11 @@ function* sessionOf(
 ): IActionGenerator<IThreadSession> {
   const held = draft.Local.ThreadSessions[threadId];
   if (held !== undefined) return held;
-  draft.Local.ThreadSessions[threadId] = yield* entity<IThreadSession>(
-    getDefaultThreadSession(draft.EnvironmentId, threadId, newThreadProjectId),
-  );
+  const git = yield* entity<IGitWork>(getDefaultGitWork());
+  draft.Local.ThreadSessions[threadId] = yield* entity<IThreadSession>({
+    ...getDefaultThreadSession(draft.EnvironmentId, threadId, newThreadProjectId),
+    Git: git,
+  });
   const session = draft.Local.ThreadSessions[threadId]!;
   yield* openResource(session, "Composer/Files", {
     Type: "composerFiles",
@@ -278,6 +281,10 @@ export function* selectThread(draft: IEnvironment, threadId: string): IActionGen
   }
   yield* openThread(draft, threadId);
   yield* setAddressThread(threadId);
+  const row = draft.Replica.Shell.Threads[threadId];
+  if (row !== undefined && needsVisit(row)) {
+    yield* start(visitThread, draft.Replica.Shell, threadId, true);
+  }
 }
 
 export function* newThread(draft: IEnvironment, projectId: string): IActionGenerator {
@@ -301,12 +308,11 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
   yield* selectThread(draft, threadId);
 }
 
-function* forgetThread(draft: IEnvironment, threadId: string): IActionGenerator {
+/** Drops what only this client holds for a deleted thread; the streams remove its replica rows. */
+function* forgetSession(draft: IEnvironment, threadId: string): IActionGenerator {
   yield* storeDraftEffect({ ThreadId: threadId, Draft: null });
   yield* storeDraftFilesEffect({ ThreadId: threadId, Files: [] });
-  delete draft.Replica.OpenThreads[threadId];
   delete draft.Local.ThreadSessions[threadId];
-  yield* start(dropThreadRow, draft.Replica.Shell, threadId);
   yield* rememberTerminalEffect({ ThreadId: threadId, Launch: null });
   if (draft.Local.SelectedThreadId === threadId) {
     draft.Local.SelectedThreadId = null;
@@ -320,24 +326,18 @@ export function* threadCommand(
   command: IThreadCommand,
 ): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
-  try {
-    yield* open(
-      withCommandId((commandId) =>
-        threadCommandEffect({
-          EnvironmentId: environmentId,
-          ThreadId: threadId,
-          CommandId: commandId,
-          Command: command,
-        }),
-      ),
-    );
-  } catch (error) {
-    // A visit is bookkeeping the user didn't ask for, and the next one covers it.
-    if (command.Kind === "visit") return;
-    throw error;
-  }
-  // The shell doesn't say why a row left, and only an open thread's stream reports a deletion.
-  if (command.Kind === "delete") yield* forgetThread(draft, threadId);
+  yield* open(
+    withCommandId((commandId) =>
+      threadCommandEffect({
+        EnvironmentId: environmentId,
+        ThreadId: threadId,
+        CommandId: commandId,
+        Command: command,
+      }),
+    ),
+  );
+  // Only an open thread's stream reports a deletion; the shell doesn't say why a row left.
+  if (command.Kind === "delete") yield* forgetSession(draft, threadId);
 }
 
 function* sendProjectCommand(
@@ -367,7 +367,7 @@ export function* projectCommand(
   const drafts = Object.values(draft.Local.ThreadSessions)
     .filter((session) => session.NewThreadProjectId === projectId)
     .map((session) => session.ThreadId);
-  for (const threadId of drafts) yield* forgetThread(draft, threadId);
+  for (const threadId of drafts) yield* forgetSession(draft, threadId);
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -377,12 +377,7 @@ export function* removeProject(
   draft: IEnvironment,
   projectId: string,
 ): IOpenGenerator<string | null> {
-  try {
-    yield* sendProjectCommand(draft.EnvironmentId, projectId, { Kind: "delete", Force: true });
-  } catch (error) {
-    return errorText(error);
-  }
-  // The server deleted the project's threads too, and the shell doesn't say why a row left.
+  // Read before the wait: the shell stream can remove the project's rows while it runs.
   const threadIds = new Set<string>(
     Object.values(draft.Replica.Shell.Threads)
       .filter((thread) => thread.projectId === projectId)
@@ -391,7 +386,12 @@ export function* removeProject(
   for (const session of Object.values(draft.Local.ThreadSessions)) {
     if (session.NewThreadProjectId === projectId) threadIds.add(session.ThreadId);
   }
-  for (const threadId of threadIds) yield* forgetThread(draft, threadId);
+  try {
+    yield* sendProjectCommand(draft.EnvironmentId, projectId, { Kind: "delete", Force: true });
+  } catch (error) {
+    return errorText(error);
+  }
+  for (const threadId of threadIds) yield* forgetSession(draft, threadId);
   return null;
 }
 leading(removeProject);
@@ -435,29 +435,35 @@ export function* addFolder(
 ): IOpenGenerator<string | null> {
   const environmentId = draft.EnvironmentId;
   const existing = findProjectByPath(Object.values(draft.Replica.Shell.Projects), workspaceRoot);
+  const created = existing === undefined;
+  const archived = existing?.archivedAt != null;
   const projectId = existing?.id ?? (yield* generateGuid());
   try {
-    if (existing === undefined) {
+    if (created) {
       yield* sendProjectCommand(environmentId, projectId, {
         Kind: "create",
         Title: inferProjectTitleFromPath(workspaceRoot),
         WorkspaceRoot: workspaceRoot,
       });
-    } else if (existing.archivedAt != null) {
+    } else if (archived) {
       yield* sendProjectCommand(environmentId, projectId, { Kind: "unarchive" });
     }
   } catch (error) {
     return errorText(error);
   }
+  const project = draft.Replica.Shell.Projects[projectId];
+  if (!created && project === undefined) {
+    return "This project was removed while it was being added.";
+  }
   const latest =
-    existing === undefined
+    project === undefined || created
       ? null
       : getLatestThreadForProject(
           Object.values(draft.Replica.Shell.Threads).map((thread) => ({
             ...thread,
             archivedAt: thread.archivedAt ?? null,
           })),
-          existing.id,
+          project.id,
           "updated_at",
         );
   if (latest !== null && latest.settledOverride !== "settled")
@@ -562,7 +568,8 @@ export function* currentProjectRoot(draft: IEnvironment): ISelectorGenerator<str
 
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
   *"Thread/Deleted"(draft, { ThreadId }) {
-    yield* forgetThread(draft, ThreadId);
+    delete draft.Replica.OpenThreads[ThreadId];
+    yield* forgetSession(draft, ThreadId);
   },
   *"Thread/RequestsSettled"(draft, { ThreadId, PendingIds, UnansweredIds }) {
     const session = draft.Local.ThreadSessions[ThreadId];

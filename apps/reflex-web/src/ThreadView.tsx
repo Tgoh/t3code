@@ -23,7 +23,7 @@ import { ChevronDown, PanelBottom, PanelRight, SquareMenu } from "./icons";
 import { THREAD_SHORTCUT_EVENT } from "./keybindings";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
-import { needsVisit, runStatus } from "./Shell";
+import { runStatus } from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { SurfaceLauncher } from "./SurfaceLauncher";
 import { type ISurfaceKind, surfaceActions } from "./surfaces";
@@ -154,15 +154,6 @@ const ThreadBody = ThreadSession.provider(() => {
     return status === "running" || status === "waiting" ? status : null;
   };
   const checklist = useChecklist(() => turnState() !== null);
-  // Once per completion, so a thread marked unread while open stays unread until the next one.
-  let visitedCompletion: string | null | undefined;
-  createEffect(() => {
-    const row = environment.state.Replica.Shell.Threads[thread.state.ThreadId];
-    if (row === undefined || !needsVisit(row)) return;
-    if (visitedCompletion === row.latestRunCompletedAt) return;
-    visitedCompletion = row.latestRunCompletedAt;
-    environment.threadCommand(row.id, { Kind: "visit", VisitedAt: row.updatedAt });
-  });
   const terminalOpen = () => session.state.Terminal.Open;
   const diffOpen = () => session.state.Panels.Diff.Open;
   const launcherOpen = () => session.state.Panels.Launcher.Open && !diffOpen();
@@ -487,6 +478,7 @@ const ThreadBody = ThreadSession.provider(() => {
                   onDismiss={() => setDetailsPopover(false)}
                 >
                   <ThreadDetailsCard
+                    state={session.state.Git}
                     checkout={held}
                     scripts={projectScripts()}
                     running={turnState() !== null}

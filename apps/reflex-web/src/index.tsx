@@ -47,6 +47,7 @@ import {
   threadDiffImpl,
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
+import { delayImpl } from "./Infrastructure/delay";
 import { environmentInfoImpl } from "./Infrastructure/environmentInfoImpl";
 import {
   storeDraftFilesImpl,
@@ -81,7 +82,7 @@ import { PreferencesReceiver } from "./Preferences";
 import { ThreadReceiver } from "./OpenThread";
 import { getDefaultRoot, load, RootReceiver } from "./Root";
 import { ShellReceiver } from "./Shell";
-import { DetailsReceiver } from "./ThreadDetails";
+import { GitReceiver } from "./GitWork";
 import { TerminalReceiver } from "./ThreadSession";
 
 await pairFromUrl();
@@ -135,6 +136,7 @@ runtime.registerResourceType("projectClones", projectClones);
 runtime.registerResourceType("projectFavicons", projectFavicons);
 runtime.registerResourceType("serverKeybindings", serverKeybindings);
 runtime.registerResourceType("terminalSession", terminalSession);
+runtime.registerImplementation(delayImpl);
 runtime.registerImplementation(addressThreadImpl);
 runtime.registerImplementation(setAddressThreadImpl);
 runtime.registerImplementation(addressViewImpl);
@@ -159,7 +161,7 @@ runtime.registerReceiver(EnvironmentReceiver);
 runtime.registerReceiver(ShellReceiver);
 runtime.registerReceiver(ThreadReceiver);
 runtime.registerReceiver(TerminalReceiver);
-runtime.registerReceiver(DetailsReceiver);
+runtime.registerReceiver(GitReceiver);
 runtime.registerReceiver(PreferencesReceiver);
 // The Environment applies the scheme once it connects; this paints the loading screen in it.
 document.documentElement.dataset.theme = resolveScheme(
