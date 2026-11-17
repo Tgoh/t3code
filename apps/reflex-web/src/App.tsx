@@ -6,7 +6,7 @@ import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "soli
 import { AddProjectPalette } from "./AddProject";
 import { ProjectBadge } from "./brand";
 import { CommandPalette } from "./CommandPalette";
-import { Composer, FileDropSection } from "./Composer";
+import { Composer, COMPOSER_LANE, FileDropSection } from "./Composer";
 import Environment from "./Environment";
 import { adjacentThread, isEditable, resolveShortcutCommand, shortcutLabel } from "./keybindings";
 import {
@@ -56,7 +56,7 @@ const NewThreadView = ThreadSession.provider(() => {
       </header>
       <div class="chat-stage">
         <div class="timeline" />
-        <div class="composer-lane">
+        <div class={COMPOSER_LANE}>
           <Composer />
         </div>
       </div>
