@@ -58,17 +58,27 @@ export const providerOf = (
   selection: IWireModelSelection,
 ) => providers.find((provider) => provider.InstanceId === selection.instanceId);
 
-// Follows keepsUnavailableModelOptions in apps/web/src/providerModels.ts: these drivers discover
-// models at runtime, so a saved model missing from the catalog keeps its options as-is.
-const RUNTIME_CATALOG_DRIVERS = new Set(["opencode", "cursor", "pi", "acpRegistry"]);
+// Follows hasRuntimeModelCatalog and isRuntimeModelDefaultAlias in apps/web/src/providerModels.ts:
+// these drivers discover models at runtime, so a refresh can drop the model a thread uses.
+const RUNTIME_CATALOG_DRIVERS = new Set(["opencode", "antigravity", "cursor", "pi", "acpRegistry"]);
 
-function isOffCatalog(provider: IProviderOption | undefined, model: string): boolean {
+function missingFromCatalog(provider: IProviderOption | undefined, model: string): boolean {
   const driver = driverOf(provider);
   if (!RUNTIME_CATALOG_DRIVERS.has(driver)) return false;
-  if (driver === "acpRegistry" && model === DEFAULT_MODEL_BY_PROVIDER[driver]) return false;
+  if (
+    (driver === "antigravity" || driver === "acpRegistry") &&
+    model === DEFAULT_MODEL_BY_PROVIDER[driver]
+  ) {
+    return false;
+  }
   const slug = normalizeModelSlug(model, driver);
   return !(provider?.Models ?? []).some((candidate) => candidate.Slug === slug);
 }
+
+// Follows keepsUnavailableModelOptions: Antigravity lists its default only as an alias, which a
+// slug lookup would call missing.
+const isOffCatalog = (provider: IProviderOption | undefined, model: string) =>
+  driverOf(provider) !== "antigravity" && missingFromCatalog(provider, model);
 
 function withoutPlanAgent(caps: ModelCapabilities): ModelCapabilities {
   return {
@@ -285,6 +295,7 @@ export interface IPickerModel {
   Slug: string;
   Name: string;
   IsFavorite: boolean;
+  IsUnavailable?: true;
 }
 
 export interface IPickerList {
@@ -362,23 +373,34 @@ export function pickerList(input: {
   Tab: string | null;
   Query: string;
   LegacyExpanded: boolean;
+  Active: IWireModelSelection | null;
 }): IPickerList {
   const favorites = new Set(
     input.Favorites.map((favorite) => favoriteKey(favorite.Provider, favorite.Model)),
   );
-  const all = input.Providers.flatMap((provider) =>
-    provider.Models.map((model) => ({
+  const active = input.Active;
+  const all = input.Providers.flatMap((provider) => {
+    const models: Array<IProviderOption["Models"][number] & { IsUnavailable?: true }> = [
+      ...provider.Models,
+    ];
+    // Follows appendUnavailableDynamicModelSelection in apps/web/src/modelSelection.ts.
+    const slug = active?.instanceId === provider.InstanceId ? active.model.trim() : "";
+    if (slug !== "" && missingFromCatalog(provider, slug)) {
+      models.push({ Slug: slug, Name: slug, IsDefault: false, IsUnavailable: true });
+    }
+    return models.map((model) => ({
       InstanceId: provider.InstanceId,
       Driver: provider.Driver,
       ProviderName: provider.Name,
       Slug: model.Slug,
       Name: model.Name,
       IsFavorite: favorites.has(favoriteKey(provider.InstanceId, model.Slug)),
+      ...(model.IsUnavailable ? { IsUnavailable: true as const } : {}),
       IsLegacy: model.IsLegacy === true,
       ShortName: model.ShortName,
       SubProvider: model.SubProvider,
-    })),
-  );
+    }));
+  });
   const shown = (models: typeof all): IPickerModel[] =>
     models.map(({ IsLegacy: _legacy, ShortName: _short, SubProvider: _sub, ...model }) => model);
   if (input.Query.trim() !== "") {

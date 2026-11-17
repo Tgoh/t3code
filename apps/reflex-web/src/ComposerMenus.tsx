@@ -359,6 +359,7 @@ function PickerContent(props: { traits: ITraits | null }) {
       Tab: tab(),
       Query: query(),
       LegacyExpanded: expanded().has(tab() ?? ""),
+      Active: selection(),
     }),
   );
   const models = () => list().Models;
@@ -570,6 +571,11 @@ function PickerContent(props: { traits: ITraits | null }) {
                   {model.Name}
                   <span class="sr-only">, {model.ProviderName}</span>
                 </span>
+                <Show when={model.IsUnavailable}>
+                  <span class="flex-none rounded border border-border px-1 text-[10px] leading-4 font-medium text-muted-foreground">
+                    Unavailable
+                  </span>
+                </Show>
                 <Show when={isSelected(model)}>
                   <Check />
                 </Show>
