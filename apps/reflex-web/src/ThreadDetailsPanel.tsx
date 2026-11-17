@@ -60,6 +60,23 @@ const COMMIT_DIALOG_TITLE = "Commit changes";
 const COMMIT_DIALOG_DESCRIPTION =
   "Review and confirm your commit. Leave the message blank to auto-generate one.";
 
+const TINT = "bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)]";
+const ROW_BASE =
+  "flex h-8 min-w-0 items-center gap-2.5 border border-transparent text-left text-[13px] font-medium text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] [&>svg]:size-4 [&>svg]:flex-none [&>svg.brand-icon]:text-foreground [&>svg:not(.brand-icon)]:text-muted-foreground";
+const ACTION =
+  "cursor-pointer bg-transparent hover:not-disabled:not-aria-disabled:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)] disabled:cursor-default disabled:opacity-64 aria-disabled:cursor-default aria-disabled:opacity-64";
+const ROW = `${ROW_BASE} ${ACTION} w-full rounded-[8px] px-2.5 py-0`;
+const INERT_ROW = `${ROW_BASE} w-full cursor-default rounded-[8px] px-2.5 py-0`;
+const LABEL = "min-w-0 flex-1 truncate";
+const ICON_ACTION =
+  "-mr-1.5 inline-flex size-6 flex-none cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-muted-foreground hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)] hover:text-foreground [&_svg]:size-4";
+const SECTION = "flex flex-col px-2 pt-2 pb-2.5";
+const ERROR = "mx-2.5 mt-0.5 mb-1 text-[12px] text-error-foreground wrap-anywhere";
+const NOTE = "m-0 px-2 py-1.5 text-[12px]";
+const FIELD_LABEL = "text-[13px] font-medium";
+const FIELD =
+  "rounded-lg border border-input bg-background px-2 py-1.5 text-[14px] text-foreground";
+
 const actionContext = (status: VcsStatusResult | null): IActionContext => ({
   RefName: status?.refName ?? null,
   IsDefaultRef: status?.isDefaultRef ?? false,
@@ -152,9 +169,13 @@ function SplitRow(props: {
 }) {
   let group!: HTMLDivElement;
   return (
-    <div class="details-split" role="group" ref={group}>
+    <div
+      class="group/split flex w-full items-center rounded-[8px] hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)]"
+      role="group"
+      ref={group}
+    >
       <button
-        class="details-row details-split-primary"
+        class={`${ROW_BASE} ${ACTION} w-full flex-1 rounded-[8px_0_0_8px] px-2.5 py-0`}
         aria-disabled={props.disabled === true ? "true" : undefined}
         data-tip={props.tip}
         onClick={() => {
@@ -162,11 +183,14 @@ function SplitRow(props: {
         }}
       >
         {props.icon}
-        <span class="details-label">{props.label}</span>
+        <span class={LABEL}>{props.label}</span>
       </button>
-      <span class="details-split-rule" aria-hidden="true" />
+      <span
+        class="h-4 w-px flex-none bg-transparent group-hover/split:bg-[color-mix(in_srgb,var(--border)_65%,transparent)]"
+        aria-hidden="true"
+      />
       <button
-        class="details-row details-split-secondary"
+        class={`${ROW_BASE} ${ACTION} w-8 justify-center rounded-[0_8px_8px_0] p-0`}
         aria-label={props.menuLabel}
         disabled={props.menuDisabled === true}
         onClick={() => props.onMenu(menuAt(group))}
@@ -207,26 +231,26 @@ function CommitDialog(props: {
       <DialogHeader>
         <DialogTitle id="commit-dialog-title">{COMMIT_DIALOG_TITLE}</DialogTitle>
         <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
-        <div class="commit-summary">
-          <span class="commit-summary-key">Branch</span>
-          <span class="commit-summary-value">
+        <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 rounded-[12px] border border-border bg-[color-mix(in_srgb,var(--muted)_72%,transparent)] p-3 text-[14px]">
+          <span class="text-muted-foreground">Branch</span>
+          <span class="flex justify-between font-medium">
             {props.status.refName ?? "(detached HEAD)"}
             <Show when={props.status.isDefaultRef}>
-              <span class="commit-default">Default branch</span>
+              <span class="font-normal text-warning-foreground">Default branch</span>
             </Show>
           </span>
-          <span class="commit-summary-key">Files</span>
-          <ul class="commit-files">
+          <span class="text-muted-foreground">Files</span>
+          <ul class="col-span-full m-0 flex max-h-48 list-none flex-col gap-0.5 overflow-y-auto p-0">
             <For each={files()}>
               {(file) => (
                 <li>
-                  <label>
+                  <label class="flex items-center gap-2 font-mono text-[12px]">
                     <input
                       type="checkbox"
                       checked={!excluded().has(file.path)}
                       onChange={() => toggle(file.path)}
                     />
-                    <span class="commit-file-path">{file.path}</span>
+                    <span class={LABEL}>{file.path}</span>
                     <span class="diff-counts">
                       <span class="added-text">+{formatCount(file.insertions)}</span> /{" "}
                       <span class="removed-text">-{formatCount(file.deletions)}</span>
@@ -236,7 +260,7 @@ function CommitDialog(props: {
               )}
             </For>
           </ul>
-          <span class="commit-total diff-counts">
+          <span class="diff-counts col-span-full justify-self-end">
             <span class="added-text">
               +{formatCount(selected().reduce((sum, file) => sum + file.insertions, 0))}
             </span>
@@ -246,12 +270,12 @@ function CommitDialog(props: {
             </span>
           </span>
         </div>
-        <label class="commit-message-label" for="commit-message">
+        <label class={FIELD_LABEL} for="commit-message">
           Commit message (optional)
         </label>
         <textarea
           id="commit-message"
-          class="commit-message"
+          class={`${FIELD} resize-y`}
           rows={3}
           placeholder="Leave empty to auto-generate"
           value={message()}
@@ -294,22 +318,22 @@ function AddScriptDialog(props: {
           <DialogDescription>
             Scripts run in this thread's terminal, from its working folder.
           </DialogDescription>
-          <label class="commit-message-label" for="script-name">
+          <label class={FIELD_LABEL} for="script-name">
             Name
           </label>
           <input
             id="script-name"
-            class="commit-message"
+            class={FIELD}
             autofocus
             value={name()}
             onInput={(event) => setName(event.currentTarget.value)}
           />
-          <label class="commit-message-label" for="script-command">
+          <label class={FIELD_LABEL} for="script-command">
             Command
           </label>
           <input
             id="script-command"
-            class="commit-message mono"
+            class={`${FIELD} font-mono`}
             value={command()}
             onInput={(event) => setCommand(event.currentTarget.value)}
           />
@@ -452,13 +476,13 @@ const Body = (props: IDetailsProps) => {
   };
 
   return (
-    <div class="details-content">
-      <section class="details-section" aria-label="Workspace">
-        <div class="details-row inert" aria-label={`Run context: ${environment.state.Label}`}>
+    <div>
+      <section class={SECTION} aria-label="Workspace">
+        <div class={INERT_ROW} aria-label={`Run context: ${environment.state.Label}`}>
           <Server />
-          <span class="details-label">{environment.state.Label || "This machine"}</span>
+          <span class={LABEL}>{environment.state.Label || "This machine"}</span>
           <button
-            class="details-icon-action"
+            class={ICON_ACTION}
             aria-label="Open folder"
             data-tip="Open folder"
             onClick={() => void environment.openInFileManager(props.checkout.Cwd)}
@@ -478,9 +502,9 @@ const Body = (props: IDetailsProps) => {
         <Show
           when={props.scripts[0]}
           fallback={
-            <button class="details-row" onClick={() => setAddingScript(true)}>
+            <button class={ROW} onClick={() => setAddingScript(true)}>
               <Plus />
-              <span class="details-label">Add project script</span>
+              <span class={LABEL}>Add project script</span>
             </button>
           }
         >
@@ -495,39 +519,40 @@ const Body = (props: IDetailsProps) => {
             />
           )}
         </Show>
-        <Show when={details.state.ScriptError}>
-          {(error) => <p class="details-error">{error()}</p>}
-        </Show>
+        <Show when={details.state.ScriptError}>{(error) => <p class={ERROR}>{error()}</p>}</Show>
       </section>
 
       <Show when={git()?.isRepo}>
-        <section class="details-section separated" aria-label="Version Control">
+        <section
+          class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
+          aria-label="Version Control"
+        >
           <button
-            class="details-row details-select"
+            class={ROW}
             aria-label={`Branch: ${git()?.refName ?? "detached HEAD"}`}
             disabled={props.running || details.switchingBranch()}
             data-tip={props.running ? "Wait for the turn to finish to switch branches." : undefined}
             onClick={(event) => openBranches(menuAt(event.currentTarget))}
           >
             <GitBranch />
-            <span class="details-label">
+            <span class={LABEL}>
               {details.switchingBranch() ? "Switching…" : (git()?.refName ?? "Detached HEAD")}
             </span>
-            <ChevronDown class="details-chevron" />
+            <ChevronDown class="ml-auto" />
           </button>
           <Show when={details.state.BranchError ?? work.state.BranchError}>
-            {(error) => <p class="details-error">{error()}</p>}
+            {(error) => <p class={ERROR}>{error()}</p>}
           </Show>
           <Show
             when={!busy() && noticeLabel() === null}
             fallback={
-              <div class="details-row inert progress" role="status">
+              <div class={`${INERT_ROW} ${TINT}`} role="status">
                 <QuickActionIcon action={quick()} status={git()} />
-                <span class="details-label">{busy() ? "Working…" : noticeLabel()}</span>
+                <span class={LABEL}>{busy() ? "Working…" : noticeLabel()}</span>
                 <Show when={!busy() && work.state.Notice?.Url}>
                   {(url) => (
                     <a
-                      class="details-icon-action"
+                      class={ICON_ACTION}
                       href={url()}
                       target="_blank"
                       rel="noopener"
@@ -562,12 +587,12 @@ const Body = (props: IDetailsProps) => {
           </Show>
           <Show when={work.state.Notice?.Tone === "error" && work.state.Notice}>
             {(notice) => (
-              <div class="details-error-row" role="alert">
-                <p class="details-error">
+              <div class="flex items-start gap-1 pr-2" role="alert">
+                <p class={`${ERROR} flex-1`}>
                   {notice().Title}: {notice().Description}
                 </p>
                 <button
-                  class="details-icon-action"
+                  class={ICON_ACTION}
                   aria-label="Dismiss"
                   data-tip="Dismiss"
                   onClick={() => void work.dismissNotice()}
@@ -577,16 +602,16 @@ const Body = (props: IDetailsProps) => {
               </div>
             )}
           </Show>
-          <button class="details-row" onClick={() => void session.openDiff("branch", null)}>
+          <button class={ROW} onClick={() => void session.openDiff("branch", null)}>
             <FileDiff />
-            <span class="details-changes">
+            <span class="flex min-w-0 flex-1 items-baseline gap-1.5">
               <span>Changes</span>
               <Show when={totals()?.BaseRef !== undefined}>
-                <span class="details-muted">
+                <span class="min-w-0 truncate font-normal text-muted-foreground">
                   {totals()?.BaseRef === null ? "Uncommitted" : `vs ${totals()?.BaseRef}`}
                 </span>
               </Show>
-              <span class="details-counts">
+              <span class="ml-auto flex flex-none gap-2 pl-2 font-mono text-muted-foreground tabular-nums">
                 <span classList={{ "added-text": (totals()?.Insertions ?? 0) > 0 }}>
                   +{formatCount(totals()?.Insertions ?? 0)}
                 </span>
@@ -617,7 +642,7 @@ const Body = (props: IDetailsProps) => {
               onClose={closeMenu}
             >
               <div
-                class="details-menu"
+                class="flex max-w-[calc(100vw-16px)] flex-col"
                 style={{ width: `${Math.max(open().Anchor.Width, 220)}px` }}
               >
                 <Show when={open().Kind === "editor"}>
@@ -682,7 +707,7 @@ const Body = (props: IDetailsProps) => {
                     }}
                   </For>
                   <Show when={git()?.refName === null}>
-                    <p class="details-menu-note">
+                    <p class={`${NOTE} text-warning-foreground`}>
                       Detached HEAD: create and check out a branch to enable push and{" "}
                       {terminology().singular} actions.
                     </p>
@@ -690,7 +715,7 @@ const Body = (props: IDetailsProps) => {
                 </Show>
                 <Show when={open().Kind === "branch"}>
                   <input
-                    class="details-menu-search"
+                    class="-mx-1 -mt-1 mb-1 border-x-0 border-t-0 border-b border-border bg-transparent px-3 py-2 text-[13px] text-foreground outline-none"
                     placeholder="Search branches…"
                     autofocus
                     value={branchQuery()}
@@ -708,9 +733,9 @@ const Body = (props: IDetailsProps) => {
                       else void details.createBranch(branchQuery());
                     }}
                   />
-                  <div class="details-menu-list">
+                  <div class="flex max-h-72 flex-col overflow-y-auto">
                     <Show when={details.loadingBranches() && details.state.Branches === null}>
-                      <p class="details-menu-note">Loading branches…</p>
+                      <p class={`${NOTE} text-warning-foreground`}>Loading branches…</p>
                     </Show>
                     <For each={details.state.Branches ?? []}>
                       {(ref) => {
@@ -750,7 +775,7 @@ const Body = (props: IDetailsProps) => {
                       />
                     </Show>
                     <Show when={details.state.BranchError}>
-                      {(error) => <p class="details-menu-note error">{error()}</p>}
+                      {(error) => <p class={`${NOTE} text-error-foreground`}>{error()}</p>}
                     </Show>
                   </div>
                 </Show>
@@ -889,8 +914,7 @@ export function DetailsSurface(props: {
   return (
     <aside
       ref={setCard}
-      class="details-card"
-      classList={{ docked: props.inline, popover: !props.inline }}
+      class={`w-[280px] overflow-y-auto rounded-[16px] border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--popover)_var(--glass-opacity),transparent)] shadow-[0_10px_25px_-5px_rgb(0_0_0/12%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) ${props.inline ? "absolute top-3 right-3 z-30 max-h-[calc(100%-24px)]" : "fixed z-70 max-h-[min(calc(100dvh-6.5rem),32rem)] max-w-[calc(100vw-16px)]"}`}
       role="region"
       aria-label="Thread details"
       style={props.inline ? undefined : { top: `${place().Top}px`, right: `${place().Right}px` }}
