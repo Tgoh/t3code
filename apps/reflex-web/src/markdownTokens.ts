@@ -62,6 +62,22 @@ export function containsHtml(token: Token): boolean {
   );
 }
 
+// A loose list item lexes its paragraphs as bare text tokens, which marked's own parser wraps in <p>.
+export function blockTokens(tokens: Token[], loose = false): Token[] {
+  return tokens
+    .filter((token) => token.type !== "space" && token.type !== "def")
+    .map((token): Token =>
+      loose && token.type === "text"
+        ? {
+            type: "paragraph",
+            raw: token.raw,
+            text: token.text,
+            tokens: token.tokens ?? [{ type: "text", raw: token.raw, text: token.text }],
+          }
+        : token,
+    );
+}
+
 export const assistantHtml = (tokens: Token[]): string => assistantParser.parser(tokens);
 
 export interface ILexedMarkdown {
@@ -76,14 +92,13 @@ export function createMarkdownLexer(fromUser: boolean): (text: string) => ILexed
   let held = new Map<string, Token>();
   return (text) => {
     const next = new Map<string, Token>();
-    const blocks = (fromUser ? userParser : assistantParser)
-      .lexer(separateListsFromLabels(text))
-      .filter((token) => token.type !== "space" && token.type !== "def")
-      .map((token) => {
-        const reused = held.get(token.raw) ?? token;
-        next.set(token.raw, reused);
-        return reused;
-      });
+    const blocks = blockTokens(
+      (fromUser ? userParser : assistantParser).lexer(separateListsFromLabels(text)),
+    ).map((token) => {
+      const reused = held.get(token.raw) ?? token;
+      next.set(token.raw, reused);
+      return reused;
+    });
     held = next;
     return {
       Blocks: blocks,

@@ -1,12 +1,26 @@
 // @effect-diagnostics globalDate:off -- View-only labels for times already on the wire.
-const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-const dateFormatter = new Intl.DateTimeFormat(undefined, { month: "numeric", day: "numeric" });
+// A formatter keeps the default zone it was built in, so these run in UTC on the wall-clock time,
+// which Date reads from the current zone.
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "UTC",
+});
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "numeric",
+  day: "numeric",
+  timeZone: "UTC",
+});
 const dateWithYearFormatter = new Intl.DateTimeFormat(undefined, {
   month: "numeric",
   day: "numeric",
   year: "numeric",
+  timeZone: "UTC",
 });
-const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long" });
+const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" });
+
+const wallClockAsUtc = (date: Date): Date =>
+  new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
 
 const DAY_MS = 86_400_000;
 
@@ -24,19 +38,21 @@ function ordinalSuffix(day: number): string {
 export function dayAwareTimestamp(iso: string): string {
   const date = new Date(iso);
   const now = new Date();
-  const time = timeFormatter.format(date);
+  const wallClock = wallClockAsUtc(date);
+  const time = timeFormatter.format(wallClock);
   const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY_MS);
   if (days <= 0) return time;
   if (days === 1) return `yesterday at ${time}`;
   const formatter =
     date.getFullYear() === now.getFullYear() ? dateFormatter : dateWithYearFormatter;
-  return `${formatter.format(date)} ${time}`;
+  return `${formatter.format(wallClock)} ${time}`;
 }
 
 export function fullTimestamp(iso: string): string {
   const date = new Date(iso);
+  const wallClock = wallClockAsUtc(date);
   const day = date.getDate();
-  return `${timeFormatter.format(date)}, ${day}${ordinalSuffix(day)} ${monthFormatter.format(date)} ${date.getFullYear()}`;
+  return `${timeFormatter.format(wallClock)}, ${day}${ordinalSuffix(day)} ${monthFormatter.format(wallClock)} ${date.getFullYear()}`;
 }
 
 export const MINUTE = 60_000;

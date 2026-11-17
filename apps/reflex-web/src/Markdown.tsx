@@ -48,7 +48,7 @@ import {
   markdownImageTarget,
   sameTarget,
 } from "./markdownImage";
-import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
+import { assistantHtml, blockTokens, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } from "./sanitize";
 import ThreadSession from "./ThreadSession";
@@ -516,9 +516,10 @@ const INLINE: Record<string, Component<ITokenProps>> = {
   escape: LiteralToken,
 };
 
-function Blocks(props: { tokens: Token[] | undefined }) {
+function Blocks(props: { tokens: Token[]; loose?: boolean }) {
+  const blocks = createMemo(() => blockTokens(props.tokens, props.loose));
   return (
-    <Index each={props.tokens}>
+    <Index each={blocks()}>
       {(token) => <Dynamic component={BLOCK[token().type] ?? TextToken} token={token()} />}
     </Index>
   );
@@ -570,7 +571,7 @@ function ListItem(props: { item: Tokens.ListItem }) {
       <Show when={props.item.task}>
         <input type="checkbox" checked={props.item.checked === true} disabled />{" "}
       </Show>
-      <Blocks tokens={props.item.tokens} />
+      <Blocks tokens={props.item.tokens} loose={props.item.loose} />
     </li>
   );
 }
