@@ -1,11 +1,11 @@
 import { type JSX, splitProps } from "solid-js";
 
 const BASE =
-  "flex flex-none items-center gap-3 bg-background pl-5 in-[.sidebar-sheet]:gap-1 in-[.sidebar-sheet]:pr-[calc(8px+env(safe-area-inset-right))] in-[.sidebar-sheet]:pl-[calc(8px+env(safe-area-inset-left))]";
+  "flex flex-none items-center gap-3 bg-background pl-5 in-[.sidebar-collapsed]:pl-[calc(1.25rem+env(safe-area-inset-left))] in-[.sidebar-sheet]:gap-1 in-[.sidebar-sheet]:pr-[calc(8px+env(safe-area-inset-right))] in-[.sidebar-sheet]:pl-[calc(8px+env(safe-area-inset-left))]";
 
 const VARIANTS = {
-  thread: "h-(--topbar-height) pr-[13px]",
-  page: "h-12 border-b border-border pr-2",
+  thread: "h-(--topbar-height) pr-[calc(13px+env(safe-area-inset-right))]",
+  page: "h-12 border-b border-border pr-[calc(0.5rem+env(safe-area-inset-right))]",
 };
 
 /** The bar across the top of the main column: a thread's, or a page's such as settings or usage. */

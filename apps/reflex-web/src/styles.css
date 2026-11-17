@@ -216,6 +216,7 @@ body {
 @media (pointer: coarse) and (max-height: 500px) {
   :root {
     --composer-gap: 4px;
+    --topbar-height: 40px;
   }
 }
 
