@@ -1722,6 +1722,9 @@ describe("the sidebar", () => {
       status({ status: "completed", latestRunCompletedAt: at, lastVisitedAt: "2025-01-01" }),
     ).toBe("done");
     expect(status({ status: "completed", latestRunCompletedAt: at, lastVisitedAt: at })).toBeNull();
+    for (const stopped of ["interrupted", "cancelled"]) {
+      expect(status({ status: stopped, ...unseen })).toBeNull();
+    }
 
     const started = (extra: object) => workingStartedAt(row("t", "p", at, extra) as never);
     const run = "2026-01-01T01:00:00.000Z";

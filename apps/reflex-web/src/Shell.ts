@@ -380,6 +380,7 @@ export function sidebarStatus(
       thread.status === "failed";
     return settles && !hasUnseenRunFailure(thread) ? null : "failed";
   }
+  if (thread.status === "interrupted" || thread.status === "cancelled") return null;
   const completed = thread.latestRunId === null ? null : runCompletedAt(thread);
   const visited = thread.lastVisitedAt;
   if (completed == null || Number.isNaN(Date.parse(completed)) || !visited) return null;
