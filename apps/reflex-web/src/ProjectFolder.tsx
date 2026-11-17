@@ -20,7 +20,7 @@ import {
 import type { IProjectCommand } from "./Infrastructure/commandEffects";
 import type { IWireProject } from "./Infrastructure/wire";
 import Shell, { type IProjectFolder, isBusy, sidebarStatus } from "./Shell";
-import { RenameInput } from "./ThreadCard";
+import { CARD_ACTION, RenameInput } from "./ThreadCard";
 import { Button } from "./ui/Button";
 import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
 import {
@@ -174,8 +174,8 @@ export function FolderHeader(props: {
   return (
     <li>
       <div
-        class="section-header folder-header"
-        classList={{ draggable: props.draggable }}
+        class="group/folder mt-2 flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-[13px] font-semibold text-sidebar-foreground select-none hover:bg-sidebar-row-hover"
+        data-folder-header
         role="button"
         tabindex="0"
         aria-expanded={props.open}
@@ -197,23 +197,25 @@ export function FolderHeader(props: {
           props.onMenu(event.clientX, event.clientY);
         }}
       >
-        <ChevronRight class="section-chevron" classList={{ open: props.open }} />
+        <ChevronRight class={props.open ? "size-3.5 rotate-90" : "size-3.5"} />
         <ProjectBadge project={props.folder.Project} size={12} />
-        <Show when={props.renaming} fallback={<span class="folder-title">{title()}</span>}>
+        <Show when={props.renaming} fallback={<span class="truncate">{title()}</span>}>
           <RenameInput title={title()} onDone={props.onRenamed} />
         </Show>
         <Show when={props.folder.Project?.pinnedAt != null}>
-          <Pin class="folder-pin" />
+          <Pin class="size-3 flex-none text-sidebar-muted-foreground" />
         </Show>
         <Show when={!props.open && needsYou()}>
-          <span class="folder-dot" aria-label="Needs you" />
+          <span class="size-1.5 flex-none rounded-full bg-info-foreground" aria-label="Needs you" />
         </Show>
-        <span class="section-count">{props.folder.Threads.length}</span>
+        <span class="ml-auto tabular-nums group-hover/folder:hidden group-focus-within/folder:hidden pointer-coarse:hidden">
+          {props.folder.Threads.length}
+        </span>
         <Show when={props.folder.Project !== undefined}>
-          <span class="card-actions folder-actions">
+          <span class="-mr-1 ml-auto hidden flex-none items-center gap-0.5 group-hover/folder:inline-flex group-focus-within/folder:inline-flex pointer-coarse:inline-flex">
             <button
               type="button"
-              class="card-action"
+              class={CARD_ACTION}
               aria-label={`New thread in ${title()}`}
               data-tip="New thread"
               onClick={(event) => {
@@ -225,7 +227,7 @@ export function FolderHeader(props: {
             </button>
             <button
               type="button"
-              class="card-action"
+              class={CARD_ACTION}
               aria-label="Project actions"
               data-tip="Project actions"
               onClick={(event) => {

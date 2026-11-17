@@ -13,7 +13,7 @@ import {
 } from "solid-js";
 
 import { ProjectBadge } from "./brand";
-import { Composer, FileDropSection } from "./Composer";
+import { Composer, COMPOSER_LANE, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow from "./HistoryWindow";
@@ -545,7 +545,7 @@ const ThreadBody = ThreadSession.provider(() => {
               </Show>
             </div>
           </div>
-          <div class="composer-lane" ref={lane}>
+          <div class={COMPOSER_LANE} ref={lane}>
             <Show when={!stuck()}>
               <button class="scroll-to-end" onClick={scrollToEnd}>
                 <ChevronDown />

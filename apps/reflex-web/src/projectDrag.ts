@@ -39,7 +39,7 @@ export function createProjectDrag(options: {
     const Middles: number[] = [];
     const Tops: number[] = [];
     for (const block of blocks) {
-      const header = (block.querySelector(".folder-header") ?? block).getBoundingClientRect();
+      const header = (block.querySelector("[data-folder-header]") ?? block).getBoundingClientRect();
       Tops.push(block.getBoundingClientRect().top - base);
       Middles.push(header.top + header.height / 2 - base);
     }

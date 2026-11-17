@@ -2,10 +2,13 @@
 import {
   type Component,
   createComponent,
+  createRoot,
   createSignal,
+  getOwner,
   type JSX,
   onCleanup,
   onMount,
+  type Owner,
   Show,
 } from "solid-js";
 
@@ -14,12 +17,18 @@ const SIDE_OFFSET = 4;
 const OPEN_DELAY_MS = 600;
 const WARM_MS = 400;
 
-const cards = new WeakMap<Element, () => JSX.Element>();
+interface ICard {
+  Render: () => JSX.Element;
+  // The popup mounts under TooltipHost, outside the providers the card reads, so it renders under the trigger's owner.
+  Owner: Owner | null;
+}
+
+const cards = new WeakMap<Element, ICard>();
 
 export const hoverCard =
   <P extends object>(card: Component<P>, props: P) =>
   (element: HTMLElement) => {
-    cards.set(element, () => createComponent(card, props));
+    cards.set(element, { Render: () => createComponent(card, props), Owner: getOwner() });
   };
 
 interface IOpenTip {
@@ -60,6 +69,8 @@ const CARD =
 
 function TipPopup(props: { tip: IOpenTip }) {
   const card = cards.get(props.tip.Trigger);
+  let disposeCard: (() => void) | undefined;
+  onCleanup(() => disposeCard?.());
   return (
     <div
       ref={(popup) => queueMicrotask(() => place(popup, props.tip.Trigger))}
@@ -67,7 +78,12 @@ function TipPopup(props: { tip: IOpenTip }) {
       role="tooltip"
       data-instant={props.tip.Instant ? "" : undefined}
     >
-      {card === undefined ? props.tip.Trigger.dataset.tip : card()}
+      {card === undefined
+        ? props.tip.Trigger.dataset.tip
+        : createRoot((dispose) => {
+            disposeCard = dispose;
+            return card.Render();
+          }, card.Owner)}
     </div>
   );
 }

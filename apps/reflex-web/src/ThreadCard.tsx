@@ -47,6 +47,27 @@ const HOVER_LINE =
   "flex min-w-0 items-center gap-2 [&_.provider-icon]:opacity-60 [&_.provider-icon]:grayscale [&_span]:min-w-0 [&_span]:truncate [&_svg.lucide]:size-3";
 const hoverLine = `${HOVER_LINE} [&_span]:text-[color-mix(in_srgb,var(--foreground)_75%,transparent)]`;
 
+const CARD_LINE = "flex h-5 min-w-0 items-center gap-1.5";
+const MARK = "[&_mark]:bg-transparent [&_mark]:font-bold [&_mark]:text-inherit";
+// On touch a tap leaves :hover and focus on the card it selected, so there the status stays and
+// the actions open by long-press; only keyboard focus swaps them.
+const CARD_SLOT =
+  "inline-flex flex-none group-hover/card:hidden group-focus-visible/card:hidden group-has-[:focus-visible]/card:hidden [@media(hover:hover)]:group-focus-within/card:hidden";
+const CARD_ACTIONS =
+  "-mr-1 hidden flex-none items-center gap-0.5 group-hover/card:inline-flex group-focus-visible/card:inline-flex group-has-[:focus-visible]/card:inline-flex [@media(hover:hover)]:group-focus-within/card:inline-flex";
+export const CARD_ACTION =
+  "inline-flex h-5 cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0 text-[12px] leading-4 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground [&_svg]:size-3.5";
+
+export const STATUS_TONE: Record<NonNullable<ISidebarStatus>, string> = {
+  preparing: "text-info-foreground",
+  working: "text-info-foreground",
+  waiting: "text-sidebar-muted-foreground",
+  approval: "text-warning-foreground",
+  input: "text-(--input-status)",
+  failed: "text-error-foreground",
+  done: "text-success-foreground",
+};
+
 export const STATUS_LABEL: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "Setting up",
   working: "Working",
@@ -152,7 +173,7 @@ export function RenameInput(props: { title: string; onDone: (title: string | nul
   };
   return (
     <input
-      class="card-rename"
+      class="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 py-0 text-[14px] leading-[18px] font-medium outline-none focus:border-foreground"
       aria-label="Thread title"
       value={props.title}
       ref={(input) =>
@@ -223,7 +244,9 @@ export function ThreadCard(props: {
     <Show
       when={props.renaming}
       fallback={
-        <span class="card-title">
+        <span
+          class={`min-w-0 flex-1 truncate text-[14px] leading-5 font-medium text-sidebar-foreground group-data-receded/card:font-normal group-data-receded/card:text-[color-mix(in_srgb,var(--sidebar-foreground)_75%,transparent)] group-data-receded/card:group-hover/card:text-sidebar-foreground ${MARK}`}
+        >
           <Show when={props.search} fallback={props.thread.title}>
             {(search) => <Highlighted text={props.thread.title} ranges={search().ranges} />}
           </Show>
@@ -245,26 +268,27 @@ export function ThreadCard(props: {
       aria-selected={props.search ? props.search.highlighted : undefined}
     >
       <div
-        class="thread-card"
+        class="group/card block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left not-data-selected:hover:bg-sidebar-row-hover data-compact:py-1.5 data-dimmed:opacity-70 data-dimmed:hover:opacity-100 data-highlighted:not-data-selected:bg-sidebar-row-hover data-highlighted:not-data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ring)_50%,transparent)] data-selected:bg-sidebar-row-active data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--sidebar-border)_70%,transparent)] [@media(hover:none)]:select-none [@media(hover:none)]:[-webkit-touch-callout:none]"
         role="button"
         tabindex="0"
         data-tip=""
         data-tip-side="right"
         data-tip-delay="150"
         ref={hoverCard(ThreadHoverCard, props)}
-        classList={{
-          compact: props.compact,
-          main: isMainThread(props.thread),
-          selected: props.selected,
-          highlighted: props.search?.highlighted === true,
-          receded:
-            !props.selected &&
-            (status() === null ||
-              isBusy(status()) ||
-              status() === "waiting" ||
-              status() === "approval"),
-          dimmed: !props.selected && isBusy(status()),
-        }}
+        data-compact={props.compact ? "" : undefined}
+        data-main={isMainThread(props.thread) ? "" : undefined}
+        data-selected={props.selected ? "" : undefined}
+        data-highlighted={props.search?.highlighted === true ? "" : undefined}
+        data-receded={
+          !props.selected &&
+          (status() === null ||
+            isBusy(status()) ||
+            status() === "waiting" ||
+            status() === "approval")
+            ? ""
+            : undefined
+        }
+        data-dimmed={!props.selected && isBusy(status()) ? "" : undefined}
         onClick={() => {
           if (!press.swallowsClick()) select();
         }}
@@ -286,7 +310,7 @@ export function ThreadCard(props: {
         onPointerUp={press.onPointerUp}
         onPointerCancel={press.onPointerCancel}
       >
-        <span class="card-line">
+        <span class={CARD_LINE}>
           <Show
             when={props.compact}
             fallback={
@@ -294,18 +318,20 @@ export function ThreadCard(props: {
                 <ProjectBadge
                   project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
                 />
-                <span class="card-project">{props.projectName}</span>
+                <span class="min-w-0 flex-1 truncate text-[12px] leading-4 text-(--sidebar-secondary-label)">
+                  {props.projectName}
+                </span>
               </>
             }
           >
             {title()}
             {provider()}
           </Show>
-          <span class="card-slot">
+          <span class={CARD_SLOT}>
             <Show
               when={status()}
               fallback={
-                <span class="card-time">
+                <span class="flex-none text-[12px] leading-4 text-(--sidebar-secondary-label) tabular-nums">
                   {props.section === "snoozed"
                     ? timeUntil(props.thread.snoozedUntil ?? "", props.now)
                     : relativeTime(activityAt(props.thread) ?? props.thread.updatedAt, props.now)}
@@ -313,22 +339,24 @@ export function ThreadCard(props: {
               }
             >
               {(held) => (
-                <span class={`card-status ${held()}`}>
+                <span
+                  class={`inline-flex flex-none items-center gap-1 text-[12px] leading-4 font-medium ${STATUS_TONE[held()]}`}
+                >
                   <StatusIcon status={held()} />
                   {STATUS_LABEL[held()]}
                   <Show when={(isBusy(held()) || held() === "waiting") && workingFor()}>
-                    {(elapsed) => <span class="card-elapsed">{elapsed()}</span>}
+                    {(elapsed) => <span class="tabular-nums">{elapsed()}</span>}
                   </Show>
                 </span>
               )}
             </Show>
           </span>
-          <span class="card-actions">
+          <span class={CARD_ACTIONS}>
             <Switch>
               <Match when={props.section === "settled"}>
                 <button
                   type="button"
-                  class="card-action"
+                  class={CARD_ACTION}
                   aria-label="Un-settle thread"
                   data-tip="Un-settle thread"
                   onClick={(event) => act(event, { Kind: "unsettle" })}
@@ -339,7 +367,7 @@ export function ThreadCard(props: {
               <Match when={props.section === "snoozed"}>
                 <button
                   type="button"
-                  class="card-action"
+                  class={CARD_ACTION}
                   aria-label="Wake thread now"
                   data-tip="Wake thread now"
                   onClick={(event) => act(event, { Kind: "unsnooze" })}
@@ -350,7 +378,7 @@ export function ThreadCard(props: {
               <Match when={true}>
                 <button
                   type="button"
-                  class="card-action"
+                  class={CARD_ACTION}
                   aria-label="Settle thread"
                   data-tip="Settle thread"
                   onClick={(event) => act(event, { Kind: "settle" })}
@@ -362,7 +390,7 @@ export function ThreadCard(props: {
             </Switch>
             <button
               type="button"
-              class="card-action"
+              class={CARD_ACTION}
               aria-label="More actions"
               data-tip="More actions"
               onClick={(event) => {
@@ -375,14 +403,16 @@ export function ThreadCard(props: {
           </span>
         </span>
         <Show when={!props.compact}>
-          <span class="card-line title-line">
+          <span class={`${CARD_LINE} mt-1 [&_.provider-icon]:opacity-60`}>
             {title()}
             {provider()}
           </span>
         </Show>
         <Show when={props.search?.snippet}>
           {(snippet) => (
-            <span class="card-snippet">
+            <span
+              class={`mt-1 line-clamp-2 text-[12px] leading-4 text-(--sidebar-secondary-label) ${MARK}`}
+            >
               <Highlighted
                 text={snippet()}
                 ranges={findSearchTokenRanges(snippet(), props.search?.query ?? "")}

@@ -53,6 +53,21 @@ const CONNECTION_LABEL: Record<string, string> = {
 const SECOND = 1_000;
 const searchResultId = (threadId: string) => `sidebar-search-result-${threadId}`;
 
+// The sheet and collapse states are classes App.tsx sets on the layout around the sidebar.
+const SIDEBAR =
+  "flex h-full min-h-0 flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) bg-size-[256px_256px] text-sidebar-foreground in-[.sidebar-collapsed]:hidden in-[.sidebar-sheet]:absolute in-[.sidebar-sheet]:top-[env(safe-area-inset-top)] in-[.sidebar-sheet]:bottom-0 in-[.sidebar-sheet]:left-0 in-[.sidebar-sheet]:z-50 in-[.sidebar-sheet]:w-[calc(100vw-12px)] in-[.sidebar-sheet]:pl-[env(safe-area-inset-left)] in-[.sidebar-sheet:not(.sidebar-open)]:invisible in-[.sidebar-sheet:not(.sidebar-open)]:[transform:translateX(-100%)] in-[.sidebar-sheet:not(.sidebar-open)]:[transition:transform_0.2s_ease-in-out,visibility_0s_linear_0.2s] in-[.sidebar-open]:shadow-[0_8px_24px_rgb(0_0_0/12%)] in-[.sidebar-open]:[transition:transform_0.2s_ease-in-out]";
+const STAGE_FADE =
+  "after:bg-[linear-gradient(to_bottom,transparent_0%,transparent_28%,color-mix(in_srgb,var(--sidebar)_10%,transparent)_40%,color-mix(in_srgb,var(--sidebar)_30%,transparent)_52%,color-mix(in_srgb,var(--sidebar)_58%,transparent)_64%,color-mix(in_srgb,var(--sidebar)_82%,transparent)_75%,color-mix(in_srgb,var(--sidebar)_96%,transparent)_85%,var(--sidebar)_93%)]";
+const THREAD_LIST =
+  "relative m-0 flex min-h-0 flex-1 list-none flex-col gap-[5px] overflow-y-auto px-2 pt-0.5 pb-[calc(8px+var(--safe-bottom))] [scrollbar-width:none]";
+const FOLDER_GROUP = "list-none [[data-folder-group]+&]:mt-3";
+// Each row after the header hangs off a guide line under the folder's chevron, reaching up into
+// the rows' gap so it reads as one line; the main thread's row draws it as a green bar.
+const FOLDER_ROWS =
+  "m-0 flex list-none flex-col gap-[5px] p-0 [&>li+li]:relative [&>li+li]:pl-3.5 [&>li+li]:before:absolute [&>li+li]:before:-top-[5px] [&>li+li]:before:bottom-0 [&>li+li]:before:left-3 [&>li+li]:before:w-px [&>li+li]:before:bg-sidebar-border [&>li:has(>[data-main])]:before:top-0 [&>li:has(>[data-main])]:before:left-[11px] [&>li:has(>[data-main])]:before:w-[3px] [&>li:has(>[data-main])]:before:rounded-[2px] [&>li:has(>[data-main])]:before:bg-success";
+const SIDEBAR_ERROR = "mx-[18px] mt-0 mb-2 text-[12px] text-error-foreground";
+const COUNT = "ml-auto tabular-nums";
+
 function SectionHeader(props: {
   label: string;
   count: number;
@@ -63,13 +78,13 @@ function SectionHeader(props: {
     <li>
       <button
         type="button"
-        class="section-header"
+        class="mt-2 flex h-7 w-full cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-0 text-[12px] font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
         aria-expanded={props.open}
         onClick={props.onToggle}
       >
-        <ChevronRight class="section-chevron" classList={{ open: props.open }} />
+        <ChevronRight class={props.open ? "size-3.5 rotate-90" : "size-3.5"} />
         {props.label}
-        <span class="section-count">{props.count}</span>
+        <span class={COUNT}>{props.count}</span>
       </button>
     </li>
   );
@@ -312,24 +327,27 @@ export const Sidebar = Shell.provider(() => {
     />
   );
   return (
-    <nav class="sidebar">
-      <header class="sidebar-brand">
-        <div class="sidebar-stage">
+    <nav class={SIDEBAR} data-sidebar>
+      <header class="relative flex h-(--topbar-height) flex-none items-center px-3">
+        <div
+          class={`pointer-events-none absolute inset-x-0 top-0 h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_92%)] after:absolute after:inset-0 after:content-[''] ${STAGE_FADE}`}
+        >
           <StageArt />
         </div>
         <SidebarToggle inSidebar />
-        <span class="brand-mark">
+        <span class="relative inline-flex items-baseline gap-1 text-[14px] font-medium tracking-tight text-white">
           <T3Mark />
-          <span>Code</span>
+          <span class="text-[rgb(255_255_255/70%)]">Code</span>
         </span>
         <Show when={connection() !== "connected"}>
-          <span class="connection">{connection()}</span>
+          <span class="relative ml-auto text-[12px] font-medium text-white">{connection()}</span>
         </Show>
       </header>
-      <div class="sidebar-header-row">
-        <div class="sidebar-search">
+      <div class="relative flex flex-none items-center gap-0.5 px-2 pt-1 pb-2">
+        <div class="relative mr-0.5 flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-2 text-sidebar-muted-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ring)_70%,transparent)] hover:bg-sidebar-row-hover hover:text-sidebar-foreground [&>svg]:size-4">
           <Search />
           <input
+            class="min-w-0 flex-1 border-0 bg-transparent text-[14px] font-medium text-sidebar-foreground outline-none placeholder:text-sidebar-muted-foreground [&::-webkit-search-cancel-button]:appearance-none"
             type="search"
             placeholder="Search"
             aria-label="Search threads"
@@ -513,11 +531,11 @@ export const Sidebar = Shell.provider(() => {
         )}
       </Show>
       <Show when={endedReason()}>
-        {(reason) => <p class="sidebar-error">The shell stream ended: {reason()}</p>}
+        {(reason) => <p class={SIDEBAR_ERROR}>The shell stream ended: {reason()}</p>}
       </Show>
       <Show when={root.state.Failure}>
         {(failure) => (
-          <p class="sidebar-error">
+          <p class={SIDEBAR_ERROR}>
             That didn't work: {failure()}
             <IconButton
               size="sm"
@@ -540,7 +558,7 @@ export const Sidebar = Shell.provider(() => {
           }
         >
           <ul
-            class="thread-list"
+            class={THREAD_LIST}
             id="sidebar-search-results"
             role="listbox"
             aria-label="Thread search results"
@@ -556,14 +574,17 @@ export const Sidebar = Shell.provider(() => {
                   }
                 >
                   {(projectId) => (
-                    <li class="folder-group" role="presentation">
-                      <ul class="folder-rows" role="presentation">
-                        <li class="search-folder" role="presentation">
+                    <li class={FOLDER_GROUP} role="presentation" data-folder-group>
+                      <ul class={FOLDER_ROWS} role="presentation">
+                        <li
+                          class="flex h-7 items-center gap-1.5 px-1.5 text-[13px] font-semibold text-sidebar-foreground"
+                          role="presentation"
+                        >
                           <ProjectBadge project={shell.state.Projects[projectId()]} size={12} />
-                          <span class="folder-title">
+                          <span class="truncate">
                             {shell.state.Projects[projectId()]?.title ?? "Unknown project"}
                           </span>
-                          <span class="section-count">{group.Results.length}</span>
+                          <span class={COUNT}>{group.Results.length}</span>
                         </li>
                         <For each={group.Results}>
                           {(result) => card(result.Thread, sectionOf(result.Thread), true, result)}
@@ -591,7 +612,7 @@ export const Sidebar = Shell.provider(() => {
           </Show>
         }
       >
-        <ul class="thread-list" ref={setList}>
+        <ul class={THREAD_LIST} ref={setList}>
           <For each={sections().Pinned}>{(thread) => card(thread, "pinned")}</For>
           <Show
             when={
@@ -599,7 +620,7 @@ export const Sidebar = Shell.provider(() => {
               (grouped() ? folders().size > 0 : sections().Active.length > 0)
             }
           >
-            <li class="section-divider" />
+            <li class="mx-2.5 my-1 border-t border-sidebar-border" />
           </Show>
           <Show
             when={grouped()}
@@ -610,11 +631,12 @@ export const Sidebar = Shell.provider(() => {
                 const folder = () => folders().get(projectId)!;
                 return (
                   <li
-                    class="folder-group"
-                    classList={{ dragging: drag.dragging() === projectId }}
+                    class={`${FOLDER_GROUP} data-dragging:opacity-40`}
+                    data-folder-group
+                    data-dragging={drag.dragging() === projectId ? "" : undefined}
                     data-folder-id={projectId}
                   >
-                    <ul class="folder-rows">
+                    <ul class={FOLDER_ROWS}>
                       <FolderHeader
                         folder={folder()}
                         open={!closedFolders().has(projectId)}
@@ -650,14 +672,14 @@ export const Sidebar = Shell.provider(() => {
             </For>
             <Show when={drag.lineTop() !== null}>
               <li
-                class="folder-drop-line"
+                class="pointer-events-none absolute right-3 left-3 h-0.5 list-none rounded-[1px] bg-primary"
                 style={{ top: `${drag.lineTop()}px` }}
                 aria-hidden="true"
               />
             </Show>
           </Show>
           <Show when={sections().Pinned.length === 0 && sections().Active.length === 0}>
-            <li class="empty inbox-clear">All clear.</li>
+            <li class="empty list-none px-2.5 py-2">All clear.</li>
           </Show>
           <Show when={sections().Snoozed.length > 0}>
             <SectionHeader
@@ -686,7 +708,7 @@ export const Sidebar = Shell.provider(() => {
               <li>
                 <button
                   type="button"
-                  class="section-more"
+                  class="cursor-pointer border-0 bg-transparent px-2.5 py-1 text-[12px] text-sidebar-muted-foreground hover:text-sidebar-foreground"
                   onClick={() => void environment.showMoreSettled()}
                 >
                   Show more
@@ -728,7 +750,11 @@ export const Sidebar = Shell.provider(() => {
       </Show>
       <Show when={folders().get(drag.dragging() ?? "")} keyed>
         {(folder) => (
-          <div class="folder-ghost" ref={drag.setGhost} aria-hidden="true">
+          <div
+            class="pointer-events-none fixed top-0 left-0 z-140 flex max-w-64 items-center gap-1.5 rounded-md border border-border bg-popover px-2.5 py-1 text-[13px] font-medium whitespace-nowrap text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]"
+            ref={drag.setGhost}
+            aria-hidden="true"
+          >
             <ProjectBadge project={folder.Project} size={12} />
             <span>{folder.Project?.title ?? "Unknown project"}</span>
           </div>

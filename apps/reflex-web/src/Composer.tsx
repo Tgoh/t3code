@@ -40,6 +40,19 @@ const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
 
 const isAlternate = (event: MouseEvent | KeyboardEvent) => (IS_MAC ? event.metaKey : event.ctrlKey);
 
+/** The strip at the foot of a thread that holds the composer, measured as --composer-height.
+ * navigation.ts and ViewportDebug.tsx find it by `composer-lane`, which has no rule. */
+export const COMPOSER_LANE =
+  "composer-lane pointer-events-none absolute inset-x-0 bottom-0 z-20 mx-auto max-w-[calc(var(--chat-content-max-width)+2*var(--gutter))] px-(--gutter) pt-0 pb-[calc(var(--composer-gap,21px)+var(--safe-bottom))] *:pointer-events-auto in-[.chat-stage.with-details]:max-w-[calc(min(var(--chat-content-max-width),var(--details-lane,100vw))+2*var(--gutter))] in-[.chat-stage.with-details]:[translate:var(--details-shift)_0]";
+
+const ROUND_BUTTON =
+  "relative isolate inline-flex size-8 flex-none cursor-pointer items-center justify-center overflow-hidden rounded-full border-0 p-0 text-white shadow-[0_1px_2px_rgb(0_0_0/24%)] disabled:cursor-default disabled:opacity-64 disabled:shadow-none";
+const HIDDEN_COLLAPSED = "in-data-collapsed:hidden";
+const NOTE = "mx-4 my-1 text-[12px]";
+const ERROR = `${NOTE} text-error-foreground ${HIDDEN_COLLAPSED}`;
+const REMOVE_ATTACHMENT =
+  "inline-flex cursor-pointer items-center rounded-full border-0 p-0.5 [&_svg]:size-3.5";
+
 /** Holds whether ⌘ or Ctrl is down, so the send button can show what a click would do. */
 function useAlternateHeld() {
   const [held, setHeld] = createSignal(false);
@@ -65,6 +78,7 @@ function SendButton(props: {
   sending: boolean;
   disabled: boolean;
   blocked: string | null;
+  class: string;
   onSend: (alternate: boolean) => void;
 }) {
   const mode = () =>
@@ -85,7 +99,7 @@ function SendButton(props: {
   return (
     <button
       type="submit"
-      class="round-button send"
+      class={`${ROUND_BUTTON} bg-transparent hover:enabled:brightness-110 ${props.class}`}
       aria-label={label()}
       data-tip={tip()}
       disabled={props.disabled}
@@ -95,7 +109,7 @@ function SendButton(props: {
         props.onSend(isAlternate(event));
       }}
     >
-      <span class="send-art">
+      <span class="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
         <StageArt compact />
       </span>
       <Show when={mode() !== "auto"} fallback={<ArrowUp />}>
@@ -192,8 +206,11 @@ export function FileDropSection(props: { children: JSX.Element }) {
       }}
     >
       <Show when={dragActive()}>
-        <div class="drop-overlay">
-          <div role="status">
+        <div class="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]">
+          <div
+            role="status"
+            class="flex items-center gap-2 rounded-full border border-primary/25 bg-background/95 px-4 py-2.5 text-[14px] font-medium text-foreground shadow-[0_10px_15px_-3px_rgb(0_0_0/10%)] [&_svg]:text-primary"
+          >
             <Paperclip />
             Drop files to attach
           </div>
@@ -204,11 +221,11 @@ export function FileDropSection(props: { children: JSX.Element }) {
   );
 }
 
-function StopButton(props: { stopping: boolean; onStop: () => void }) {
+function StopButton(props: { stopping: boolean; class: string; onStop: () => void }) {
   return (
     <button
       type="button"
-      class="round-button stop"
+      class={`${ROUND_BUTTON} bg-destructive/90 hover:enabled:bg-destructive ${props.class}`}
       aria-label={props.stopping ? "Stopping" : "Stop generation"}
       data-tip={props.stopping ? "Stopping" : "Stop generation"}
       disabled={props.stopping}
@@ -243,7 +260,7 @@ function AnswerActions(props: { question: IAnswering }) {
       </Show>
       <button
         type="submit"
-        class="answer-submit"
+        class="ml-2 h-7 flex-none cursor-pointer whitespace-nowrap rounded-full border-0 bg-primary px-3 py-0 text-[14px] font-medium text-primary-foreground shadow-[0_1px_2px_color-mix(in_srgb,var(--primary)_24%,transparent)] hover:enabled:bg-[color-mix(in_srgb,var(--primary)_90%,var(--background))] disabled:cursor-default disabled:opacity-64 disabled:shadow-none"
         onPointerDown={(event) => event.preventDefault()}
         disabled={
           !props.question.canRespond() ||
@@ -432,8 +449,8 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       </Show>
       <form
         ref={form}
-        class="composer"
-        classList={{ collapsed: collapsed() }}
+        class="relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)"
+        data-collapsed={collapsed() ? "" : undefined}
         onSubmit={(event) => {
           event.preventDefault();
           send();
@@ -448,11 +465,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         }}
       >
         <Show when={collapsed()}>
-          <div class="composer-collapsed">
+          <div class="flex items-center gap-2 pt-2 pr-2 pl-3">
             <button
               type="button"
-              class="composer-preview"
-              classList={{ placeholder: held().Draft.trim() === "" }}
+              class="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] data-placeholder:text-muted-foreground"
+              data-placeholder={held().Draft.trim() === "" ? "" : undefined}
               aria-label="Expand composer"
               onPointerDown={(event) => event.preventDefault()}
               onClick={expand}
@@ -468,22 +485,32 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                   sending={session.sending()}
                   disabled={!canSend()}
                   blocked={null}
+                  class="ml-0"
                   onSend={send}
                 />
               }
             >
-              <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
+              <StopButton stopping={stopping()} class="ml-0" onStop={() => session.stopRun()} />
             </Show>
           </div>
         </Show>
         <Show when={images().length > 0}>
-          <ul class="attachment-thumbs">
+          <ul class={`m-0 flex list-none flex-wrap gap-2 px-3 pt-3 pb-0 ${HIDDEN_COLLAPSED}`}>
             <For each={images()}>
               {(file) => (
-                <li>
-                  <Show when={file.PreviewUrl}>{(url) => <img src={url()} alt={file.Name} />}</Show>
+                <li class="relative size-14 overflow-hidden rounded-xl">
+                  <Show when={file.PreviewUrl}>
+                    {(url) => (
+                      <img
+                        src={url()}
+                        alt={file.Name}
+                        class="block size-full object-cover outline -outline-offset-1 outline-(--media-ring)"
+                      />
+                    )}
+                  </Show>
                   <button
                     type="button"
+                    class={`${REMOVE_ATTACHMENT} absolute top-[3px] right-[3px] bg-[rgb(0_0_0/60%)] text-white`}
                     aria-label={`Remove ${file.Name}`}
                     data-tip={`Remove ${file.Name}`}
                     onClick={() => session.removeAttachment(file.Id)}
@@ -496,19 +523,22 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           </ul>
         </Show>
         <Show when={otherFiles().length > 0}>
-          <ul class="attachment-files">
+          <ul
+            class={`m-0 flex list-none flex-col gap-0.5 pt-2.5 pr-3 pb-0 pl-3.5 [&_svg]:size-3.5 ${HIDDEN_COLLAPSED}`}
+          >
             <For each={otherFiles()}>
               {(file) => (
-                <li>
+                <li class="flex min-w-0 items-center gap-2 text-[14px]">
                   <FileIcon />
-                  <span class="attachment-file-name">
+                  <span class="min-w-0 flex-1 truncate">
                     {file.PastedText ? "Pasted text" : file.Name}
                   </span>
-                  <span class="attachment-file-detail">
+                  <span class="flex-none text-[12px] text-secondary-label">
                     {attachmentDetail(file.Name, file.SizeBytes, file.PastedText)}
                   </span>
                   <button
                     type="button"
+                    class={`${REMOVE_ATTACHMENT} bg-transparent text-muted-foreground`}
                     aria-label={`Remove ${file.Name}`}
                     data-tip={`Remove ${file.Name}`}
                     onClick={() => session.removeAttachment(file.Id)}
@@ -521,10 +551,12 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           </ul>
         </Show>
         <Show when={held().AttachmentError}>
-          <p class="composer-error">{held().AttachmentError}</p>
+          <p class={ERROR}>{held().AttachmentError}</p>
         </Show>
         <Show when={held().AttachmentNotice}>
-          <p class="composer-notice">{held().AttachmentNotice}</p>
+          <p class={`${NOTE} text-muted-foreground ${HIDDEN_COLLAPSED}`}>
+            {held().AttachmentNotice}
+          </p>
         </Show>
         <Show when={focused() && !answering() && menu.open()}>
           {(trigger) => <ComposerCommandMenu menu={menu} trigger={trigger()} onPick={pick} />}
@@ -532,6 +564,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         <textarea
           ref={textarea}
           rows={2}
+          class={`block max-h-52 min-h-[69px] w-full resize-none border-0 bg-transparent px-4 pt-4 pb-2 text-[14px] leading-relaxed outline-none [field-sizing:content] placeholder:text-muted-foreground placeholder:opacity-100 ${HIDDEN_COLLAPSED}`}
           placeholder={placeholder()}
           value={text()}
           disabled={answerLocked()}
@@ -557,26 +590,27 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           }}
         />
         <Show when={held().SendError}>
-          <p class="composer-error">Couldn't send: {held().SendError}</p>
+          <p class={ERROR}>Couldn't send: {held().SendError}</p>
         </Show>
         <Show when={held().StopError}>
-          <p class="composer-error">Couldn't stop: {held().StopError}</p>
+          <p class={ERROR}>Couldn't stop: {held().StopError}</p>
         </Show>
         <Show when={held().QueueError}>
-          <p class="composer-error">Couldn't change the queue: {held().QueueError}</p>
+          <p class={ERROR}>Couldn't change the queue: {held().QueueError}</p>
         </Show>
         <Show when={held().ModelError}>
-          <p class="composer-error">{held().ModelError}</p>
+          <p class={ERROR}>{held().ModelError}</p>
         </Show>
-        <div class="composer-bar" onPointerDown={keepPromptFocus}>
+        <div
+          class="flex min-h-8 items-center gap-1 px-2 pt-px pb-[7px] in-data-collapsed:pt-0 in-data-collapsed:[&>:not(.model-trigger)]:hidden"
+          onPointerDown={keepPromptFocus}
+        >
           <Show when={!answering()}>
-            <label
-              class={`${iconButton()} attach in-[.composer.collapsed]:hidden`}
-              data-tip="Attach files"
-            >
+            <label class={`${iconButton()} overflow-hidden`} data-tip="Attach files">
               <Paperclip />
               <input
                 type="file"
+                class="hidden"
                 aria-label="Attach files"
                 multiple
                 disabled={files.status().State !== "live"}
@@ -587,14 +621,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               />
             </label>
           </Show>
-          <span class="composer-spacer" />
+          <span class="flex-1" />
           <ModelPicker />
           <Show when={!isDraft() && session.effectiveRuntimeMode() !== DEFAULT_RUNTIME_MODE}>
             <PermissionsChip />
           </Show>
           <Show when={answering()}>{(question) => <AnswerActions question={question()} />}</Show>
           <Show when={props.active}>
-            <StopButton stopping={stopping()} onStop={() => session.stopRun()} />
+            <StopButton stopping={stopping()} class="ml-[5px]" onStop={() => session.stopRun()} />
           </Show>
           <Show when={!answering() && (!props.active || canSend())}>
             <SendButton
@@ -603,13 +637,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               sending={session.sending()}
               disabled={!canSend()}
               blocked={blocked()}
+              class="ml-[5px]"
               onSend={send}
             />
           </Show>
         </div>
       </form>
       <Show when={isDraft()}>
-        <div class="composer-context">
+        <div class="flex justify-end px-2 pt-2 pb-0">
           <PermissionsChip context />
         </div>
       </Show>
