@@ -49,6 +49,7 @@ export { default as GitBranch } from "lucide-solid/icons/git-branch";
 export { default as GitBranchPlus } from "lucide-solid/icons/git-branch-plus";
 export { default as GitCommitHorizontal } from "lucide-solid/icons/git-commit-horizontal";
 export { default as GitFork } from "lucide-solid/icons/git-fork";
+export { default as GitMerge } from "lucide-solid/icons/git-merge";
 export { default as GitPullRequest } from "lucide-solid/icons/git-pull-request";
 export { default as Globe } from "lucide-solid/icons/globe";
 export { default as Info } from "lucide-solid/icons/info";
