@@ -72,7 +72,7 @@ import {
   toggleViewportDebug,
 } from "./Preferences";
 import { type IShelves, SETTLED_PAGE } from "./sidebarLayout";
-import type { IWireClientSettings } from "./Infrastructure/settings";
+import { type IWireClientSettings, storedClientSettingsEffect } from "./Infrastructure/settings";
 import type { IProjectFaviconTarget } from "./projectIcon";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import {
@@ -154,7 +154,7 @@ export function* newEnvironment(
     SelectedThreadId: null,
     ThreadSessions: {},
     View: null,
-    ClientSettings: null,
+    ClientSettings: yield* storedClientSettingsEffect(),
     Preferences: yield* storedPreferencesEffect(),
     Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: SETTLED_PAGE },
     Now: yield* clockNowEffect(),

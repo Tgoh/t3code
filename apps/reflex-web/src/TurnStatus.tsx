@@ -258,10 +258,10 @@ function QueuedRow(props: { runId: string }) {
   const editable = () => message()?.context?.guest === undefined;
   const workflow = () => session.queueWorkflow();
   const canSendNow = () => workflow().CanSendNow || workflow().CanSteer;
-  const save = (steer: boolean) => {
+  const save = (alternate: boolean) => {
     const text = editing()?.trim() ?? "";
     if (text === "") return;
-    session.queueAction({ Kind: "edit", RunId: props.runId, Text: text, Steer: steer });
+    session.queueAction({ Kind: "edit", RunId: props.runId, Text: text, Alternate: alternate });
     setEditing(null);
   };
   return (
@@ -291,7 +291,7 @@ function QueuedRow(props: { runId: string }) {
               variant="primary"
               disabled={queueing()}
               data-tip={
-                workflow().CanSteer
+                workflow().CanSteer && session.followUpBehavior() === "queue"
                   ? `${MOD_LABEL}-click or ${MOD_LABEL}+Enter to save and steer`
                   : undefined
               }

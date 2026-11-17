@@ -1,5 +1,9 @@
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
+import {
+  type ActiveTurnComposerAction,
+  alternateComposerDispatchAction,
+  resolveComposerDispatchMode,
+} from "@t3tools/client-runtime/state/composer-dispatch";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useInFlight, useResource } from "treflex-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
@@ -89,6 +93,7 @@ function useAlternateHeld() {
 function SendButton(props: {
   running: boolean;
   alternate: boolean;
+  followUp: ActiveTurnComposerAction;
   sending: boolean;
   disabled: boolean;
   blocked: string | null;
@@ -96,7 +101,12 @@ function SendButton(props: {
   onSend: (alternate: boolean) => void;
 }) {
   const mode = () =>
-    resolveComposerDispatchMode({ running: props.running, alternateModifier: props.alternate });
+    resolveComposerDispatchMode({
+      running: props.running,
+      alternateModifier: props.alternate,
+      activeTurnDefault: props.followUp,
+    });
+  const alternateAction = () => alternateComposerDispatchAction(props.followUp);
   const label = () =>
     props.sending
       ? "Sending"
@@ -108,7 +118,7 @@ function SendButton(props: {
   const tip = () =>
     props.blocked ??
     (props.running
-      ? `Click to steer, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to queue`
+      ? `Click to ${props.followUp}, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to ${alternateAction()}`
       : undefined);
   return (
     <button
@@ -362,7 +372,13 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     }
     if (blocked() !== null) return;
     if (canSend()) props.onSend?.();
-    session.send(resolveComposerDispatchMode({ running: running(), alternateModifier: alternate }));
+    session.send(
+      resolveComposerDispatchMode({
+        running: running(),
+        alternateModifier: alternate,
+        activeTurnDefault: session.followUpBehavior(),
+      }),
+    );
     if (phone()) textarea.blur();
   };
 
@@ -501,6 +517,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                 <SendButton
                   running={running()}
                   alternate={alternateHeld()}
+                  followUp={session.followUpBehavior()}
                   sending={sending()}
                   disabled={!canSend()}
                   blocked={null}
@@ -659,6 +676,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             <SendButton
               running={running()}
               alternate={alternateHeld()}
+              followUp={session.followUpBehavior()}
               sending={sending()}
               disabled={!canSend()}
               blocked={blocked()}

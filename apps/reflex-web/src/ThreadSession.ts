@@ -1,4 +1,8 @@
 import {
+  type ActiveTurnComposerAction,
+  resolveComposerDispatchMode,
+} from "@t3tools/client-runtime/state/composer-dispatch";
+import {
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
 } from "@t3tools/client-runtime/state/pending-user-input";
@@ -145,6 +149,7 @@ export interface ISelection extends IEntity {
   SelectedThreadId: string | null;
   Preferences: { AppearanceMode: IAppearanceMode };
   SystemDark: boolean;
+  ClientSettings: { followUpBehavior: ActiveTurnComposerAction } | null;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -496,6 +501,14 @@ function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
   return selection?.SelectedThreadId === draft.ThreadId;
 }
 
+/** Stock's Follow-up behavior setting: what a send does while a turn runs. */
+export function* followUpBehavior(
+  draft: IThreadSession,
+): ISelectorGenerator<ActiveTurnComposerAction> {
+  const selection = yield* getData(draft, "Selection");
+  return selection?.ClientSettings?.followUpBehavior ?? "steer";
+}
+
 function* terminalScheme(draft: IThreadSession): ISelectorGenerator<IColorScheme> {
   const selection = yield* getData(draft, "Selection");
   return selection === undefined
@@ -752,7 +765,7 @@ leading(stopRun);
 
 export type IQueuePress =
   | Exclude<IQueueOperation, { Kind: "start" | "steer" | "edit" }>
-  | { Kind: "edit"; RunId: string; Text: string; Steer: boolean }
+  | { Kind: "edit"; RunId: string; Text: string; Alternate: boolean }
   | { Kind: "sendNow"; RunId: string };
 
 // Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx, and saveEdit's
@@ -782,7 +795,15 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
   try {
     if (operation === null) return;
     yield* run(operation);
-    if (press.Kind !== "edit" || !press.Steer) return;
+    // Only the opposite of the follow-up default asks to steer, as it does for a new follow-up.
+    if (press.Kind !== "edit" || !press.Alternate) return;
+    const followUp = yield* select(followUpBehavior);
+    const mode = resolveComposerDispatchMode({
+      running: true,
+      alternateModifier: true,
+      activeTurnDefault: followUp,
+    });
+    if (mode !== "steer") return;
     const steer = yield* select((held: IThreadSession) => steerOperation(held, press.RunId));
     if (steer !== null) yield* run(steer);
   } catch (error) {
@@ -1423,6 +1444,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     projectId,
     projectName,
     queueWorkflow,
+    followUpBehavior,
     menuCatalog,
     promptHistory,
     fileSearchResult,

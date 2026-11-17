@@ -242,6 +242,7 @@ async function connect(
       setAddressView: (effect: { View: IAddressView | null }) => {
         address.view = effect.View;
       },
+      storedClientSettings: () => null,
       rememberedModels: () => models,
       rememberModel: (effect: { Selection: IWireModelSelection }) => {
         models.Last = effect.Selection;
@@ -2313,18 +2314,41 @@ describe("writing to the server", () => {
     ]);
   });
 
-  it("an edit saved to steer is saved first, then steered only while a run can take it", async () => {
+  it("an edit saved with the modifier while Steer is the follow-up default stays queued", async () => {
     const commands: IQueueCommand[] = [];
     const server = await connect(undefined, null, {
       queueCommand: (effect: IQueueCommand) => void commands.push(effect),
+      storedClientSettings: () => ({ followUpBehavior: "steer" }),
     });
     await server.open();
-    const save = (runId: string, steer: boolean) =>
+    await server.sendThread(
+      snapshotOf(
+        { ...emptyProjection(), runs: [run("run-1", 1, "starting"), run("run-2", 2, "queued")] },
+        1,
+      ),
+    );
+    await server.runtime.dispatch(queueAction, server.sessionId(), {
+      Kind: "edit",
+      RunId: "run-2",
+      Text: "changed",
+      Alternate: true,
+    });
+    expect(commands.map((command) => command.Operation.Kind)).toEqual(["edit"]);
+  });
+
+  it("an edit saved with the modifier while Queue is the follow-up default is saved, then steered while a run can take it", async () => {
+    const commands: IQueueCommand[] = [];
+    const server = await connect(undefined, null, {
+      queueCommand: (effect: IQueueCommand) => void commands.push(effect),
+      storedClientSettings: () => ({ followUpBehavior: "queue" }),
+    });
+    await server.open();
+    const save = (runId: string, alternate: boolean) =>
       server.runtime.dispatch(queueAction, server.sessionId(), {
         Kind: "edit",
         RunId: runId,
         Text: "changed",
-        Steer: steer,
+        Alternate: alternate,
       });
     await server.sendThread(
       snapshotOf({ ...emptyProjection(), runs: [run("run-2", 2, "queued")] }, 1),
