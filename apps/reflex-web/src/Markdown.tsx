@@ -38,20 +38,27 @@ import {
 } from "./fileLinks";
 import { CopyButton } from "./CopyButton";
 import Environment from "./Environment";
-import { MessagesSquare, TriangleAlert, WrapText } from "./icons";
-import { ImageDialog } from "./ImageDialog";
+import { LoaderCircle, MessagesSquare, RefreshCw, TriangleAlert, WrapText } from "./icons";
+import { ImageDialog, MEDIA_DIALOG_FIT, MediaDialog } from "./ImageDialog";
 import type { IAssetUrl } from "./Infrastructure/commandEffects";
 import {
-  type IMarkdownImageUrl,
+  type IMediaKind,
+  type IMediaTarget,
+  type IMediaUrl,
   imageSizeStyle,
-  loadImageUrl,
+  loadMediaUrl,
   markdownImageTarget,
+  mediaLinkTarget,
+  opensInEditor,
+  prepareVideoFirstFrame,
   sameTarget,
+  webMediaLinkTarget,
 } from "./markdownImage";
 import { assistantHtml, blockTokens, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } from "./sanitize";
 import ThreadSession from "./ThreadSession";
+import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import {
   contextThreadTarget,
@@ -135,26 +142,51 @@ function FileIcon(props: { path: string; class: string }) {
   );
 }
 
-// Follows MarkdownFileLink in apps/web/src/components/chat/MarkdownFileLink.tsx.
+// Follows MarkdownFileLink in apps/web/src/components/chat/MarkdownFileLink.tsx. Stock opens a
+// workspace file in its Files panel, which this client doesn't have, so a workspace media file
+// opens in the viewer like any other and the rest open in the editor.
 function FileChip(props: { link: IFileLink }) {
   const environment = Environment.use();
+  const thread = OpenThread.use();
   const files = useContext(FileLinkContext);
+  const media = createMemo(
+    () => mediaLinkTarget(props.link, files.cwd(), thread.state.Thread?.id),
+    undefined,
+    { equals: sameTarget },
+  );
+  const [viewing, setViewing] = createSignal<IMediaTarget | null>(null);
   return (
-    <button
-      type="button"
-      class={FILE_LINK}
-      dir="ltr"
-      data-tip={props.link.TargetPath}
-      onClick={(event) => {
-        event.stopPropagation();
-        environment.openInEditor(props.link.TargetPath, files.cwd() ?? null);
-      }}
-    >
-      <FileIcon path={props.link.FilePath} class="mr-[0.2em] inline size-[1em] align-[-0.125em]" />
-      <span class="underline decoration-transparent decoration-1 underline-offset-[0.2em] transition-[text-decoration-color] duration-150 ease-[ease] group-hover/file:decoration-current">
-        {chipLabel(props.link, files.suffixes())}
-      </span>
-    </button>
+    <>
+      <button
+        type="button"
+        class={FILE_LINK}
+        dir="ltr"
+        data-tip={props.link.TargetPath}
+        onClick={(event) => {
+          event.stopPropagation();
+          const held = media();
+          if (held !== null && !opensInEditor(event)) setViewing(held);
+          else environment.openInEditor(props.link.TargetPath, files.cwd() ?? null);
+        }}
+      >
+        <FileIcon
+          path={props.link.FilePath}
+          class="mr-[0.2em] inline size-[1em] align-[-0.125em]"
+        />
+        <span class="underline decoration-transparent decoration-1 underline-offset-[0.2em] transition-[text-decoration-color] duration-150 ease-[ease] group-hover/file:decoration-current">
+          {chipLabel(props.link, files.suffixes())}
+        </span>
+      </button>
+      <Show when={viewing()} keyed>
+        {(held) => (
+          <MediaViewer
+            target={held}
+            name={chipLabel(props.link, files.suffixes())}
+            onClose={() => setViewing(null)}
+          />
+        )}
+      </Show>
+    </>
   );
 }
 
@@ -294,6 +326,7 @@ function LinkToken(props: ITokenProps) {
   });
   const files = useContext(FileLinkContext);
   const file = createMemo(() => fileLinkFromHref(link().href, files.cwd()));
+  const [viewing, setViewing] = createSignal<IMediaTarget | null>(null);
   const inner = () => (
     <FileLinkContext.Provider value={{ ...files, inLink: true }}>
       <Inline tokens={link().tokens} />
@@ -315,9 +348,33 @@ function LinkToken(props: ITokenProps) {
                 {...(EXTERNAL_LINK.test(link().href)
                   ? { target: "_blank", rel: "noopener noreferrer" }
                   : {})}
+                onClick={(event) => {
+                  const media = webMediaLinkTarget(link().href);
+                  if (
+                    media === null ||
+                    event.defaultPrevented ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setViewing(media);
+                }}
               >
                 {inner()}
               </a>
+              <Show when={viewing()} keyed>
+                {(held) => (
+                  <MediaViewer
+                    target={held}
+                    name={plainText(link().tokens) || link().href}
+                    onClose={() => setViewing(null)}
+                  />
+                )}
+              </Show>
             </Show>
           }
         >
@@ -338,12 +395,254 @@ function LinkToken(props: ITokenProps) {
   );
 }
 
-function ImageUnavailable(props: { alt: string }) {
+const UNAVAILABLE_LABEL: Record<IMediaKind, string> = {
+  image: "Image unavailable",
+  video: "Video unavailable",
+  audio: "Audio unavailable",
+};
+
+function ImageUnavailable(props: { alt: string; kind?: IMediaKind }) {
   return (
     <span class="inline-flex items-center gap-1.5 [&_svg]:size-3.5 [&_svg]:shrink-0">
       <TriangleAlert />
-      {["Image unavailable", props.alt].filter(Boolean).join(" · ")}
+      {[UNAVAILABLE_LABEL[props.kind ?? "image"], props.alt].filter(Boolean).join(" · ")}
     </span>
+  );
+}
+
+function useMediaUrl(resource: AssetResource) {
+  const environment = Environment.use();
+  const local = useComponentState<IMediaUrl>(() => ({ Url: null, Size: null, Failed: false }));
+  const load = () => local.dispatch(loadMediaUrl, environment.state.EnvironmentId, resource);
+  onMount(load);
+  return { state: local.state, reload: load };
+}
+
+const MEDIA_PLACEHOLDER = `rounded-lg ${IMAGE_BORDER} bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]`;
+
+// Follows MediaVideoPlayer in apps/web/src/components/media/MediaVideoPlayer.tsx.
+function ShownVideo(props: {
+  src: string | null;
+  sourceFailed: boolean;
+  alt: string;
+  onRetry: () => void;
+}) {
+  const [erroredSrc, setErroredSrc] = createSignal<string | null>(null);
+  const failed = () => props.sourceFailed || (props.src !== null && erroredSrc() === props.src);
+  return (
+    <span class="inline-block w-full max-w-[min(100%,30rem)] align-top">
+      <Show
+        when={!failed()}
+        fallback={
+          <span
+            role="alert"
+            class={`flex aspect-video w-full flex-col items-center justify-center gap-3 p-4 text-center text-[0.75rem] text-muted-foreground ${MEDIA_PLACEHOLDER}`}
+          >
+            <ImageUnavailable alt={props.alt} kind="video" />
+            <Button
+              class="inline-flex items-center gap-1.5 [&_svg]:size-3.5"
+              onClick={() => {
+                setErroredSrc(null);
+                props.onRetry();
+              }}
+            >
+              <RefreshCw />
+              Retry video
+            </Button>
+          </span>
+        }
+      >
+        <Show
+          when={props.src}
+          keyed
+          fallback={
+            <span
+              role="status"
+              aria-label="Loading video"
+              class={`block aspect-video w-full ${MEDIA_PLACEHOLDER}`}
+            />
+          }
+        >
+          {(src) => (
+            <video
+              class={`block aspect-video max-h-[30rem] w-full bg-black object-contain ${MEDIA_PLACEHOLDER}`}
+              src={src}
+              aria-label={props.alt || "Video preview"}
+              controls
+              playsinline
+              preload="metadata"
+              onLoadedMetadata={(event) => prepareVideoFirstFrame(event.currentTarget)}
+              onError={() => setErroredSrc(src)}
+            />
+          )}
+        </Show>
+      </Show>
+    </span>
+  );
+}
+
+// Follows InlineAudioPreview in apps/web/src/components/files/InlineAudioPreview.tsx.
+function ShownAudio(props: { src: string | null; sourceFailed: boolean; alt: string }) {
+  const [erroredSrc, setErroredSrc] = createSignal<string | null>(null);
+  const failed = () => props.sourceFailed || (props.src !== null && erroredSrc() === props.src);
+  return (
+    <Show
+      when={!failed()}
+      fallback={
+        <span
+          role="alert"
+          class={`inline-block rounded-md ${IMAGE_BORDER} bg-[color-mix(in_srgb,var(--muted)_40%,transparent)] px-2 py-1 text-[0.75rem] text-muted-foreground`}
+        >
+          <ImageUnavailable alt={props.alt} kind="audio" />
+        </span>
+      }
+    >
+      <Show when={props.src} keyed fallback={<span role="status" aria-label="Loading audio" />}>
+        {(src) => (
+          <audio
+            class="inline-block h-10 w-full max-w-[min(100%,30rem)] align-middle"
+            src={src}
+            aria-label={props.alt || "Audio preview"}
+            controls
+            preload="metadata"
+            onError={() => setErroredSrc(src)}
+          />
+        )}
+      </Show>
+    </Show>
+  );
+}
+
+function FileMedia(props: {
+  kind: IMediaKind;
+  resource: AssetResource;
+  fragment: string;
+  alt: string;
+  standalone: boolean;
+}) {
+  const media = useMediaUrl(props.resource);
+  const src = () => (media.state.Url === null ? null : media.state.Url + props.fragment);
+  return (
+    <Show
+      when={props.kind === "image"}
+      fallback={
+        <Show
+          when={props.kind === "video"}
+          fallback={<ShownAudio src={src()} sourceFailed={media.state.Failed} alt={props.alt} />}
+        >
+          <ShownVideo
+            src={src()}
+            sourceFailed={media.state.Failed}
+            alt={props.alt}
+            onRetry={() => void media.reload()}
+          />
+        </Show>
+      }
+    >
+      <ShownImage
+        src={src()}
+        sourceFailed={media.state.Failed}
+        size={media.state.Size}
+        alt={props.alt}
+        standalone={props.standalone}
+      />
+    </Show>
+  );
+}
+
+function ViewerContent(props: {
+  kind: IMediaKind;
+  src: string | null;
+  failed: boolean;
+  name: string;
+}) {
+  const [erroredSrc, setErroredSrc] = createSignal<string | null>(null);
+  const failed = () => props.failed || (props.src !== null && erroredSrc() === props.src);
+  const keep = (event: MouseEvent) => event.stopPropagation();
+  return (
+    <Show
+      when={!failed()}
+      fallback={
+        <span
+          role="alert"
+          class="flex max-w-[min(28rem,calc(100vw-32px))] cursor-default flex-col gap-1 rounded-lg bg-popover p-4 text-[13px] text-muted-foreground"
+          onClick={keep}
+        >
+          <ImageUnavailable alt={props.name} kind={props.kind} />
+          The file could not be loaded. It may have been moved or deleted.
+        </span>
+      }
+    >
+      <Show
+        when={props.src}
+        keyed
+        fallback={
+          <LoaderCircle
+            role="status"
+            aria-label="Loading media"
+            class="size-6 animate-spin text-white/80"
+          />
+        }
+      >
+        {(src) =>
+          props.kind === "video" ? (
+            <video
+              class={`${MEDIA_DIALOG_FIT} cursor-default bg-black`}
+              src={src}
+              aria-label={props.name}
+              controls
+              playsinline
+              preload="metadata"
+              onClick={keep}
+              onLoadedMetadata={(event) => prepareVideoFirstFrame(event.currentTarget)}
+              onError={() => setErroredSrc(src)}
+            />
+          ) : (
+            <img
+              class={MEDIA_DIALOG_FIT}
+              src={src}
+              alt={props.name}
+              onError={() => setErroredSrc(src)}
+            />
+          )
+        }
+      </Show>
+    </Show>
+  );
+}
+
+function FileViewerContent(props: { kind: IMediaKind; resource: AssetResource; name: string }) {
+  const media = useMediaUrl(props.resource);
+  return (
+    <ViewerContent
+      kind={props.kind}
+      src={media.state.Url}
+      failed={media.state.Failed}
+      name={props.name}
+    />
+  );
+}
+
+// Follows resolveMarkdownMediaPreview in apps/web/src/components/chat/ExpandedImagePreview.tsx,
+// showing a failure in the viewer rather than a toast.
+function MediaViewer(props: { target: IMediaTarget; name: string; onClose: () => void }) {
+  return (
+    <MediaDialog onClose={props.onClose}>
+      {"Direct" in props.target ? (
+        <ViewerContent
+          kind={props.target.Kind}
+          src={props.target.Direct}
+          failed={false}
+          name={props.name}
+        />
+      ) : (
+        <FileViewerContent
+          kind={props.target.Kind}
+          resource={props.target.Resource}
+          name={props.name}
+        />
+      )}
+    </MediaDialog>
   );
 }
 
@@ -444,30 +743,6 @@ function ShownImage(props: {
   );
 }
 
-function FileImage(props: {
-  resource: AssetResource;
-  fragment: string;
-  alt: string;
-  standalone: boolean;
-}) {
-  const environment = Environment.use();
-  const local = useComponentState<IMarkdownImageUrl>(() => ({
-    Url: null,
-    Size: null,
-    Failed: false,
-  }));
-  onMount(() => local.dispatch(loadImageUrl, environment.state.EnvironmentId, props.resource));
-  return (
-    <ShownImage
-      src={local.state.Url === null ? null : local.state.Url + props.fragment}
-      sourceFailed={local.state.Failed}
-      size={local.state.Size}
-      alt={props.alt}
-      standalone={props.standalone}
-    />
-  );
-}
-
 function MarkdownImage(props: { token: Tokens.Image; standalone: boolean }) {
   const thread = OpenThread.use();
   const workspaceRoot = useWorkspaceRoot();
@@ -479,18 +754,28 @@ function MarkdownImage(props: { token: Tokens.Image; standalone: boolean }) {
   return (
     <Show when={target()} keyed fallback={props.token.text}>
       {(held) =>
-        "Direct" in held ? (
+        "Resource" in held ? (
+          <FileMedia
+            kind={held.Kind}
+            resource={held.Resource}
+            fragment={held.Fragment}
+            alt={props.token.text}
+            standalone={props.standalone}
+          />
+        ) : held.Kind === "video" ? (
+          <ShownVideo
+            src={held.Direct}
+            sourceFailed={false}
+            alt={props.token.text}
+            onRetry={() => {}}
+          />
+        ) : held.Kind === "audio" ? (
+          <ShownAudio src={held.Direct} sourceFailed={false} alt={props.token.text} />
+        ) : (
           <ShownImage
             src={held.Direct}
             sourceFailed={false}
             size={null}
-            alt={props.token.text}
-            standalone={props.standalone}
-          />
-        ) : (
-          <FileImage
-            resource={held.Resource}
-            fragment={held.Fragment}
             alt={props.token.text}
             standalone={props.standalone}
           />
