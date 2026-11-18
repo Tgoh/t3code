@@ -87,6 +87,8 @@ export type ISettingControl =
         Label: string;
         Disabled?: (held: ISettingsHeld) => boolean;
       }>;
+      /** Labels too long for a phone row wrap there instead of being cut off. */
+      Wrap?: boolean;
     }
   | { Kind: "text"; Placeholder: string }
   | { Kind: "textarea"; Placeholder: string }
@@ -618,6 +620,7 @@ const PROVIDERS: ISettingsSection[] = [
                 }
               : {}),
           })),
+          Wrap: true,
         },
         Applied: true,
         Default: DEFAULT_IDLE_COMPACTION,

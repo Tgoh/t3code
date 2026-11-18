@@ -46,7 +46,7 @@ import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow, relativeTime } from "./timestamps";
 import { Button, button, buttonLink } from "./ui/Button";
-import { Input, Select, Textarea } from "./ui/Field";
+import { Input, Select, Textarea, WrapSelect } from "./ui/Field";
 import { IconButton } from "./ui/IconButton";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
@@ -378,23 +378,37 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
     switch (control.Kind) {
       case "switch":
         return <Toggle checked={current === true} label={props.row.Title} onChange={write} />;
-      case "select":
-        return (
-          <Select
-            class="min-w-44"
-            aria-label={props.row.Title}
-            value={String(current)}
-            onChange={(event) => write(event.currentTarget.value)}
-          >
-            <For each={control.Options}>
-              {(option) => (
-                <option value={option.Value} disabled={option.Disabled?.(props.held) === true}>
-                  {option.Label}
-                </option>
-              )}
-            </For>
-          </Select>
+      case "select": {
+        const options = (
+          <For each={control.Options}>
+            {(option) => (
+              <option value={option.Value} disabled={option.Disabled?.(props.held) === true}>
+                {option.Label}
+              </option>
+            )}
+          </For>
         );
+        const shared = {
+          class: "min-w-44",
+          "aria-label": props.row.Title,
+          value: String(current),
+          onChange: (event: Event & { currentTarget: HTMLSelectElement }) =>
+            write(event.currentTarget.value),
+        };
+        return control.Wrap === true ? (
+          <WrapSelect
+            {...shared}
+            label={
+              control.Options.find((option) => option.Value === String(current))?.Label ??
+              String(current)
+            }
+          >
+            {options}
+          </WrapSelect>
+        ) : (
+          <Select {...shared}>{options}</Select>
+        );
+      }
       case "number":
         return (
           <Input

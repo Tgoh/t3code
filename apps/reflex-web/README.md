@@ -251,7 +251,7 @@ Tailwind v4 with preflight, like stock. `src/index.css` is the entry: it maps st
 
 ### Shared controls
 
-`src/ui/` holds the controls every area uses, each owning its look the way stock's `components/ui` do: `IconButton`, `Button`, `Input`, `Select`, `Textarea`, `Switch`, `MenuSwitch`, `Segmented` and `Segment`, `Popup`, `MenuItem`, `MenuHeading`, `MenuCheck`, `MenuSeparator`, the `Dialog` parts, `Modal`, and the tooltip host. Pick a `variant` or `size`, and pass `class` only for layout (margin, width, position) or a property the variant doesn't set. If no variant fits, add one there rather than restyling at the call site. `iconButton()` and `button()` return the class string for an element that can't be a `<button>`, such as a link or a label. An icon button's on state is its `pressed` prop, which is only the look: a toggle also sets `aria-pressed`.
+`src/ui/` holds the controls every area uses, each owning its look the way stock's `components/ui` do: `IconButton`, `Button`, `Input`, `Select`, `WrapSelect` (for labels too long for a phone row), `Textarea`, `Switch`, `MenuSwitch`, `Segmented` and `Segment`, `Popup`, `MenuItem`, `MenuHeading`, `MenuCheck`, `MenuSeparator`, the `Dialog` parts, `Modal`, and the tooltip host. Pick a `variant` or `size`, and pass `class` only for layout (margin, width, position) or a property the variant doesn't set. If no variant fits, add one there rather than restyling at the call site. `iconButton()` and `button()` return the class string for an element that can't be a `<button>`, such as a link or a label. An icon button's on state is its `pressed` prop, which is only the look: a toggle also sets `aria-pressed`.
 
 ## Setting up a machine
 
