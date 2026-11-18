@@ -525,7 +525,7 @@ export function* followUpBehavior(
   draft: IThreadSession,
 ): ISelectorGenerator<ActiveTurnComposerAction> {
   const selection = yield* getData(draft, "Selection");
-  return selection?.ClientSettings?.followUpBehavior ?? "steer";
+  return selection?.ClientSettings?.followUpBehavior ?? "queue";
 }
 
 function* terminalScheme(draft: IThreadSession): ISelectorGenerator<IColorScheme> {

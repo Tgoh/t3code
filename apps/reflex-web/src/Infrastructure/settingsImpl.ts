@@ -85,12 +85,22 @@ export const updateServerSettingsImpl = implementation(updateServerSettingsEffec
   ),
 );
 
+// Reflex queues follow-ups by default where stock steers. Saved settings always carry stock's
+// "steer", so each browser is switched to "queue" once, and a later choice of "steer" holds.
+const QUEUE_DEFAULT_KEY = "reflex:follow-up-queue-default:v1";
+const REFLEX_DEFAULTS = { followUpBehavior: "queue" };
+
 function readClientSettings(): unknown {
   try {
     const held = localStorage.getItem(CLIENT_SETTINGS_KEY);
-    return held === null ? {} : JSON.parse(held);
+    const settings: unknown = held === null ? {} : JSON.parse(held);
+    if (localStorage.getItem(QUEUE_DEFAULT_KEY) !== null) return settings;
+    const switched = { ...(typeof settings === "object" ? settings : {}), ...REFLEX_DEFAULTS };
+    localStorage.setItem(CLIENT_SETTINGS_KEY, JSON.stringify(switched));
+    localStorage.setItem(QUEUE_DEFAULT_KEY, "1");
+    return switched;
   } catch {
-    return {};
+    return REFLEX_DEFAULTS;
   }
 }
 
@@ -98,7 +108,7 @@ export const storedClientSettingsImpl = implementation(storedClientSettingsEffec
   try {
     return encodeClient(decodeClient(readClientSettings()));
   } catch {
-    return encodeClient(decodeClient({}));
+    return encodeClient(decodeClient(REFLEX_DEFAULTS));
   }
 });
 
