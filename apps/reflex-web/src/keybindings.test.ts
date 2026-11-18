@@ -39,10 +39,10 @@ describe("resolveShortcutCommand", () => {
     expect(resolve(key("k"))).toBeNull();
   });
 
-  it("renames on Ctrl+R from the page or the composer, leaving fields, the terminal and the preview", () => {
+  it("renames on Ctrl+Alt+R from the page or the composer, leaving fields and the terminal", () => {
     const resolve = (context: Record<string, boolean>) =>
       resolveShortcutCommand(
-        key("r", { ctrlKey: true }),
+        key("r", { ctrlKey: true, altKey: true }),
         DEFAULT_RESOLVED_KEYBINDINGS,
         { ...idle, ...context },
         WINDOWS,
@@ -51,8 +51,17 @@ describe("resolveShortcutCommand", () => {
     expect(resolve({ editableFocus: true, composerFocus: true })).toBe("thread.rename");
     expect(resolve({ editableFocus: true })).toBeNull();
     expect(resolve({ terminalFocus: true })).toBeNull();
-    expect(resolve({ previewFocus: true })).toBe("preview.refresh");
-    expect(shortcutLabel(DEFAULT_RESOLVED_KEYBINDINGS, "thread.rename", WINDOWS)).toBe("Ctrl+R");
+    expect(
+      resolveShortcutCommand(
+        key("r", { ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        idle,
+        WINDOWS,
+      ),
+    ).toBeNull();
+    expect(shortcutLabel(DEFAULT_RESOLVED_KEYBINDINGS, "thread.rename", WINDOWS)).toBe(
+      "Ctrl+Alt+R",
+    );
   });
 
   it("honours when clauses, such as the terminal keeping its own keys", () => {

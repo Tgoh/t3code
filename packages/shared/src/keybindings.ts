@@ -76,9 +76,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+t", command: "view.reopenClosed" },
   { key: "mod+d", command: "diff.toggle", when: "!terminalFocus" },
   { key: "mod+shift+j", command: "preview.toggle" },
-  // Before preview.refresh, so the later preview rule keeps mod+r while the preview has focus.
   {
-    key: "mod+r",
+    key: "mod+alt+r",
     command: "thread.rename",
     when: "!terminalFocus && (!editableFocus || composerFocus)",
   },
