@@ -6,11 +6,16 @@ import { canCaptureVoice, type IVoiceModel } from "./Infrastructure/dictation";
 import type { IVoiceDestination } from "./Infrastructure/preferences";
 import { SettingsRowFrame, SettingsSection } from "./SettingsView";
 import { Button } from "./ui/Button";
-import { Select } from "./ui/Field";
+import { Select, WrapSelect } from "./ui/Field";
 import VoiceModels, { downloadModel, getDefaultVoiceModels } from "./VoiceModels";
 
 const megabytes = (bytes: number) =>
   bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+
+const modelLabel = (model: IVoiceModel) =>
+  `${model.name}${model.recommended ? " (recommended)" : ""}${
+    model.state === "installed" ? "" : ` · ${megabytes(model.size)}`
+  }`;
 
 function modelState(model: IVoiceModel): string {
   switch (model.state) {
@@ -106,23 +111,18 @@ const ModelRow = VoiceModels.provider(() => {
       }
       control={
         <>
-          <Select
+          <WrapSelect
             class="max-w-64 min-w-44"
             aria-label="Transcription model"
+            label={chosen() === null ? "" : modelLabel(chosen()!)}
             disabled={models() === null || downloading()}
             value={chosen()?.id ?? ""}
             onChange={(event) => void voice.pickModel(event.currentTarget.value)}
           >
             <For each={ordered()}>
-              {(model) => (
-                <option value={model.id}>
-                  {model.name}
-                  {model.recommended ? " (recommended)" : ""}
-                  {model.state === "installed" ? "" : ` · ${megabytes(model.size)}`}
-                </option>
-              )}
+              {(model) => <option value={model.id}>{modelLabel(model)}</option>}
             </For>
-          </Select>
+          </WrapSelect>
           <Show when={chosen()}>
             {(model) => (
               <Show

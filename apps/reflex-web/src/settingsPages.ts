@@ -332,6 +332,7 @@ const CHAT: ISettingsSection[] = [
             "mod-enter-multiline": "Ctrl + Enter for multiline prompts",
             "mod-enter": "Ctrl + Enter always",
           }),
+          Wrap: true,
         },
       }),
       clientRow("showSkillsInSlashMenu", {

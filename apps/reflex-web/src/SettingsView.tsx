@@ -332,7 +332,9 @@ export function SettingsRowFrame(props: {
         </Show>
       </div>
       <Show when={props.control}>
-        <div class="flex items-center justify-end gap-2 max-md:justify-start">{props.control}</div>
+        <div class="flex items-center justify-end gap-2 max-md:flex-wrap max-md:justify-start">
+          {props.control}
+        </div>
       </Show>
     </div>
   );
@@ -638,9 +640,15 @@ function ProvidersPage() {
                           description={INSTANCE_IDLE_COMPACTION_DESCRIPTION}
                           settingId="instanceIdleCompaction"
                           control={
-                            <Select
+                            <WrapSelect
                               class="min-w-44"
                               aria-label="Compact idle threads"
+                              label={
+                                INSTANCE_IDLE_COMPACTION_OPTIONS.find(
+                                  (option) =>
+                                    option.Value === instanceIdleCompaction(held().settings, row),
+                                )?.Label ?? ""
+                              }
                               value={instanceIdleCompaction(held().settings, row)}
                               onChange={(event) =>
                                 void environment.updateServerSettings(
@@ -656,7 +664,7 @@ function ProvidersPage() {
                               <For each={INSTANCE_IDLE_COMPACTION_OPTIONS}>
                                 {(option) => <option value={option.Value}>{option.Label}</option>}
                               </For>
-                            </Select>
+                            </WrapSelect>
                           }
                         />
                       </Show>
