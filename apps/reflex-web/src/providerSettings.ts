@@ -1,6 +1,7 @@
 import { isReasoningControl } from "@t3tools/client-runtime/model-traits";
 import {
   DEFAULT_SERVER_SETTINGS,
+  IDLE_COMPACTION_MODES,
   ProviderDriverKind,
   ProviderInstanceId,
   type ProviderOptionDescriptor,
@@ -148,6 +149,51 @@ export function providerEnabledWrite(
   return {
     Patch: clearsTextGeneration ? { textGenerationModelSelection: defaultTextGeneration } : {},
     Mutation: { operation: "upsert", instanceId, instance: { ...instance, enabled } },
+  };
+}
+
+// Follows the Claude instance's `idleCompaction` field in ClaudeSettings (packages/contracts),
+// as ProviderSettingsSelect in ProviderSettingsForm.tsx renders and writes it.
+export const INSTANCE_IDLE_COMPACTION_OPTIONS = [
+  { Value: "default", Label: "Use default" },
+  ...IDLE_COMPACTION_MODES.map((mode) => ({ Value: mode.value, Label: mode.label })),
+];
+export const INSTANCE_IDLE_COMPACTION_DESCRIPTION =
+  "When to compact an idle thread over 200,000 tokens: after you return, just before its prompt cache expires, or never. Overrides the default in Providers > Advanced.";
+
+export const hasIdleCompactionOverride = (row: Pick<IProviderRow, "Driver">) =>
+  row.Driver === "claudeAgent";
+
+const instanceConfig = (settings: IWireServerSettings, instanceId: string) => {
+  const config = settings.providerInstances?.[ProviderInstanceId.make(instanceId)]?.config;
+  return config !== null && typeof config === "object" ? (config as Record<string, unknown>) : {};
+};
+
+export function instanceIdleCompaction(
+  settings: IWireServerSettings,
+  row: Pick<IProviderRow, "InstanceId">,
+): string {
+  const value = instanceConfig(settings, row.InstanceId).idleCompaction;
+  return typeof value === "string" && value !== "" ? value : "default";
+}
+
+/** "Use default" drops the key, and a config left empty is dropped with it. */
+export function instanceIdleCompactionWrite(
+  settings: IWireServerSettings,
+  row: Pick<IProviderRow, "InstanceId" | "Driver">,
+  value: string,
+): IWireInstanceMutation {
+  const instanceId = ProviderInstanceId.make(row.InstanceId);
+  const { config: _config, ...instance } = settings.providerInstances?.[instanceId] ?? {
+    driver: ProviderDriverKind.make(row.Driver),
+  };
+  const config = { ...instanceConfig(settings, row.InstanceId) };
+  if (value === "default") delete config.idleCompaction;
+  else config.idleCompaction = value;
+  return {
+    operation: "upsert",
+    instanceId,
+    instance: Object.keys(config).length > 0 ? { ...instance, config } : instance,
   };
 }
 

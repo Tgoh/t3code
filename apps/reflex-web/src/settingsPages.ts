@@ -1,3 +1,10 @@
+import {
+  globalIdleCompaction,
+  IDLE_COMPACTION_MODES,
+  idleCompactionPatch,
+  readsIdleCompactionModes,
+} from "@t3tools/contracts";
+
 import type {
   IWireClientSettings,
   IWireServerSettings,
@@ -73,7 +80,14 @@ export type ISettingValue = string | boolean | number;
 
 export type ISettingControl =
   | { Kind: "switch" }
-  | { Kind: "select"; Options: ReadonlyArray<{ Value: string; Label: string }> }
+  | {
+      Kind: "select";
+      Options: ReadonlyArray<{
+        Value: string;
+        Label: string;
+        Disabled?: (held: ISettingsHeld) => boolean;
+      }>;
+    }
   | { Kind: "text"; Placeholder: string }
   | { Kind: "textarea"; Placeholder: string }
   | { Kind: "number"; Min: number; Max: number };
@@ -95,8 +109,10 @@ export interface ISettingRow {
   /** False where stock reads the setting but this client doesn't act on it yet. */
   Applied: boolean;
   Read: (held: ISettingsHeld) => ISettingValue | null;
-  Write: (value: ISettingValue) => ISettingWrite;
+  Write: (value: ISettingValue, held: ISettingsHeld) => ISettingWrite;
   Visible?: (held: ISettingsHeld) => boolean;
+  /** Where set, the row offers a reset while its value differs. */
+  Default?: ISettingValue;
 }
 
 export interface ISettingsSection {
@@ -577,12 +593,57 @@ const VOICE: ISettingsSection[] = [
   },
 ];
 
+const DEFAULT_IDLE_COMPACTION = globalIdleCompaction({ compactIdleThreads: false });
+
+// Follows ScopedCompactIdleThreadsRow in SettingsPanels.tsx, which the Providers panel renders.
+const PROVIDERS: ISettingsSection[] = [
+  {
+    Title: "Advanced",
+    Rows: [
+      {
+        Id: "idleCompaction",
+        Title: "Compact idle threads",
+        Description:
+          "When to compact an idle Claude thread over 200,000 tokens: after you return, just before its prompt cache expires, or never. Each Claude provider can override this.",
+        Control: {
+          Kind: "select",
+          Options: IDLE_COMPACTION_MODES.map((mode) => ({
+            Value: mode.value,
+            Label: mode.label,
+            // A server from before modes has only the on/off switch, so it cannot store "Never".
+            ...(mode.value === "off"
+              ? {
+                  Disabled: (held: ISettingsHeld) =>
+                    held.Server !== null && !readsIdleCompactionModes(held.Server),
+                }
+              : {}),
+          })),
+        },
+        Applied: true,
+        Default: DEFAULT_IDLE_COMPACTION,
+        Read: (held) => (held.Server === null ? null : globalIdleCompaction(held.Server)),
+        Write: (value, held) => {
+          const mode = IDLE_COMPACTION_MODES.find((entry) => entry.value === value)?.value;
+          return {
+            Store: "server",
+            Patch:
+              mode === undefined || held.Server === null
+                ? {}
+                : idleCompactionPatch(held.Server, mode),
+          };
+        },
+      },
+    ],
+  },
+];
+
 export const SETTINGS_SECTIONS = {
   general: GENERAL,
   appearance: APPEARANCE,
   chat: CHAT,
   threads: THREADS,
   voice: VOICE,
+  providers: PROVIDERS,
 } as const satisfies Partial<Record<ISettingsPageId, ISettingsSection[]>>;
 
 export interface ISettingsSearchItem {

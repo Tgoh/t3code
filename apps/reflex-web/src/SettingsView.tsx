@@ -16,6 +16,11 @@ import {
   allBuiltInHidden,
   bulkHiddenPatch,
   filterModels,
+  hasIdleCompactionOverride,
+  INSTANCE_IDLE_COMPACTION_DESCRIPTION,
+  INSTANCE_IDLE_COMPACTION_OPTIONS,
+  instanceIdleCompaction,
+  instanceIdleCompactionWrite,
   type IProviderRow,
   MODEL_FILTER_THRESHOLD,
   modelFavoritePatch,
@@ -364,7 +369,8 @@ function Sections(props: { sections: ISettingsSection[] }) {
 function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
   const environment = Environment.use();
   const value = () => props.row.Read(props.held);
-  const write = (next: ISettingValue) => void environment.writeSetting(props.row.Write(next));
+  const write = (next: ISettingValue) =>
+    void environment.writeSetting(props.row.Write(next, props.held));
   const control = (): JSX.Element => {
     const control = props.row.Control;
     const current = value();
@@ -381,7 +387,11 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
             onChange={(event) => write(event.currentTarget.value)}
           >
             <For each={control.Options}>
-              {(option) => <option value={option.Value}>{option.Label}</option>}
+              {(option) => (
+                <option value={option.Value} disabled={option.Disabled?.(props.held) === true}>
+                  {option.Label}
+                </option>
+              )}
             </For>
           </Select>
         );
@@ -439,12 +449,37 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
               Not used here yet
             </span>
           </Show>
+          <Show
+            when={
+              props.row.Default !== undefined && value() !== null && value() !== props.row.Default
+            }
+          >
+            <ResetButton
+              label={props.row.Title.toLowerCase()}
+              onClick={() => write(props.row.Default!)}
+            />
+          </Show>
         </>
       }
       description={props.row.Description}
       settingId={props.row.Id}
       control={control()}
     />
+  );
+}
+
+// Follows SettingResetButton in apps/web/src/components/settings/settingsLayout.tsx.
+function ResetButton(props: { label: string; onClick: () => void }) {
+  return (
+    <IconButton
+      variant="muted"
+      size="xs"
+      aria-label={`Reset ${props.label} to default`}
+      data-tip="Reset to default"
+      onClick={props.onClick}
+    >
+      <Icons.Undo2 />
+    </IconButton>
   );
 }
 
@@ -583,6 +618,34 @@ function ProvidersPage() {
                         title="Display name"
                         control={<span class={mutedValue}>{row.Name}</span>}
                       />
+                      <Show when={hasIdleCompactionOverride(row)}>
+                        <SettingsRowFrame
+                          title="Compact idle threads"
+                          description={INSTANCE_IDLE_COMPACTION_DESCRIPTION}
+                          settingId="instanceIdleCompaction"
+                          control={
+                            <Select
+                              class="min-w-44"
+                              aria-label="Compact idle threads"
+                              value={instanceIdleCompaction(held().settings, row)}
+                              onChange={(event) =>
+                                void environment.updateServerSettings(
+                                  {},
+                                  instanceIdleCompactionWrite(
+                                    held().settings,
+                                    row,
+                                    event.currentTarget.value,
+                                  ),
+                                )
+                              }
+                            >
+                              <For each={INSTANCE_IDLE_COMPACTION_OPTIONS}>
+                                {(option) => <option value={option.Value}>{option.Label}</option>}
+                              </For>
+                            </Select>
+                          }
+                        />
+                      </Show>
                     </SettingsSection>
                     <SettingsSection title="Models">
                       <p class={`${note} py-3`}>
@@ -692,6 +755,7 @@ function ProvidersPage() {
               </Show>
             </div>
           </SettingsSection>
+          <Sections sections={SETTINGS_SECTIONS.providers} />
         </>
       )}
     </Show>

@@ -18,6 +18,10 @@ import {
   allBuiltInHidden,
   bulkHiddenPatch,
   filterModels,
+  hasIdleCompactionOverride,
+  INSTANCE_IDLE_COMPACTION_OPTIONS,
+  instanceIdleCompaction,
+  instanceIdleCompactionWrite,
   modelFavoritePatch,
   modelHiddenPatch,
   modelMovePatch,
@@ -64,7 +68,7 @@ describe("settings rows", () => {
     for (const entry of settingRows()) {
       const value = entry.Read(held());
       expect(value, entry.Id).not.toBeNull();
-      const write = entry.Write(value!);
+      const write = entry.Write(value!, held());
       if (write.Store === "server") {
         expect(() => decodePatch(write.Patch), entry.Id).not.toThrow();
         for (const key of Object.keys(write.Patch)) expect(serverKeys.has(key), key).toBe(true);
@@ -80,7 +84,7 @@ describe("settings rows", () => {
     for (const entry of settingRows()) {
       if (entry.Control.Kind !== "select") continue;
       for (const option of entry.Control.Options) {
-        const write = entry.Write(option.Value);
+        const write = entry.Write(option.Value, held());
         if (write.Store === "server")
           expect(() => decodePatch(write.Patch), entry.Id).not.toThrow();
         else
@@ -93,15 +97,15 @@ describe("settings rows", () => {
   });
 
   it("map the auto-settle switch to seven days or null, and clamp the day count", () => {
-    expect(row("sidebarAutoSettleEnabled").Write(false)).toEqual({
+    expect(row("sidebarAutoSettleEnabled").Write(false, held())).toEqual({
       Store: "server",
       Patch: { sidebarAutoSettleAfterDays: null },
     });
-    expect(row("sidebarAutoSettleEnabled").Write(true)).toEqual({
+    expect(row("sidebarAutoSettleEnabled").Write(true, held())).toEqual({
       Store: "server",
       Patch: { sidebarAutoSettleAfterDays: 7 },
     });
-    expect(row("sidebarAutoSettleAfterDays").Write(400)).toEqual({
+    expect(row("sidebarAutoSettleAfterDays").Write(400, held())).toEqual({
       Store: "server",
       Patch: { sidebarAutoSettleAfterDays: 90 },
     });
@@ -116,7 +120,38 @@ describe("settings rows", () => {
     expect(workspace.Read(held(serverSettings({ defaultThreadEnvMode: "worktree" })))).toBe(
       "worktree",
     );
-    expect(workspace.Write("")).toEqual({ Store: "server", Patch: { defaultThreadEnvMode: null } });
+    expect(workspace.Write("", held())).toEqual({
+      Store: "server",
+      Patch: { defaultThreadEnvMode: null },
+    });
+  });
+
+  it("read and write idle compaction in the form each server stores, offering Never only where it can be stored", () => {
+    const idle = row("idleCompaction");
+    const modern = held(serverSettings({ compactIdleThreads: false, idleCompaction: "off" }));
+    const modeInLegacyField = held(serverSettings({ compactIdleThreads: "beforeCacheExpires" }));
+    const booleanOnly = held(serverSettings({ compactIdleThreads: true }));
+    expect([modern, modeInLegacyField, booleanOnly].map((entry) => idle.Read(entry))).toEqual([
+      "off",
+      "beforeCacheExpires",
+      "beforeCacheExpires",
+    ]);
+    expect(idle.Write("beforeCacheExpires", modern).Patch).toEqual({
+      idleCompaction: "beforeCacheExpires",
+    });
+    expect(idle.Write("off", modeInLegacyField).Patch).toEqual({ compactIdleThreads: "off" });
+    expect(idle.Write("onReturn", booleanOnly).Patch).toEqual({ compactIdleThreads: false });
+    const never =
+      idle.Control.Kind === "select"
+        ? idle.Control.Options.find((option) => option.Value === "off")
+        : undefined;
+    expect(
+      [modern, modeInLegacyField, booleanOnly].map((entry) => never?.Disabled?.(entry)),
+    ).toEqual([false, false, true]);
+    expect(idle.Default).toBe("onReturn");
+    expect(
+      SETTINGS_SECTIONS.providers.flatMap((section) => section.Rows.map((entry) => entry.Id)),
+    ).toContain("idleCompaction");
   });
 
   it("map project grouping's switch to stock's modes", () => {
@@ -124,7 +159,7 @@ describe("settings rows", () => {
     expect(
       grouping.Read(held(undefined, clientSettings({ sidebarProjectGroupingMode: "separate" }))),
     ).toBe(false);
-    expect(grouping.Write(true)).toEqual({
+    expect(grouping.Write(true, held())).toEqual({
       Store: "client",
       Patch: { sidebarProjectGroupingMode: "repository" },
     });
@@ -135,7 +170,7 @@ describe("settings rows", () => {
       SETTINGS_SECTIONS[page].flatMap((section) => section.Rows.map((entry) => entry.Id));
     expect(ids("chat")).toContain("toolCallVisibility");
     expect(ids("general")).toContain("timestampFormat");
-    expect(row("toolCallVisibility").Write("zen")).toEqual({
+    expect(row("toolCallVisibility").Write("zen", held())).toEqual({
       Store: "client",
       Patch: { toolCallVisibility: "zen" },
     });
@@ -324,6 +359,57 @@ describe("provider settings", () => {
         instanceId: "codex",
         instance: { driver: "codex", enabled: true },
       },
+    });
+  });
+});
+
+describe("idle compaction override", () => {
+  it("offer it on Claude instances, reading a missing key as Use default", () => {
+    const [claude] = providerRows(config());
+    expect(hasIdleCompactionOverride(claude!)).toBe(true);
+    expect(hasIdleCompactionOverride({ Driver: "codex" })).toBe(false);
+    expect(instanceIdleCompaction(serverSettings(), claude!)).toBe("default");
+    expect(INSTANCE_IDLE_COMPACTION_OPTIONS.map((option) => option.Value)).toEqual([
+      "default",
+      "onReturn",
+      "beforeCacheExpires",
+      "off",
+    ]);
+  });
+
+  it("upsert the instance with the key set, dropping it and an emptied config for Use default", () => {
+    const claude = { InstanceId: "claudeAgent", Driver: "claudeAgent" };
+    const unconfigured = instanceIdleCompactionWrite(serverSettings(), claude, "off");
+    expect(unconfigured).toEqual({
+      operation: "upsert",
+      instanceId: "claudeAgent",
+      instance: { driver: "claudeAgent", config: { idleCompaction: "off" } },
+    });
+    expect(() => decodeMutation(unconfigured)).not.toThrow();
+    const stored = serverSettings({
+      providerInstances: {
+        claudeAgent: {
+          driver: "claudeAgent",
+          enabled: true,
+          config: { idleCompaction: "off", homePath: "~/.claude-work" },
+        },
+      },
+    });
+    expect(instanceIdleCompaction(stored, claude)).toBe("off");
+    expect(instanceIdleCompactionWrite(stored, claude, "default")).toEqual({
+      operation: "upsert",
+      instanceId: "claudeAgent",
+      instance: { driver: "claudeAgent", enabled: true, config: { homePath: "~/.claude-work" } },
+    });
+    const onlyOverride = serverSettings({
+      providerInstances: {
+        claudeAgent: { driver: "claudeAgent", config: { idleCompaction: "onReturn" } },
+      },
+    });
+    expect(instanceIdleCompactionWrite(onlyOverride, claude, "default")).toEqual({
+      operation: "upsert",
+      instanceId: "claudeAgent",
+      instance: { driver: "claudeAgent" },
     });
   });
 });
