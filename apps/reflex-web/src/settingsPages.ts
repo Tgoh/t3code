@@ -352,6 +352,7 @@ const CHAT: ISettingsSection[] = [
         Title: "Follow-up behavior",
         Description: "Queue follow-ups while the agent runs or steer the current run.",
         Control: { Kind: "select", Options: options({ queue: "Queue", steer: "Steer" }) },
+        Applied: true,
       }),
     ],
   },
