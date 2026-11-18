@@ -692,7 +692,7 @@ function ProvidersPage() {
                       </div>
                       <For each={filterModels(row.Models, modelFilter())}>
                         {(model) => (
-                          <div class="flex items-center gap-1 py-1.5 pr-4 pl-2.5">
+                          <div class="flex items-center gap-1 py-1.5 pr-4 pl-2.5 max-md:flex-wrap">
                             <IconButton
                               size="sm"
                               pressed={model.Favorite}
@@ -710,21 +710,25 @@ function ProvidersPage() {
                               />
                             </IconButton>
                             <span
-                              class={`flex min-w-0 flex-1 items-center gap-2 pl-1 text-[14px] ${model.Hidden ? "text-muted-foreground" : ""}`}
+                              class={`flex min-w-0 flex-1 items-center gap-2 pl-1 text-[14px] max-md:flex-col max-md:items-start max-md:gap-0 ${model.Hidden ? "text-muted-foreground" : ""}`}
                             >
                               {model.Name}
-                              <code class={monoNote}>{model.Slug}</code>
+                              <code class={`${monoNote} max-md:max-w-full max-md:truncate`}>
+                                {model.Slug}
+                              </code>
                               <Show when={model.Custom}>
                                 <span class={badge}>Custom</span>
                               </Show>
                             </span>
-                            <For each={model.Tags}>
-                              {(tag) => (
-                                <span class="mr-3 text-[12px] whitespace-nowrap text-muted-foreground">
-                                  {tag}
-                                </span>
-                              )}
-                            </For>
+                            <span class="contents max-md:order-last max-md:flex max-md:basis-full max-md:pl-8 max-md:empty:hidden">
+                              <For each={model.Tags}>
+                                {(tag) => (
+                                  <span class="mr-3 text-[12px] whitespace-nowrap text-muted-foreground">
+                                    {tag}
+                                  </span>
+                                )}
+                              </For>
+                            </span>
                             <IconButton
                               size="sm"
                               aria-label="Move up"
