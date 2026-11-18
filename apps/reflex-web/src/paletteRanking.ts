@@ -1,4 +1,3 @@
-import type { KeybindingCommand } from "@t3tools/contracts";
 import {
   foldSearchQuery,
   PALETTE_MESSAGE_LIMIT,
@@ -13,9 +12,11 @@ import {
   type ThreadSearchSubject,
 } from "@t3tools/shared/paletteSearch";
 
+import type { IAppCommand } from "./keybindings";
+
 export const RECENT_THREAD_LIMIT = 12;
 
-export type IPaletteIcon = "new-thread" | "add-project" | "project" | "thread" | "focus";
+export type IPaletteIcon = "new-thread" | "add-project" | "project" | "thread" | "focus" | "rename";
 
 export interface IPaletteItem {
   /** Unique across the palette: `action:…`, `project:<id>`, `thread:<id>`. */
@@ -30,7 +31,7 @@ export interface IPaletteItem {
   Thread?: ThreadSearchSubject;
   /** Shows the thread's status and its project, environment, branch and provider line. */
   ThreadId?: string;
-  Shortcut?: KeybindingCommand;
+  Shortcut?: IAppCommand;
   /** Listed last in its group, as the open thread is. */
   Secondary?: boolean;
   /** Opens this nested list instead of running. */

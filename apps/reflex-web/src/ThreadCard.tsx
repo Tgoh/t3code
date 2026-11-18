@@ -28,6 +28,7 @@ import {
 } from "./icons";
 import type { IThreadCommand } from "./Infrastructure/commandEffects";
 import type { IWireThreadShell } from "./Infrastructure/wire";
+import { useNavigation } from "./navigation";
 import Shell, {
   activityAt,
   canSnooze,
@@ -437,6 +438,7 @@ export function ThreadMenu(props: {
 }) {
   const environment = Environment.use();
   const shell = Shell.use();
+  const navigation = useNavigation();
   const [confirmingDelete, setConfirmingDelete] = createSignal(false);
   const subagent = () => shell.subagentRequests()[props.thread.id];
   const snoozed = () => isSnoozed(props.thread, props.now, subagent());
@@ -494,6 +496,7 @@ export function ThreadMenu(props: {
       <MenuItem
         icon={<PenLine />}
         label="Rename"
+        detail={navigation.shortcut("thread.rename") ?? undefined}
         onSelect={() => {
           props.onRename();
           props.onClose();

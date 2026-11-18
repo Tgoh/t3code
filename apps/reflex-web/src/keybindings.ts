@@ -2,13 +2,38 @@ import type {
   KeybindingCommand,
   KeybindingShortcut,
   KeybindingWhenNode,
-  ResolvedKeybindingsConfig,
+  ResolvedKeybindingRule,
 } from "@t3tools/contracts";
 import {
   isMacPlatform,
   matchesKeybindingShortcut,
+  parseKeybindingShortcut,
+  parseKeybindingWhenExpression,
   type ShortcutEventLike,
 } from "@t3tools/shared/keybindings";
+
+/** Commands only this client has. The server's keybindings.json can't bind them. */
+export type IAppCommand = KeybindingCommand | "thread.rename";
+
+export type IKeybindingRule = Omit<ResolvedKeybindingRule, "command"> & { command: IAppCommand };
+export type IKeybindings = readonly IKeybindingRule[];
+
+/**
+ * F2 is free in a textarea, so it renames from the composer, where focus usually rests, but not
+ * from another field or the terminal, where it may mean something.
+ */
+export const CLIENT_KEYBINDINGS: IKeybindings = [
+  {
+    command: "thread.rename",
+    shortcut: parseKeybindingShortcut("f2")!,
+    whenAst: parseKeybindingWhenExpression("!terminalFocus && (!editableFocus || composerFocus)")!,
+  },
+];
+
+/** The server's rules after this client's defaults, so a server rule on the same key wins. */
+export function withClientKeybindings(keybindings: IKeybindings): IKeybindings {
+  return [...CLIENT_KEYBINDINGS, ...keybindings];
+}
 
 export interface IShortcutContext {
   terminalFocus: boolean;
@@ -47,10 +72,10 @@ function conflictKey(shortcut: KeybindingShortcut, platform: string): string {
 // Follows resolveShortcutCommand in apps/web/src/keybindings.ts: later rules win.
 export function resolveShortcutCommand(
   event: ShortcutEventLike,
-  keybindings: ResolvedKeybindingsConfig,
+  keybindings: IKeybindings,
   context: IShortcutContext,
   platform: string,
-): KeybindingCommand | null {
+): IAppCommand | null {
   const held = { ...BASE_CONTEXT, ...context };
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index]!;
@@ -63,8 +88,8 @@ export function resolveShortcutCommand(
 // Follows effectiveShortcutsForCommand in apps/web/src/keybindings.ts: a shortcut a later rule
 // claims for another command isn't this command's.
 function shortcutForCommand(
-  keybindings: ResolvedKeybindingsConfig,
-  command: KeybindingCommand,
+  keybindings: IKeybindings,
+  command: IAppCommand,
   context: Partial<IShortcutContext>,
   platform: string,
 ): KeybindingShortcut | null {
@@ -113,8 +138,8 @@ export function formatShortcutLabel(shortcut: KeybindingShortcut, platform: stri
 }
 
 export function shortcutLabel(
-  keybindings: ResolvedKeybindingsConfig,
-  command: KeybindingCommand,
+  keybindings: IKeybindings,
+  command: IAppCommand,
   platform: string,
   context: Partial<IShortcutContext> = {},
 ): string | null {

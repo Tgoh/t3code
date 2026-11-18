@@ -19,7 +19,15 @@ import { Highlighted } from "./Highlighted";
 import { Folder, FolderGit2 } from "./icons";
 import { MARK, STATUS_LABEL, STATUS_TONE } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
-import { ArrowLeft, FolderOpen, FolderPlus, MessageSquare, Search, SquarePen } from "./icons";
+import {
+  ArrowLeft,
+  FolderOpen,
+  FolderPlus,
+  MessageSquare,
+  PenLine,
+  Search,
+  SquarePen,
+} from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { useMessageSearch } from "./messageSearch";
 import { toSortableThread } from "./projectOrder";
@@ -54,6 +62,7 @@ const ICONS: Record<IPaletteIcon, () => JSX.Element> = {
   project: () => <FolderOpen />,
   thread: () => <MessageSquare />,
   focus: () => <Search />,
+  rename: () => <PenLine />,
 };
 
 const NEW_THREAD_IN = "action:new-thread-in";
@@ -193,6 +202,16 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
       ],
       Icon: "add-project",
     });
+    if (shell.state.Threads[selected() ?? ""] !== undefined) {
+      run("action:rename-thread", () => navigation.renameThread());
+      items.push({
+        Value: "action:rename-thread",
+        Title: "Rename thread",
+        SearchTerms: ["rename", "title", "thread"],
+        Icon: "rename",
+        Shortcut: "thread.rename",
+      });
+    }
     run("action:search-threads", () => navigation.focusSearch());
     items.push({
       Value: "action:search-threads",

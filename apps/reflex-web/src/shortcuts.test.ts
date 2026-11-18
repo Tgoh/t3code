@@ -21,7 +21,7 @@ function key(name: string) {
 function setup(command: KeybindingCommand | null) {
   const overlays = createOverlayStack();
   const ran: string[] = [];
-  const state = { palette: false, sheet: false };
+  const state = { palette: false, sheet: false, composer: true };
   const keys = createKeyDispatcher({
     overlays,
     paletteOpen: () => state.palette,
@@ -34,6 +34,11 @@ function setup(command: KeybindingCommand | null) {
       if (!state.sheet) return false;
       state.sheet = false;
       ran.push("sheet");
+      return true;
+    },
+    typeIntoComposer: (event) => {
+      if (!state.composer) return false;
+      ran.push(`typed ${event.key}`);
       return true;
     },
   });
@@ -88,21 +93,29 @@ describe("the key dispatcher", () => {
     });
   });
 
-  it("hands plain keys to their taker only while nothing is open over it", () => {
+  it("hands plain keys to their taker, else the composer, only while nothing is open over it", () => {
     createRoot((dispose) => {
       const keys = setup(null);
       const taken: string[] = [];
       const release = keys.keys.takeLetters((event) => {
+        if (event.key !== "t") return false;
         taken.push(event.key);
         return true;
       });
       expect(keys.press("t")).toBe(true);
+      expect(keys.press("x")).toBe(true);
       const close = keys.overlays.push(menu);
       expect(keys.press("d")).toBe(false);
       close();
+      keys.state.palette = true;
+      expect(keys.press("d")).toBe(false);
+      keys.state.palette = false;
       release();
+      expect(keys.press("t")).toBe(true);
+      keys.state.composer = false;
       expect(keys.press("d")).toBe(false);
       expect(taken).toEqual(["t"]);
+      expect(keys.ran).toEqual(["typed x", "typed t"]);
       dispose();
     });
   });

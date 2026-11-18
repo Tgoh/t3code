@@ -16,7 +16,12 @@ import {
   splitTransferredFiles,
 } from "./attachmentIntake";
 import { ComposerCommandMenu, useComposerMenu } from "./ComposerCommandMenu";
-import { FOCUS_COMPOSER_EVENT, TOGGLE_DICTATION_EVENT } from "./composerFocus";
+import {
+  FOCUS_COMPOSER_EVENT,
+  type ITypedText,
+  TOGGLE_DICTATION_EVENT,
+  TYPE_INTO_COMPOSER_EVENT,
+} from "./composerFocus";
 import { formatContextTokens } from "./compaction";
 import { CompactToggle, ModelPicker, PermissionsChip } from "./ComposerMenus";
 import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
@@ -72,6 +77,14 @@ function useFocusRequests(focus: () => void) {
   onMount(() => {
     window.addEventListener(FOCUS_COMPOSER_EVENT, focus);
     onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, focus));
+  });
+}
+
+function useTypedText(take: (event: Event, typed: ITypedText) => void) {
+  onMount(() => {
+    const onTyped = (event: Event) => take(event, (event as CustomEvent<ITypedText>).detail);
+    window.addEventListener(TYPE_INTO_COMPOSER_EVENT, onTyped);
+    onCleanup(() => window.removeEventListener(TYPE_INTO_COMPOSER_EVENT, onTyped));
   });
 }
 
@@ -525,20 +538,46 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       return;
     }
     const textarea = event.currentTarget;
+    const selection = { start: textarea.selectionStart, end: textarea.selectionEnd };
+    if (foldPaste(plainText, bypass, selection)) event.preventDefault();
+  };
+  /** Turns a long paste into an attachment, and says whether it did instead of leaving it inline. */
+  const foldPaste = (
+    plainText: string,
+    bypass: boolean,
+    selection: { start: number; end: number },
+  ): boolean => {
     const decision = foldPastedText({
       Text: plainText,
       Bypass: bypass,
       DraftLength: textarea.value.length,
-      Selection: { start: textarea.selectionStart, end: textarea.selectionEnd },
+      Selection: selection,
       AttachedNames: held().Attachments.map((file) => file.Name),
       Reserved: held().Attachments.length,
       FileLimit: environment.state.FileAttachmentLimit,
     });
-    if (decision.Kind === "inline") return;
-    event.preventDefault();
+    if (decision.Kind === "inline") return false;
     if (decision.Kind === "refuse") session.addAttachments([], decision.Error);
     else void intake.addFiles([decision.File], true);
+    return true;
   };
+  // Follows insertTextAtEnd and pasteTextAtEnd in apps/web/src/components/chat/ChatComposer.tsx.
+  useTypedText((event, typed) => {
+    if (rewinding() || textarea.disabled || textarea.readOnly) return;
+    event.preventDefault();
+    expand();
+    const end = textarea.value.length;
+    if (typed.Paste && !answering() && foldPaste(typed.Text, typed.Bypass, { start: end, end }))
+      return;
+    textarea.setRangeText(typed.Text, end, end, "end");
+    textarea.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        inputType: typed.Paste ? "insertFromPaste" : "insertText",
+        data: typed.Text,
+      }),
+    );
+  });
 
   return (
     <>

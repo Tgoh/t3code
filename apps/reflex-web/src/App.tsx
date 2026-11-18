@@ -1,5 +1,5 @@
-import type { KeybindingCommand } from "@t3tools/contracts";
-import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
+import { DEFAULT_RESOLVED_KEYBINDINGS, isMacPlatform } from "@t3tools/shared/keybindings";
 import { useDispatch, useResource } from "treflex-solid";
 import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 
@@ -7,15 +7,28 @@ import { AddProjectPalette } from "./AddProject";
 import { ProjectBadge } from "./brand";
 import { CommandPalette } from "./CommandPalette";
 import { Composer, COMPOSER_LANE, FileDropSection } from "./Composer";
-import { TOGGLE_DICTATION_EVENT } from "./composerFocus";
+import { TOGGLE_DICTATION_EVENT, typeIntoComposer } from "./composerFocus";
+import {
+  pasteTextToFocusComposer,
+  shouldRedirectInputToComposer,
+  shouldTypeToFocusComposer,
+} from "./composerFocusRedirect";
 import { DictationIndicator } from "./DictationControls";
 import Environment from "./Environment";
-import { adjacentThread, isEditable, resolveShortcutCommand, shortcutLabel } from "./keybindings";
+import {
+  adjacentThread,
+  type IAppCommand,
+  isEditable,
+  resolveShortcutCommand,
+  shortcutLabel,
+  withClientKeybindings,
+} from "./keybindings";
 import {
   COMPOSER_SELECTOR,
   type INavigation,
   type IPaletteView,
   NavigationContext,
+  RENAME_THREAD_EVENT,
   SEARCH_SELECTOR,
 } from "./navigation";
 import { createOverlayStack, OverlayContext } from "./overlays";
@@ -81,7 +94,8 @@ const EnvironmentView = Environment.provider(() => {
     },
   );
   const keybindingsResource = useResource(environment.state, "Server/Keybindings");
-  const keybindings = () => keybindingsResource.value() ?? DEFAULT_RESOLVED_KEYBINDINGS;
+  const keybindings = () =>
+    withClientKeybindings(keybindingsResource.value() ?? DEFAULT_RESOLVED_KEYBINDINGS);
   const platform = navigator.platform;
   const dispatch = useDispatch();
   const [palette, setPalette] = createSignal<IPaletteView | null>(null);
@@ -110,9 +124,20 @@ const EnvironmentView = Environment.provider(() => {
     void environment.newThread(projectId);
     focusComposer();
   };
+  const renameThread = () => {
+    const threadId = environment.state.Local.SelectedThreadId;
+    if (threadId === null || environment.state.Replica.Shell.Threads[threadId] === undefined)
+      return false;
+    if (sidebar.sheet()) sidebar.setOpen(true);
+    else if (sidebar.collapsed()) sidebar.toggle();
+    nextFrame(() =>
+      window.dispatchEvent(new CustomEvent(RENAME_THREAD_EVENT, { detail: threadId })),
+    );
+    return true;
+  };
   // Follows the window keydown handlers of Sidebar.tsx and AppSidebarLayout.tsx and the chat route
   // commands in apps/web/src/shortcuts/chatRouteCommands.ts.
-  const runCommand = (command: KeybindingCommand): boolean => {
+  const runCommand = (command: IAppCommand): boolean => {
     switch (command) {
       case "commandPalette.toggle":
         setPalette(palette() === null ? "root" : null);
@@ -150,12 +175,38 @@ const EnvironmentView = Environment.provider(() => {
         if (document.querySelector(COMPOSER_SELECTOR) === null) return false;
         window.dispatchEvent(new Event(TOGGLE_DICTATION_EVENT));
         return true;
+      case "thread.rename":
+        return renameThread();
       default:
         return runPanelShortcut(command, environment.panelShortcuts(), dispatch);
     }
   };
   const overlays = createOverlayStack();
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
+  const composerCovered = () =>
+    overlays.open() ||
+    palette() !== null ||
+    sidebar.open() ||
+    (panelSheet() && environment.panelShortcuts()?.RightPanelOpen === true);
+  let pasteAsTextUntil = 0;
+  const onPasteAsTextKey = (event: KeyboardEvent) => {
+    if (
+      shouldRedirectInputToComposer(event) &&
+      isPasteAsTextShortcut(event, isMacPlatform(platform))
+    )
+      pasteAsTextUntil = event.timeStamp + 1_000;
+  };
+  // Follows usePasteToFocusComposer in apps/web/src/components/chat.
+  const onPaste = (event: ClipboardEvent) => {
+    if (composerCovered()) return;
+    const text = pasteTextToFocusComposer(event);
+    if (text === null) return;
+    const bypass = event.timeStamp <= pasteAsTextUntil;
+    pasteAsTextUntil = 0;
+    if (!typeIntoComposer({ Text: text, Paste: true, Bypass: bypass })) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
   const keys = createKeyDispatcher({
     overlays,
     paletteOpen: () => palette() !== null,
@@ -168,10 +219,15 @@ const EnvironmentView = Environment.provider(() => {
             event.target instanceof Element &&
             event.target.closest("[data-terminal-drawer]") !== null,
           editableFocus: isEditable(event.target),
+          composerFocus: event.target instanceof Element && event.target.matches(COMPOSER_SELECTOR),
         },
         platform,
       ),
     run: runCommand,
+    typeIntoComposer: (event) =>
+      !composerCovered() &&
+      shouldTypeToFocusComposer(event) &&
+      typeIntoComposer({ Text: event.key, Paste: false, Bypass: false }),
     closeSheet: () => {
       const panels = environment.panelShortcuts();
       if (panelSheet() && panels?.RightPanelOpen === true) {
@@ -187,9 +243,13 @@ const EnvironmentView = Environment.provider(() => {
     if (event.target instanceof Node) overlays.press(event.target);
   };
   window.addEventListener("keydown", keys.onKeyDown);
+  window.addEventListener("keydown", onPasteAsTextKey, true);
+  window.addEventListener("paste", onPaste, true);
   document.addEventListener("pointerdown", onPointerDown, true);
   onCleanup(() => {
     window.removeEventListener("keydown", keys.onKeyDown);
+    window.removeEventListener("keydown", onPasteAsTextKey, true);
+    window.removeEventListener("paste", onPaste, true);
     document.removeEventListener("pointerdown", onPointerDown, true);
   });
   const navigation: INavigation = {
@@ -200,6 +260,7 @@ const EnvironmentView = Environment.provider(() => {
     goToThread,
     focusComposer,
     focusSearch,
+    renameThread,
     takeLetters: keys.takeLetters,
   };
   return (

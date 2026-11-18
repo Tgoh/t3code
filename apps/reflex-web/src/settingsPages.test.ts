@@ -352,6 +352,14 @@ describe("keybinding rows", () => {
     const all = groups.flatMap((group) => group.Rows);
     expect(all.find((entry) => entry.Command === "usage.cost")?.Label).toBe("Usage: Cost");
     expect(all.some((entry) => entry.Source === "Default")).toBe(true);
+    const rename = groups
+      .find((group) => group.Title === "Threads")
+      ?.Rows.find((entry) => entry.Command === "thread.rename");
+    expect([rename?.Label, rename?.Key, rename?.Source]).toEqual([
+      "Thread: Rename",
+      "f2",
+      "Default",
+    ]);
   });
 });
 

@@ -25,7 +25,7 @@ import {
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { withShortcut } from "./keybindings";
 import { useMessageSearch } from "./messageSearch";
-import { useNavigation } from "./navigation";
+import { RENAME_THREAD_EVENT, useNavigation } from "./navigation";
 import { groupResults, type ISearchResult, rankMessages, searchThreads } from "./threadSearch";
 import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder";
 import { createProjectDrag } from "./projectDrag";
@@ -173,6 +173,9 @@ export const Sidebar = Shell.provider(() => {
   const sections = () => layout().Sections;
   const shelves = () => local().Shelves;
   const [renaming, setRenaming] = createSignal<string | null>(null);
+  const onRenameRequest = (event: Event) => setRenaming((event as CustomEvent<string>).detail);
+  window.addEventListener(RENAME_THREAD_EVENT, onRenameRequest);
+  onCleanup(() => window.removeEventListener(RENAME_THREAD_EVENT, onRenameRequest));
   const [menu, setMenu] = createSignal<{ Id: string; X: number; Y: number } | null>(null);
   const menuThread = () => {
     const held = menu();

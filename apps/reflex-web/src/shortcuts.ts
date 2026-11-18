@@ -1,7 +1,7 @@
-import type { KeybindingCommand } from "@t3tools/contracts";
 import type { IDispatch } from "treflex-solid";
 
 import type { IPanelShortcuts } from "./Environment";
+import type { IAppCommand } from "./keybindings";
 import type { IOverlayStack } from "./overlays";
 import {
   closeDiff,
@@ -17,15 +17,17 @@ export type ILetterKeys = (event: KeyboardEvent) => boolean;
 /**
  * The one keydown handler for the app: Escape closes what's on top, a bound shortcut runs its
  * command unless a dialog or the palette holds the screen, and plain keys go to whatever on
- * screen takes them while nothing is open over it.
+ * screen takes them while nothing is open over it, else to the composer.
  */
 export function createKeyDispatcher(input: {
   overlays: IOverlayStack;
   paletteOpen: () => boolean;
-  resolve: (event: KeyboardEvent) => KeybindingCommand | null;
-  run: (command: KeybindingCommand) => boolean;
+  resolve: (event: KeyboardEvent) => IAppCommand | null;
+  run: (command: IAppCommand) => boolean;
   /** Closes a sheet once nothing is open over it, and says whether one was open. */
   closeSheet: () => boolean;
+  /** Types the key into the composer, and says whether it did. */
+  typeIntoComposer: (event: KeyboardEvent) => boolean;
 }) {
   let letters: ILetterKeys | null = null;
   const handled = (event: KeyboardEvent) => {
@@ -53,15 +55,15 @@ export function createKeyDispatcher(input: {
         if (input.run(command)) handled(event);
         return;
       }
-      if (letters === null || input.overlays.open() || input.paletteOpen()) return;
-      if (letters(event)) handled(event);
+      if (input.overlays.open() || input.paletteOpen()) return;
+      if (letters?.(event) === true || input.typeIntoComposer(event)) handled(event);
     },
   };
 }
 
 /** Runs a panel shortcut on the shown thread's session, and says whether it applied. */
 export function runPanelShortcut(
-  command: KeybindingCommand,
+  command: IAppCommand,
   panels: IPanelShortcuts | null,
   dispatch: IDispatch,
 ): boolean {
