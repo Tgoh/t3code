@@ -250,6 +250,15 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
             .map((entry) => entry.command),
           ["threadPanel.toggle", "script.custom-panel.run", "script.custom-composer.run"],
         );
+        assert.deepEqual(
+          configState.keybindings
+            .filter(
+              (entry) =>
+                entry.shortcut.key === "r" && entry.shortcut.modKey && !entry.shortcut.shiftKey,
+            )
+            .map((entry) => entry.command),
+          ["thread.rename", "preview.refresh"],
+        );
       }).pipe(Effect.provide(layerKeybindings())),
   );
 

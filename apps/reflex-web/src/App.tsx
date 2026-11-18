@@ -1,4 +1,5 @@
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
+import type { KeybindingCommand } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS, isMacPlatform } from "@t3tools/shared/keybindings";
 import { useDispatch, useResource } from "treflex-solid";
 import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
@@ -15,14 +16,7 @@ import {
 } from "./composerFocusRedirect";
 import { DictationIndicator } from "./DictationControls";
 import Environment from "./Environment";
-import {
-  adjacentThread,
-  type IAppCommand,
-  isEditable,
-  resolveShortcutCommand,
-  shortcutLabel,
-  withClientKeybindings,
-} from "./keybindings";
+import { adjacentThread, isEditable, resolveShortcutCommand, shortcutLabel } from "./keybindings";
 import {
   COMPOSER_SELECTOR,
   type INavigation,
@@ -94,8 +88,7 @@ const EnvironmentView = Environment.provider(() => {
     },
   );
   const keybindingsResource = useResource(environment.state, "Server/Keybindings");
-  const keybindings = () =>
-    withClientKeybindings(keybindingsResource.value() ?? DEFAULT_RESOLVED_KEYBINDINGS);
+  const keybindings = () => keybindingsResource.value() ?? DEFAULT_RESOLVED_KEYBINDINGS;
   const platform = navigator.platform;
   const dispatch = useDispatch();
   const [palette, setPalette] = createSignal<IPaletteView | null>(null);
@@ -137,7 +130,7 @@ const EnvironmentView = Environment.provider(() => {
   };
   // Follows the window keydown handlers of Sidebar.tsx and AppSidebarLayout.tsx and the chat route
   // commands in apps/web/src/shortcuts/chatRouteCommands.ts.
-  const runCommand = (command: IAppCommand): boolean => {
+  const runCommand = (command: KeybindingCommand): boolean => {
     switch (command) {
       case "commandPalette.toggle":
         setPalette(palette() === null ? "root" : null);
@@ -176,7 +169,8 @@ const EnvironmentView = Environment.provider(() => {
         window.dispatchEvent(new Event(TOGGLE_DICTATION_EVENT));
         return true;
       case "thread.rename":
-        return renameThread();
+        renameThread();
+        return true;
       default:
         return runPanelShortcut(command, environment.panelShortcuts(), dispatch);
     }

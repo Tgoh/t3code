@@ -5,13 +5,7 @@ import {
 } from "@t3tools/shared/keybindings";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  adjacentThread,
-  resolveShortcutCommand,
-  shortcutLabel,
-  withClientKeybindings,
-  withShortcut,
-} from "./keybindings";
+import { adjacentThread, resolveShortcutCommand, shortcutLabel, withShortcut } from "./keybindings";
 
 const WINDOWS = "Win32";
 const MAC = "MacIntel";
@@ -45,11 +39,11 @@ describe("resolveShortcutCommand", () => {
     expect(resolve(key("k"))).toBeNull();
   });
 
-  it("renames on F2 from the page or the composer, but not from another field or the terminal", () => {
-    const resolve = (context: Record<string, boolean>, rules = DEFAULT_RESOLVED_KEYBINDINGS) =>
+  it("renames on Ctrl+R from the page or the composer, leaving fields, the terminal and the preview", () => {
+    const resolve = (context: Record<string, boolean>) =>
       resolveShortcutCommand(
-        key("f2"),
-        withClientKeybindings(rules),
+        key("r", { ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
         { ...idle, ...context },
         WINDOWS,
       );
@@ -57,11 +51,8 @@ describe("resolveShortcutCommand", () => {
     expect(resolve({ editableFocus: true, composerFocus: true })).toBe("thread.rename");
     expect(resolve({ editableFocus: true })).toBeNull();
     expect(resolve({ terminalFocus: true })).toBeNull();
-    const custom = compileResolvedKeybindingsConfig([{ key: "f2", command: "usage.open" }]);
-    expect(resolve({}, custom)).toBe("usage.open");
-    expect(
-      shortcutLabel(withClientKeybindings(DEFAULT_RESOLVED_KEYBINDINGS), "thread.rename", WINDOWS),
-    ).toBe("F2");
+    expect(resolve({ previewFocus: true })).toBe("preview.refresh");
+    expect(shortcutLabel(DEFAULT_RESOLVED_KEYBINDINGS, "thread.rename", WINDOWS)).toBe("Ctrl+R");
   });
 
   it("honours when clauses, such as the terminal keeping its own keys", () => {

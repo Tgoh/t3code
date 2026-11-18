@@ -5,10 +5,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { createOverlayStack } from "./overlays";
 import { createKeyDispatcher } from "./shortcuts";
 
-function key(name: string) {
+function key(name: string, repeat = false) {
   const event = {
     key: name,
-    repeat: false,
+    repeat,
     defaultPrevented: false,
     preventDefault: () => {
       event.defaultPrevented = true;
@@ -42,8 +42,8 @@ function setup(command: KeybindingCommand | null) {
       return true;
     },
   });
-  const press = (name: string) => {
-    const event = key(name);
+  const press = (name: string, repeat = false) => {
+    const event = key(name, repeat);
     keys.onKeyDown(event as unknown as KeyboardEvent);
     return event.defaultPrevented;
   };
@@ -63,6 +63,7 @@ describe("the key dispatcher", () => {
       release();
       keys.overlays.push(menu);
       expect(keys.press("j")).toBe(true);
+      expect(keys.press("j", true)).toBe(true);
       expect(keys.ran).toEqual(["terminal.toggle", "terminal.toggle"]);
       dispose();
     });

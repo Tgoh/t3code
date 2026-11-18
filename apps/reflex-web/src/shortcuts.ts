@@ -1,7 +1,7 @@
+import type { KeybindingCommand } from "@t3tools/contracts";
 import type { IDispatch } from "treflex-solid";
 
 import type { IPanelShortcuts } from "./Environment";
-import type { IAppCommand } from "./keybindings";
 import type { IOverlayStack } from "./overlays";
 import {
   closeDiff,
@@ -22,8 +22,8 @@ export type ILetterKeys = (event: KeyboardEvent) => boolean;
 export function createKeyDispatcher(input: {
   overlays: IOverlayStack;
   paletteOpen: () => boolean;
-  resolve: (event: KeyboardEvent) => IAppCommand | null;
-  run: (command: IAppCommand) => boolean;
+  resolve: (event: KeyboardEvent) => KeybindingCommand | null;
+  run: (command: KeybindingCommand) => boolean;
   /** Closes a sheet once nothing is open over it, and says whether one was open. */
   closeSheet: () => boolean;
   /** Types the key into the composer, and says whether it did. */
@@ -47,8 +47,12 @@ export function createKeyDispatcher(input: {
         if (input.overlays.escape() || input.closeSheet()) handled(event);
         return;
       }
-      if (event.repeat) return;
       const command = input.resolve(event);
+      // A held shortcut runs once, but its repeats still mustn't reach the browser (Ctrl+R reloads).
+      if (event.repeat) {
+        if (command !== null) event.preventDefault();
+        return;
+      }
       if (command !== null) {
         if (input.paletteOpen() ? command !== "commandPalette.toggle" : input.overlays.modal())
           return;
@@ -63,7 +67,7 @@ export function createKeyDispatcher(input: {
 
 /** Runs a panel shortcut on the shown thread's session, and says whether it applied. */
 export function runPanelShortcut(
-  command: IAppCommand,
+  command: KeybindingCommand,
   panels: IPanelShortcuts | null,
   dispatch: IDispatch,
 ): boolean {

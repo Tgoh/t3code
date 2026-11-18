@@ -8,8 +8,6 @@ import {
   mergeWithDefaultKeybindings,
 } from "@t3tools/shared/keybindings";
 
-import { CLIENT_KEYBINDINGS, withClientKeybindings } from "./keybindings";
-
 // Follows apps/web/src/components/settings/KeybindingsSettings.logic.ts, read-only.
 
 export interface IKeybindingRow {
@@ -113,7 +111,7 @@ function whenText(node: KeybindingWhenNode | undefined): string {
 }
 
 const DEFAULT_IDS = new Set(
-  [...CLIENT_KEYBINDINGS, ...DEFAULT_RESOLVED_KEYBINDINGS].map(
+  DEFAULT_RESOLVED_KEYBINDINGS.map(
     (binding) =>
       `${binding.command}\0${shortcutText(binding.shortcut)}\0${whenText(binding.whenAst)}`,
   ),
@@ -130,7 +128,7 @@ function compareCommands(left: string, right: string): number {
 
 export function keybindingGroups(keybindings: ResolvedKeybindingsConfig): IKeybindingGroup[] {
   const rows = new Map<string, IKeybindingRow>();
-  for (const binding of withClientKeybindings(mergeWithDefaultKeybindings(keybindings))) {
+  for (const binding of mergeWithDefaultKeybindings(keybindings)) {
     const key = shortcutText(binding.shortcut);
     const when = whenText(binding.whenAst);
     const id = `${binding.command}\0${key}\0${when}`;

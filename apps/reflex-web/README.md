@@ -20,7 +20,6 @@ Log gaps and problems in [docs/issues.md](./docs/issues.md).
 | Tests              | Headless, with a scripted server at the effect boundary                                                                                                                                         |
 | Terminal emulator  | `@xterm/xterm` and its fit addon, loaded on first open. Stock's libghostty WASM surface isn't reusable from a non-React app without its build and surface code                                  |
 | Project order      | `localStorage`, like stock's `projectOrder` in `uiStateStore` and its `sidebarProjectSortOrder` client setting. Neither is on the server, so neither is shared with stock or other devices      |
-| Client keybindings | `thread.rename` (F2) is defined in `CLIENT_KEYBINDINGS` in `keybindings.ts`, not the contracts schema, so `keybindings.json` can't rebind it, and a server rule on F2 takes the key from it     |
 | Treflex dependency | The 0.1.0 release tarballs of `treflex` and `treflex-solid`, committed in `vendor/` and installed with `file:`, so every checkout has the same treflex with no setup                            |
 
 The server holds all the work, and the client receives its data and uses treflex for client state.

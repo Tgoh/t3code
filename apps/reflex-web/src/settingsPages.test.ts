@@ -357,7 +357,7 @@ describe("keybinding rows", () => {
       ?.Rows.find((entry) => entry.Command === "thread.rename");
     expect([rename?.Label, rename?.Key, rename?.Source]).toEqual([
       "Thread: Rename",
-      "f2",
+      "mod+r",
       "Default",
     ]);
   });
