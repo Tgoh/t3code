@@ -20,6 +20,11 @@ The friction write-up is at `G:\Sorted\Code\t3code-dev-home\notes\treflex-fricti
 
 - **Type-to-focus from buttons and links.** A key typed while a button or link has focus stays with it, as in stock (`shouldRedirectInputToComposer` in `src/composerFocusRedirect.ts`). That happens after clicking a sidebar thread or a header button. Tam wants any keypress to reach the composer. When focus is on a button or link, send printable keys to the composer, but keep Space and Enter activating the focused element. Keep the other exceptions: fields, open layers, keys with modifiers, and `aria-keyshortcuts`.
 
+## Sidebar
+
+- **Long thread titles are cut off.** Thread rows moved to a single line, so long titles are truncated. Let titles wrap again, probably clamped to two lines, without making short rows taller.
+- **Settle only on the open thread.** Show a row's settle button only on the selected thread, so a thread can't be settled before it's been looked at. Check the other ways to settle, such as the thread menu, the command palette and the shortcut, and decide whether they follow the same rule.
+
 ## Phone composer
 
 - **Enter on phone.** The keyboard's Enter should insert a newline, and only the send button should send. Decide whether this is a coarse-pointer default or a setting. Check what stock does on touch.
