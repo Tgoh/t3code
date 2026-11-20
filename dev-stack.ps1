@@ -19,7 +19,8 @@ param(
   [switch]$Restart,
   [ValidateSet("server", "reflex", "stock")]
   [string]$Only,
-  [switch]$Pause
+  [switch]$Pause,
+  [switch]$Detached
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,7 +31,20 @@ if (-not $Status -and -not $identity.IsInRole([Security.Principal.WindowsBuiltIn
   if ($Stop) { $arguments += "-Stop" }
   if ($Restart) { $arguments += "-Restart" }
   if ($Only) { $arguments += @("-Only", $Only) }
-  Start-Process (Get-Process -Id $PID).Path -Verb RunAs -ArgumentList $arguments
+  $shell = (Get-Process -Id $PID).Path
+  if ($Detached) {
+    Start-Process $shell -Verb RunAs -ArgumentList $arguments
+    return
+  }
+  # A RunAs child is parented to its caller, so a caller inside the server's process tree
+  # would be killed by Stop-Stack's taskkill /T; WMI parents the copy outside that tree.
+  $hidden = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }
+  $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+    CommandLine = "`"$shell`" $($arguments -join ' ') -Detached"
+    CurrentDirectory = $PSScriptRoot
+    ProcessStartupInformation = $hidden
+  }
+  if ($created.ReturnValue -ne 0) { throw "Couldn't reopen as administrator: $($created.ReturnValue)" }
   "Continuing in an administrator window."
   return
 }
