@@ -214,7 +214,7 @@ Tailscale Serve exposes this client at `https://my-machine.my-tailnet.ts.net:844
 
 The session cookie isn't tied to a port, so a browser paired on 5733 is already paired on 5734. Otherwise open `localhost:5734/#token=…` with a token from `node apps/server/src/bin.ts pair`.
 
-From `apps/reflex-web`, `vp run test` runs the headless suite and `vp run bench` prints the benchmark against `applyOrchestrationV2ProjectionEvent`, on a generated long thread. Run them from there: from the repo root, vitest misses this app's Solid resolve conditions.
+From `apps/reflex-web`, `vp run test` runs the headless suite and `vp run bench` prints the benchmark against `applyOrchestrationV2ProjectionEvent`, on a generated long thread. Run them from there: from the repo root, vitest misses this app's Solid resolve conditions. `bench/stream` measures this client against stock in Chrome while a turn streams; its results are in [docs/benchmarks.md](./docs/benchmarks.md).
 
 ## Making changes
 

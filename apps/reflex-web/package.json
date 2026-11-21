@@ -30,6 +30,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
+    "playwright-core": "1.64.1",
     "tailwindcss": "catalog:",
     "vite-plugin-solid": "^2.11.7",
     "vite-plus": "catalog:"
