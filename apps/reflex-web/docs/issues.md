@@ -36,7 +36,7 @@ Replay and one provider are verified. A real Claude Haiku turn from this client 
 
 The RPC client decodes each stream item into `DateTime`s and the app encodes it back to hold plain data in the tree. This is negligible per delta (about 0.03 ms each way) but about 80 ms on a 1,000-item snapshot. If that matters, the fix is a protocol client without the decode, which `client-runtime` doesn't offer.
 
-The tree therefore holds the encoded form, but `Wire<T>` in `Infrastructure/wire.ts` types it as the decoded one with strings for dates. They differ wherever a schema transforms more than a date: a subagent's notification source is `background_task` with `work: "subagent"` in the tree, where stock's decoded `kind` is `subagent`. `notificationSource` in `subagents.ts` decodes that one. Reading another transformed field needs the same care, until the tree holds the decoded type or `Wire<T>` follows the encoded one.
+The tree therefore holds the encoded form, but `Wire<T>` in `Infrastructure/wire.ts` types it as the decoded one with strings for dates. They differ wherever a schema transforms more than a date: a subagent's notification source is `background_task` with `work: "subagent"` in the tree, where stock's decoded `kind` is `subagent`. `notificationSource` in `subagents.ts` decodes that one, and it's the only such field the port reads. Typing the tree from the schema's `Encoded` type doesn't work on Effect 4.1.3: it comes out as `unknown` or `Json` for the stream types. The todo has the fix: encode with `toCodecJson(toType(S))`, so the tree holds what `Wire<T>` says.
 
 ## Mismatch: a cold open takes a full socket snapshot
 
@@ -62,12 +62,12 @@ The server's history is the raw PTY bytes, written at whatever width the shell h
 
 Every busy mark is an `inFlight` read, which says whether an action runs on an entity and not which arguments it runs with, and only a repeat of the same `latest` action or the removal of its entity stops a running one. So where a mark has to be per row, or end with the data it's about, the row is an entity of its own:
 
-- Each runtime request, so an answer marks only its own request's buttons. The answer waits inside `open(...)`, so a server update or snapshot folds into the request while nothing holds it, and `leading` still drops a second press during the wait. Its typed answers stay on the `ThreadSession`, keyed by request, because the replica's fold would delete them and an expired thread drops its data. They aren't cleared once sent, so a resolved request's answers stay there unseen until the session goes.
-- The history window, which a snapshot with another cursor or has-more, or over a window holding a fetch error, replaces, ending its fetch and its mark. Its pages reach the thread through `History/Page`, and the thread drops a page from a window it no longer holds, which a page queued behind that snapshot would be. `OpenThread` is bound to `ThreadReceiver` only to hear those pages.
+- Each runtime request, so an answer marks only its own request's buttons. The answer waits inside `open(...)`, so a server update or snapshot folds into the request while nothing holds it, and `leading` still drops a second press during the wait. Its typed answers stay on the `ThreadSession`, keyed by request, because the replica's fold would delete them and an expired thread drops its data. `settleQuestions` clears them once the request is no longer pending.
+- The history window, which a snapshot with another cursor or has-more, or over a window holding a fetch error, replaces, ending its fetch and its mark. Its pages reach the thread through `History/Page`, and the thread drops a page from a window it no longer holds, which a page queued behind that snapshot would be. The window holds only its cursor, has-more and error; the rows stay on `OpenThread`. Once treflex has `stop(action, owner)`, `loadEarlier` can move onto `OpenThread` and the window entity can go.
 
 ## Gap: a request's turn item is indexed in the replica, not by a selector
 
-`OpenThread.RequestItemIds` maps each runtime request to the turn item that asks it. It stands in for a keyed fold over records, which treflex lacks: a selector can't build an index incrementally, so one that found request items re-scanned every turn item on each added row, about 60 ms at 20,000 items. The receiver keeps the map instead, so every path that writes turn items has to update it too. Today those are `applyTurnItem` (stream events), `applySnapshot`, and `mergeOlderRows` (`History/Page`). If treflex gains a keyed fold, `requestItems` should derive the map again and the stored field should go.
+`OpenThread.RequestItemIds` maps each runtime request to the turn item that asks it. It stands in for a keyed fold over records, which treflex lacks: a selector can't build an index incrementally, so one that found request items re-scanned every turn item on each added row, about 60 ms at 20,000 items. The receiver keeps the map instead, so every path that writes turn items has to update it too. Today those are `applyTurnItem` (stream events), `applySnapshot`, and `mergeOlderRows` (`History/Page`). The map isn't needed: stock searches turn items from the newest end, and only for pending requests, which reads only the tail. The todo has that change.
 
 ## Feedback for treflex
 
@@ -134,7 +134,12 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 
 ## Unmatched against the stock UI
 
-- Visits: a visit that fails isn't retried after a reconnect, so Done can stay until the next completion.
+- Visits:
+  - A visit that fails isn't retried after a reconnect, so Done can stay until the next completion.
+  - A thread is marked visited when it's selected, not when it's shown. So a completion that arrives while Settings or Usage is open is marked seen without being seen.
+  - The first visit doesn't send `opened: true`, which feeds the server's search ranking.
+  - The wake watermark (`wokeAt`) is ignored.
+  - Stock (`packages/client-runtime/src/state/threadVisits.ts`) also visits on every shell update while the chat view is mounted, throttled to one every 10 s, where reflex visits only on an unseen completion.
 - Questions: an answer can't carry attachments or thread chips, so the attach button hides while a question holds the composer. Text set aside when an option replaces it shows as a line in the card, not a toast, and undo doesn't take it back out of the draft. Question drafts don't survive a reload.
 - Thread links: a link to a thread the shell doesn't hold shows its written label, or "Thread", and still opens, where stock asks the server for its title and shows "Thread no longer available" when it's gone. A thread on another machine is named but never opens, since this client connects to one environment. The chip has no hover card; `t3code://` deep links and prompt links aren't recognised, and a raw-HTML block's thread link keeps its written text rather than the thread's title.
 - Messages from other threads and automations: the automation fold shows the prompt's first line, not its scheduled task's title, and has no Open automation link. Consecutive steers each show their Steer label, where stock shows it once, because a row doesn't know its neighbours. Guest messages show the guest's words without the guest name or styling.
