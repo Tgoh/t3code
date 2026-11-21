@@ -7,7 +7,9 @@ Work Tam has queued for later. Gaps against stock that nobody has asked for yet 
 The friction write-up is at `G:\Sorted\Code\t3code-dev-home\notes\treflex-friction-from-t3code-port.md`. The treflex side's verdicts are in the reflex repo's `docs/wip` (commit 2b37348).
 
 - **Encoded types for the tree.** Type the tree from the codec's encoded side (`toCodecJson(S)` Encoded) instead of the hand-written `Wire<T>`. First check whether that type is precise enough.
-- **One writer for timeline items.** Route every timeline-item write through a single helper that also updates `RequestItemIds`.
+- **Derive each request's turn item instead of indexing it.** Remove `OpenThread.RequestItemIds` and `indexRequestItem`. Have `requestItems` walk `Timeline` from the newest item, for pending requests only, until it finds the item whose `requestId` matches. That's how stock does it (`derivePendingThreadRequests` in `packages/client-runtime/src/state/threadRequests.ts`). The old 60 ms cost came from a selector that read every turn item. This one reads only the tail, and nothing when no request is pending. Before you delete the index:
+  - Measure at 20,000 items with a pending request.
+  - Check a request whose item is outside the loaded history window.
 - **Record the verdicts.** Add treflex's verdicts to the "Feedback for treflex" section of `issues.md`.
 - **Treflex 0.2.0.** Once it ships, re-vendor it. Read `docs/wip/done/release-0.2.0-breaking-changes.md` in the reflex repo first. `REPLICA_WRITERS` has to switch from `Name` to `Label`, and `testing/watchRuntime.ts` gives way to the strict test preset. Then move the minute clock to `provideExternal`/`external`. Past 0.2.0, rejections reach actions as copies with a native error type, so `instanceof ServerError` in `serverError()` stops matching and every server failure takes the bug route.
 
