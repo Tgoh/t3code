@@ -107,7 +107,7 @@ import {
 } from "./Dictation";
 import { serverError } from "./Infrastructure/serverError";
 import { toSortableThread } from "./projectOrder";
-import { getDefaultShell, type IShell, needsVisit, openShellStream, visitThread } from "./Shell";
+import { getDefaultShell, type IShell, openShellStream } from "./Shell";
 import {
   checkRewind,
   detachTerminal,
@@ -292,10 +292,6 @@ export function* selectThread(draft: IEnvironment, threadId: string): IActionGen
   }
   yield* openThread(draft, threadId);
   yield* setAddressThread(threadId);
-  const row = draft.Replica.Shell.Threads[threadId];
-  if (row !== undefined && needsVisit(row)) {
-    yield* start(visitThread, draft.Replica.Shell, threadId, true);
-  }
 }
 
 export function* newThread(draft: IEnvironment, projectId: string): IActionGenerator {

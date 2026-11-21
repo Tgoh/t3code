@@ -12,6 +12,7 @@ import { isOrchestrationV2TurnItemVisible } from "@t3tools/shared/orchestrationV
 import {
   closeResource,
   entity,
+  getData,
   type IActionGenerator,
   type IEntity,
   type IReceiverId,
@@ -38,6 +39,7 @@ import type {
 } from "./Infrastructure/wire";
 import { byId, put, putEntity, reconcile, reconcileEntities } from "./rows";
 import type { IRuntimeRequest } from "./RuntimeRequest";
+import { needsVisit } from "./Shell";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -704,6 +706,12 @@ export function* latestRun(draft: IOpenThread): ISelectorGenerator<IWireRun | nu
   return newestRun(draft);
 }
 
+/** The completion this thread's view still has to mark seen, or null. */
+export function* visitDue(draft: IOpenThread): ISelectorGenerator<string | null> {
+  const row = (yield* getData(draft, "Replica"))?.Shell.Threads[draft.ThreadId];
+  return row !== undefined && needsVisit(row) ? (row.latestRunCompletedAt ?? null) : null;
+}
+
 // A cancelled queued run keeps its later ordinal, so the active run has to be looked for first.
 export function newestRun(draft: IOpenThread): IWireRun | null {
   let latest: IWireRun | null = null;
@@ -786,5 +794,6 @@ export default createEntityFeature<IOpenThread>(import.meta.url)(
     requestItems,
     threadSynchronized,
     timelineIds,
+    visitDue,
   },
 );

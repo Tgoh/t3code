@@ -31,6 +31,7 @@ import type { ICheckout } from "./ThreadDetails";
 import { DetailsSurface, ThreadDetailsCard } from "./ThreadDetailsPanel";
 import { detailsLayout } from "./threadDetailsLayout";
 import ThreadSession from "./ThreadSession";
+import { ThreadVisit } from "./ThreadVisit";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
 import { TimelineResponse } from "./TimelineResponse";
 import { RewindDialog } from "./TimelineRows";
@@ -630,8 +631,11 @@ export const ThreadView = OpenThread.provider(() => {
   const thread = OpenThread.use();
   const environment = Environment.use();
   return (
-    <Show when={environment.state.Local.ThreadSessions[thread.state.ThreadId]} keyed>
-      {(session) => <ThreadBody state={session} />}
-    </Show>
+    <>
+      <ThreadVisit state={thread.state} shell={environment.state.Replica.Shell} />
+      <Show when={environment.state.Local.ThreadSessions[thread.state.ThreadId]} keyed>
+        {(session) => <ThreadBody state={session} />}
+      </Show>
+    </>
   );
 });

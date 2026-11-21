@@ -14,11 +14,10 @@ import {
   type IOpenGenerator,
   type ISelectorGenerator,
   isEnded,
+  leading,
   open,
   openResource,
   receiver,
-  select,
-  start,
   startTimer,
   stopTimer,
   transient,
@@ -161,16 +160,18 @@ const lastVisit = (draft: IShell) =>
 
 /**
  * Marks a finished thread visited, once per completion unless `again`, so a thread marked unread
- * while it's selected stays unread until its next completion.
+ * while it's shown stays unread until its next completion. A call with nothing to visit still
+ * records the completion, which keeps a later mark-unread sticky.
  */
 export function* visitThread(draft: IShell, threadId: string, again: boolean): IOpenGenerator {
   const row = draft.Threads[threadId];
-  if (row === undefined || !needsVisit(row)) return;
+  if (row === undefined) return;
   const visit = yield* lastVisit(draft);
   const completion = row.latestRunCompletedAt ?? null;
   if (!again && visit.ThreadId === threadId && visit.Completion === completion) return;
   visit.ThreadId = threadId;
   visit.Completion = completion;
+  if (!needsVisit(row)) return;
   const environmentId = draft.EnvironmentId;
   const visitedAt = row.updatedAt;
   try {
@@ -189,14 +190,7 @@ export function* visitThread(draft: IShell, threadId: string, again: boolean): I
     serverError(error);
   }
 }
-
-function* visitSelected(draft: IShell, item: IWireShellItem): IActionGenerator {
-  if (item.kind !== "thread.updated" && item.kind !== "snapshot") return;
-  const selected = yield* select(selectedThreadId);
-  if (selected === null) return;
-  const row = draft.Threads[selected];
-  if (row !== undefined && needsVisit(row)) yield* start(visitThread, draft, selected, false);
-}
+leading(visitThread);
 
 function* reopenLater(draft: IShell): IActionGenerator {
   yield* startTimer(draft, "Shell/Reopen", ShellReceiver, REOPEN_MS);
@@ -211,10 +205,7 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
     }
     if (!("Item" in message)) (yield* streamState(draft)).Synchronized = false;
     else if (message.Item.kind === "synchronized") (yield* streamState(draft)).Synchronized = true;
-    else {
-      applyItem(draft, message.Item);
-      yield* visitSelected(draft, message.Item);
-    }
+    else applyItem(draft, message.Item);
   },
   *"Shell/Reopen"(draft) {
     yield* stopTimer(draft, "Shell/Reopen");

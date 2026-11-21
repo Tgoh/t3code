@@ -8,7 +8,15 @@ import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
 } from "@t3tools/shared/claudeCompaction";
-import { createEffect, createMemo, createRoot } from "solid-js";
+import {
+  type Component,
+  createComponent,
+  createEffect,
+  createMemo,
+  createRoot,
+  type JSX,
+  Show,
+} from "solid-js";
 import {
   createTestRuntime,
   defineEffect,
@@ -22,6 +30,7 @@ import {
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
+import { TreflexProvider } from "treflex-solid";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
 
 import {
@@ -178,6 +187,7 @@ import {
   toggleRightPanel,
   unwrappedCodeBlocks,
 } from "./ThreadSession";
+import { ThreadVisit } from "./ThreadVisit";
 import {
   assistantItem,
   commandItem,
@@ -2899,7 +2909,7 @@ describe("writing to the server", () => {
     expect(server.runtime.state.Failure).toBeUndefined();
   });
 
-  it("marks the selected thread visited once per completion, and again when it's selected again", async () => {
+  it("marks a thread visited while its view is mounted, once per completion and again on each mount", async () => {
     const visits: string[] = [];
     let refuse = false;
     const server = await connect(undefined, THREAD_ID, {
@@ -2927,8 +2937,34 @@ describe("writing to the server", () => {
         location: "active",
         thread: row(id, completedAt, visitedAt),
       } as unknown as IWireShellItem);
+    const view = (next: IAddressView | null) =>
+      server.runtime.dispatch(openView, server.envId(), next).then(settled);
+    await view({ Kind: "settings", Page: "general" });
+    const dispose = createRoot((disposeRoot) => {
+      createComponent(TreflexProvider, {
+        value: server.runtime,
+        get children() {
+          return createComponent(Show as Component<{ when: boolean; children: JSX.Element }>, {
+            get when() {
+              return server.environment().Local.View === null;
+            },
+            get children() {
+              return createComponent(ThreadVisit, {
+                state: server.thread(),
+                shell: server.environment().Replica.Shell,
+              });
+            },
+          });
+        },
+      });
+      return disposeRoot;
+    });
+    onTestFinished(dispose);
+
     await deliver(THREAD_ID, "2026-01-01T01:00:00.000Z", null);
     await settled();
+    expect(visits).toEqual([]);
+    await view(null);
     expect(visits).toEqual([THREAD_ID]);
     await deliver(THREAD_ID, "2026-01-01T01:00:00.000Z", null);
     await settled();
@@ -2947,11 +2983,15 @@ describe("writing to the server", () => {
     expect(visits).toEqual([THREAD_ID, THREAD_ID]);
 
     refuse = false;
-    await server.runtime.dispatch(selectThread, server.envId(), "other");
+    await view({ Kind: "usage" });
+    await view(null);
+    expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID]);
+
+    await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", "2026-01-01T02:00:00.000Z");
     await settled();
-    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", "2026-01-01T01:00:00.000Z");
     await settled();
-    expect(visits).toEqual([THREAD_ID, THREAD_ID, "other", THREAD_ID]);
+    expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID]);
   });
 
   const draftProjectOf = (server: Awaited<ReturnType<typeof connect>>) => {
