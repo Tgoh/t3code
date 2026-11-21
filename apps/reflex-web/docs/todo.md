@@ -9,7 +9,26 @@ The friction write-up is at `G:\Sorted\Code\t3code-dev-home\notes\treflex-fricti
 - **Encoded types for the tree.** Type the tree from the codec's encoded side (`toCodecJson(S)` Encoded) instead of the hand-written `Wire<T>`. First check whether that type is precise enough.
 - **One writer for timeline items.** Route every timeline-item write through a single helper that also updates `RequestItemIds`.
 - **Record the verdicts.** Add treflex's verdicts to the "Feedback for treflex" section of `issues.md`.
-- **Treflex 0.2.0.** Once it ships, re-vendor it. Read `docs/wip/done/release-0.2.0-breaking-changes.md` in the reflex repo first. Then move the minute clock to `provideExternal`/`external`.
+- **Treflex 0.2.0.** Once it ships, re-vendor it. Read `docs/wip/done/release-0.2.0-breaking-changes.md` in the reflex repo first. `REPLICA_WRITERS` has to switch from `Name` to `Label`, and `testing/watchRuntime.ts` gives way to the strict test preset. Then move the minute clock to `provideExternal`/`external`. Past 0.2.0, rejections reach actions as copies with a native error type, so `instanceof ServerError` in `serverError()` stops matching and every server failure takes the bug route.
+
+## Restructuring
+
+From an audit of how the port uses treflex 0.1.0. Most of the code already follows the treflex docs. What doesn't is two entities that each do several jobs, and parent views that work out data and pass it down. The first four items fit in one thread.
+
+- **Split `ThreadSession`.** It owns the composer, queue, rewind, fork, diff panel, terminal, git and more. Make the diff panel a child entity that is minted on open and replaced or removed on close. That drops the re-checks after each wait in `openDiff` and `openBranchDiff`, the manual resets in `closeDiff`, and the reliance on `latest` to cancel stale loads. Make the terminal a child entity with its state in plain fields instead of the `Terminal/Attachment` transient. `GitWork` already has this shape. See "move long work onto a child entity" in the reflex repo's `docs/patterns.md`.
+- **Split `Environment`.** Give dictation its own entity under `Local` that owns the `Voice/Dictation` resource and receiver. Make the archived and usage settings pages component features (`createComponentFeature`) whose data lives only while the page is open. That removes `Replica.Archived`, `Replica.Usage`, four `REPLICA_WRITERS` entries, and the two different ways the loads are triggered (`openView` and `onMount`).
+- **Checkout and panel selectors.** `ThreadView`'s `ThreadBody` builds the checkout in a memo that compares with JSON, passes it down as a prop and into `ThreadDetails` component state, and passes it to every `GitWork` action. Add one `checkout` selector on `ThreadSession` and let `GitWork` read the checkout itself. Panel availability is worked out in both `Environment.panelShortcuts` and `ThreadBody`'s menu and launcher, so make it one selector too. `terminalLaunch`, `searchRoot` and `Dictation.recordingOptions` resolve the working directory separately, and should use the same selector.
+- **Thinner sidebar rows.** `Sidebar.tsx`'s `card()` passes `ThreadCard` 14 props, most of them worked out per row. Let the card read from its thread, as timeline rows do, and keep only cross-row values in the parent, such as `mixedProviders` and the search highlight.
+- **Drop the duplicate keybindings stream.** `Server/Keybindings` (`Infrastructure/serverKeybindings.ts`) opens a second subscription for keybindings that `Server/Config` already writes to `Replica.Config.keybindings`. Delete the resource and have `App.tsx` read the config.
+- **Git's default-branch confirmation as an `ask`.** Replace `PendingDefaultBranch`, `continueDefaultBranch`, `cancelDefaultBranch` and the `confirmed` flag with one `ask` inside `runGitAction`, as `Rewind/Confirm` already works. The git buttons would show busy while the dialog is open.
+- **Smaller items.**
+  - Share one receiver registration between `index.tsx` and `Model.test.ts`. The test copy already lacks `GitReceiver` and `VoiceModelsReceiver`.
+  - Turn the remaining transients on Local entities into plain fields.
+  - Make the non-archived projects list one selector; four views rebuild it now.
+  - `Environment.currentProjectId` reads `Shell.Threads` but `ThreadSession.projectId` reads `OpenThreads`; pick one source.
+  - Use work tags instead of the five `useInFlight([...])` action lists.
+  - Move `runScript`'s open-the-terminal decision from the view into the action.
+  - Give features hand-picked ids instead of `import.meta.url`.
 
 ## Parity
 
