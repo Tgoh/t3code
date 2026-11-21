@@ -2912,11 +2912,14 @@ describe("writing to the server", () => {
   it("marks a thread visited while its view is mounted, once per completion and again on each mount", async () => {
     const visits: string[] = [];
     let refuse = false;
+    let hold = false;
+    let release: (() => void) | undefined;
     const server = await connect(undefined, THREAD_ID, {
       threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
         if (effect.Command.Kind !== "visit") return;
         visits.push(effect.ThreadId);
         if (refuse) throw new ServerError("visit refused");
+        if (hold) return new Promise<void>((resolve) => (release = resolve));
       },
     });
     let sequence = 1;
@@ -2992,6 +2995,31 @@ describe("writing to the server", () => {
     await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", "2026-01-01T01:00:00.000Z");
     await settled();
     expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID]);
+
+    hold = true;
+    await deliver(THREAD_ID, "2026-01-01T03:00:00.000Z", "2026-01-01T02:00:00.000Z");
+    await settled();
+    expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID, THREAD_ID]);
+    hold = false;
+    await server.runtime.dispatch(openThread, server.envId(), "other");
+    await settled();
+    const disposeOther = createRoot((disposeRoot) => {
+      createComponent(TreflexProvider, {
+        value: server.runtime,
+        get children() {
+          return createComponent(ThreadVisit, {
+            state: server.environment().Replica.OpenThreads["other"]!,
+            shell: server.environment().Replica.Shell,
+          });
+        },
+      });
+      return disposeRoot;
+    });
+    onTestFinished(disposeOther);
+    await settled();
+    expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID, THREAD_ID, "other"]);
+    release?.();
+    await settled();
   });
 
   const draftProjectOf = (server: Awaited<ReturnType<typeof connect>>) => {

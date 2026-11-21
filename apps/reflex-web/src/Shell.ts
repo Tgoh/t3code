@@ -14,7 +14,6 @@ import {
   type IOpenGenerator,
   type ISelectorGenerator,
   isEnded,
-  leading,
   open,
   openResource,
   receiver,
@@ -190,7 +189,6 @@ export function* visitThread(draft: IShell, threadId: string, again: boolean): I
     serverError(error);
   }
 }
-leading(visitThread);
 
 function* reopenLater(draft: IShell): IActionGenerator {
   yield* startTimer(draft, "Shell/Reopen", ShellReceiver, REOPEN_MS);
