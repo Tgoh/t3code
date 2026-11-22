@@ -217,7 +217,7 @@ Production builds register a service worker (`src/sw.ts`, which `vite.config.ts`
 
 The server looks for a built web client in `apps/web/dist` once, at startup, and `claude mcp login` needs it for the approval page. Build it with `vp build` in `apps/web`, with no `VITE_HTTP_URL` or `VITE_WS_URL` set, and restart the server if a sign-in says no static directory is configured.
 
-Tailscale Serve exposes this client at `https://my-machine.my-tailnet.ts.net:8443` (port 5734) and that built stock client at `:8444` (the server on 13773). The stock one is Tam's fallback when this client is broken, since no change here can break it; don't remove it or rebuild `apps/web/dist` from a broken checkout.
+Tailscale Serve exposes this client on the machine's tailnet address at port 8443 (port 5734) and that built stock client at `:8444` (the server on 13773). The stock one is Tam's fallback when this client is broken, since no change here can break it; don't remove it or rebuild `apps/web/dist` from a broken checkout.
 
 The session cookie isn't tied to a port, so a browser paired on 5733 is already paired on 5734. Otherwise open `localhost:5734/#token=…` with a token from `node apps/server/src/bin.ts pair`.
 
