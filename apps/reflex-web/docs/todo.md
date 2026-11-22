@@ -48,7 +48,7 @@ After stage 3, which also changes `ThreadView`.
 ## Waiting on treflex
 
 - **Checks that keep agents off React habits.** treflex's verdicts are in `docs/wip/13-external/views-start-work-from-their-lifecycle.md` in the reflex repo. When each one ships, turn it on here and fix what it finds.
-  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. Building it waits for Tam's go.
+  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo on `claude/lifecycle-rule`. It ships as `treflex-eslint` 0.2.1, opt-in, which works with core 0.2.0, once Tam approves the release. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the `jsPlugins` setup, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`, and its action has to be `leading` and check state before it writes.
   2. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
   3. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
 
