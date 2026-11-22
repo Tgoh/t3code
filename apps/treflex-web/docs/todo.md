@@ -76,7 +76,7 @@ After stage 2, which also changes `ThreadView`.
 
 ## Repo
 
-- **Sync upstream.** Run `/syncupstream` once the stage 1 threads that are running now have merged, so it merges into a quiet `treflex-main`.
+- **Sync upstream.** **In progress** in its own thread, through `/syncupstream`.
 - **Make `Tgoh/t3code` public**, as an example of treflex, with nothing linking to it yet. **In progress:** an audit in its own thread, report only. It checks the full history, every branch and tag on origin, issues and PRs, and Actions for anything that shouldn't be public. Tam flips the visibility after reading the audit.
 
 ## Housekeeping
