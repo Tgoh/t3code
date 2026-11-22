@@ -846,76 +846,6 @@ importers:
         specifier: 4.3.3
         version: 4.3.3
 
-  apps/reflex-web:
-    dependencies:
-      '@fontsource-variable/inter':
-        specifier: ^5.3.0
-        version: 5.3.0
-      '@pierre/diffs':
-        specifier: 1.7.0-beta.4
-        version: 1.7.0-beta.4(patch_hash=b24b206d14c79de95be10322b96490b82e41cc13c8a02c7378aaf8e03623431b)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@pierre/trees':
-        specifier: 1.0.0-beta.6
-        version: 1.0.0-beta.6(@pierre/theme@2.0.0)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(shiki@4.2.0)
-      '@t3tools/client-runtime':
-        specifier: workspace:*
-        version: link:../../packages/client-runtime
-      '@t3tools/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@xterm/addon-fit':
-        specifier: ^0.11.0
-        version: 0.11.0
-      '@xterm/xterm':
-        specifier: ^6.0.0
-        version: 6.0.0
-      dompurify:
-        specifier: ^3.4.16
-        version: 3.4.17
-      effect:
-        specifier: 4.1.3
-        version: 4.1.3
-      lucide-solid:
-        specifier: ^0.564.0
-        version: 0.564.0(solid-js@1.9.19)
-      marked:
-        specifier: ^16.0.0
-        version: 16.4.2
-      solid-js:
-        specifier: ^1.9.12
-        version: 1.9.19
-      treflex:
-        specifier: 0.2.0
-        version: 0.2.0(vitest@5.0.5)
-      treflex-solid:
-        specifier: 0.2.0
-        version: 0.2.0(solid-js@1.9.19)(treflex@0.2.0(vitest@5.0.5))
-    devDependencies:
-      '@tailwindcss/vite':
-        specifier: 4.3.3
-        version: 4.3.3(@voidzero-dev/vite-plus-core@1.4.0(@types/node@24.12.4)(@volar/typescript@2.4.28(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))
-      '@types/node':
-        specifier: 24.12.4
-        version: 24.12.4
-      playwright-core:
-        specifier: 1.64.1
-        version: 1.64.1
-      tailwindcss:
-        specifier: 4.3.3
-        version: 4.3.3
-      treflex-eslint:
-        specifier: file:vendor/treflex-eslint-0.2.0.tgz
-        version: file:apps/reflex-web/vendor/treflex-eslint-0.2.0.tgz(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
-      vite-plugin-solid:
-        specifier: ^2.11.7
-        version: 2.11.16(@types/node@24.12.4)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@24.12.4)(@volar/typescript@2.4.28(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(@volar/typescript@2.4.28(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(solid-js@1.9.19)(supports-color@8.1.1)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)
-      vite-plus:
-        specifier: 1.4.0
-        version: 1.4.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.12.4)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@6.0.3))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(playwright@1.64.1)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-
   apps/server:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
@@ -1102,6 +1032,76 @@ importers:
       graphql:
         specifier: 16.14.1
         version: 16.14.1
+      vite-plus:
+        specifier: 1.4.0
+        version: 1.4.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.12.4)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@6.0.3))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(playwright@1.64.1)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+
+  apps/treflex-web:
+    dependencies:
+      '@fontsource-variable/inter':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@pierre/diffs':
+        specifier: 1.7.0-beta.4
+        version: 1.7.0-beta.4(patch_hash=b24b206d14c79de95be10322b96490b82e41cc13c8a02c7378aaf8e03623431b)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@pierre/trees':
+        specifier: 1.0.0-beta.6
+        version: 1.0.0-beta.6(@pierre/theme@2.0.0)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(shiki@4.2.0)
+      '@t3tools/client-runtime':
+        specifier: workspace:*
+        version: link:../../packages/client-runtime
+      '@t3tools/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@xterm/addon-fit':
+        specifier: ^0.11.0
+        version: 0.11.0
+      '@xterm/xterm':
+        specifier: ^6.0.0
+        version: 6.0.0
+      dompurify:
+        specifier: ^3.4.16
+        version: 3.4.17
+      effect:
+        specifier: 4.1.3
+        version: 4.1.3
+      lucide-solid:
+        specifier: ^0.564.0
+        version: 0.564.0(solid-js@1.9.19)
+      marked:
+        specifier: ^16.0.0
+        version: 16.4.2
+      solid-js:
+        specifier: ^1.9.12
+        version: 1.9.19
+      treflex:
+        specifier: 0.2.0
+        version: 0.2.0(vitest@5.0.5)
+      treflex-solid:
+        specifier: 0.2.0
+        version: 0.2.0(solid-js@1.9.19)(treflex@0.2.0(vitest@5.0.5))
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: 4.3.3
+        version: 4.3.3(@voidzero-dev/vite-plus-core@1.4.0(@types/node@24.12.4)(@volar/typescript@2.4.28(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))
+      '@types/node':
+        specifier: 24.12.4
+        version: 24.12.4
+      playwright-core:
+        specifier: 1.64.1
+        version: 1.64.1
+      tailwindcss:
+        specifier: 4.3.3
+        version: 4.3.3
+      treflex-eslint:
+        specifier: file:vendor/treflex-eslint-0.2.0.tgz
+        version: file:apps/treflex-web/vendor/treflex-eslint-0.2.0.tgz(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
+      vite-plugin-solid:
+        specifier: ^2.11.7
+        version: 2.11.16(@types/node@24.12.4)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@24.12.4)(@volar/typescript@2.4.28(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(@volar/typescript@2.4.28(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(solid-js@1.9.19)(supports-color@8.1.1)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)
       vite-plus:
         specifier: 1.4.0
         version: 1.4.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.12.4)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@6.0.3))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(playwright@1.64.1)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
@@ -12738,8 +12738,8 @@ packages:
     resolution: {integrity: sha512-6+cemagaGsOC8X3XWPCn7Ek+jjwyH2/NdTyBcEH7FtFjC3Ciyih2Xx6/GSRirZolxmxENtbvfwu1WV5RzutgCw==}
     engines: {node: '>=22'}
 
-  treflex-eslint@file:apps/reflex-web/vendor/treflex-eslint-0.2.0.tgz:
-    resolution: {integrity: sha512-sOGnPn1E5yMXgOr5wZK/q2VIElP1zTICMAfDLbTtWH0bpHuyy9OP3UyLfnf0YgM3huyH9WCFUGVIlAm3JiMBqQ==, tarball: file:apps/reflex-web/vendor/treflex-eslint-0.2.0.tgz}
+  treflex-eslint@file:apps/treflex-web/vendor/treflex-eslint-0.2.0.tgz:
+    resolution: {integrity: sha512-sOGnPn1E5yMXgOr5wZK/q2VIElP1zTICMAfDLbTtWH0bpHuyy9OP3UyLfnf0YgM3huyH9WCFUGVIlAm3JiMBqQ==, tarball: file:apps/treflex-web/vendor/treflex-eslint-0.2.0.tgz}
     version: 0.2.0
     engines: {node: '>=22'}
     hasBin: true
@@ -24266,7 +24266,7 @@ snapshots:
       '@transcribe-cpp/linux-x64-cpu-vulkan': 0.4.1
       '@transcribe-cpp/win32-x64-cpu-vulkan': 0.4.1
 
-  treflex-eslint@file:apps/reflex-web/vendor/treflex-eslint-0.2.0.tgz(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3):
+  treflex-eslint@file:apps/treflex-web/vendor/treflex-eslint-0.2.0.tgz(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3):
     dependencies:
       '@typescript-eslint/utils': 8.73.0(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
       eslint: 10.15.0(jiti@2.7.0)(supports-color@8.1.1)

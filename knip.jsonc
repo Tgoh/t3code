@@ -107,7 +107,7 @@
       // reports an entire component module when nothing imports it.
       "ignoreIssues": { "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"] },
     },
-    "apps/reflex-web": {
+    "apps/treflex-web": {
       "entry": [
         "bench/stream/run.ts",
         "bench/stream/seed.ts",
