@@ -74,9 +74,8 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 ## Waiting on treflex
 
 - **Checks that keep agents off React habits.** treflex's verdicts are in `docs/wip/13-external/views-start-work-from-their-lifecycle.md` in the reflex repo. When each one ships, turn it on here and fix what it finds.
-  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo. There will be no npm release: when the build is done, treflex's Main thread sends the branch (`claude/eslint-0.2.1`, `treflex-eslint` 0.2.1, which works with core 0.2.0) and a pack command, and the client vendors the tarball in place of `vendor/treflex-eslint-0.2.0.tgz`. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the client's override in the root `vite.config.ts`, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`; a bare disable comment doesn't suppress it. Its action has to be `leading` and check state before it writes.
-  2. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
-  3. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
+  1. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
+  2. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
 
   Screen-caused work, such as loading the next page when a list's end scrolls into view, gets a named opt-in at the call site instead of being banned.
 
@@ -94,7 +93,7 @@ Any time; none of it touches the client.
 
 - **Make `vp run check:changed` pass for this app.** Every thread reports the same two failures, which hide real ones.
   - Its test step runs this app's tests in the root vitest project, which lacks the app's `solid` and `browser` resolve conditions, so about 140 tests fail there that pass from `apps/treflex-web`. Give the app its own vitest project in the root config, or exclude it from the root run and have `check:changed` run it from its folder.
-  - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.2.0.tgz`.
+  - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.2.1.tgz`.
 
   Both mean editing upstream's root config, so keep the change small. See "Setup: `vp run check:changed` fails this app's tests" in `issues.md`.
 
