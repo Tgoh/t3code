@@ -202,7 +202,7 @@ const ThreadBody = ThreadSession.provider(() => {
       ...stageSize(),
       Padding: 48,
       MaxChatWidth: 736,
-      Open: details().Open,
+      Open: environment.state.Local.Preferences.DetailsOpen,
     }),
   );
   // The session toggles the card by whether it fits, which only this view can measure.
@@ -210,7 +210,7 @@ const ThreadBody = ThreadSession.provider(() => {
     setStageSize(size);
     if (layout().Inline !== details().Fits) void session.fitDetails(layout().Inline);
   };
-  const detailsInline = () => layout().Inline && details().Open;
+  const detailsInline = () => layout().Inline && environment.state.Local.Preferences.DetailsOpen;
   const detailsShown = () => detailsInline() || details().Popover;
   const navigation = useNavigation();
   const projectScripts = () => {

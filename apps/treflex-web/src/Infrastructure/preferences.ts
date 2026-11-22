@@ -15,6 +15,8 @@ export interface IPreferences {
   SidebarCollapsed: boolean;
   /** The dragged width in pixels, or null for the default. */
   SidebarWidth: number | null;
+  /** The details card is pinned beside the chat where it fits, in every thread. */
+  DetailsOpen: boolean;
   /** `environment:instance` keys of providers whose resume compaction was answered "Don't ask again". */
   CompactionDismissed: string[];
   AppearanceMode: IAppearanceMode;
@@ -78,6 +80,7 @@ const KEYS = {
   HiddenProjects: "reflex-web:hidden-projects",
   ProjectScope: "reflex-web:project-scope",
   SidebarCollapsed: "reflex-web:sidebar-collapsed",
+  DetailsOpen: "reflex-web:details-open",
   VoiceDestination: "reflex-web:voice-destination",
   CompactionDismissed: "reflex-web:compaction-dismissed",
 } as const;
@@ -135,6 +138,8 @@ export function readPreferences(): IPreferences {
     ProjectScope: ids(readJson(KEYS.ProjectScope)),
     SidebarCollapsed: readJson(KEYS.SidebarCollapsed) === true,
     SidebarWidth: typeof width === "number" && Number.isFinite(width) ? width : null,
+    // Open by default, as DEFAULT_THREAD_PANEL_VISIBILITY in apps/web/src/rightPanelStore.ts.
+    DetailsOpen: readJson(KEYS.DetailsOpen) !== false,
     CompactionDismissed: ids(readJson(KEYS.CompactionDismissed)),
     AppearanceMode: storedAppearanceMode(),
     Usage: {

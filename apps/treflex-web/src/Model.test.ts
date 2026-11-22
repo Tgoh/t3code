@@ -169,6 +169,7 @@ import {
   rewindConfirm,
   threadWorking,
   diffLoading,
+  detailsOpen,
   compactionOffer,
   effectiveModel,
   effectiveRuntimeMode,
@@ -266,6 +267,7 @@ const storedPreferences: IPreferences = {
   ProjectScope: [],
   SidebarCollapsed: false,
   SidebarWidth: null,
+  DetailsOpen: true,
   CompactionDismissed: [],
   AppearanceMode: "system",
   Usage: { Metric: "limits", Days: 30 },
@@ -3857,7 +3859,7 @@ describe("diffs", () => {
     await server.open();
     await server.sendThread(snapshotOf(emptyProjection(), 1));
     const panels = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels;
-    expect(panels().Details.Open).toBe(true);
+    expect(server.environment().Local.Preferences.DetailsOpen).toBe(true);
     await server.runtime.dispatch(toggleRightPanel, server.sessionId());
     expect(panels().Launcher.Open).toBe(true);
     await server.runtime.dispatch(openDiff, server.sessionId(), "branch", null);
@@ -3905,11 +3907,13 @@ describe("diffs", () => {
 
     expect(refreshes).toBe(1);
     expect(await run("threadPanel.toggle")).toBe(true);
-    expect(panels().Details).toMatchObject({ Open: true, Popover: true });
+    expect(panels().Details).toMatchObject({ Popover: true });
+    expect(server.environment().Local.Preferences.DetailsOpen).toBe(true);
     expect(refreshes).toBe(2);
     await server.runtime.dispatch(fitDetails, server.sessionId(), true);
     expect(await run("threadPanel.toggle")).toBe(true);
-    expect(panels().Details).toMatchObject({ Open: false, Popover: true });
+    expect(panels().Details).toMatchObject({ Popover: true });
+    expect(server.environment().Local.Preferences.DetailsOpen).toBe(false);
     expect(refreshes).toBe(2);
     await server.runtime.dispatch(closeDetailsPopover, server.sessionId());
     await server.runtime.dispatch(fitDetails, server.sessionId(), false);
@@ -3920,6 +3924,35 @@ describe("diffs", () => {
     expect(shown()).toBeNull();
     expect(await run("rightPanel.toggle")).toBe(false);
     expect(panels().Launcher.Open).toBe(true);
+  });
+
+  it("pins the details card for every thread on this device, across a reload", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(fitDetails, server.sessionId("a"), true);
+    await server.runtime.dispatch(toggleDetails, server.sessionId("a"));
+    await settled();
+    expect(server.device.Preferences.DetailsOpen).toBe(false);
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
+    await server.runtime.dispatch(fitDetails, server.sessionId("b"), true);
+    expect(server.runtime.processSelector(detailsOpen, () => server.session("b"))).toBe(false);
+    await server.runtime.dispatch(toggleDetails, server.sessionId("b"));
+    await settled();
+    expect(server.runtime.processSelector(detailsOpen, () => server.session("a"))).toBe(true);
+    await server.runtime.dispatch(toggleDetails, server.sessionId("b"));
+    await settled();
+
+    const reloaded = await connect(
+      undefined,
+      null,
+      {},
+      undefined,
+      undefined,
+      server.device.Preferences,
+    );
+    expect(reloaded.environment().Local.Preferences.DetailsOpen).toBe(false);
+    await reloaded.runtime.dispatch(selectThread, reloaded.envId(), "a");
+    expect(reloaded.runtime.processSelector(detailsOpen, () => reloaded.session("a"))).toBe(false);
   });
 
   it("takes a file change's counts from its run's checkpoint when the item has none", async () => {

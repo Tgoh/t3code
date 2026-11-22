@@ -149,6 +149,7 @@ declare module "treflex" {
     "Thread/MergedBack": { ThreadId: string };
     "Dictation/TranscriptRefused": { ThreadId: string };
     "Git/StatusFollowed": {};
+    "Details/Pinned": { Open: boolean };
   }
   interface ITimerRegistry {
     "Rewind/Timeout": {};
@@ -172,7 +173,11 @@ export interface ISelection extends IEntity {
   SelectedThreadId: string | null;
   /** A Settings or Usage page, which covers the selected thread. */
   View: IAddressView | null;
-  Preferences: { AppearanceMode: IAppearanceMode; CompactionDismissed: string[] };
+  Preferences: {
+    AppearanceMode: IAppearanceMode;
+    CompactionDismissed: string[];
+    DetailsOpen: boolean;
+  };
   SystemDark: boolean;
   ClientSettings: { followUpBehavior: ActiveTurnComposerAction } | null;
 }
@@ -190,8 +195,6 @@ const unwrappedCode = (owner: IThreadSession) =>
   transient(owner, "Timeline/Unwrapped", { Blocks: {} as Record<string, true> });
 
 export interface IDetailsPanel {
-  /** Shown pinned beside the chat while the card fits there. */
-  Open: boolean;
   /** Shown as a popover under its toggle while the card doesn't fit. */
   Popover: boolean;
   /** Whether the thread view has room to pin the card, as its layout last measured. */
@@ -248,8 +251,7 @@ export function getDefaultThreadSession(
     QuestionIndex: {},
     Panels: {
       Diff: null,
-      // Follows DEFAULT_THREAD_PANEL_VISIBILITY in apps/web/src/rightPanelStore.ts.
-      Details: { Open: true, Popover: false, Fits: false },
+      Details: { Popover: false, Fits: false },
       Launcher: { Open: false },
     },
     ExpandedRows: {},
@@ -1417,20 +1419,33 @@ export function* closeDiff(draft: IThreadSession): IActionGenerator {
   draft.Panels.Diff = null;
 }
 
-const detailsShown = ({ Open, Fits, Popover }: IDetailsPanel) => (Fits && Open) || Popover;
+export function* detailsOpen(draft: IThreadSession): ISelectorGenerator<boolean> {
+  const selection = yield* getData(draft, "Selection");
+  return selection?.Preferences.DetailsOpen ?? true;
+}
 
-function* refreshWhenShown(draft: IThreadSession, wasShown: boolean): IActionGenerator {
-  if (!wasShown && detailsShown(draft.Panels.Details) && draft.Details !== null) {
+const detailsShown = ({ Fits, Popover }: IDetailsPanel, open: boolean) => (Fits && open) || Popover;
+
+function* refreshWhenShown(
+  draft: IThreadSession,
+  wasShown: boolean,
+  open: boolean,
+): IActionGenerator {
+  if (!wasShown && detailsShown(draft.Panels.Details, open) && draft.Details !== null) {
     yield* start(refreshStatus, draft.Details);
   }
 }
 
+/** Pinning is this device's choice for every thread, so it goes up to the environment. */
 export function* toggleDetails(draft: IThreadSession): IActionGenerator {
   const details = draft.Panels.Details;
-  const wasShown = detailsShown(details);
-  if (details.Fits) details.Open = !details.Open;
-  else details.Popover = !details.Popover;
-  yield* refreshWhenShown(draft, wasShown);
+  let open = yield* select(detailsOpen);
+  const wasShown = detailsShown(details, open);
+  if (details.Fits) {
+    open = !open;
+    yield* publishToNearest(draft, "Details/Pinned", { Open: open });
+  } else details.Popover = !details.Popover;
+  yield* refreshWhenShown(draft, wasShown, open);
 }
 
 export function* closeDetailsPopover(draft: IThreadSession): IActionGenerator {
@@ -1438,9 +1453,10 @@ export function* closeDetailsPopover(draft: IThreadSession): IActionGenerator {
 }
 
 export function* fitDetails(draft: IThreadSession, fits: boolean): IActionGenerator {
-  const wasShown = detailsShown(draft.Panels.Details);
+  const open = yield* select(detailsOpen);
+  const wasShown = detailsShown(draft.Panels.Details, open);
   draft.Panels.Details.Fits = fits;
-  yield* refreshWhenShown(draft, wasShown);
+  yield* refreshWhenShown(draft, wasShown, open);
 }
 
 export function* followCheckout(draft: IThreadSession): IActionGenerator {

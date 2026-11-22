@@ -694,6 +694,9 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
     const session = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
     if (session !== undefined) yield* start(followCheckout, session);
   },
+  *"Details/Pinned"(draft, { Open }) {
+    yield* setPreferences(draft, { DetailsOpen: Open });
+  },
   *"Git/StatusFollowed"(draft) {
     yield* start(reportActivity, draft);
   },
