@@ -1,4 +1,4 @@
-import { type IActionGenerator, type IOpenGenerator, latest, open, start } from "treflex";
+import { type IActionGenerator, type IOpenGenerator, latest, open, start, workTag } from "treflex";
 
 import type { IEnvironment } from "./Environment";
 import { threadCommand } from "./Environment";
@@ -180,6 +180,8 @@ export function* refreshUsage(
   yield* open(refreshUsageRatesEffect({ EnvironmentId: environmentId }));
   yield* loadUsage(draft, usage.Key, usage.Input);
 }
+export const RefreshingUsage = workTag("Usage/Refreshing");
+RefreshingUsage.mark(refreshUsage, loadUsage);
 
 // Follows the automatic refresh in apps/web/src/components/usage/UsagePage.tsx, which runs when
 // the limits show and skips an environment refreshed in the last five minutes.

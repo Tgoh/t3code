@@ -34,7 +34,7 @@ import Environment from "./Environment";
 import { ChartNoAxesColumn, RefreshCw, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
 import { limitPools, limitPresentations } from "./limits";
-import { loadUsage, refreshUsage } from "./Settings";
+import { RefreshingUsage } from "./Settings";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
 import { IconButton } from "./ui/IconButton";
@@ -118,7 +118,7 @@ const windowInput = (days: number): IWireUsageInput =>
 
 export function UsageView() {
   const environment = Environment.use();
-  const refreshing = useInFlight([refreshUsage, loadUsage], () => environment.state);
+  const refreshing = useInFlight(RefreshingUsage, () => environment.state);
   const metric = () => shownMetric(environment.state.Local.Preferences.Usage.Metric);
   const days = () => shownDays(environment.state.Local.Preferences.Usage.Days);
   const [input, setInput] = createSignal(windowInput(days()));

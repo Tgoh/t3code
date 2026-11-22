@@ -5,6 +5,7 @@ import {
   leading,
   open,
   transient,
+  workTag,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -75,6 +76,8 @@ export function* dismissRequest(
   yield* respond(draft, environmentId, threadId, { Decision: null, Answers: null, Dismiss: true });
 }
 leading(dismissRequest);
+export const Responding = workTag("Request/Responding");
+Responding.mark(answerRequest, dismissRequest);
 
 export function* answerError(draft: IRuntimeRequest): ISelectorGenerator<string | null> {
   return (yield* outcome(draft)).Error;

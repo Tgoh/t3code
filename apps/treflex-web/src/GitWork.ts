@@ -13,6 +13,7 @@ import {
   receiver,
   startTimer,
   stopTimer,
+  workTag,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -258,6 +259,8 @@ export function* pull(draft: IGitWork, checkout: ICheckout): IOpenGenerator {
   }
 }
 leading(pull);
+export const GitRunning = workTag("Git/Running");
+GitRunning.mark(runGitAction, continueDefaultBranch, pull);
 
 export const GitReceiver = receiver<IGitWork>("GitReceiver")({
   *"Git/Notice"(draft) {

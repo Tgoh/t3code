@@ -140,7 +140,13 @@ import {
 import { registerReceivers } from "./receivers";
 import { dismissFailure, getDefaultRoot, type IRoot, load } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
-import { answerRequest, canAnswer, dismissRequest, type IRuntimeRequest } from "./RuntimeRequest";
+import {
+  answerRequest,
+  canAnswer,
+  dismissRequest,
+  type IRuntimeRequest,
+  Responding,
+} from "./RuntimeRequest";
 import { answerLink, answerSecret, itemAnswerError } from "./ItemRequest";
 import {
   activityAt,
@@ -2784,8 +2790,7 @@ describe("writing to the server", () => {
     );
 
     const node = (id: string) => server.thread().RuntimeRequests[id]!;
-    const busy = (id: string) =>
-      inFlightOf(server.runtime, [answerRequest, dismissRequest], () => node(id));
+    const busy = (id: string) => inFlightOf(server.runtime, Responding, () => node(id));
     const answer = (id: string, decision: "accept" | "decline") =>
       server.runtime.dispatch(answerRequest, node(id).$Id, ENV, THREAD_ID, decision, null);
     const first = answer("r-1", "accept");

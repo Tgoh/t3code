@@ -42,7 +42,7 @@ import {
   type IAddProjectSourceId,
   willCreateFolder,
 } from "./addProjectPalette";
-import Environment, { addFolder, cloneProject, newProject } from "./Environment";
+import Environment, { AddingProject } from "./Environment";
 import { serverError } from "./Infrastructure/serverError";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { ArrowLeft, CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
@@ -167,7 +167,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     palette.state.Settings ?? (palette.state.SettingsError === null ? null : UNKNOWN_SETTINGS);
   const cwd = () => environment.currentProjectRoot();
   const platform = () => browsePlatform(settings()?.Os ?? "");
-  const busy = useInFlight([addFolder, cloneProject, newProject], () => environment.state);
+  const busy = useInFlight(AddingProject, () => environment.state);
 
   const [stack, setStack] = createSignal<IView[]>([{ Kind: "sources" }]);
   const view = () => stack().at(-1)!;
