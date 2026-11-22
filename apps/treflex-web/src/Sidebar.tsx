@@ -342,7 +342,7 @@ export const Sidebar = Shell.provider(() => {
   );
   return (
     <nav class={SIDEBAR} data-sidebar>
-      <header class="relative flex h-(--topbar-height) flex-none items-center px-3">
+      <header class="relative flex h-(--workspace-topbar-height) flex-none items-center px-3">
         <div
           class={`pointer-events-none absolute top-0 right-0 left-[calc(-1*env(safe-area-inset-left))] h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_92%)] after:absolute after:inset-0 after:content-[''] ${STAGE_FADE}`}
         >

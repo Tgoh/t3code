@@ -4,7 +4,7 @@ const BASE =
   "flex flex-none items-center gap-3 bg-background pl-5 in-[.sidebar-collapsed]:pl-[calc(1.25rem+env(safe-area-inset-left))] in-[.sidebar-sheet]:gap-1 in-[.sidebar-sheet]:pr-[calc(8px+env(safe-area-inset-right))] in-[.sidebar-sheet]:pl-[calc(8px+env(safe-area-inset-left))]";
 
 const VARIANTS = {
-  thread: "h-(--topbar-height) pr-[calc(13px+env(safe-area-inset-right))]",
+  thread: "h-(--workspace-topbar-height) pr-[calc(13px+env(safe-area-inset-right))]",
   page: "h-12 border-b border-border pr-[calc(0.5rem+env(safe-area-inset-right))]",
 };
 

@@ -79,7 +79,7 @@ export function SurfaceLauncher(props: {
     <>
       <PanelHeader closeLabel="Close panel" onClose={props.onClose} />
       <div
-        class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pt-0 pb-(--topbar-height) outline-none"
+        class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pt-0 pb-(--workspace-topbar-height) outline-none"
         tabIndex={0}
         aria-label="Open a surface"
         onKeyDown={onKeyDown}

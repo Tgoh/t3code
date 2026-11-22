@@ -10,7 +10,7 @@ export function PanelHeader(props: {
   onClose: () => void;
 }) {
   return (
-    <header class="flex h-(--topbar-height) flex-none items-center gap-2.5 pr-[13px] pl-2">
+    <header class="flex h-(--workspace-topbar-height) flex-none items-center gap-2.5 pr-[13px] pl-2">
       {props.children}
       <span class="flex-1" />
       <IconButton aria-label={props.closeLabel} data-tip={props.closeLabel} onClick={props.onClose}>

@@ -12,9 +12,38 @@
   --glass-saturation: 1.14;
   --dialog-backdrop: color-mix(in srgb, var(--background) 60%, transparent);
   --chat-content-max-width: 46rem;
-  --topbar-height: 52px;
+  --thread-details-panel-width: 17.5rem;
+  --workspace-topbar-height: 52px;
+  --workspace-controls-top: 0px;
+  --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
+  --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
+  --workspace-titlebar-control-size: 1.75rem;
+  --workspace-titlebar-control-gap: 0.75rem;
+  --workspace-titlebar-scroll-fade-height: 1.5rem;
+  --workspace-gutter: 0.75rem;
+  --workspace-gutter-start: calc(env(safe-area-inset-left) + var(--workspace-gutter));
+  --workspace-gutter-end: calc(env(safe-area-inset-right) + var(--workspace-gutter));
   --gutter: 3rem;
-  --scrollbar-width: 6px;
+  --app-scrollbar-width: 6px;
+  --control-radius: 0.5rem;
+  --sidebar-content-inset: 0.5rem;
+  --sidebar-control-gap: 0.5rem;
+  --sidebar-icon-color: color-mix(
+    in srgb,
+    var(--contrast-sidebar-muted-foreground) 85%,
+    var(--sidebar)
+  );
+  --sidebar-row-content-inset: 0.625rem;
+  --command-shell-inset: 0.5rem;
+  --command-content-inset: 1rem;
+  --floating-content-inset: 0.75rem;
+  --z-sheet: 46;
+  --surface-grain-size: 256px 256px;
+
+  --appearance-contrast-base: 100%;
+  --appearance-contrast-boost: 0%;
+  --appearance-contrast-border-boost: 0%;
+  --appearance-contrast-target: black;
 
   --zinc-25: oklch(99.2% 0 0);
   --zinc-50: oklch(98.5% 0 0);
@@ -22,50 +51,79 @@
   --zinc-200: oklch(92% 0.004 286.32);
   --zinc-300: oklch(87.1% 0.006 286.286);
   --zinc-500: oklch(55.2% 0.016 285.938);
+  --zinc-800: oklch(27.4% 0.006 286.033);
   --zinc-900: oklch(21% 0.006 285.885);
   --neutral-100: oklch(97% 0 0);
   --neutral-400: oklch(70.8% 0 0);
   --neutral-950: oklch(14.5% 0 0);
 
   --background: var(--zinc-25);
+  --app-chrome-background: var(--background);
+  --toolbar-background: var(--app-chrome-background);
+  --toolbar-foreground: var(--foreground);
+  --toolbar-border: var(--border);
+  --toolbar-control: var(--popover);
+  --toolbar-control-foreground: var(--foreground);
+  --toolbar-control-hover: var(--accent);
+  --surface-raised: color-mix(in srgb, var(--card) 20%, transparent);
   --foreground: var(--zinc-900);
   --card: #fff;
+  --card-foreground: var(--zinc-900);
   --popover: #fff;
+  --popover-foreground: var(--zinc-900);
   --primary: oklch(0.488 0.217 264);
   --primary-foreground: #fff;
   --ring: var(--primary);
   --secondary: var(--zinc-50);
+  --secondary-foreground: var(--zinc-800);
   --muted: var(--zinc-50);
   --muted-foreground: var(--zinc-500);
+  --placeholder: var(--muted-foreground);
   --secondary-label: var(--muted-foreground);
+  --icon-muted: var(--muted-foreground);
   --message-surface: color-mix(in srgb, var(--zinc-200) 55%, var(--zinc-100));
+  --message-foreground: var(--foreground);
+  --message-action: var(--primary);
+  --message-action-foreground: var(--primary-foreground);
+  --message-action-hover: color-mix(in srgb, var(--primary) 90%, var(--background));
   --accent: var(--zinc-100);
+  --accent-foreground: var(--zinc-900);
   --error: oklch(63.7% 0.237 25.331);
   --error-foreground: oklch(50.5% 0.213 27.518);
   --tool-error-icon: var(--error);
+  --error-surface: color-mix(in srgb, var(--error) 8%, transparent);
   --destructive: var(--error);
+  --destructive-foreground: var(--error-foreground);
   --border: var(--zinc-200);
   --input: var(--zinc-300);
   --info: oklch(62.3% 0.214 259.815);
   --info-foreground: oklch(48.8% 0.243 264.376);
+  --guest: oklch(66.7% 0.295 322.15);
+  --guest-foreground: oklch(59.1% 0.293 322.896);
+  --guest-surface: color-mix(in srgb, var(--guest) 14%, var(--message-surface));
   --thread-link: #006f6b;
   --file-link: oklch(0.5 0.11 215);
   --success: oklch(69.6% 0.17 162.48);
   --success-foreground: oklch(50.8% 0.118 165.612);
   --warning: oklch(76.9% 0.188 70.08);
   --warning-foreground: oklch(55.5% 0.163 48.998);
+  --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);
+  --update: var(--primary);
+  --update-foreground: var(--primary);
   --input-status: oklch(51.1% 0.262 276.966);
   --diff-addition: var(--success);
   --diff-deletion: var(--destructive);
   --diff-addition-foreground: var(--success-foreground);
   --diff-deletion-foreground: var(--error-foreground);
+  --diff-modified-icon: color-mix(in srgb, var(--info-foreground) 50%, var(--muted-foreground));
   --code-background: color-mix(in srgb, var(--card) 90%, var(--background));
+  --code-foreground: var(--foreground);
   --terminal-background: var(--background);
   --terminal-foreground: var(--foreground);
   --terminal-cursor: rgb(38 56 78);
   --terminal-selection-background: rgb(37 63 99 / 20%);
-  --scrollbar-thumb: rgb(217 217 217);
-  --scrollbar-thumb-hover: rgb(191 191 191);
+  --app-scrollbar-thumb: rgb(217 217 217);
+  --app-scrollbar-thumb-hover: rgb(191 191 191);
   --composer-outline: rgb(0 0 0 / 8%);
   --composer-surface: var(--card);
   --composer-shadow: 0 1px 2px rgb(0 0 0 / 5%);
@@ -77,6 +135,9 @@
   --sidebar-border: var(--zinc-200);
   --sidebar-row-hover: var(--zinc-25);
   --sidebar-row-active: #fff;
+  --sidebar-row-selected: #fff;
+  --sidebar-control-surface: var(--zinc-100);
+  --sidebar-stage-fade: var(--sidebar);
   --sidebar-secondary-label: var(--zinc-500);
   --sidebar-accent: var(--zinc-100);
 
@@ -91,6 +152,19 @@
   --stage-art-celeste-secondary: oklch(0.827395 0.126071 211.26);
   --stage-art-violet-highlight: oklch(0.895381 0.053248 286.447);
   --stage-art-grid-line: oklch(0.966822 0.01757 239.99);
+  --stage-night-base-top: oklch(0.283792 0.117327 297.201);
+  --stage-night-base-mid: oklch(0.227147 0.086086 277.99);
+  --stage-night-base-bottom: oklch(0.200528 0.055699 261.216);
+  --stage-night-top: var(--stage-night-base-top);
+  --stage-night-mid: var(--stage-night-base-mid);
+  --stage-night-bottom: var(--stage-night-base-bottom);
+  --stage-night-highlight: oklch(0.707246 0.157418 252.091);
+  --stage-night-secondary: oklch(0.600473 0.182225 277.296);
+  --stage-night-tertiary: oklch(0.62583 0.210886 305.994);
+  --stage-night-line: oklch(0.938794 0.029114 273.103);
+  --stage-night-glow-highlight: oklch(0.553749 0.176543 271.958);
+  --stage-night-glow-secondary: oklch(0.345571 0.117466 273.568);
+  --stage-night-sparkle: oklch(0.880867 0.057747 269.011);
 
   --surface-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
 }
@@ -101,32 +175,44 @@
   --glass-blur: 16px;
   --glass-saturation: 1.08;
   --dialog-backdrop: color-mix(in srgb, var(--background) 64%, transparent);
+  --appearance-contrast-target: white;
   --secondary: rgb(255 255 255 / 3%);
+  --secondary-foreground: var(--neutral-100);
   --raised: color-mix(in srgb, var(--neutral-950) 97%, #fff);
+  --surface-raised: var(--raised);
   --background: #000;
   --foreground: var(--neutral-100);
   --card: var(--raised);
+  --card-foreground: var(--neutral-100);
   --popover: var(--raised);
+  --popover-foreground: var(--neutral-100);
   --primary: oklch(0.571 0.21 264);
   --muted: rgb(255 255 255 / 3%);
   --muted-foreground: var(--neutral-400);
   --accent: rgb(255 255 255 / 4%);
+  --accent-foreground: var(--neutral-100);
   --message-surface: color-mix(in srgb, var(--neutral-950) 92%, #fff);
   --error: color-mix(in srgb, oklch(63.7% 0.237 25.331) 90%, #fff);
   --error-foreground: oklch(70.4% 0.191 22.216);
   --tool-error-icon: #fca5a5;
+  --error-surface: color-mix(in srgb, var(--error) 16%, transparent);
   --thread-link: oklch(76% 0.12 190);
   --file-link: oklch(0.76 0.11 215);
   --border: rgb(255 255 255 / 8%);
   --input: rgb(255 255 255 / 11%);
   --info-foreground: oklch(70.7% 0.165 254.624);
+  --guest-foreground: oklch(83.3% 0.145 321.434);
   --success-foreground: oklch(76.5% 0.177 163.223);
   --warning-foreground: oklch(82.8% 0.189 84.429);
+  --warning-surface: color-mix(in srgb, var(--warning) 16%, transparent);
+  --update-foreground: oklch(70.7% 0.165 254.624);
   --input-status: oklch(78.5% 0.115 274.713);
+  --diff-modified-icon: color-mix(in srgb, var(--info-foreground) 65%, transparent);
+  --diff-added-icon: var(--success-foreground);
   --terminal-cursor: rgb(180 203 255);
   --terminal-selection-background: rgb(180 203 255 / 25%);
-  --scrollbar-thumb: rgb(255 255 255 / 8%);
-  --scrollbar-thumb-hover: rgb(255 255 255 / 12%);
+  --app-scrollbar-thumb: rgb(255 255 255 / 8%);
+  --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
   --composer-outline: color-mix(in srgb, #fff 5%, transparent);
   --composer-surface: var(--raised);
   --composer-shadow: 0 14px 32px -18px rgb(0 0 0 / 75%);
@@ -138,12 +224,141 @@
   --sidebar-border: rgb(255 255 255 / 8%);
   --sidebar-row-hover: color-mix(in srgb, #f1f3f7 8%, transparent);
   --sidebar-row-active: color-mix(in srgb, #f1f3f7 11%, transparent);
+  --sidebar-row-selected: color-mix(in srgb, #f1f3f7 7%, transparent);
+  --sidebar-control-surface: #0a0a0a;
   --sidebar-secondary-label: #8f8f8f;
   --sidebar-accent: #191a1d;
 
   --stage-art-top: oklch(0.581473 0.149124 256.9);
   --stage-art-mid: oklch(0.456509 0.159377 261.945);
   --stage-art-bottom: oklch(0.291327 0.136578 267.649);
+}
+
+@media (min-width: 640px) {
+  :root {
+    --workspace-gutter: 1.25rem;
+  }
+}
+
+:root[data-chat-width="wide"] {
+  --chat-content-max-width: 72rem;
+}
+
+:root[data-chat-width="full"] {
+  --chat-content-max-width: 100%;
+}
+
+:root {
+  --contrast-toolbar-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--toolbar-foreground) var(--appearance-contrast-base),
+      var(--toolbar-background)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-toolbar-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--toolbar-border) var(--appearance-contrast-base), transparent),
+    var(--toolbar-foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-toolbar-control-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--toolbar-control-foreground) var(--appearance-contrast-base),
+      var(--toolbar-control)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-input: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--input) var(--appearance-contrast-base), transparent),
+    var(--foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--border) var(--appearance-contrast-base), transparent),
+    var(--foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--foreground) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-muted-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--muted-foreground) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-placeholder: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--placeholder) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-secondary-label: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--secondary-label) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-icon-muted: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--icon-muted) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-card-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--card-foreground) var(--appearance-contrast-base), var(--card)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-popover-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--popover-foreground) var(--appearance-contrast-base), var(--popover)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-accent-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--accent-foreground) var(--appearance-contrast-base), var(--accent)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-secondary-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--secondary-foreground) var(--appearance-contrast-base),
+      var(--secondary)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-message-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--message-foreground) var(--appearance-contrast-base),
+      var(--message-surface)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--sidebar-foreground) var(--appearance-contrast-base), var(--sidebar)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-muted-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--sidebar-muted-foreground) var(--appearance-contrast-base),
+      var(--sidebar)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--sidebar-border) var(--appearance-contrast-base), transparent),
+    var(--sidebar-foreground) var(--appearance-contrast-border-boost)
+  );
 }
 
 * {
@@ -190,8 +405,8 @@ body {
 }
 
 ::-webkit-scrollbar {
-  height: var(--scrollbar-width);
-  width: var(--scrollbar-width);
+  height: var(--app-scrollbar-width);
+  width: var(--app-scrollbar-width);
 }
 
 ::-webkit-scrollbar-track {
@@ -199,12 +414,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--app-scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  background: var(--app-scrollbar-thumb-hover);
 }
 
 /* The home bar is behind an open keyboard, though iOS still reports its inset. data-keyboard comes
@@ -218,7 +433,7 @@ body {
 @media (pointer: coarse) and (max-height: 500px) {
   :root {
     --composer-gap: 4px;
-    --topbar-height: 40px;
+    --workspace-topbar-height: 40px;
   }
 }
 
