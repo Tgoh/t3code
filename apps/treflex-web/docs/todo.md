@@ -4,7 +4,7 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 ## Now
 
-- **Rename the `reflex-main` branch to `treflex-main`.** When no running thread's merge steps still point at `reflex-main`. Rename it on origin and in the main checkout. Update `reflex-main` in `scripts/sync-upstream.ps1`, `CLAUDE.md` and the README, and the `syncupstream` and `promote` skills, including their port variable, now `TREFLEX_WEB_PORT`. Use the `treflex/` prefix for new branches.
+- **Rename the `reflex-main` branch to `treflex-main`.** Rename it on origin and in the main checkout. Update `reflex-main` in `scripts/sync-upstream.ps1`, `CLAUDE.md` and the README, and the `syncupstream` and `promote` skills, including their port variable, now `TREFLEX_WEB_PORT`. Use the `treflex/` prefix for new branches.
 
 ## 1. Parity and polish
 
