@@ -209,19 +209,23 @@ const EnvironmentView = Environment.provider(() => {
   const keys = createKeyDispatcher({
     overlays,
     paletteOpen: () => palette() !== null,
-    resolve: (event) =>
-      resolveShortcutCommand(
+    resolve: (event) => {
+      const terminalFocus =
+        event.target instanceof Element && event.target.closest("[data-terminal-drawer]") !== null;
+      const command = resolveShortcutCommand(
         event,
         keybindings(),
         {
-          terminalFocus:
-            event.target instanceof Element &&
-            event.target.closest("[data-terminal-drawer]") !== null,
+          terminalFocus,
           editableFocus: isEditable(event.target),
           composerFocus: event.target instanceof Element && event.target.matches(COMPOSER_SELECTOR),
         },
         platform,
-      ),
+      );
+      // Follows isSidebarToggleShortcut in apps/web/src/keybindings.ts: a focused terminal owns
+      // Ctrl chords, such as tmux's Ctrl+B prefix.
+      return command === "sidebar.toggle" && event.ctrlKey && terminalFocus ? null : command;
+    },
     run: runCommand,
     typeIntoComposer: (event) =>
       shouldTypeToFocusComposer(event, composerCovered()) &&
