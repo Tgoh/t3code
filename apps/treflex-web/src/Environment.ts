@@ -50,6 +50,7 @@ import {
   storeDraftFilesEffect,
 } from "./Infrastructure/draftMemory";
 import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
+import { addProjectSettingsOf, type IAddProjectSettings } from "./addProjectPaths";
 import { editorChoices, type IEditors } from "./editors";
 import { getDefaultGitWork, type IGitWork } from "./GitWork";
 import {
@@ -662,6 +663,13 @@ export function* keybindings(draft: IEnvironment): ISelectorGenerator<ResolvedKe
   return held ?? DEFAULT_RESOLVED_KEYBINDINGS;
 }
 
+export function* addProjectSettings(
+  draft: IEnvironment,
+): ISelectorGenerator<IAddProjectSettings | null> {
+  const config = draft.Replica.Config;
+  return config === null ? null : addProjectSettingsOf(config);
+}
+
 export function* activeProjects(draft: IEnvironment): ISelectorGenerator<IWireProject[]> {
   return Object.values(draft.Replica.Shell.Projects).filter(
     (project) => project.archivedAt == null,
@@ -772,6 +780,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     currentProjectRoot,
     activeProjects,
     keybindings,
+    addProjectSettings,
     editors,
   },
 );

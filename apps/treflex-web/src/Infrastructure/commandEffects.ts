@@ -224,23 +224,6 @@ interface IProjectCommandEffect extends IEffect {
 
 export const projectCommandEffect = defineEffect<IProjectCommandEffect, void>("projectCommand");
 
-export interface IAddProjectSettings {
-  BaseDirectory: string;
-  GhqCloneLayout: boolean;
-  NewProjectsRoot: string | null;
-  Os: string;
-}
-
-interface IAddProjectSettingsEffect extends IEffect {
-  Type: "addProjectSettings";
-  EnvironmentId: string;
-}
-
-export const addProjectSettingsEffect = defineEffect<
-  IAddProjectSettingsEffect,
-  IAddProjectSettings
->("addProjectSettings");
-
 export interface IFolderListing {
   ParentPath: string;
   Entries: Array<{ name: string; fullPath: string }>;

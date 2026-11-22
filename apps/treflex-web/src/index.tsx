@@ -28,7 +28,6 @@ import {
 import { provideMinute } from "./Infrastructure/clock";
 import { commandOutput } from "./Infrastructure/commandOutput";
 import {
-  addProjectSettingsImpl,
   assetUrlImpl,
   browseFoldersImpl,
   cloneControlImpl,
@@ -124,7 +123,6 @@ runtime.registerImplementation(mergeBackImpl);
 runtime.registerImplementation(threadTitlesImpl);
 runtime.registerImplementation(queueCommandImpl);
 runtime.registerImplementation(projectCommandImpl);
-runtime.registerImplementation(addProjectSettingsImpl);
 runtime.registerImplementation(browseFoldersImpl);
 runtime.registerImplementation(searchEntriesImpl);
 runtime.registerImplementation(searchThreadsImpl);

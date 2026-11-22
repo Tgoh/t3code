@@ -59,7 +59,6 @@ import * as Stream from "effect/Stream";
 import { implementation } from "treflex";
 
 import {
-  addProjectSettingsEffect,
   answerLinkEffect,
   answerSecretEffect,
   assetUrlEffect,
@@ -394,16 +393,6 @@ export const projectCommandImpl = implementation(projectCommandEffect, async (in
     default:
       command satisfies never;
   }
-});
-
-export const addProjectSettingsImpl = implementation(addProjectSettingsEffect, async (input) => {
-  const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
-  return {
-    BaseDirectory: config.settings.addProjectBaseDirectory,
-    GhqCloneLayout: config.settings.ghqCloneLayout,
-    NewProjectsRoot: config.newProjectsRoot ?? null,
-    Os: config.environment.platform.os,
-  };
 });
 
 export const searchEntriesImpl = implementation(searchEntriesEffect, async (input, action) => {

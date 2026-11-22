@@ -28,6 +28,7 @@ import { describe, expect, it, onTestFinished } from "vite-plus/test";
 
 import {
   addFolder,
+  addProjectSettings,
   cloneProject,
   closeThread,
   editors,
@@ -4260,6 +4261,37 @@ describe("work started by events", () => {
     await server.runtime.dispatch(preferEditor, server.envId(), "zed");
     expect(listed().Preferred).toBe("zed");
     expect(server.device.Editor).toBe("zed");
+  });
+
+  it("takes Add project's folders and platform from the config it holds, and follows its settings", async () => {
+    const server = await connect();
+    const settings = () => server.runtime.processSelector(addProjectSettings, server.environment);
+    const base = configSnapshot([replayProvider()]);
+    await server.sendConfig({
+      ...base,
+      config: {
+        ...base.config,
+        settings: {
+          ...base.config.settings,
+          addProjectBaseDirectory: "~/code",
+          ghqCloneLayout: true,
+        },
+        newProjectsRoot: "~/new",
+        environment: { platform: { os: "windows" } },
+      },
+    });
+    expect(settings()).toEqual({
+      BaseDirectory: "~/code",
+      GhqCloneLayout: true,
+      NewProjectsRoot: "~/new",
+      Os: "windows",
+    });
+    await server.sendConfig({
+      version: 1,
+      type: "settingsUpdated",
+      payload: { settings: { addProjectBaseDirectory: "~/src", ghqCloneLayout: false } },
+    });
+    expect(settings()).toMatchObject({ BaseDirectory: "~/src", GhqCloneLayout: false });
   });
 
   it("reads the keybindings from the config stream, with no stream of their own", async () => {

@@ -15,9 +15,24 @@ import {
   isWindowsPlatform,
 } from "@t3tools/client-runtime/state/projects";
 
-import type { IAddProjectSettings, IFolderListing } from "./Infrastructure/commandEffects";
+import type { IFolderListing } from "./Infrastructure/commandEffects";
+import type { IWireServerConfig } from "./Infrastructure/settings";
 
 type IFolderEntry = IFolderListing["Entries"][number];
+
+export interface IAddProjectSettings {
+  BaseDirectory: string;
+  GhqCloneLayout: boolean;
+  NewProjectsRoot: string | null;
+  Os: string;
+}
+
+export const addProjectSettingsOf = (config: IWireServerConfig): IAddProjectSettings => ({
+  BaseDirectory: config.settings.addProjectBaseDirectory,
+  GhqCloneLayout: config.settings.ghqCloneLayout,
+  NewProjectsRoot: config.newProjectsRoot ?? null,
+  Os: config.environment.platform.os,
+});
 
 // Follows getEnvironmentBrowsePlatform in apps/web/src/components/CommandPalette.logic.ts.
 export function browsePlatform(os: string): string {
