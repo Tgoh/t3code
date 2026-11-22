@@ -12,8 +12,7 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
   - `MiddleTruncate`, for branch and path names.
   - The timeline sender label, which stock replaces with an "Open thread" button in the message actions, and the sidebar's "Show more", which stock draws as a full row with a chevron.
   - Ports for components no treflex view uses yet: `NumberField`, `RadioGroup`, `Calendar`, `ColorPicker`, `Group`, `PreviewCard`, `QrCode`, `DiscoveryList`, `PanelTabCloseButton`, `Table`.
-- **Styles in the sync.** Each `/syncupstream` diffs stock's `index.css` and the `components/ui` files that treflex mirrors, and ports their class changes, as it ports logic. Update the skill.
-- **A visual drift check.** A script that screenshots key views (sidebar, thread, composer, settings, dialogs) in stock and treflex on the same server and data, and flags differences above a threshold.
+- **A visual drift check.** **In progress** on `treflex/visual-drift`. A script that screenshots key views (sidebar, thread, composer, settings, dialogs) in stock and treflex on the same server and data, and flags differences above a threshold.
 
 ## 2. Parity and polish
 
