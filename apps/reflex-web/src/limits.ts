@@ -49,18 +49,10 @@ const claudeWeekly = (pools: readonly LimitPool[]) =>
     .find((pool) => pool.driver === "claudeAgent")
     ?.windows.find((window) => window.kind === "weekly" && window.id === CLAUDE_WEEKLY_ID);
 
-const hasReset = (window: LimitPool["windows"][number], now: number) =>
-  window.members.length > 0 &&
-  window.members.every((member) => {
-    const at = Date.parse(member.window.resetsAt ?? "");
-    return Number.isFinite(at) && at <= now;
-  });
-
-/** A window past its reset reads as unused until the server reports it again, minutes later. */
-export function weeklyLimit(pools: readonly LimitPool[], now: number): IWeeklyLimit | null {
+export function weeklyLimit(pools: readonly LimitPool[]): IWeeklyLimit | null {
   const window = claudeWeekly(pools);
   if (window === undefined) return null;
-  const used = hasReset(window, now) ? 0 : Math.max(0, Math.min(100, window.usedPercent));
+  const used = Math.max(0, Math.min(100, window.usedPercent));
   return { UsedPercent: used, RemainingPercent: 100 - used, Tone: limitTone(used) };
 }
 
@@ -69,7 +61,6 @@ export function weeklyLimitTip(pools: readonly LimitPool[], now: number): string
   if (window === undefined) return "Weekly limit not reported";
   const resets =
     window.members[0] === undefined ? null : formatResetsIn(window.members[0].window, now);
-  const remaining = hasReset(window, now) ? 100 : window.remainingPercent;
-  const left = `Weekly limit: ${Math.max(0, Math.min(100, remaining))}% left`;
+  const left = `Weekly limit: ${Math.max(0, Math.min(100, window.remainingPercent))}% left`;
   return resets === null ? left : `${left} · ${resets}`;
 }

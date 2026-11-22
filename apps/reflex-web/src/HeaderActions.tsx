@@ -44,10 +44,7 @@ export function UsageRing() {
       environment.state.Replica.Config?.providers,
     );
   const weekly = createMemo(
-    () => {
-      const now = environment.minute();
-      return weeklyLimit(limitPools(presentations(), now), now);
-    },
+    () => weeklyLimit(limitPools(presentations(), environment.minute())),
     null,
     {
       equals: (left, right) =>

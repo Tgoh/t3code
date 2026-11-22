@@ -51,30 +51,16 @@ describe("weekly limit ring", () => {
   });
 
   it("reads the overall weekly window, not a per-model one", () => {
-    expect(weeklyLimit(pools([claude([fable, weekly(40)])]), NOW)).toEqual({
+    expect(weeklyLimit(pools([claude([fable, weekly(40)])]))).toEqual({
       UsedPercent: 40,
       RemainingPercent: 60,
       Tone: "normal",
     });
   });
 
-  it("shows a window that has reset as unused, from the clock alone", () => {
-    const presentations = limitPresentations("env", "Local", [claude([weekly(95)])]);
-    const after = Date.parse("2026-11-21T13:01:00.000Z");
-    expect(weeklyLimit(limitPools(presentations, after), after)).toMatchObject({
-      UsedPercent: 0,
-      Tone: "normal",
-    });
-    expect(weeklyLimitTip(limitPools(presentations, after), after)).toBe(
-      "Weekly limit: 100% left · resets now",
-    );
-  });
-
   it("is missing without a Claude weekly window or a config", () => {
-    expect(weeklyLimit(pools([claude([fable])]), NOW)).toBeNull();
-    expect(
-      weeklyLimit(limitPools(limitPresentations("env", "Local", undefined), NOW), NOW),
-    ).toBeNull();
+    expect(weeklyLimit(pools([claude([fable])]))).toBeNull();
+    expect(weeklyLimit(limitPools(limitPresentations("env", "Local", undefined), NOW))).toBeNull();
   });
 
   it("tips the share left and the reset", () => {
