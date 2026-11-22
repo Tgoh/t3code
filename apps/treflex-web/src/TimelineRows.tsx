@@ -466,7 +466,7 @@ export function FoldHeader(props: { fold: IMessageFold; expanded: boolean; onTog
         aria-expanded={props.expanded}
         onClick={() => props.onToggle()}
       >
-        <span class="min-w-0 flex-1 truncate">{props.fold.Summary}</span>
+        <span class="min-w-0 flex-1 truncate">{props.fold.Summary.normalize("NFC")}</span>
         <ChevronDown class="size-3.5 flex-none text-muted-foreground transition-transform duration-150 ease-[ease] group-aria-expanded/toggle:rotate-180" />
       </button>
     </div>

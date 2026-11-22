@@ -94,8 +94,8 @@ export function fileItems(entries: ReadonlyArray<IProjectEntry>): IMenuItem[] {
   return entries.map((entry) => ({
     Id: `path:${entry.kind}:${entry.path}`,
     Kind: entry.kind,
-    Label: basename(entry.path),
-    Description: dirname(entry.path),
+    Label: basename(entry.path).normalize("NFC"),
+    Description: dirname(entry.path).normalize("NFC"),
     Insert: `${serializeComposerFileLink(entry.path)} `,
   }));
 }

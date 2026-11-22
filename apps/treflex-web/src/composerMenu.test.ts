@@ -80,6 +80,11 @@ describe("menu items", () => {
         Insert: "[a (1).ts](src/a%20%281%29.ts) ",
       },
     ]);
+    const decomposed = "café/résumé.md";
+    expect(fileItems([{ path: decomposed, kind: "file" }])[0]).toMatchObject({
+      Label: "résumé.md",
+      Description: "café",
+    });
   });
 });
 
