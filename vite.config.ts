@@ -335,6 +335,10 @@ export default defineConfig({
         },
       },
       {
+        files: ["apps/treflex-web/**"],
+        rules: { "t3code/no-session-bound-subscription": "error" },
+      },
+      {
         files: [
           "**/*.{test,spec,testkit}.{ts,tsx}",
           "**/{test,tests,testkit,testing,fixtures,integration}/**",

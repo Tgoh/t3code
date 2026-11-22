@@ -6,21 +6,21 @@ Log gaps and problems in [docs/issues.md](./docs/issues.md).
 
 ## Decisions
 
-| Decision           | Choice                                                                                                                                                                                          |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Repo               | Private `Tgoh/t3code`, not a public fork, because treflex is unpublished                                                                                                                        |
+| Decision           | Choice                                                                                                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Repo               | Private `Tgoh/t3code`, not a public fork, because treflex is unpublished                                                                                                                         |
 | Branches           | `main` only tracks upstream. `treflex-main` is the working copy the daily driver runs from; changes go on worktree branches and merge back once they pass the gates, and a bad merge is reverted |
-| Location           | `apps/treflex-web`. Avoid editing upstream's files so merges stay easy                                                                                                                          |
-| Renderer           | Solid, through `treflex-solid`                                                                                                                                                                  |
-| Reused             | `packages/contracts`, `packages/shared`, and `client-runtime`'s `connection/` and `rpc/`                                                                                                        |
-| Replaced           | `client-runtime/src/state`, the Zustand stores, and the web components                                                                                                                          |
-| Server             | No server changes. If something seems to need one, log it in `issues.md` first                                                                                                                  |
-| State              | Hold the wire format in the tree, with no decoded `DateTime`, to meet treflex's plain-data rule                                                                                                 |
-| Reducer            | Written as treflex actions that mutate the tree, not a port of the immutable reducer                                                                                                            |
-| Tests              | Headless, with a scripted server at the effect boundary                                                                                                                                         |
-| Terminal emulator  | `@xterm/xterm` and its fit addon, loaded on first open. Stock's libghostty WASM surface isn't reusable from a non-React app without its build and surface code                                  |
-| Project order      | `localStorage`, like stock's `projectOrder` in `uiStateStore` and its `sidebarProjectSortOrder` client setting. Neither is on the server, so neither is shared with stock or other devices      |
-| Treflex dependency | `treflex` and `treflex-solid` 0.2.0 from npm, pinned to the exact version. `treflex-eslint` is a tarball in `vendor/`, installed with `file:`, since builds between releases aren't published   |
+| Location           | `apps/treflex-web`. Avoid editing upstream's files so merges stay easy                                                                                                                           |
+| Renderer           | Solid, through `treflex-solid`                                                                                                                                                                   |
+| Reused             | `packages/contracts`, `packages/shared`, and `client-runtime`'s `connection/` and `rpc/`                                                                                                         |
+| Replaced           | `client-runtime/src/state`, the Zustand stores, and the web components                                                                                                                           |
+| Server             | No server changes. If something seems to need one, log it in `issues.md` first                                                                                                                   |
+| State              | Hold the wire format in the tree, with no decoded `DateTime`, to meet treflex's plain-data rule                                                                                                  |
+| Reducer            | Written as treflex actions that mutate the tree, not a port of the immutable reducer                                                                                                             |
+| Tests              | Headless, with a scripted server at the effect boundary                                                                                                                                          |
+| Terminal emulator  | `@xterm/xterm` and its fit addon, loaded on first open. Stock's libghostty WASM surface isn't reusable from a non-React app without its build and surface code                                   |
+| Project order      | `localStorage`, like stock's `projectOrder` in `uiStateStore` and its `sidebarProjectSortOrder` client setting. Neither is on the server, so neither is shared with stock or other devices       |
+| Treflex dependency | `treflex` and `treflex-solid` 0.2.0 from npm, pinned to the exact version. `treflex-eslint` is a tarball in `vendor/`, installed with `file:`, since builds between releases aren't published    |
 
 The server holds all the work, and the client receives its data and uses treflex for client state.
 
@@ -221,7 +221,7 @@ Tailscale Serve exposes this client at `https://my-machine.my-tailnet.ts.net:844
 
 The session cookie isn't tied to a port, so a browser paired on 5733 is already paired on 5734. Otherwise open `localhost:5734/#token=…` with a token from `node apps/server/src/bin.ts pair`.
 
-From `apps/treflex-web`, `vp run test` runs the headless suite and `vp run bench` prints the benchmark against `applyOrchestrationV2ProjectionEvent`, on a generated long thread. Run them from there: from the repo root, vitest misses this app's Solid resolve conditions. `bench/stream` measures this client against stock in Chrome while a turn streams; its results are in [docs/benchmarks.md](./docs/benchmarks.md). [`bench/wire`](./bench/wire/README.md) checks the tree's codec against a running server's real data.
+From `apps/treflex-web`, `vp run test` runs the headless suite and `vp run bench` prints the benchmark against `applyOrchestrationV2ProjectionEvent`, on a generated long thread. A new resource that follows a server stream gets a row in `CASES` in `src/Infrastructure/sessionSwap.test.ts`, which checks that it moves onto the session a reconnect opens. Run them from there: from the repo root, vitest misses this app's Solid resolve conditions. `bench/stream` measures this client against stock in Chrome while a turn streams; its results are in [docs/benchmarks.md](./docs/benchmarks.md). [`bench/wire`](./bench/wire/README.md) checks the tree's codec against a running server's real data.
 
 ## Making changes
 
