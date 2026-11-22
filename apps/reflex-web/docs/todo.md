@@ -10,10 +10,7 @@ Everything in the pipeline for the reflex client, in the order to do it. Within 
 
 After stage 1's threads merge, since it touches tests and wiring across the client. Before stage 3, so the restructuring is built on 0.2.0.
 
-- **Upgrade to treflex 0.2.0.** **In progress:** `reflex/treflex-0.2.0`. All four packages were published to npm on 17 November. Depend on the published `treflex` and `treflex-solid` instead of the tarballs in `vendor/`. `treflex-eslint` stays vendored: treflex won't publish again before 0.3.0, so take a tarball of the 0.2.1 build that holds the two lifecycle rules (see "Waiting on treflex"), or 0.2.0 from npm if that build isn't ready. Read `docs/wip/done/release-0.2.0-breaking-changes.md` in the reflex repo first.
-  - `REPLICA_WRITERS` switches from `Name` to `Label`, and `testing/watchRuntime.ts` gives way to the strict test preset, which fails a test on any diag or failure it didn't expect.
-  - Move the minute clock to `provideExternal`/`external`. Then make the header's usage ring recompute on it, so a weekly window that resets shows straight away. Today the ring only redraws when the server pushes new provider data, about every five minutes.
-  - Add `treflex-eslint` to the `jsPlugins` in `vite.config.ts`, with only its type-free rules on: `treflex/named`, `treflex/no-yield-in-finally` and `treflex/no-global-open`. The typed rules throw under oxlint for lack of type information. See `docs/wip/13-external/lint-under-oxlint.md`.
+- **Upgrade to treflex 0.2.0.** **In progress:** `reflex/treflex-0.2.0`. The upgrade, the minute clock, the rejection-copies fix and `treflex-eslint` 0.2.0's type-free rules are done on the branch; the rename is left.
   - **Rename the client from reflex to treflex**, the official name. Do it last, as a rename-only commit, so the upgrade's logic changes stay readable. It covers:
     - `apps/reflex-web` → `apps/treflex-web`, with its package name, `knip.jsonc`, `vite.config.ts`, workspace filters and any CI paths;
     - `dev-stack.ps1` (`-Only reflex` and the served `dist` path);
@@ -21,8 +18,6 @@ After stage 1's threads merge, since it touches tests and wiring across the clie
     - the `reflex/` branch prefix for future work.
 
     The long-lived branch `reflex-main` becomes `treflex-main` on origin. The coordinator does that branch rename after the thread merges, together with the driver restart, the `syncupstream` and `promote` skills, and anything else outside this repo. Leave `G:\Sorted\Code\reflex`, treflex's own repo, alone. Grep for `reflex` case-insensitively and check every hit, since `packages/client-runtime` has unrelated matches.
-
-  - Prepare for the release after 0.2.0. There, rejections reach actions as copies with a native error type, so `instanceof ServerError` in `serverError()` stops matching and every server failure takes the bug route, silently in production. A development build reports the diag `effect/class-rejection` for each rejection with a class instance, and `createTestRuntime` fails on it. Run both once and fix every site. See `docs/wip/13-external/breaking-changes-since-0.2.0.md` in the reflex repo.
 
 ## 3. Restructuring
 
@@ -54,7 +49,7 @@ After stage 3, which also changes `ThreadView`.
 ## Waiting on treflex
 
 - **Checks that keep agents off React habits.** treflex's verdicts are in `docs/wip/13-external/views-start-work-from-their-lifecycle.md` in the reflex repo. When each one ships, turn it on here and fix what it finds.
-  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo. There will be no npm release: when the build is done, treflex's Main thread sends the branch (`claude/eslint-0.2.1`, `treflex-eslint` 0.2.1, which works with core 0.2.0) and a pack command, and the client vendors the tarball. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the `jsPlugins` setup, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`, and its action has to be `leading` and check state before it writes.
+  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo. There will be no npm release: when the build is done, treflex's Main thread sends the branch (`claude/eslint-0.2.1`, `treflex-eslint` 0.2.1, which works with core 0.2.0) and a pack command, and the client vendors the tarball in place of `vendor/treflex-eslint-0.2.0.tgz`. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the client's override in the root `vite.config.ts`, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`, and its action has to be `leading` and check state before it writes.
   2. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
   3. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
 

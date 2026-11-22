@@ -324,6 +324,17 @@ export default defineConfig({
     },
     overrides: [
       {
+        // The reflex client's treflex-eslint, vendored and installed in its own folder. Only these
+        // three rules: the plugin's others need type information, which oxlint can't give them.
+        files: ["apps/reflex-web/**"],
+        jsPlugins: ["./apps/reflex-web/node_modules/treflex-eslint/dist/index.js"],
+        rules: {
+          "treflex/named": "error",
+          "treflex/no-yield-in-finally": "error",
+          "treflex/no-global-open": "error",
+        },
+      },
+      {
         files: [
           "**/*.{test,spec,testkit}.{ts,tsx}",
           "**/{test,tests,testkit,testing,fixtures,integration}/**",
