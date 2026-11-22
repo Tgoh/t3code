@@ -52,6 +52,7 @@ import ThreadSession, {
   stopRun,
 } from "./ThreadSession";
 import { Button, buttonVariants } from "./ui/Button";
+import { Spinner } from "./ui/Spinner";
 import {
   COARSE_POINTER_QUERY,
   composerCollapses,
@@ -172,6 +173,7 @@ function SendButton(props: {
       type="submit"
       class={`${ROUND_BUTTON} bg-transparent hover:enabled:brightness-110 ${props.class}`}
       aria-label={label()}
+      aria-busy={props.sending || undefined}
       data-tip={tip()}
       disabled={props.disabled}
       onPointerDown={keepFocus}
@@ -184,9 +186,11 @@ function SendButton(props: {
       <span class="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
         <StageArt compact />
       </span>
-      <Show when={mode() !== "auto"} fallback={<ArrowUp />}>
-        <Show when={mode() === "queue"} fallback={<CornerUpRight />}>
-          <ListPlus />
+      <Show when={!props.sending} fallback={<Spinner size="sm" aria-hidden="true" />}>
+        <Show when={mode() !== "auto"} fallback={<ArrowUp />}>
+          <Show when={mode() === "queue"} fallback={<CornerUpRight />}>
+            <ListPlus />
+          </Show>
         </Show>
       </Show>
     </button>

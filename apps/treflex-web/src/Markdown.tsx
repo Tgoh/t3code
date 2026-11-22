@@ -38,7 +38,7 @@ import {
 } from "./fileLinks";
 import { CopyButton } from "./CopyButton";
 import Environment from "./Environment";
-import { LoaderCircle, MessagesSquare, RefreshCw, TriangleAlert, WrapText } from "./icons";
+import { MessagesSquare, RotateCw, TriangleAlert, WrapText } from "./icons";
 import { ImageDialog, MEDIA_DIALOG_FIT, MediaDialog } from "./ImageDialog";
 import type { IAssetUrl } from "./Infrastructure/commandEffects";
 import {
@@ -60,6 +60,7 @@ import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } fro
 import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { Presence } from "./ui/Presence";
+import { Spinner } from "./ui/Spinner";
 import {
   contextThreadTarget,
   type ILinkTarget,
@@ -453,7 +454,7 @@ function ShownVideo(props: {
                 props.onRetry();
               }}
             >
-              <RefreshCw />
+              <RotateCw />
               Retry video
             </Button>
           </span>
@@ -583,13 +584,7 @@ function ViewerContent(props: {
       <Show
         when={props.src}
         keyed
-        fallback={
-          <LoaderCircle
-            role="status"
-            aria-label="Loading media"
-            class="size-6 animate-spin text-white/80"
-          />
-        }
+        fallback={<Spinner aria-label="Loading media" class="size-6 text-white/80" />}
       >
         {(src) =>
           props.kind === "video" ? (

@@ -75,6 +75,7 @@ import {
 import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { SidebarInput } from "./ui/Sidebar";
+import { Spinner } from "./ui/Spinner";
 import { Switch } from "./ui/Switch";
 import { Textarea } from "./ui/Textarea";
 import { VoiceSetup } from "./VoiceSettings";
@@ -1101,7 +1102,12 @@ const ArchivedPage = ArchivedThreads.provider(() => {
       fallback={
         <SettingsSection title="Archived threads">
           <SettingsRowFrame
-            title="Loading archived threads"
+            title={
+              <span class="inline-flex items-center gap-2">
+                <Spinner size="sm" tone="muted" />
+                Loading archived threads
+              </span>
+            }
             description="Checking connected environments."
           />
         </SettingsSection>

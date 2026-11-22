@@ -94,6 +94,7 @@ import {
   DialogTitle,
 } from "./ui/Dialog";
 import { Presence } from "./ui/Presence";
+import { Spinner } from "./ui/Spinner";
 import { Textarea } from "./ui/Textarea";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 
@@ -500,7 +501,9 @@ function LineageRow(props: {
                 if (canMerge() && !props.merging) onMerge()();
               }}
             >
-              <GitMerge />
+              <Show when={props.merging} fallback={<GitMerge />}>
+                <Spinner size="xs" />
+              </Show>
             </button>
             <span class={`${STATUS_TEXT} pr-2.5 pl-2`}>{lineageStatusLabel(props.row.Status)}</span>
           </>
@@ -857,7 +860,9 @@ const Body = (props: IDetailsProps) => {
             when={!busy() && noticeLabel() === null}
             fallback={
               <div class={`${INERT_ROW} ${TINT}`} role="status">
-                <QuickActionIcon action={quick()} status={git()} />
+                <Show when={busy()} fallback={<QuickActionIcon action={quick()} status={git()} />}>
+                  <Spinner aria-hidden="true" />
+                </Show>
                 <span class={LABEL}>{busy() ? "Working…" : noticeLabel()}</span>
                 <Show when={!busy() && work.state.Notice?.Url}>
                   {(url) => (

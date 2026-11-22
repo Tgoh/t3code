@@ -29,7 +29,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
-import { ChartNoAxesColumn, RefreshCw, X } from "./icons";
+import { ChartNoAxesColumn, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
 import { limitPools, limitPresentations } from "./limits";
 import UsagePage, { getDefaultUsagePage, RefreshingUsage, useUsagePage } from "./UsagePage";
@@ -37,6 +37,8 @@ import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
 import { Button } from "./ui/Button";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
+import { RefreshIcon } from "./ui/RefreshIcon";
+import { Skeleton } from "./ui/Skeleton";
 import { Toggle, ToggleGroup } from "./ui/ToggleGroup";
 import {
   costTypeSegments,
@@ -192,6 +194,7 @@ export const UsageView = UsagePage.provider(() => {
             size="icon-sm"
             aria-label={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             data-tip={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
+            aria-busy={refreshing()}
             disabled={refreshing()}
             onClick={() =>
               void page.refreshUsage(
@@ -200,7 +203,7 @@ export const UsageView = UsagePage.provider(() => {
               )
             }
           >
-            <RefreshCw classList={{ "animate-spin": refreshing() }} />
+            <RefreshIcon size="sm" refreshing={refreshing()} />
           </Button>
           <Button
             variant="ghost"
@@ -219,7 +222,7 @@ export const UsageView = UsagePage.provider(() => {
             when={metric() !== "limits"}
             fallback={<UsageLimits providers={environment.state.Replica.Config?.providers} />}
           >
-            <Show when={merged()} fallback={<p class={loading}>Reading usage…</p>}>
+            <Show when={merged()} fallback={<UsageSkeleton />}>
               {(usage) => (
                 <UsageOverview
                   usage={usage()}
@@ -238,6 +241,76 @@ export const UsageView = UsagePage.provider(() => {
     </div>
   );
 }, getDefaultUsagePage);
+
+function UsageSkeleton() {
+  return (
+    <>
+      <section class="grid gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+        <div class="flex flex-col gap-5">
+          <div class="flex flex-col gap-1">
+            <Skeleton class="h-10 w-36" />
+            <Skeleton class="h-4 w-32" />
+          </div>
+          <For each={PROVIDER_ORDER}>
+            {() => (
+              <div class="flex flex-col gap-1">
+                <div class="flex min-h-5 items-center justify-between gap-4">
+                  <span class="flex items-center gap-2">
+                    <Skeleton shape="pill" class="size-2 shrink-0" />
+                    <Skeleton shape="pill" class="size-4 shrink-0" />
+                    <Skeleton class="h-3.5 w-20" />
+                  </span>
+                  <Skeleton class="h-3.5 w-14" />
+                </div>
+                <Skeleton class="h-4 w-36" />
+              </div>
+            )}
+          </For>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <Skeleton class="h-5 w-24" />
+          <div class="flex flex-col gap-1">
+            <Skeleton class="ml-16 h-56" />
+            <Skeleton class="ml-16 h-4" />
+          </div>
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-2">
+        <h2 class="text-sm font-medium text-foreground">Totals</h2>
+        <div class="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
+          <For
+            each={["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"]}
+          >
+            {(label) => (
+              <div class="flex flex-col gap-0.5">
+                <span class="text-xs text-muted-foreground">{label}</span>
+                <Skeleton class="h-6 w-16" />
+              </div>
+            )}
+          </For>
+        </div>
+      </section>
+
+      <section class="grid gap-x-12 gap-y-8 lg:grid-cols-2">
+        <div class="flex flex-col gap-2.5">
+          <Skeleton class="h-5 w-28" />
+          <Skeleton class="h-2" />
+          <Skeleton class="h-4 w-72" />
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-sm font-medium text-foreground">Breakdown</h2>
+          <Skeleton shape="card" class="h-7 w-28" />
+        </div>
+        <Skeleton class="h-44" />
+      </section>
+    </>
+  );
+}
 
 function UsageOverview(props: {
   usage: MergedUsage;

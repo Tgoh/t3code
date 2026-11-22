@@ -7,9 +7,10 @@ import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import Dictation, { type IRecording, MISSING_MODEL, STALE_DRAFT } from "./Dictation";
 import Environment from "./Environment";
 import { canCaptureVoice } from "./Infrastructure/dictation";
-import { Check, CircleAlert, LoaderCircle, Mic, X } from "./icons";
+import { Check, CircleAlert, Mic, X } from "./icons";
 import { clockNow } from "./timestamps";
 import { Button } from "./ui/Button";
+import { Spinner } from "./ui/Spinner";
 import { createMediaQuery } from "./viewport";
 
 // iOS can fire mousedown after a prevented pointerdown, and its default blurs the prompt.
@@ -224,7 +225,7 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
             when={phase() === "recording"}
             fallback={
               <>
-                <LoaderCircle class="size-4 shrink-0 animate-spin text-muted-foreground" />
+                <Spinner aria-hidden="true" size="sm" tone="muted" class="shrink-0" />
                 <span class="min-w-0 truncate text-[14px] text-muted-foreground">
                   {phase() === "transcribing" ? "Transcribing…" : "Starting…"}
                 </span>
