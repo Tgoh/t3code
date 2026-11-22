@@ -4,12 +4,22 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 ## Now
 
-- **Report client activity, so the server does background work for reflex.** **In progress:** `reflex/background-activity`. Reflex never sends the client-activity leases that stock sends (`apps/web/src/lib/backgroundActivityReporter.ts`: every 25 s, a 45 s lease, visible/focused/recently-interacted, with `provider-status` always in scope plus `vcs-status` per watched checkout). The server's `BackgroundPolicy.shouldRunScopeWork` runs scoped background work only for an active lease. So with only reflex open, the server stops refreshing provider status, and the usage ring sat at 100% after the weekly reset. Git status broadcasting is gated the same way.
-
-- **Rename the `reflex-main` branch to `treflex-main`.** After the item above merges, so no running thread's merge steps point at a branch that's gone. Rename it on origin and in the main checkout. Update `reflex-main` in `scripts/sync-upstream.ps1`, `CLAUDE.md` and the README, and the `syncupstream` and `promote` skills, including their port variable, now `TREFLEX_WEB_PORT`. Use the `treflex/` prefix for new branches.
+- **Rename the `reflex-main` branch to `treflex-main`.** When no running thread's merge steps still point at `reflex-main`. Rename it on origin and in the main checkout. Update `reflex-main` in `scripts/sync-upstream.ps1`, `CLAUDE.md` and the README, and the `syncupstream` and `promote` skills, including their port variable, now `TREFLEX_WEB_PORT`. Use the `treflex/` prefix for new branches.
 
 ## 1. Parity and polish
 
+From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
+
+- **Sidebar status as icons.** Drop the words "Working", "Waiting" and "Done": the icon and its colour carry the status, and the word moves to the tooltip and the accessible label. That gives the title the width. Waits for Tam's pick between keeping the elapsed time beside the icon and icon only (mockups in `G:\Sorted\Code\t3code-dev-home\screenshots\mockups\sidebar-status-icons.png`).
+- **html-render and MCP app rows.** Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
+- **Photos from the phone.** Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
+- **Expired image URLs.** Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
+- **Tool output.** Fetch a tool row's output with `getTurnItem` when it's expanded, since the wire omits it. See "Tool output isn't fetched".
+- **Back button.** Push address history when the thread or view changes, so the browser's back button and the phone's back gesture work. See "The address uses `replaceState`".
+- **New-thread defaults.** A new thread's permission mode should follow the project's `defaultRuntimeMode`, and its model shouldn't fall back to the first provider's default, which can be a paid one. Match stock's resolution. See "A new thread's permission mode…" and "A new thread starts on the model…".
+- **A missing thread.** Report a thread that doesn't exist, as stock does, instead of retrying its subscription with backoff.
+- **The diff panel goes stale.** Refetch when a later checkpoint lands, not only on each open.
+- **Stop flickers back.** Hold "Stopping" until the shell stream delivers the stopped row. See "Open: Stop flickers back before the run ends".
 - **Settings treflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
 
 ## 2. Restructuring
@@ -18,7 +28,7 @@ From an audit of how the port uses treflex 0.1.0. Most of the code already follo
 
 - **Split `ThreadSession`.** It owns the composer, queue, rewind, fork, diff panel, terminal, git and more. Make the diff panel a child entity that is minted on open and replaced or removed on close. That drops the re-checks after each wait in `openDiff` and `openBranchDiff`, the manual resets in `closeDiff`, and the reliance on `latest` to cancel stale loads. Make the terminal a child entity with its state in plain fields instead of the `Terminal/Attachment` transient. `GitWork` already has this shape. See "move long work onto a child entity" in the reflex repo's `docs/patterns.md`.
 - **Checkout and panel selectors.** `ThreadView`'s `ThreadBody` builds the checkout in a memo that compares with JSON, passes it down as a prop and into `ThreadDetails` component state, and passes it to every `GitWork` action. Add one `checkout` selector on `ThreadSession` and let `GitWork` read the checkout itself. Panel availability is worked out in both `Environment.panelShortcuts` and `ThreadBody`'s menu and launcher, so make it one selector too. `terminalLaunch`, `searchRoot` and `Dictation.recordingOptions` resolve the working directory separately, and should use the same selector.
-  - Move git status into main state here (`ThreadDetails.ts` `attach`). The details card mounts for every thread with a checkout, even while hidden, so the subscription already lasts as long as the thread is open. Open it from `selectThread` or a checkout change, on `ThreadSession` or a child entity. The branch list is per project and can go with it, and so does the card's `createEffect` that refreshes status when it's shown.
+  - Move git status into main state here (`ThreadDetails.ts` `attach`). The details card mounts for every thread with a checkout, even while hidden, so the subscription already lasts as long as the thread is open. Open it from `selectThread` or a checkout change, on `ThreadSession` or a child entity. The branch list is per project and can go with it, and so does the card's `createEffect` that refreshes status when it's shown. Then derive the `vcs-status` scope in `Activity.ts` `scopes` from that subscription, instead of from the conditions under which `ThreadView` mounts the card, and report straight away when it opens or closes, as stock does.
 - **Git's default-branch confirmation as an `ask`.** Replace `PendingDefaultBranch`, `continueDefaultBranch`, `cancelDefaultBranch` and the `confirmed` flag with one `ask` inside `runGitAction`, as `Rewind/Confirm` already works. The git buttons would show busy while the dialog is open.
 - **Split `Environment`.** Give dictation its own entity under `Local` that owns the `Voice/Dictation` resource and receiver. Move the voice model list (`VoiceModels.ts`, a settings-page component feature today) onto it: dictation's missing-model check and the settings page both care which models are installed, so keep one list. Load it when server dictation is in use, and keep it fresh with the existing receiver and poll, so a download's progress survives leaving the page. Make the archived and usage settings pages component features (`createComponentFeature`) whose data lives only while the page is open. That removes `Replica.Archived`, `Replica.Usage`, four `REPLICA_WRITERS` entries, and the two different ways the loads are triggered (`openView` and `onMount`), including `UsageView.tsx`'s `loadUsage` and `autoRefreshLimits` on mount.
 - **Thinner sidebar rows.** `Sidebar.tsx`'s `card()` passes `ThreadCard` 14 props, most of them worked out per row. Let the card read from its thread, as timeline rows do, and keep only cross-row values in the parent, such as `mixedProviders` and the search highlight.
@@ -33,9 +43,26 @@ From an audit of how the port uses treflex 0.1.0. Most of the code already follo
   - Move `runScript`'s open-the-terminal decision from the view into the action.
   - Give features hand-picked ids instead of `import.meta.url`.
 
-## 3. Performance
+## 3. Missing features
+
+Built on the restructured model, so after stage 2. Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
+
+- **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
+- **Timeline rows.** Compaction dividers and `/compact` turns, superseded-attempt folds, the tool-call visibility setting, viewed-image strips, the "Waiting on N subagents" label and stock's per-tool detail in expanded rows. See the "Timeline" entries under "Unmatched against the stock UI".
+- **Sidebar.** Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.
+- **Thread details and git.** Context and usage rows, environment and worktree pickers, git progress phases and hook output, View PR, Initialize Git and Publish repository. See "Thread details" and "Thread details, git".
+- **Diff panel.** Stock's `@pierre/diffs` view with syntax highlighting, split view, wrap, tabs and the turn picker, and restoring a checkpoint. See "Diff panel" and "Restoring a checkpoint isn't offered".
+- **Terminal.** Tabs and splits, a resizable drawer, links, search and a restart button for an exited shell. See the terminal entries under "Skipped for the prototype".
+- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables. Tam picks the order.
+- **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.
+- **Usage limits from external sources.** Open the config stream with `usageLimitSources` and show the usage-limit hubs, as stock does. See "Usage limits".
+
+## 4. Performance
 
 After stage 2, which also changes `ThreadView`.
+
+- **A cold open from HTTP and a cache.** Load the first snapshot over HTTP and seed it from a persisted thread cache, as stock does, so a reload doesn't wait on a socket snapshot. See "Mismatch: a cold open takes a full socket snapshot".
+- **Jump into history.** Support `throughEntryId` history pages, which jump-to-row needs once the timeline is virtualized. See "History pages load older rows only".
 
 - **Virtualize the timeline.** The timeline window only grows as you scroll up, so a long thread scrolled back through keeps every row mounted: 162 MB of heap against stock's 60 MB in `docs/benchmarks.md`. When the next turn starts, the window collapses to the tail in one long task, 184 ms unthrottled and about 860 ms at 4× CPU. Prototype on [virtua](https://github.com/inokawa/virtua)'s Solid list first. Then rerun the benchmark's long-thread case and check by hand that treflex still matches stock in four cases: staying pinned to the bottom while streaming, Load earlier without a jump, jump-to-row, and a streaming row that grows. If virtua can't match stock in one of those, port `@legendapp/list` (MIT): its `src/core` is framework-free, and only its React container layer needs a Solid rewrite. Carry over T3 Code's `patches/@legendapp__list@3.7.2.patch` too.
 
