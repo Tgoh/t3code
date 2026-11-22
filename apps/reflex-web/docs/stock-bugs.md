@@ -2,6 +2,14 @@
 
 Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) while porting or comparing. Some may be worth reporting or fixing upstream. Each entry says where the bug is, what goes wrong, whether it was reproduced, and whether reflex has the same bug.
 
+## Connection: a replaced session's config stream never ends
+
+- **Where:** `packages/client-runtime/src/rpc/session.ts`, `serverConfigEvents` behind `RpcSession.subscribeServerConfig`.
+- **What goes wrong:** when the supervisor closes a session's scope, its config source is interrupted, and `onExit` completes neither `serverConfigExit` nor the unscoped `PubSub`. A consumer still holding that session's `subscribeServerConfig()` stream waits forever, with no event, end or failure.
+- **Impact:** none in stock today. Stock reads config through `subscribe(WS_METHODS.subscribeServerConfig, …)`, which switches sessions, and the supervisor's own route learning lives in the lease's scope. It's a trap for any new caller of `session.subscribeServerConfig()`.
+- **Status:** reproduced through reflex. Closing the WebSocket stalled a reflex tab's config stream until reload.
+- **Reflex:** was affected (the stale usage ring), now reads config through `subscribe` in `Infrastructure/serverConfigEvents.ts`.
+
 ## History: a snapshot re-enables Load earlier while a fetch is running
 
 - **Where:** `packages/client-runtime/src/state/threads.ts`, `loadEarlier` and the `snapshot` case of `applyItem`.

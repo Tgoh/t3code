@@ -1,12 +1,10 @@
-import { currentSession } from "@t3tools/client-runtime/rpc";
 import { ServerConfigStreamEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
 import type { IResourceImplementation } from "treflex";
 
 import { followItems } from "./followItems";
+import { serverConfigEvents } from "./serverConfigEvents";
 import { type Wire, wireCodec } from "./wire";
 
 export type IWireServerConfigEvent = Wire<ServerConfigStreamEvent>;
@@ -22,17 +20,11 @@ declare module "treflex" {
 
 const encodeEvent = Schema.encodeEffect(wireCodec(ServerConfigStreamEvent));
 
-/** The session's config stream, which opens with a snapshot of the current config. */
 export const serverConfigStream: IResourceImplementation<"serverConfigStream"> = (params, r) =>
   followItems(
     r,
     params.EnvironmentId,
-    Stream.unwrap(
-      currentSession().pipe(
-        Effect.retry(Schedule.spaced("1 second")),
-        Effect.map((session) => session.subscribeServerConfig()),
-      ),
-    ),
+    serverConfigEvents,
     (event) =>
       encodeEvent(event).pipe(
         Effect.map((encoded) => encoded as unknown as IWireServerConfigEvent),
