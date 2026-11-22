@@ -68,6 +68,7 @@ export { default as MessageSquareText } from "lucide-solid/icons/message-square-
 export { default as MessagesSquare } from "lucide-solid/icons/messages-square";
 export { default as Mic } from "lucide-solid/icons/mic";
 export { default as Minimize2 } from "lucide-solid/icons/minimize-2";
+export { default as Minus } from "lucide-solid/icons/minus";
 export { default as Palette } from "lucide-solid/icons/palette";
 export { default as PanelBottom } from "lucide-solid/icons/panel-bottom";
 export { default as PanelLeft } from "lucide-solid/icons/panel-left";

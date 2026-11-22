@@ -84,10 +84,12 @@ import type { Tokens } from "marked";
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import type {
   IForkThread,
+  ILinkAnswer,
   IMergeBack,
   IQueueCommand,
   IRespondRequest,
   IRewind,
+  ISecretAnswer,
   IStartClone,
   IStartTurn,
   IStopThread,
@@ -131,6 +133,7 @@ import {
 import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
 import { answerRequest, canAnswer, dismissRequest, type IRuntimeRequest } from "./RuntimeRequest";
+import { answerLink, answerSecret, itemAnswerError } from "./ItemRequest";
 import {
   activityAt,
   canSnooze,
@@ -2785,6 +2788,128 @@ describe("writing to the server", () => {
       event: event("turn-item.updated", requestItem("r-3")),
     } as IWireThreadItem);
     expect(pendingOf(server)).toEqual(["r-2", "r-3"]);
+  });
+
+  it("answers a secret or link card once, keeps what was typed out of the tree, and shows a refusal", async () => {
+    const secrets: ISecretAnswer[] = [];
+    const links: ILinkAnswer[] = [];
+    const releases: (() => void)[] = [];
+    let refusal: string | null = null;
+    const server = await connect(undefined, null, {
+      answerSecret: (effect: ISecretAnswer) => {
+        secrets.push(effect);
+        if (refusal !== null) throw new ServerError(refusal);
+        return new Promise<void>((resolve) => {
+          releases.push(resolve);
+        });
+      },
+      answerLink: (effect: ILinkAnswer) => {
+        links.push(effect);
+      },
+    });
+    await server.open();
+    const asked = (id: string, type: "secret_request" | "link_request", ordinal: number) =>
+      ({
+        ...commandItem(id, "run-1", ordinal),
+        type,
+        status: "waiting",
+        label: "API key",
+        reason: "To call the API",
+        ...(type === "secret_request" ? { secretStatus: "pending" } : { linkStatus: "pending" }),
+      }) as unknown as IWireTurnItem;
+    const secret = asked("s-1", "secret_request", 1);
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          turnItems: [secret, asked("s-2", "secret_request", 2), asked("l-1", "link_request", 3)],
+        } as never,
+        1,
+      ),
+    );
+    const node = (id: string) => server.thread().ItemRequests[id]!;
+    const busy = (id: string) =>
+      inFlightOf(server.runtime, [answerSecret, answerLink], () => node(id));
+    const save = (id: string, typed: string) =>
+      server.runtime.dispatch(answerSecret, node(id).$Id, ENV, THREAD_ID, {
+        type: "save",
+        secret: typed,
+      });
+
+    expect(await save("s-1", "   ")).toBe(false);
+    expect(secrets).toEqual([]);
+    const first = save("s-1", " hunter2 ");
+    await settled();
+    expect([busy("s-1"), busy("s-2")]).toEqual([true, false]);
+    expect(
+      await server.runtime.dispatch(answerSecret, node("s-1").$Id, ENV, THREAD_ID, {
+        type: "decline",
+      }),
+    ).toBeUndefined();
+    releases.forEach((release) => release());
+    expect(await first).toBe(true);
+    expect(secrets.map((effect) => effect.Input)).toEqual([
+      { threadId: THREAD_ID, turnItemId: "s-1", answer: { type: "save", secret: "hunter2" } },
+    ]);
+    expect(JSON.stringify(server.runtime.state)).not.toContain("hunter2");
+
+    refusal = "This secret request was already answered.";
+    expect(
+      await server.runtime.dispatch(answerSecret, node("s-2").$Id, ENV, THREAD_ID, {
+        type: "decline",
+      }),
+    ).toBe(false);
+    expect(server.runtime.processSelector(itemAnswerError, () => node("s-2"))).toBe(refusal);
+    expect(server.runtime.processSelector(itemAnswerError, () => node("s-1"))).toBeNull();
+    refusal = null;
+    const retry = server.runtime.dispatch(answerSecret, node("s-2").$Id, ENV, THREAD_ID, {
+      type: "decline",
+    });
+    await settled();
+    expect(server.runtime.processSelector(itemAnswerError, () => node("s-2"))).toBeNull();
+    releases.forEach((release) => release());
+    await retry;
+    expect(secrets.at(-1)?.Input.answer).toEqual({ type: "decline" });
+
+    expect(
+      await server.runtime.dispatch(answerLink, node("l-1").$Id, ENV, THREAD_ID, {
+        type: "link",
+        target: { url: " " },
+        access: "approval-required",
+        pairingCode: "code-123",
+      }),
+    ).toBe(false);
+    expect(
+      await server.runtime.dispatch(answerLink, node("l-1").$Id, ENV, THREAD_ID, {
+        type: "link",
+        target: { url: "https://box.example.ts.net" },
+        access: "approval-required",
+        pairingCode: " code-123 ",
+      }),
+    ).toBe(true);
+    expect(links.map((effect) => effect.Input.answer)).toEqual([
+      {
+        type: "link",
+        urls: ["https://box.example.ts.net"],
+        access: "approval-required",
+        pairingCode: "code-123",
+      },
+    ]);
+    expect(JSON.stringify(server.runtime.state)).not.toContain("code-123");
+
+    const held = node("s-1");
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("turn-item.updated", { ...secret, status: "completed", secretStatus: "saved" }),
+    } as IWireThreadItem);
+    expect(node("s-1")).toBe(held);
+    await server.sendThread({
+      kind: "event",
+      sequence: 3,
+      event: event("turn-item.updated", asked("l-2", "link_request", 4)),
+    } as IWireThreadItem);
+    expect(Object.keys(server.thread().ItemRequests).sort()).toEqual(["l-1", "l-2", "s-1", "s-2"]);
   });
 
   it("holds a question's answer per request until it's complete, and sends only what the provider can take", async () => {

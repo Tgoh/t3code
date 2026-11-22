@@ -27,7 +27,10 @@ import {
   updateThreadMetadata,
   visitThread,
 } from "@t3tools/client-runtime/operations";
-import { request } from "@t3tools/client-runtime/rpc";
+import { linkRequestFailureMessage } from "@t3tools/client-runtime/link-request";
+// oxlint-disable-next-line t3code/no-rpc-permission-bypass -- this client has no atom command boundary (issues.md, "the command path assumes atoms"); the server authorizes a link answer
+import { request, requestGuarded, RpcPermissionGuard } from "@t3tools/client-runtime/rpc";
+import { secretRequestFailureMessage } from "@t3tools/client-runtime/secret-request";
 import {
   CommandId,
   EnvironmentId,
@@ -40,9 +43,11 @@ import {
   ThreadId,
   WS_METHODS,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
@@ -50,6 +55,8 @@ import { implementation } from "treflex";
 
 import {
   addProjectSettingsEffect,
+  answerLinkEffect,
+  answerSecretEffect,
   assetUrlEffect,
   browseFoldersEffect,
   searchEntriesEffect,
@@ -77,7 +84,7 @@ import { connectionRuntime } from "./connection";
 import { ServerError, settle } from "./serverError";
 import { runCommand, sourceControl } from "./sourceControl";
 
-export const inEnvironment = <A, E>(
+const runInEnvironment = <A, E>(
   environmentId: string,
   effect: Effect.Effect<
     A,
@@ -86,19 +93,50 @@ export const inEnvironment = <A, E>(
   >,
   signal?: AbortSignal,
 ) =>
-  settle(
-    connectionRuntime.runPromiseExit(
-      EnvironmentRegistry.EnvironmentRegistry.pipe(
-        Effect.flatMap((registry) =>
-          registry.run(
-            EnvironmentId.make(environmentId),
-            effect.pipe(Effect.provide(SecureRandom.layerWebCrypto)),
-          ),
+  connectionRuntime.runPromiseExit(
+    EnvironmentRegistry.EnvironmentRegistry.pipe(
+      Effect.flatMap((registry) =>
+        registry.run(
+          EnvironmentId.make(environmentId),
+          effect.pipe(Effect.provide(SecureRandom.layerWebCrypto)),
         ),
       ),
-      { signal },
     ),
+    { signal },
   );
+
+export const inEnvironment = <A, E>(
+  ...args: Parameters<typeof runInEnvironment<A, E>>
+): Promise<A> => settle(runInEnvironment(...args));
+
+// A failure can carry the request, and with it the secret or pairing code, so none keeps its
+// cause and only a server's own message is shown.
+async function answerPrivately<E>(
+  environmentId: string,
+  effect: Effect.Effect<void, E, EnvironmentSupervisor.EnvironmentSupervisor>,
+  message: (failure: unknown) => string,
+): Promise<void> {
+  const exit = await runInEnvironment(environmentId, effect);
+  if (Exit.isFailure(exit)) throw new ServerError(message(Cause.squash(exit.cause)));
+}
+
+export const answerSecretImpl = implementation(answerSecretEffect, (input) =>
+  answerPrivately(
+    input.EnvironmentId,
+    request(WS_METHODS.secretsAnswerRequest, input.Input),
+    secretRequestFailureMessage,
+  ),
+);
+
+export const answerLinkImpl = implementation(answerLinkEffect, (input) =>
+  answerPrivately(
+    input.EnvironmentId,
+    requestGuarded(WS_METHODS.peerLinksAnswerRequest, input.Input).pipe(
+      Effect.provideService(RpcPermissionGuard, { authorize: () => Effect.void }),
+    ),
+    linkRequestFailureMessage,
+  ),
+);
 
 export const startTurnImpl = implementation(startTurnEffect, async (input) => {
   const modelSelection = input.ModelSelection as never;

@@ -105,7 +105,8 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - The address uses `replaceState`, so selecting threads adds no back-button history.
 - Tool output isn't fetched: the wire omits it, the row says so, and `getTurnItem` would fill it in.
 - A command row doesn't check the server's `commandOutputStreaming` capability, so an older server shows the subscription's error.
-- Secret and link requests are shown but can only be answered in the stock client.
+- A secret card takes a typed value only. Stock offers answering from a configured secret provider, behind its `T3CODE_FEATURE_SECRETS` build flag, which the driver's stock web doesn't set.
+- A link card knows no other machines, since this client connects to one environment: it always links to an address with a pasted pairing code. Stock also lists the user's saved and T3 Connect machines, mints the code itself on one it's connected to, and offers an existing link. Reflex doesn't check the session's access scope, so a session that can't manage access sees the card's buttons and gets the server's refusal.
 - Drafts live in this port's `localStorage`, not stock's draft store, so the two clients keep separate drafts. A file whose upload hadn't finished when the page closed is dropped, where stock keeps it as a row to attach again. Images are kept as data URLs, as stock keeps them, so a few large ones can fill the store, and the write is then dropped.
 - A send during a run follows the Follow-up behavior setting, but not stock's override to steer while approvals are shown. A send during a compaction that can't take a steer isn't forced to queue, and Enter on an empty composer doesn't resume a held queue.
 - The queue popover has no keyboard shortcuts for send now or edit, and an edit changes only the text, not attachments. Stock has no reorder either.

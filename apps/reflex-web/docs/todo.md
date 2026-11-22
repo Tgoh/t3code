@@ -16,7 +16,6 @@ Nothing queued.
 
 ## 3. Parity and polish
 
-- **Secret and link requests can't be answered in reflex.** Port stock's `SecretRequestCard` and the link-request card. Until then, answer them in stock web on 5733. Also listed in `issues.md` under "Skipped for the prototype".
 - **The "Working for" group doesn't look like stock.** In `TimelineResponse.tsx`, the work rows set no font size, so "Ran 6 commands" inherits the message text size. Stock's rows are `text-sm leading-relaxed` (`TimelineWorkGroupRows.tsx`). Reflex's row icons sit in a `size-6` box (`WORK_ICON` in `TimelineRows.tsx`), where stock's are `size-4`. The fold header shows a blue box after a click, where stock rings only on `focus-visible` (`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70`). Compare the whole group with stock in both states, collapsed and expanded, beside the same thread on 5733: sizes, colours, spacing, the summary text and the expanded command list.
 - **Dialog animations.** The Add project dialog has no open or close animation. Go through reflex's dialogs, popovers and menus, and compare each with stock's transitions.
 - **Settings reflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.

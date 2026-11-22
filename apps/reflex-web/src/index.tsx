@@ -40,6 +40,8 @@ import {
   mergeBackImpl,
   threadTitlesImpl,
   respondRequestImpl,
+  answerSecretImpl,
+  answerLinkImpl,
   rewindImpl,
   searchEntriesImpl,
   searchThreadsImpl,
@@ -111,6 +113,8 @@ runtime.registerImplementation(threadHistoryPageImpl);
 runtime.registerImplementation(startTurnImpl);
 runtime.registerImplementation(stopThreadImpl);
 runtime.registerImplementation(respondRequestImpl);
+runtime.registerImplementation(answerSecretImpl);
+runtime.registerImplementation(answerLinkImpl);
 runtime.registerImplementation(rewindImpl);
 runtime.registerImplementation(forkThreadImpl);
 runtime.registerImplementation(mergeBackImpl);
