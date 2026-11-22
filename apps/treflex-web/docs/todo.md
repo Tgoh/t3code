@@ -73,7 +73,7 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 ## Repo
 
-- **Make `Tgoh/t3code` public.** The cutover to rewritten history is done; the new repo is private, with Actions, Issues, Projects and Wiki off. Tam makes it public when ready, and deletes the private `Tgoh/t3code-archive` (the old history) once happy. Never push a branch made before the cutover: its history isn't connected and would bring the old commits back.
+- **Delete `Tgoh/t3code-archive`.** `Tgoh/t3code` is public, with Actions, Issues, Projects and Wiki off. The private archive holds the old history; Tam deletes it once happy. Never push a branch made before the cutover: its history isn't connected and would bring the old commits back.
 
 ## Housekeeping
 
