@@ -45,7 +45,7 @@ Root
    │  ├─ Shell: projects, thread rows
    │  └─ OpenThreads: runs, messages, turn items, requests (selected and recently left)
    └─ Local              (only this client knows it)
-      ├─ ThreadSessions: draft, attachments, panels; diff panel, terminal, git work
+      ├─ ThreadSessions: draft, attachments, panels; diff panel, terminal, git work, git status
       └─ Preferences, sidebar shelves, system scheme
 ```
 

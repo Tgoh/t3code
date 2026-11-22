@@ -34,19 +34,16 @@ export function* followActivity(draft: IEnvironment): IActionGenerator {
   yield* openResource(draft, "Device/Activity", ActivityReceiver, { Type: "deviceActivity" });
 }
 
-// ThreadDetails holds the git status stream, and ThreadView mounts it under these same
-// conditions: change both together.
 function scopes(draft: IEnvironment): BackgroundScope[] {
   const held: BackgroundScope[] = [{ type: "provider-status" }];
-  const id = draft.Local.SelectedThreadId;
-  if (draft.Local.View !== null || id === null) return held;
-  const thread = draft.Replica.OpenThreads[id]?.Thread;
-  const project = thread == null ? undefined : draft.Replica.Shell.Projects[thread.projectId];
-  if (thread == null || project === undefined) return held;
-  return [...held, { type: "vcs-status", cwd: thread.worktreePath ?? project.workspaceRoot }];
+  for (const session of Object.values(draft.Local.ThreadSessions)) {
+    const cwd = session.Details?.Cwd;
+    if (cwd !== undefined) held.push({ type: "vcs-status", cwd });
+  }
+  return held;
 }
 
-function* reportActivity(draft: IEnvironment): IOpenGenerator {
+export function* reportActivity(draft: IEnvironment): IOpenGenerator {
   const report = reportActivityEffect({
     EnvironmentId: draft.EnvironmentId,
     ...draft.Local.Activity,

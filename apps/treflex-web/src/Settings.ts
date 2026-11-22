@@ -22,11 +22,13 @@ import { modelFavoritePatch } from "./providerSettings";
 import { reconcile } from "./rows";
 import { visitShown } from "./Shell";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
-import { closeDetailsPopover } from "./ThreadSession";
+import { closeDetailsPopover, followCheckout } from "./ThreadSession";
 
 export function* openView(draft: IEnvironment, view: IAddressView | null): IActionGenerator {
   const covered = draft.Local.View !== null;
   yield* showView(draft, view);
+  const selected = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
+  if (selected !== undefined) yield* start(followCheckout, selected);
   if (covered && view === null) yield* start(visitShown, draft.Replica.Shell, { Again: true });
 }
 

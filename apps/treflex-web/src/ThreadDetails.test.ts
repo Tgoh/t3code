@@ -1,5 +1,11 @@
 import type { VcsStatusResult } from "@t3tools/contracts";
-import { createTestRuntime, guids } from "treflex";
+import {
+  createTestRuntime,
+  guids,
+  type IActionGenerator,
+  type IEntity,
+  registerDataSource,
+} from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -11,13 +17,14 @@ import {
   runGitAction,
 } from "./GitWork";
 import type { IGitActionOutcome, IGitActionRequest } from "./Infrastructure/sourceControlEffects";
+import type { ICheckout } from "./checkout";
 import {
   changesTotals,
   getDefaultThreadDetails,
-  type ICheckout,
   type IThreadDetails,
   selectBranch,
 } from "./ThreadDetails";
+import type { IReplica } from "./ThreadSession";
 import { detailsLayout } from "./threadDetailsLayout";
 import { serverFailure } from "./Infrastructure/serverError";
 import { shortcutAction, surfaceActions } from "./surfaces";
@@ -46,16 +53,31 @@ const OUTCOME: IGitActionOutcome = {
   PrCreated: false,
 };
 
-function details(outcome: () => IGitActionOutcome = () => OUTCOME) {
+interface ITestRoot extends IEntity {
+  Replica: IReplica;
+  Details: IThreadDetails;
+  Git: IGitWork;
+}
+
+function* registerReplica(draft: ITestRoot): IActionGenerator {
+  yield* registerDataSource(draft, "Replica", draft.Replica);
+}
+
+async function details(outcome: () => IGitActionOutcome = () => OUTCOME) {
   const actions: IGitActionRequest[] = [];
   const commands: unknown[] = [];
   const switches: unknown[] = [];
-  const runtime = createTestRuntime<IThreadDetails & { Git: IGitWork }>(
+  const { EnvironmentId, ThreadId, ProjectId, ProjectRoot, Cwd } = CHECKOUT;
+  const runtime = createTestRuntime<ITestRoot>(
     {
-      $Id: "Details",
-      ...getDefaultThreadDetails(),
-      Checkout: CHECKOUT,
-      Git: { $Id: "Git", ...getDefaultGitWork() },
+      $Id: "Root",
+      Replica: {
+        $Id: "Replica",
+        Shell: { Projects: { [ProjectId]: { workspaceRoot: ProjectRoot } } },
+        OpenThreads: { [ThreadId]: { Thread: { projectId: ProjectId, worktreePath: null } } },
+      } as never,
+      Details: { $Id: "Details", ...getDefaultThreadDetails(EnvironmentId, ThreadId, Cwd) },
+      Git: { $Id: "Git", ...getDefaultGitWork(EnvironmentId, ThreadId) },
     },
     {
       generateGuid: guids("id"),
@@ -73,6 +95,7 @@ function details(outcome: () => IGitActionOutcome = () => OUTCOME) {
       refreshVcsStatus: () => {},
     },
   );
+  await runtime.dispatch(registerReplica, "Root");
   return { runtime, actions, commands, switches };
 }
 
@@ -85,8 +108,8 @@ const ask = (action: "push" | "commit" | "commit_push", featureBranch = false) =
 
 describe("runGitAction", () => {
   it("holds a push from the default branch until it's confirmed", async () => {
-    const { runtime, actions } = details();
-    await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("commit_push"), ON_MAIN, false);
+    const { runtime, actions } = await details();
+    await runtime.dispatch(runGitAction, "Git", ask("commit_push"), ON_MAIN, false);
     expect(actions).toEqual([]);
     expect(runtime.state.Git.PendingDefaultBranch).toEqual({
       Action: "commit_push",
@@ -95,7 +118,7 @@ describe("runGitAction", () => {
       CommitMessage: null,
       FilePaths: null,
     });
-    await runtime.dispatch(continueDefaultBranch, "Git", CHECKOUT, false, ON_MAIN);
+    await runtime.dispatch(continueDefaultBranch, "Git", false, ON_MAIN);
     expect(runtime.state.Git.PendingDefaultBranch).toBeNull();
     expect(actions.map((held) => [held.Action, held.FeatureBranch])).toEqual([
       ["commit_push", false],
@@ -103,20 +126,20 @@ describe("runGitAction", () => {
   });
 
   it("moves a confirmed action to a feature branch, or drops it on abort", async () => {
-    const { runtime, actions } = details();
-    await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("push"), ON_MAIN, false);
+    const { runtime, actions } = await details();
+    await runtime.dispatch(runGitAction, "Git", ask("push"), ON_MAIN, false);
     await runtime.dispatch(cancelDefaultBranch, "Git");
     expect(runtime.state.Git.PendingDefaultBranch).toBeNull();
     expect(actions).toEqual([]);
-    await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("push"), ON_MAIN, false);
-    await runtime.dispatch(continueDefaultBranch, "Git", CHECKOUT, true, ON_MAIN);
+    await runtime.dispatch(runGitAction, "Git", ask("push"), ON_MAIN, false);
+    await runtime.dispatch(continueDefaultBranch, "Git", true, ON_MAIN);
     expect(actions.map((held) => [held.Action, held.FeatureBranch])).toEqual([["push", true]]);
   });
 
   it("runs a commit, and anything off the default branch, at once", async () => {
-    const { runtime, actions } = details();
-    await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("commit"), ON_MAIN, false);
-    await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("push"), ON_FEATURE, false);
+    const { runtime, actions } = await details();
+    await runtime.dispatch(runGitAction, "Git", ask("commit"), ON_MAIN, false);
+    await runtime.dispatch(runGitAction, "Git", ask("push"), ON_FEATURE, false);
     expect(runtime.state.Git.PendingDefaultBranch).toBeNull();
     expect(actions.map((held) => [held.Action, held.ThreadId, held.Cwd])).toEqual([
       ["commit", "thread-1", CHECKOUT.Cwd],
@@ -126,13 +149,13 @@ describe("runGitAction", () => {
   });
 
   it("moves the thread to a branch the action created, and names a created PR", async () => {
-    const { runtime, commands } = details(() => ({
+    const { runtime, commands } = await details(() => ({
       ...OUTCOME,
       Branch: "t3/feature",
       PrCreated: true,
       PrUrl: "https://example.invalid/pr/1",
     }));
-    await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("commit", true), ON_MAIN, false);
+    await runtime.dispatch(runGitAction, "Git", ask("commit", true), ON_MAIN, false);
     expect(commands).toEqual([{ Kind: "branch", Branch: "t3/feature" }]);
     expect(runtime.state.Git.Notice).toMatchObject({
       Title: "Created PR",
@@ -142,10 +165,10 @@ describe("runGitAction", () => {
   });
 
   it("shows a failure as an error notice", async () => {
-    const { runtime } = details(() => {
+    const { runtime } = await details(() => {
       throw serverFailure("nothing to commit");
     });
-    await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("commit"), ON_FEATURE, false);
+    await runtime.dispatch(runGitAction, "Git", ask("commit"), ON_FEATURE, false);
     expect(runtime.state.Git.Notice).toEqual({
       Tone: "error",
       Title: "Action failed",
@@ -159,20 +182,22 @@ describe("selectBranch", () => {
   const ref = { Name: "other", IsRemote: false, Current: false, IsDefault: false };
 
   it("checks out the branch and moves the thread to it", async () => {
-    const { runtime, switches, commands } = details();
+    const { runtime, switches, commands } = await details();
     await runtime.dispatch(selectBranch, "Details", { ...ref, WorktreePath: null });
     expect(switches).toEqual([["other", false]]);
     expect(commands).toEqual([{ Kind: "branch", Branch: "other" }]);
   });
 
   it("refuses a branch checked out in another worktree, but not in this one", async () => {
-    const { runtime, switches } = details();
+    const { runtime, switches } = await details();
     await runtime.dispatch(selectBranch, "Details", {
       ...ref,
       WorktreePath: "G:\\Sorted\\Test\\repo-other",
     });
     expect(switches).toEqual([]);
-    expect(runtime.state.BranchError).toBe("other is checked out in G:\\Sorted\\Test\\repo-other.");
+    expect(runtime.state.Details.BranchError).toBe(
+      "other is checked out in G:\\Sorted\\Test\\repo-other.",
+    );
     await runtime.dispatch(selectBranch, "Details", {
       ...ref,
       WorktreePath: "g:/sorted/test/repo/",

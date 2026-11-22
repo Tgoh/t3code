@@ -20,13 +20,14 @@ import {
   openResource,
   receiver,
   registerDataSource,
+  select,
   start,
   startTimer,
   stopTimer,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { followActivity } from "./Activity";
+import { followActivity, reportActivity } from "./Activity";
 import { addressThread, addressView, setAddressThread } from "./Infrastructure/address";
 import type { IDeviceActivity } from "./Infrastructure/clientActivity";
 import {
@@ -76,7 +77,6 @@ import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import {
   getDefaultOpenThread,
   type IOpenThread,
-  latestDiffTurn,
   openThreadStream,
   resumeThread,
   retainThread,
@@ -113,7 +113,10 @@ import { getDefaultShell, type IShell, openShellStream, visitShown } from "./She
 import {
   checkRewind,
   detachThread,
+  followCheckout,
   getDefaultThreadSession,
+  type IPanels,
+  panels,
   type IReplica,
   type ISelection,
   type IThreadSession,
@@ -247,10 +250,11 @@ function* sessionOf(
 ): IActionGenerator<IThreadSession> {
   const held = draft.Local.ThreadSessions[threadId];
   if (held !== undefined) return held;
-  const git = yield* entity<IGitWork>(getDefaultGitWork());
-  const terminal = yield* entity<ITerminal>(getDefaultTerminal(draft.EnvironmentId, threadId));
+  const environmentId = draft.EnvironmentId;
+  const git = yield* entity<IGitWork>(getDefaultGitWork(environmentId, threadId));
+  const terminal = yield* entity<ITerminal>(getDefaultTerminal(environmentId, threadId));
   draft.Local.ThreadSessions[threadId] = yield* entity<IThreadSession>({
-    ...getDefaultThreadSession(draft.EnvironmentId, threadId, newThreadProjectId),
+    ...getDefaultThreadSession(environmentId, threadId, newThreadProjectId),
     Git: git,
     Terminal: terminal,
   });
@@ -299,6 +303,10 @@ export function* selectThread(
   if (covered) yield* showView(draft, null);
   const changed = draft.Local.SelectedThreadId !== threadId;
   if (changed) yield* showThread(draft, threadId);
+  else if (covered) {
+    const session = draft.Local.ThreadSessions[threadId];
+    if (session !== undefined) yield* start(followCheckout, session);
+  }
   if (changed || covered) {
     const options = searchQuery ? { Opened: true, SearchQuery: searchQuery } : { Opened: true };
     yield* start(visitShown, draft.Replica.Shell, options);
@@ -626,35 +634,18 @@ export function* selectedDraftSession(
   return session?.NewThreadProjectId == null ? null : session;
 }
 
-export interface IPanelShortcuts {
+export interface IPanelShortcuts extends IPanels {
   SessionId: string;
-  /** The details card has a checkout to show. */
-  Details: boolean;
-  Terminal: boolean;
-  TerminalEntityId: string;
-  /** The thread has a turn to diff. */
-  Diff: boolean;
-  DiffOpen: boolean;
-  RightPanelOpen: boolean;
 }
 
-/** The thread view's panels, for the panel shortcuts; null while no thread view is on screen. */
+/** Null while no thread view is on screen. */
 export function* panelShortcuts(draft: IEnvironment): ISelectorGenerator<IPanelShortcuts | null> {
   const id = draft.Local.SelectedThreadId;
   if (draft.Local.View !== null || id === null) return null;
-  const thread = draft.Replica.OpenThreads[id];
   const session = draft.Local.ThreadSessions[id];
-  if (thread === undefined || session === undefined) return null;
-  const row = thread.Thread;
-  return {
-    SessionId: session.$Id,
-    Details: row != null && draft.Replica.Shell.Projects[row.projectId] !== undefined,
-    Terminal: row !== null,
-    Diff: latestDiffTurn(thread) !== null,
-    TerminalEntityId: session.Terminal.$Id,
-    DiffOpen: session.Panels.Diff !== null,
-    RightPanelOpen: session.Panels.Diff !== null || session.Panels.Launcher.Open,
-  };
+  if (draft.Replica.OpenThreads[id] === undefined || session === undefined) return null;
+  const shown = yield* select(panels, (held: IEnvironment) => held.Local.ThreadSessions[id]!);
+  return { SessionId: session.$Id, ...shown };
 }
 
 export function* currentProjectId(draft: IEnvironment): ISelectorGenerator<string | null> {
@@ -694,6 +685,17 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
     const session = draft.Local.ThreadSessions[ThreadId];
     if (session !== undefined) yield* start(settleQuestions, session, PendingIds, UnansweredIds);
     yield* rememberCompactionDismissal(draft, ThreadId);
+  },
+  *"Thread/CheckoutChanged"(draft, { ThreadId }) {
+    const session = draft.Local.ThreadSessions[ThreadId];
+    if (session !== undefined) yield* start(followCheckout, session);
+  },
+  *"Shell/ProjectsChanged"(draft) {
+    const session = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
+    if (session !== undefined) yield* start(followCheckout, session);
+  },
+  *"Git/StatusFollowed"(draft) {
+    yield* start(reportActivity, draft);
   },
   *"Thread/RewindProgress"(draft, { ThreadId }) {
     const session = draft.Local.ThreadSessions[ThreadId];

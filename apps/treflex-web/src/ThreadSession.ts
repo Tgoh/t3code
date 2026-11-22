@@ -126,7 +126,13 @@ import type {
 import type { IShell } from "./Shell";
 import { serverError, serverFailure } from "./Infrastructure/serverError";
 import { detachTerminal, type ITerminal, openTerminal, restoreTerminal } from "./Terminal";
-import type { ICheckout } from "./ThreadDetails";
+import {
+  getDefaultThreadDetails,
+  type IThreadDetails,
+  openStatus,
+  refreshStatus,
+} from "./ThreadDetails";
+import { checkout, threadShown } from "./checkout";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -142,6 +148,7 @@ declare module "treflex" {
     "Thread/Forked": { ThreadId: string };
     "Thread/MergedBack": { ThreadId: string };
     "Dictation/TranscriptRefused": { ThreadId: string };
+    "Git/StatusFollowed": {};
   }
   interface ITimerRegistry {
     "Rewind/Timeout": {};
@@ -217,6 +224,8 @@ export interface IThreadSession extends IEntity {
   Panels: { Diff: IDiffPanel | null; Details: IDetailsPanel; Launcher: { Open: boolean } };
   Terminal: ITerminal;
   Git: IGitWork;
+  /** Present while the thread is shown and has a checkout, which is when its git status is open. */
+  Details: IThreadDetails | null;
   ExpandedRows: Record<string, true>;
   CommandOutputs: Record<string, ICommandOutputRow>;
 }
@@ -245,6 +254,7 @@ export function getDefaultThreadSession(
     },
     ExpandedRows: {},
     CommandOutputs: {},
+    Details: null,
   };
 }
 
@@ -445,12 +455,38 @@ export function* menuCatalog(draft: IThreadSession): ISelectorGenerator<IMenuCat
 }
 
 function* searchRoot(draft: IThreadSession): ISelectorGenerator<string | null> {
+  const held = yield* checkout(draft);
+  if (held !== null) return held.Cwd;
   const replica = yield* getData(draft, "Replica");
   if (replica === undefined) return null;
-  const thread = replica.OpenThreads[draft.ThreadId]?.Thread;
-  const projectId = draft.NewThreadProjectId ?? thread?.projectId;
-  const root = projectId == null ? undefined : replica.Shell.Projects[projectId]?.workspaceRoot;
-  return thread?.worktreePath ?? root ?? null;
+  const projectId = draft.NewThreadProjectId;
+  const root = projectId === null ? undefined : replica.Shell.Projects[projectId]?.workspaceRoot;
+  return replica.OpenThreads[draft.ThreadId]?.Thread?.worktreePath ?? root ?? null;
+}
+
+export interface IPanels {
+  /** The details card has a checkout to show, which the branch diff needs too. */
+  Details: boolean;
+  Terminal: boolean;
+  /** The thread has a turn to diff. */
+  Diff: boolean;
+  DiffOpen: boolean;
+  RightPanelOpen: boolean;
+  TerminalEntityId: string;
+}
+
+export function* panels(draft: IThreadSession): ISelectorGenerator<IPanels> {
+  const replica = yield* getData(draft, "Replica");
+  const thread = replica?.OpenThreads[draft.ThreadId];
+  const diffOpen = draft.Panels.Diff !== null;
+  return {
+    Details: (yield* checkout(draft)) !== null,
+    Terminal: thread?.Thread != null,
+    Diff: thread !== undefined && latestDiffTurn(thread) !== null,
+    DiffOpen: diffOpen,
+    RightPanelOpen: diffOpen || draft.Panels.Launcher.Open,
+    TerminalEntityId: draft.Terminal.$Id,
+  };
 }
 
 export function* promptHistory(draft: IThreadSession): ISelectorGenerator<IPromptHistoryEntry[]> {
@@ -1326,11 +1362,11 @@ function* openOutput(draft: IThreadSession, row: ICommandOutputRow): IActionGene
 /** Closes what only a shown thread needs; `reattachThread` opens it again. */
 export function* detachThread(draft: IThreadSession): IActionGenerator {
   draft.Panels.Details.Popover = false;
-  delete draft.ScriptError;
   for (const row of Object.values(draft.CommandOutputs)) {
     yield* closeResource(row, "Command/Output");
   }
   yield* start(detachTerminal, draft.Terminal);
+  yield* followCheckout(draft);
 }
 
 export function* reattachThread(draft: IThreadSession): IActionGenerator {
@@ -1338,6 +1374,7 @@ export function* reattachThread(draft: IThreadSession): IActionGenerator {
     yield* openOutput(draft, row);
   }
   yield* start(restoreTerminal, draft.Terminal);
+  yield* followCheckout(draft);
 }
 
 /** Code blocks wrap their lines until the person turns it off. */
@@ -1380,10 +1417,20 @@ export function* closeDiff(draft: IThreadSession): IActionGenerator {
   draft.Panels.Diff = null;
 }
 
+const detailsShown = ({ Open, Fits, Popover }: IDetailsPanel) => (Fits && Open) || Popover;
+
+function* refreshWhenShown(draft: IThreadSession, wasShown: boolean): IActionGenerator {
+  if (!wasShown && detailsShown(draft.Panels.Details) && draft.Details !== null) {
+    yield* start(refreshStatus, draft.Details);
+  }
+}
+
 export function* toggleDetails(draft: IThreadSession): IActionGenerator {
   const details = draft.Panels.Details;
+  const wasShown = detailsShown(details);
   if (details.Fits) details.Open = !details.Open;
   else details.Popover = !details.Popover;
+  yield* refreshWhenShown(draft, wasShown);
 }
 
 export function* closeDetailsPopover(draft: IThreadSession): IActionGenerator {
@@ -1391,7 +1438,23 @@ export function* closeDetailsPopover(draft: IThreadSession): IActionGenerator {
 }
 
 export function* fitDetails(draft: IThreadSession, fits: boolean): IActionGenerator {
+  const wasShown = detailsShown(draft.Panels.Details);
   draft.Panels.Details.Fits = fits;
+  yield* refreshWhenShown(draft, wasShown);
+}
+
+export function* followCheckout(draft: IThreadSession): IActionGenerator {
+  const cwd = (yield* select(threadShown)) ? ((yield* select(checkout))?.Cwd ?? null) : null;
+  if (cwd === (draft.Details?.Cwd ?? null)) return;
+  delete draft.ScriptError;
+  draft.Details =
+    cwd === null
+      ? null
+      : yield* entity<IThreadDetails>(
+          getDefaultThreadDetails(draft.EnvironmentId, draft.ThreadId, cwd),
+        );
+  if (draft.Details !== null) yield* start(openStatus, draft.Details);
+  yield* publishToNearest(draft, "Git/StatusFollowed");
 }
 
 /** The header's right-panel toggle: closes whichever surface is open, or shows the launcher. */
@@ -1412,19 +1475,17 @@ export function* closeRightPanel(draft: IThreadSession): IActionGenerator {
   else draft.Panels.Launcher.Open = false;
 }
 
-export function* runScript(
-  draft: IThreadSession,
-  checkout: ICheckout,
-  script: ProjectScript,
-): IOpenGenerator {
+export function* runScript(draft: IThreadSession, script: ProjectScript): IOpenGenerator {
+  const held = yield* select(checkout);
+  if (held === null) return;
   delete draft.ScriptError;
   const request = {
-    EnvironmentId: checkout.EnvironmentId,
-    Cwd: checkout.Cwd,
-    ThreadId: checkout.ThreadId,
+    EnvironmentId: held.EnvironmentId,
+    Cwd: held.Cwd,
+    ThreadId: held.ThreadId,
     TerminalId: draft.Terminal.TerminalId,
-    WorktreePath: checkout.WorktreePath,
-    ProjectRoot: checkout.ProjectRoot,
+    WorktreePath: held.WorktreePath,
+    ProjectRoot: held.ProjectRoot,
     Command: script.command,
   };
   try {
@@ -1437,18 +1498,16 @@ export function* runScript(
 }
 
 /** Replaces the project's scripts, so an add or a removal sends the whole list. */
-export function* saveScripts(
-  draft: IThreadSession,
-  checkout: ICheckout,
-  scripts: ProjectScript[],
-): IOpenGenerator {
+export function* saveScripts(draft: IThreadSession, scripts: ProjectScript[]): IOpenGenerator {
+  const held = yield* select(checkout);
+  if (held === null) return;
   delete draft.ScriptError;
   try {
     yield* open(
       withCommandId((commandId) =>
         projectCommandEffect({
-          EnvironmentId: checkout.EnvironmentId,
-          ProjectId: checkout.ProjectId,
+          EnvironmentId: held.EnvironmentId,
+          ProjectId: held.ProjectId,
           CommandId: commandId,
           Command: { Kind: "scripts", Scripts: scripts },
         }),
@@ -1525,5 +1584,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     mergeBackRunId,
     diffLoading,
     unwrappedCodeBlocks,
+    checkout,
+    panels,
   },
 );

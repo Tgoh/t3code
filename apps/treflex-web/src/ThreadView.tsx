@@ -28,7 +28,6 @@ import { SurfaceLauncher } from "./SurfaceLauncher";
 import { type ISurfaceKind, surfaceActions } from "./surfaces";
 import { closeTerminal, openTerminal, toggleTerminal } from "./Terminal";
 import { TerminalPanel } from "./TerminalPanel";
-import type { ICheckout } from "./ThreadDetails";
 import { DetailsSurface, ThreadDetailsCard } from "./ThreadDetailsPanel";
 import { detailsLayout } from "./threadDetailsLayout";
 import ThreadSession from "./ThreadSession";
@@ -214,21 +213,6 @@ const ThreadBody = ThreadSession.provider(() => {
   const detailsInline = () => layout().Inline && details().Open;
   const detailsShown = () => detailsInline() || details().Popover;
   const navigation = useNavigation();
-  const checkout = createMemo<ICheckout | null>((previous) => {
-    const held = thread.state.Thread;
-    const project =
-      held == null ? undefined : environment.state.Replica.Shell.Projects[held.projectId];
-    if (held == null || project === undefined) return null;
-    const next = {
-      EnvironmentId: environment.state.EnvironmentId,
-      ThreadId: held.id,
-      ProjectId: held.projectId,
-      Cwd: held.worktreePath ?? project.workspaceRoot,
-      ProjectRoot: project.workspaceRoot,
-      WorktreePath: held.worktreePath,
-    };
-    return previous !== null && JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
-  }, null);
   const projectScripts = () => {
     const projectId = thread.state.Thread?.projectId;
     return projectId === undefined
@@ -237,8 +221,8 @@ const ThreadBody = ThreadSession.provider(() => {
   };
   const launcher = () =>
     surfaceActions({
-      TerminalAvailable: thread.state.Thread !== null,
-      DiffAvailable: checkout() !== null,
+      TerminalAvailable: session.panels().Terminal,
+      DiffAvailable: session.panels().Details,
     });
   const openSurface = (kind: ISurfaceKind) => {
     if (kind === "terminal") {
@@ -255,7 +239,7 @@ const ThreadBody = ThreadSession.provider(() => {
   let lane!: HTMLDivElement;
   let menuButton: HTMLButtonElement | undefined;
   const menuItems = (): IThreadMenuItem[] => [
-    ...(checkout() === null
+    ...(!session.panels().Details
       ? []
       : [
           {
@@ -265,7 +249,7 @@ const ThreadBody = ThreadSession.provider(() => {
             Run: () => void session.toggleDetails(),
           },
         ]),
-    ...(thread.state.Thread === null
+    ...(!session.panels().Terminal
       ? []
       : [
           {
@@ -487,8 +471,8 @@ const ThreadBody = ThreadSession.provider(() => {
             "--details-lane": layout().LaneWidth === null ? undefined : `${layout().LaneWidth}px`,
           }}
         >
-          <Show when={checkout()} keyed>
-            {(held) => (
+          <Show when={session.state.Details} keyed>
+            {(details) => (
               <DetailsSurface
                 inline={layout().Inline}
                 shown={detailsShown()}
@@ -497,7 +481,7 @@ const ThreadBody = ThreadSession.provider(() => {
               >
                 <ThreadDetailsCard
                   state={session.state.Git}
-                  checkout={held}
+                  details={details}
                   branch={thread.state.Thread?.branch ?? null}
                   scripts={projectScripts()}
                   running={turnState() !== null}

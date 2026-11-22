@@ -158,6 +158,7 @@ import {
   addAttachments,
   chooseModel,
   chooseRewind,
+  closeDetailsPopover,
   closeDiff,
   editFromHere,
   forkFromRun,
@@ -193,6 +194,7 @@ import {
   unwrappedCodeBlocks,
 } from "./ThreadSession";
 import { closeTerminal, endTerminal, openTerminal, TerminalReceiver } from "./Terminal";
+import { loadBranches } from "./ThreadDetails";
 import {
   assistantItem,
   commandItem,
@@ -320,6 +322,8 @@ async function connect(
       },
       // Selecting a thread sends a visit.
       threadCommand: () => {},
+      refreshVcsStatus: () => {},
+      reportActivity: () => {},
       ...commands,
       threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
       addressThread: () => address.thread,
@@ -2505,18 +2509,18 @@ describe("writing to the server", () => {
             });
         }),
     });
-    const checkout = {
-      EnvironmentId: ENV,
-      ThreadId: THREAD_ID,
-      ProjectId: "project-1",
-      Cwd: "/repo",
-      ProjectRoot: "/repo",
-      WorktreePath: null,
-    };
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/repo" }],
+        threads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
     const running = server.runtime.dispatch(
       runGitAction,
       server.session().Git.$Id,
-      checkout,
       { Action: "push", CommitMessage: null, FilePaths: null, FeatureBranch: true },
       { RefName: "feature", IsDefaultRef: false, HasWorkingTreeChanges: false },
       false,
@@ -3878,7 +3882,8 @@ describe("diffs", () => {
   });
 
   it("runs the panel shortcuts on the shown thread's session, toggling details by fit", async () => {
-    const server = await connect();
+    let refreshes = 0;
+    const server = await connect(undefined, null, { refreshVcsStatus: () => void refreshes++ });
     await server.sendShell({
       kind: "snapshot",
       snapshot: {
@@ -3905,11 +3910,18 @@ describe("diffs", () => {
     expect(panels().Launcher.Open).toBe(true);
     expect(await run("diff.toggle")).toBe(false);
 
+    expect(refreshes).toBe(1);
     expect(await run("threadPanel.toggle")).toBe(true);
     expect(panels().Details).toMatchObject({ Open: true, Popover: true });
+    expect(refreshes).toBe(2);
     await server.runtime.dispatch(fitDetails, server.sessionId(), true);
     expect(await run("threadPanel.toggle")).toBe(true);
     expect(panels().Details).toMatchObject({ Open: false, Popover: true });
+    expect(refreshes).toBe(2);
+    await server.runtime.dispatch(closeDetailsPopover, server.sessionId());
+    await server.runtime.dispatch(fitDetails, server.sessionId(), false);
+    expect(await run("threadPanel.toggle")).toBe(true);
+    expect(refreshes).toBe(3);
 
     await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "general" });
     expect(shown()).toBeNull();
@@ -4172,33 +4184,25 @@ describe("the terminal", () => {
         ran.push(effect);
       },
     });
-    await server.open();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
     await withProject(server, null);
-    const checkout = {
-      EnvironmentId: ENV,
-      ThreadId: THREAD_ID,
-      ProjectId: "p-1",
-      Cwd: "/root",
-      ProjectRoot: "/root",
-      WorktreePath: null,
-    };
     const script = { id: "dev", name: "Dev", command: "vp dev", icon: "play" as const };
-    await server.runtime.dispatch(runScript, server.sessionId(), checkout, script as never);
+    await server.runtime.dispatch(runScript, server.sessionId(), script as never);
     await settled();
     expect(server.session().ScriptError).toBe("no shell");
     expect(panel(server).Open).toBe(false);
     refuse = false;
-    await server.runtime.dispatch(runScript, server.sessionId(), checkout, script as never);
+    await server.runtime.dispatch(runScript, server.sessionId(), script as never);
     await settled();
     expect(server.session().ScriptError).toBeUndefined();
     expect(ran).toMatchObject([{ TerminalId: "term-1", Command: "vp dev", Cwd: "/root" }]);
     expect(panel(server)).toMatchObject({ Open: true, FocusOnMount: true });
     expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
     refuse = true;
-    await server.runtime.dispatch(runScript, server.sessionId(), checkout, script as never);
+    await server.runtime.dispatch(runScript, server.sessionId(), script as never);
     await settled();
     expect(server.session().ScriptError).toBe("no shell");
-    await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
+    await server.runtime.dispatch(selectThread, server.envId(), "other");
     await settled();
     expect(server.session().ScriptError).toBeUndefined();
   });
@@ -5288,10 +5292,11 @@ describe("dictation", () => {
 });
 
 describe("client activity", () => {
-  async function reporting() {
+  async function reporting(commands: Record<string, (effect: never) => unknown> = {}) {
     const reports: IReportActivity[] = [];
     const server = await connect(undefined, null, {
       reportActivity: (effect: IReportActivity) => void reports.push(copy(effect)),
+      ...commands,
     });
     const deliver = (message: object) =>
       server.runtime.dispatch(ActivityReceiver.handle, server.envId(), message as never, {
@@ -5299,6 +5304,70 @@ describe("client activity", () => {
       });
     return { server, reports, deliver, tick: () => deliver({ Type: "Activity/Report" }) };
   }
+
+  it("opens git status from selectThread, closes it on leave or under a page, and reports each change at once", async () => {
+    let answerBranches: ((refs: unknown[]) => void) | null = null;
+    const { server, reports } = await reporting({
+      listBranches: () => new Promise((resolve) => (answerBranches = resolve)),
+    });
+    const status = () =>
+      server.runtime
+        .resources()
+        .filter((row) => row.Key === "Details/Status")
+        .map((row) => (row.Params as unknown as { Cwd: string }).Cwd);
+    const lastScopes = () => reports.at(-1)?.Scopes.slice(1);
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/repo" }],
+        threads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    expect(status()).toEqual([]);
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    await settled();
+    expect(status()).toEqual(["/repo"]);
+    expect(lastScopes()).toEqual([{ type: "vcs-status", cwd: "/repo" }]);
+
+    const stale = server.session().Details!.$Id;
+    const loading = server.runtime.dispatch(loadBranches, stale, "");
+    const projection = emptyProjection();
+    await server.sendThread(
+      snapshotOf(
+        { ...projection, thread: { ...projection.thread, worktreePath: "/repo/wt" } } as never,
+        2,
+      ),
+    );
+    await settled();
+    expect(status()).toEqual(["/repo/wt"]);
+    expect(lastScopes()).toEqual([{ type: "vcs-status", cwd: "/repo/wt" }]);
+    answerBranches!([{ Name: "old", IsRemote: false, Current: true, IsDefault: true }]);
+    await loading;
+    expect(server.session().Details).toMatchObject({ Cwd: "/repo/wt", Branches: null });
+
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "general" });
+    await settled();
+    expect(status()).toEqual([]);
+    expect(lastScopes()).toEqual([]);
+    await server.runtime.dispatch(openView, server.envId(), null);
+    await settled();
+    expect(status()).toEqual(["/repo/wt"]);
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "usage" });
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await settled();
+    expect(status()).toEqual(["/repo/wt"]);
+
+    await server.runtime.dispatch(selectThread, server.envId(), "other");
+    await settled();
+    expect(status()).toEqual([]);
+    expect(lastScopes()).toEqual([]);
+    expect(server.session().Details).toBeNull();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await settled();
+    expect(status()).toEqual(["/repo/wt"]);
+  });
 
   it("reports on the interval, with git status for the shown thread's checkout", async () => {
     const { server, reports, tick } = await reporting();

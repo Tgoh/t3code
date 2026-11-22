@@ -6,16 +6,17 @@ import type { GitStackedAction } from "@t3tools/contracts";
 import {
   generateGuid,
   type IActionGenerator,
-  type IEntity,
   type IOpenGenerator,
   leading,
   open,
   receiver,
+  select,
   startTimer,
   stopTimer,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
+import { type ICheckout, type IThreadPart, checkout as threadCheckout } from "./checkout";
 import { serverError } from "./Infrastructure/serverError";
 import { threadCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
 import {
@@ -24,7 +25,6 @@ import {
   openWithEditorEffect,
   pullEffect,
 } from "./Infrastructure/sourceControlEffects";
-import type { ICheckout } from "./ThreadDetails";
 
 declare module "treflex" {
   interface ITimerRegistry {
@@ -63,15 +63,20 @@ export interface IGitActionAsk {
   FeatureBranch: boolean;
 }
 
-/** The details card's work whose result outlives the card: git actions and opening an editor. */
-export interface IGitWork extends IEntity {
+export interface IGitWork extends IThreadPart {
   Notice: IGitNotice | null;
   PendingDefaultBranch: IPendingDefaultBranch | null;
   BranchError: string | null;
 }
 
-export function getDefaultGitWork(): Omit<IGitWork, "$Id"> {
-  return { Notice: null, PendingDefaultBranch: null, BranchError: null };
+export function getDefaultGitWork(environmentId: string, threadId: string): Omit<IGitWork, "$Id"> {
+  return {
+    EnvironmentId: environmentId,
+    ThreadId: threadId,
+    Notice: null,
+    PendingDefaultBranch: null,
+    BranchError: null,
+  };
 }
 
 const includesCommit = (ask: IGitActionAsk, context: IActionContext) =>
@@ -79,7 +84,10 @@ const includesCommit = (ask: IGitActionAsk, context: IActionContext) =>
   (ask.Action === "commit" || context.HasWorkingTreeChanges || ask.FeatureBranch);
 
 /** Moves the thread to `branch`; throws the server's refusal. */
-export function* sendThreadBranch(checkout: ICheckout, branch: string): IOpenGenerator {
+export function* sendThreadBranch(
+  checkout: Pick<ICheckout, "EnvironmentId" | "ThreadId">,
+  branch: string,
+): IOpenGenerator {
   yield* open(
     withCommandId((commandId) =>
       threadCommandEffect({
@@ -105,11 +113,9 @@ export function* dismissNotice(draft: IGitWork): IActionGenerator {
   draft.Notice = null;
 }
 
-export function* openEditor(
-  draft: IGitWork,
-  checkout: ICheckout,
-  editor: string | null,
-): IOpenGenerator {
+export function* openEditor(draft: IGitWork, editor: string | null): IOpenGenerator {
+  const checkout = yield* select(threadCheckout);
+  if (checkout === null) return;
   if (editor === null) {
     yield* showNotice(draft, {
       Tone: "error",
@@ -143,7 +149,6 @@ export function* openEditor(
  */
 export function* runGitAction(
   draft: IGitWork,
-  checkout: ICheckout,
   ask: IGitActionAsk,
   context: IActionContext,
   confirmed: boolean,
@@ -165,6 +170,8 @@ export function* runGitAction(
     };
     return;
   }
+  const checkout = yield* select(threadCheckout);
+  if (checkout === null) return;
   yield* dismissNotice(draft);
   draft.BranchError = null;
   const actionId = yield* generateGuid();
@@ -209,7 +216,6 @@ leading(runGitAction);
 
 export function* continueDefaultBranch(
   draft: IGitWork,
-  checkout: ICheckout,
   featureBranch: boolean,
   context: IActionContext,
 ): IOpenGenerator {
@@ -218,7 +224,6 @@ export function* continueDefaultBranch(
   draft.PendingDefaultBranch = null;
   yield* runGitAction(
     draft,
-    checkout,
     {
       Action: pending.Action,
       CommitMessage: pending.CommitMessage,
@@ -234,7 +239,9 @@ export function* cancelDefaultBranch(draft: IGitWork): IActionGenerator {
   draft.PendingDefaultBranch = null;
 }
 
-export function* pull(draft: IGitWork, checkout: ICheckout): IOpenGenerator {
+export function* pull(draft: IGitWork): IOpenGenerator {
+  const checkout = yield* select(threadCheckout);
+  if (checkout === null) return;
   yield* dismissNotice(draft);
   try {
     const result = yield* open(

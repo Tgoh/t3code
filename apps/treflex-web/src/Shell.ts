@@ -53,6 +53,7 @@ declare module "treflex" {
   interface IMessageRegistry {
     /** Thread rows left the shell, so an open thread's lineage may need their titles looked up. */
     "Shell/ThreadsDropped": {};
+    "Shell/ProjectsChanged": {};
   }
 }
 
@@ -288,6 +289,12 @@ export function* requestFavicons(
   for (const target of targets) yield* resource(draft, "Project/Favicons").request(target);
 }
 
+const PROJECT_ITEMS = new Set<IWireShellItem["kind"]>([
+  "snapshot",
+  "project.updated",
+  "project.removed",
+]);
+
 export const ShellReceiver = receiver<IShell>("ShellReceiver")({
   *"Shell/Stream"(draft, message) {
     if (isEnded(message)) {
@@ -309,6 +316,8 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
       if (favicons.length > 0) yield* start(requestFavicons, draft, favicons);
       if (threads?.some((id) => draft.Threads[id] === undefined))
         yield* publishToNearest(draft, "Shell/ThreadsDropped");
+      if (PROJECT_ITEMS.has(message.Item.kind))
+        yield* publishToNearest(draft, "Shell/ProjectsChanged");
       yield* visitIfDue(draft);
     }
   },

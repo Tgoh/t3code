@@ -3,7 +3,6 @@ import {
   closeResource,
   getData,
   type IActionGenerator,
-  type IEntity,
   type IOpenGenerator,
   type ISelectorGenerator,
   isEnded,
@@ -16,6 +15,7 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
+import { checkout, type IThreadPart } from "./checkout";
 import { type IColorScheme, resolveScheme } from "./colorScheme";
 import { closeTerminalEffect } from "./Infrastructure/commandEffects";
 import { serverError } from "./Infrastructure/serverError";
@@ -32,9 +32,7 @@ declare module "treflex" {
   }
 }
 
-export interface ITerminal extends IEntity {
-  EnvironmentId: string;
-  ThreadId: string;
+export interface ITerminal extends IThreadPart {
   TerminalId: string;
   Open: boolean;
   Error?: string;
@@ -58,12 +56,9 @@ export function getDefaultTerminal(
 }
 
 function* terminalLaunch(draft: ITerminal): ISelectorGenerator<ITerminalLaunch | null> {
-  const replica = yield* getData(draft, "Replica");
-  const thread = replica?.OpenThreads[draft.ThreadId]?.Thread;
-  if (replica === undefined || thread == null) return null;
-  const root = replica.Shell.Projects[thread.projectId]?.workspaceRoot;
-  if (root === undefined) return null;
-  return { Cwd: thread.worktreePath ?? root, WorktreePath: thread.worktreePath, ProjectRoot: root };
+  const held = yield* checkout(draft);
+  if (held === null) return null;
+  return { Cwd: held.Cwd, WorktreePath: held.WorktreePath, ProjectRoot: held.ProjectRoot };
 }
 
 function* isThreadSelected(draft: ITerminal): ISelectorGenerator<boolean> {

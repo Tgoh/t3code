@@ -1,7 +1,8 @@
 import type { VcsStatusResult } from "@t3tools/contracts";
-import { type IEntity, type IOpenGenerator, latest, leading, open, openResource } from "treflex";
-import { createComponentFeature } from "treflex-solid";
+import { type IOpenGenerator, latest, leading, open, openResource } from "treflex";
+import { createEntityFeature } from "treflex-solid";
 
+import type { IThreadPart } from "./checkout";
 import { serverError } from "./Infrastructure/serverError";
 import { sendThreadBranch } from "./GitWork";
 import {
@@ -17,24 +18,25 @@ declare module "treflex" {
   }
 }
 
-export interface ICheckout {
-  EnvironmentId: string;
-  ThreadId: string;
-  ProjectId: string;
+/**
+ * The details card's data for one checkout while its thread is shown. A new one is minted when
+ * the checkout moves, which stops a branch load or switch made against the old one.
+ */
+export interface IThreadDetails extends IThreadPart {
   Cwd: string;
-  ProjectRoot: string;
-  WorktreePath: string | null;
-}
-
-export interface IThreadDetails extends IEntity {
-  Checkout: ICheckout | null;
   Branches: IBranchRef[] | null;
   BranchError: string | null;
 }
 
-export function getDefaultThreadDetails(): Omit<IThreadDetails, "$Id"> {
+export function getDefaultThreadDetails(
+  environmentId: string,
+  threadId: string,
+  cwd: string,
+): Omit<IThreadDetails, "$Id"> {
   return {
-    Checkout: null,
+    EnvironmentId: environmentId,
+    ThreadId: threadId,
+    Cwd: cwd,
     Branches: null,
     BranchError: null,
   };
@@ -73,24 +75,19 @@ const samePath = (left: string, right: string) => {
   return normal(left) === normal(right);
 };
 
-export function* attach(draft: IThreadDetails, checkout: ICheckout): IOpenGenerator {
-  draft.Checkout = checkout;
+export function* openStatus(draft: IThreadDetails): IOpenGenerator {
   yield* openResource(draft, "Details/Status", {
     Type: "vcsStatus",
-    EnvironmentId: checkout.EnvironmentId,
-    Cwd: checkout.Cwd,
+    EnvironmentId: draft.EnvironmentId,
+    Cwd: draft.Cwd,
   });
   yield* refreshStatus(draft);
 }
 
 /** Terminal edits and commits made outside a turn publish no status, so a refresh asks for one. */
 export function* refreshStatus(draft: IThreadDetails): IOpenGenerator {
-  const checkout = draft.Checkout;
-  if (checkout === null) return;
   try {
-    yield* open(
-      refreshVcsStatusEffect({ EnvironmentId: checkout.EnvironmentId, Cwd: checkout.Cwd }),
-    );
+    yield* open(refreshVcsStatusEffect({ EnvironmentId: draft.EnvironmentId, Cwd: draft.Cwd }));
   } catch (error) {
     // The status stream reports its own failure.
     serverError(error);
@@ -99,17 +96,10 @@ export function* refreshStatus(draft: IThreadDetails): IOpenGenerator {
 leading(refreshStatus);
 
 export function* loadBranches(draft: IThreadDetails, query: string): IOpenGenerator {
-  const checkout = draft.Checkout;
-  if (checkout === null) return;
   draft.BranchError = null;
+  const request = { EnvironmentId: draft.EnvironmentId, Cwd: draft.Cwd, Query: query };
   try {
-    draft.Branches = yield* open(
-      listBranchesEffect({
-        EnvironmentId: checkout.EnvironmentId,
-        Cwd: checkout.Cwd,
-        Query: query,
-      }),
-    );
+    draft.Branches = yield* open(listBranchesEffect(request));
   } catch (error) {
     draft.Branches = [];
     draft.BranchError = serverError(error).message;
@@ -117,26 +107,23 @@ export function* loadBranches(draft: IThreadDetails, query: string): IOpenGenera
 }
 latest(loadBranches);
 
-function* checkout(draft: IThreadDetails, refName: string, create: boolean): IOpenGenerator {
-  const held = draft.Checkout;
-  if (held === null) return;
+function* switchTo(draft: IThreadDetails, refName: string, create: boolean): IOpenGenerator {
   draft.BranchError = null;
+  const request = {
+    EnvironmentId: draft.EnvironmentId,
+    Cwd: draft.Cwd,
+    RefName: refName,
+    Create: create,
+  };
   let switched: string | null = null;
   try {
-    switched = yield* open(
-      switchBranchEffect({
-        EnvironmentId: held.EnvironmentId,
-        Cwd: held.Cwd,
-        RefName: refName,
-        Create: create,
-      }),
-    );
+    switched = yield* open(switchBranchEffect(request));
   } catch (error) {
     draft.BranchError = serverError(error).message;
     return;
   }
   try {
-    yield* sendThreadBranch(held, switched ?? refName);
+    yield* sendThreadBranch(draft, switched ?? refName);
   } catch (error) {
     draft.BranchError = serverError(error).message;
   }
@@ -148,30 +135,23 @@ export function blockedByWorktree(ref: IBranchRef, cwd: string): boolean {
 }
 
 export function* selectBranch(draft: IThreadDetails, ref: IBranchRef): IOpenGenerator {
-  const held = draft.Checkout;
-  if (held === null || ref.Current) return;
-  if (blockedByWorktree(ref, held.Cwd)) {
+  if (ref.Current) return;
+  if (blockedByWorktree(ref, draft.Cwd)) {
     draft.BranchError = `${ref.Name} is checked out in ${ref.WorktreePath}.`;
     return;
   }
-  yield* checkout(draft, ref.Name, false);
+  yield* switchTo(draft, ref.Name, false);
 }
 leading(selectBranch);
 
 export function* createBranch(draft: IThreadDetails, name: string): IOpenGenerator {
   const trimmed = name.trim();
   if (trimmed === "") return;
-  yield* checkout(draft, trimmed, true);
+  yield* switchTo(draft, trimmed, true);
 }
 leading(createBranch);
 
-export default createComponentFeature<IThreadDetails>(import.meta.url)(
-  {
-    attach,
-    refreshStatus,
-    loadBranches,
-    selectBranch,
-    createBranch,
-  },
+export default createEntityFeature<IThreadDetails>(import.meta.url)(
+  { refreshStatus, loadBranches, selectBranch, createBranch },
   {},
 );

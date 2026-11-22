@@ -14,6 +14,7 @@ import {
   onCleanup,
   onMount,
   Show,
+  splitProps,
   Switch,
 } from "solid-js";
 
@@ -63,8 +64,7 @@ import ThreadDetails, {
   blockedByWorktree,
   changesTotals,
   createBranch,
-  getDefaultThreadDetails,
-  type ICheckout,
+  type IThreadDetails,
   loadBranches,
   selectBranch,
 } from "./ThreadDetails";
@@ -610,7 +610,6 @@ function LineageSection(props: { threadId: string }) {
 }
 
 interface IDetailsProps {
-  checkout: ICheckout;
   /** The thread's branch, which stands in for git status until status arrives. */
   branch: string | null;
   scripts: readonly ProjectScript[];
@@ -629,6 +628,7 @@ const Body = (props: IDetailsProps) => {
   const loadingBranches = useInFlight(loadBranches, () => details.state);
   const busy = useInFlight([runGitAction, continueDefaultBranch, pull], () => work.state);
   const git = () => status.value()?.Status ?? null;
+  const cwd = () => details.state.Cwd;
   const [menu, setMenu] = createSignal<
     | { Kind: "editor" | "git" | "scripts"; Anchor: IMenuAnchor }
     | { Kind: "branch"; Anchor: IMenuAnchor }
@@ -637,13 +637,11 @@ const Body = (props: IDetailsProps) => {
   const [committing, setCommitting] = createSignal(false);
   const [addingScript, setAddingScript] = createSignal(false);
   const [branchQuery, setBranchQuery] = createSignal("");
-  onMount(() => void details.attach(props.checkout));
   createEffect(
     on(
       () => props.shown,
       (shown) => {
-        if (shown) void details.refreshStatus();
-        else setMenu(null);
+        if (!shown) setMenu(null);
       },
       { defer: true },
     ),
@@ -675,15 +673,14 @@ const Body = (props: IDetailsProps) => {
   const openEditor = (editor: string | null) => {
     const target = editor ?? environment.editors().Preferred;
     if (target !== null) void environment.preferEditor(target);
-    void work.openEditor(props.checkout, target);
+    void work.openEditor(target);
   };
 
   const runQuick = () => {
     const action = quick();
-    if (action.kind === "run_pull") return void work.pull(props.checkout);
+    if (action.kind === "run_pull") return void work.pull();
     if (action.kind === "run_action" && action.action !== undefined) {
       void work.runGitAction(
-        props.checkout,
         { Action: action.action, CommitMessage: null, FilePaths: null, FeatureBranch: false },
         actionContext(git()),
         false,
@@ -695,7 +692,6 @@ const Body = (props: IDetailsProps) => {
     if (item.disabled) return;
     if (item.dialogAction === "commit") return setCommitting(true);
     void work.runGitAction(
-      props.checkout,
       {
         Action: item.dialogAction === "push" ? "push" : "create_pr",
         CommitMessage: null,
@@ -708,7 +704,7 @@ const Body = (props: IDetailsProps) => {
   };
   const runScript = (script: ProjectScript) => {
     closeMenu();
-    void session.runScript(props.checkout, script);
+    void session.runScript(script);
   };
   const openBranches = (anchor: IMenuAnchor) => {
     setBranchQuery("");
@@ -750,7 +746,7 @@ const Body = (props: IDetailsProps) => {
             class={ICON_ACTION}
             aria-label="Open folder"
             data-tip="Open folder"
-            onClick={() => void environment.openInFileManager(props.checkout.Cwd)}
+            onClick={() => void environment.openInFileManager(cwd())}
           >
             <Folder />
           </button>
@@ -1006,7 +1002,7 @@ const Body = (props: IDetailsProps) => {
                     </Show>
                     <For each={details.state.Branches ?? []}>
                       {(ref) => {
-                        const blocked = () => blockedByWorktree(ref, props.checkout.Cwd);
+                        const blocked = () => blockedByWorktree(ref, cwd());
                         return (
                           <MenuItem
                             truncate
@@ -1059,7 +1055,6 @@ const Body = (props: IDetailsProps) => {
             onClose={() => setCommitting(false)}
             onCommit={(message, files, featureBranch) =>
               void work.runGitAction(
-                props.checkout,
                 {
                   Action: "commit",
                   CommitMessage: message,
@@ -1079,7 +1074,7 @@ const Body = (props: IDetailsProps) => {
           <AddScriptDialog
             onClose={() => setAddingScript(false)}
             onAdd={(name, command) =>
-              void session.saveScripts(props.checkout, [
+              void session.saveScripts([
                 ...props.scripts,
                 {
                   id: newScriptId(name, props.scripts),
@@ -1116,9 +1111,7 @@ const Body = (props: IDetailsProps) => {
               </Button>
               <Button
                 class="whitespace-nowrap"
-                onClick={() =>
-                  void work.continueDefaultBranch(props.checkout, false, actionContext(git()))
-                }
+                onClick={() => void work.continueDefaultBranch(false, actionContext(git()))}
               >
                 {copy().continueLabel}
               </Button>
@@ -1126,9 +1119,7 @@ const Body = (props: IDetailsProps) => {
                 variant="primary"
                 class="whitespace-nowrap"
                 disabled={featureBranchBlock() !== null}
-                onClick={() =>
-                  void work.continueDefaultBranch(props.checkout, true, actionContext(git()))
-                }
+                onClick={() => void work.continueDefaultBranch(true, actionContext(git()))}
               >
                 Check out feature branch & continue
               </Button>
@@ -1140,12 +1131,14 @@ const Body = (props: IDetailsProps) => {
   );
 };
 
-const DetailsCard = ThreadDetails.provider(Body, getDefaultThreadDetails);
+const DetailsCard = ThreadDetails.provider(Body);
 
-/** Mounted over the session's `Git`, so a git action's result outlives the card. */
-export const ThreadDetailsCard = GitWork.provider<IDetailsProps>((props) => (
-  <DetailsCard {...props} />
-));
+export const ThreadDetailsCard = GitWork.provider<IDetailsProps & { details: IThreadDetails }>(
+  (props) => {
+    const [, card] = splitProps(props, ["state", "details"]);
+    return <DetailsCard {...card} state={props.details} />;
+  },
+);
 
 /**
  * The card's frame: pinned in the chat's corner when it fits there, else a popover under the

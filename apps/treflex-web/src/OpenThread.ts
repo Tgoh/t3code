@@ -50,6 +50,7 @@ declare module "treflex" {
     "Thread/Deleted": { ThreadId: string };
     "Thread/Expired": { ThreadId: string };
     "Thread/RewindProgress": { ThreadId: string };
+    "Thread/CheckoutChanged": { ThreadId: string };
     "Thread/RequestsSettled": {
       ThreadId: string;
       PendingIds: string[];
@@ -607,6 +608,9 @@ function* announceSettled(draft: IOpenThread): IActionGenerator {
   });
 }
 
+const checkoutKey = ({ Thread }: IOpenThread) =>
+  Thread == null ? null : `${Thread.projectId}\n${Thread.worktreePath}`;
+
 function* reopenLater(draft: IOpenThread): IActionGenerator {
   yield* startTimer(draft, "Thread/Reopen", ThreadReceiver, REOPEN_MS);
 }
@@ -618,8 +622,15 @@ export const ThreadReceiver = receiver<IOpenThread>("ThreadReceiver")({
       if (message.$Ended.Reason !== "receiver-failed") yield* reopenLater(draft);
       return;
     }
-    if ("Item" in message) yield* applyItem(draft, message.Item);
-    else (yield* streamState(draft)).Synchronized = false;
+    if (!("Item" in message)) {
+      (yield* streamState(draft)).Synchronized = false;
+      return;
+    }
+    const before = checkoutKey(draft);
+    yield* applyItem(draft, message.Item);
+    if (checkoutKey(draft) !== before) {
+      yield* publishToNearest(draft, "Thread/CheckoutChanged", { ThreadId: draft.ThreadId });
+    }
   },
   *"Thread/Reopen"(draft) {
     yield* stopTimer(draft, "Thread/Reopen");
