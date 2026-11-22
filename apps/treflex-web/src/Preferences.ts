@@ -9,7 +9,7 @@ import {
 } from "treflex";
 
 import { type IAppearanceMode, type IColorScheme, resolveScheme } from "./colorScheme";
-import type { IEnvironment } from "./Environment";
+import { activeProjects, type IEnvironment } from "./Environment";
 import { minute } from "./Infrastructure/clock";
 import { type IPreferences, storePreferencesEffect } from "./Infrastructure/preferences";
 import { sidebarRowThreadId, sidebarThreads, subagentRequests } from "./Shell";
@@ -65,10 +65,8 @@ export function* toggleProjectScope(
     return;
   }
   const preferences = draft.Local.Preferences;
-  const pickable = Object.values(draft.Replica.Shell.Projects)
-    .filter(
-      (project) => project.archivedAt == null && !preferences.HiddenProjects.includes(project.id),
-    )
+  const pickable = (yield* activeProjects(draft))
+    .filter((project) => !preferences.HiddenProjects.includes(project.id))
     .map((project) => project.id);
   const held = [...liveScope(new Set(preferences.ProjectScope), new Set(pickable))];
   yield* setPreferences(draft, {

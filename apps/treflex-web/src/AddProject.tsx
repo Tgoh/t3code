@@ -32,6 +32,7 @@ import {
   defaultCloneDestination,
   enterFolder,
   folderChoices,
+  type IAddProjectSettings,
   initialFolderQuery,
   leaveFolder,
 } from "./addProjectPaths";
@@ -42,16 +43,11 @@ import {
   type IAddProjectSourceId,
   willCreateFolder,
 } from "./addProjectPalette";
-import Environment, { addFolder, cloneProject, newProject } from "./Environment";
+import Environment, { AddingProject } from "./Environment";
 import { serverError } from "./Infrastructure/serverError";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { ArrowLeft, CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
-import {
-  addProjectSettingsEffect,
-  browseFoldersEffect,
-  type IAddProjectSettings,
-  type IFolderListing,
-} from "./Infrastructure/commandEffects";
+import { browseFoldersEffect, type IFolderListing } from "./Infrastructure/commandEffects";
 import {
   PALETTE,
   PALETTE_ADDON,
@@ -88,19 +84,6 @@ const UNKNOWN_SETTINGS: IAddProjectSettings = {
   NewProjectsRoot: null,
   Os: "",
 };
-
-interface IAddProjectPalette extends IEntity {
-  Settings: IAddProjectSettings | null;
-  SettingsError: string | null;
-}
-
-function* loadSettings(draft: IAddProjectPalette, environmentId: string): IActionGenerator {
-  try {
-    draft.Settings = yield* addProjectSettingsEffect({ EnvironmentId: environmentId });
-  } catch (error) {
-    draft.SettingsError = serverError(error).message;
-  }
-}
 
 interface IFolderPicker extends IEntity {
   Path: string | null;
@@ -152,22 +135,10 @@ const modifierLabel = () => (isMac() ? "⌘" : "Ctrl");
 export function AddProjectPalette(props: { onClose: () => void }) {
   const environment = Environment.use();
   const presence = usePresence();
-  const palette = useComponentState<IAddProjectPalette>(() => ({
-    Settings: null,
-    SettingsError: null,
-  }));
-  // The folder view's target depends on the platform the settings report.
-  onMount(
-    () =>
-      void palette
-        .dispatch(loadSettings, environment.state.EnvironmentId)
-        .then(() => browseDirectory()),
-  );
-  const settings = () =>
-    palette.state.Settings ?? (palette.state.SettingsError === null ? null : UNKNOWN_SETTINGS);
+  const settings = () => environment.addProjectSettings();
   const cwd = () => environment.currentProjectRoot();
   const platform = () => browsePlatform(settings()?.Os ?? "");
-  const busy = useInFlight([addFolder, cloneProject, newProject], () => environment.state);
+  const busy = useInFlight(AddingProject, () => environment.state);
 
   const [stack, setStack] = createSignal<IView[]>([{ Kind: "sources" }]);
   const view = () => stack().at(-1)!;
@@ -214,7 +185,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     else push({ Kind: "new" });
   };
 
-  // Browsing, for a local folder or a clone's destination.
   const browsing = () => view().Kind === "folder" || view().Kind === "clone-dest";
   const cloneRemote = () => {
     const current = view();
@@ -243,6 +213,8 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     setQuery(next);
     browseDirectory();
   };
+  // The folder view's target depends on the platform the config reports, which can arrive late.
+  createEffect(on(platform, browseDirectory, { defer: true }));
   const listed = () => picker.state.Path === directory();
   const listing = () => (listed() ? picker.state.Listing : null);
   const listingError = () => (listed() ? picker.state.Error : null);
@@ -522,11 +494,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
               )}
             </Show>
           </div>
-          <Show when={palette.state.SettingsError}>
-            {(failure) => (
-              <p class={PALETTE_NOTE}>Couldn't read the server's project settings: {failure()}</p>
-            )}
-          </Show>
           <Show when={settings()} fallback={<p class={PALETTE_NOTE}>Loading…</p>}>
             <Switch>
               <Match when={cloneRemote()}>

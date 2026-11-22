@@ -40,7 +40,6 @@ import {
   start,
   startTimer,
   stopTimer,
-  transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -118,11 +117,7 @@ import {
 import { answerRequest, canAnswer, type IRuntimeRequest } from "./RuntimeRequest";
 import { minute } from "./Infrastructure/clock";
 import { delay } from "./Infrastructure/delay";
-import type {
-  IWireArchivedShell,
-  IWireServerConfig,
-  IWireUsageSummary,
-} from "./Infrastructure/settings";
+import type { IWireServerConfig } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
 import { serverError, serverFailure } from "./Infrastructure/serverError";
 import { detachTerminal, type ITerminal, openTerminal, restoreTerminal } from "./Terminal";
@@ -165,8 +160,6 @@ export interface IReplica extends IEntity {
   Shell: IShell;
   OpenThreads: Record<string, IOpenThread>;
   Config: IWireServerConfig | null;
-  Archived: IWireArchivedShell | null;
-  Usage: { Key: string; Summary: IWireUsageSummary } | null;
 }
 
 export interface ISelection extends IEntity {
@@ -190,9 +183,6 @@ export interface ICommandOutputRow extends IEntity {
   ThreadId: string;
   ItemId: string;
 }
-
-const unwrappedCode = (owner: IThreadSession) =>
-  transient(owner, "Timeline/Unwrapped", { Blocks: {} as Record<string, true> });
 
 export interface IDetailsPanel {
   /** Shown as a popover under its toggle while the card doesn't fit. */
@@ -231,6 +221,8 @@ export interface IThreadSession extends IEntity {
   Details: IThreadDetails | null;
   ExpandedRows: Record<string, true>;
   CommandOutputs: Record<string, ICommandOutputRow>;
+  /** Code blocks the person turned wrapping off for, by block key. */
+  UnwrappedCode: Record<string, true>;
 }
 
 export function getDefaultThreadSession(
@@ -256,6 +248,7 @@ export function getDefaultThreadSession(
     },
     ExpandedRows: {},
     CommandOutputs: {},
+    UnwrappedCode: {},
     Details: null,
   };
 }
@@ -418,18 +411,28 @@ function* interactionMode(draft: IThreadSession): ISelectorGenerator<IWireIntera
   return replica?.OpenThreads[draft.ThreadId]?.Thread?.interactionMode ?? "default";
 }
 
+export function threadProjectId(
+  replica: Pick<IReplica, "OpenThreads" | "Shell"> | undefined,
+  threadId: string,
+  newThreadProjectId: string | null | undefined,
+): string | null {
+  return (
+    newThreadProjectId ??
+    replica?.OpenThreads[threadId]?.Thread?.projectId ??
+    replica?.Shell.Threads[threadId]?.projectId ??
+    null
+  );
+}
+
 export function* projectId(draft: IThreadSession): ISelectorGenerator<string | null> {
   if (draft.NewThreadProjectId !== null) return draft.NewThreadProjectId;
-  const replica = yield* getData(draft, "Replica");
-  return replica?.OpenThreads[draft.ThreadId]?.Thread?.projectId ?? null;
+  return threadProjectId(yield* getData(draft, "Replica"), draft.ThreadId, null);
 }
 
 export function* projectName(draft: IThreadSession): ISelectorGenerator<string | null> {
-  const replica = yield* getData(draft, "Replica");
-  const projectId =
-    draft.NewThreadProjectId ?? replica?.OpenThreads[draft.ThreadId]?.Thread?.projectId;
-  if (projectId == null) return null;
-  return replica?.Shell.Projects[projectId]?.title ?? null;
+  const id = yield* projectId(draft);
+  if (id === null) return null;
+  return (yield* getData(draft, "Replica"))?.Shell.Projects[id]?.title ?? null;
 }
 
 export function* stopRequested(draft: IThreadSession): ISelectorGenerator<boolean> {
@@ -1381,9 +1384,8 @@ export function* reattachThread(draft: IThreadSession): IActionGenerator {
 
 /** Code blocks wrap their lines until the person turns it off. */
 export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActionGenerator {
-  const unwrapped = yield* unwrappedCode(draft);
-  if (unwrapped.Blocks[blockKey]) delete unwrapped.Blocks[blockKey];
-  else unwrapped.Blocks[blockKey] = true;
+  if (draft.UnwrappedCode[blockKey]) delete draft.UnwrappedCode[blockKey];
+  else draft.UnwrappedCode[blockKey] = true;
 }
 
 export function* openDiff(
@@ -1540,10 +1542,6 @@ export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean>
   return panel !== null && (yield* inFlight(loadDiff, panel));
 }
 
-export function* unwrappedCodeBlocks(draft: IThreadSession) {
-  return (yield* unwrappedCode(draft)).Blocks;
-}
-
 export default createEntityFeature<IThreadSession>(import.meta.url)(
   {
     setDraft,
@@ -1599,7 +1597,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     rewindConfirm,
     mergeBackRunId,
     diffLoading,
-    unwrappedCodeBlocks,
     checkout,
     panels,
   },

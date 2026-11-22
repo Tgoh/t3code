@@ -325,14 +325,15 @@ export default defineConfig({
     },
     overrides: [
       {
-        // The treflex client's treflex-eslint, vendored and installed in its own folder. Only these
-        // three rules: the plugin's others need type information, which oxlint can't give them.
+        // The treflex client's treflex-eslint, vendored and installed in its own folder. Only its
+        // type-free rules: the others need type information, which oxlint can't give them.
         files: ["apps/treflex-web/**"],
         jsPlugins: ["./apps/treflex-web/node_modules/treflex-eslint/dist/index.js"],
         rules: {
           "treflex/named": "error",
           "treflex/no-yield-in-finally": "error",
           "treflex/no-global-open": "error",
+          "treflex/no-main-state-in-lifecycle": "error",
         },
       },
       {

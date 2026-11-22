@@ -1,3 +1,5 @@
+import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import {
   findProjectByPath,
   inferProjectTitleFromPath,
@@ -24,6 +26,7 @@ import {
   start,
   startTimer,
   stopTimer,
+  workTag,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -49,6 +52,7 @@ import {
   storeDraftFilesEffect,
 } from "./Infrastructure/draftMemory";
 import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
+import { addProjectSettingsOf, type IAddProjectSettings } from "./addProjectPaths";
 import { editorChoices, type IEditors } from "./editors";
 import { getDefaultGitWork, type IGitWork } from "./GitWork";
 import {
@@ -83,11 +87,8 @@ import {
 } from "./OpenThread";
 import {
   applyConfigEvent,
-  archivedThreadCommand,
   autoRefreshLimits,
-  loadUsage,
   openView,
-  refreshUsage,
   showView,
   toggleModelFavorite,
   updateServerSettings,
@@ -95,22 +96,22 @@ import {
 } from "./Settings";
 import { compactionDismissalKey, dismissedIn } from "./compaction";
 import {
-  cancelDictation,
-  dictation,
   dropDictation,
+  getDefaultDictation,
+  type IDictation,
   openDictation,
   refuseTranscript,
-  sendAfterDictation,
   setVoiceDestination,
   startDictation,
-  stopDictation,
 } from "./Dictation";
+import type { IWireProject } from "./Infrastructure/wire";
 import { minute } from "./Infrastructure/clock";
 import { serverError } from "./Infrastructure/serverError";
 import { lookUpLineageTitles } from "./lineageTitles";
 import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, openShellStream, visitShown } from "./Shell";
 import {
+  applyTranscript,
   checkRewind,
   detachThread,
   followCheckout,
@@ -123,12 +124,12 @@ import {
   reattachThread,
   restoreDraft,
   settleQuestions,
+  threadProjectId,
 } from "./ThreadSession";
 
 declare module "treflex" {
   interface IResourceRegistry {
     "Project/Clones": { Type: "projectClones" };
-    "Server/Keybindings": { Type: "serverKeybindings" };
     "Server/Config": { Type: "serverConfigStream" };
   }
   interface ITimerRegistry {
@@ -153,6 +154,7 @@ export interface IEnvironment extends IEntity {
     ViewportDebug: boolean;
     /** The editor this device last opened with, as stock stores it. */
     Editor: string | null;
+    Dictation: IDictation;
   };
 }
 
@@ -168,9 +170,8 @@ export function* newEnvironment(
     Shell: shell,
     OpenThreads: {},
     Config: null,
-    Archived: null,
-    Usage: null,
   });
+  const dictation = yield* entity<IDictation>(getDefaultDictation());
   const local = yield* entity<IEnvironment["Local"]>({
     SelectedThreadId: null,
     ThreadSessions: {},
@@ -182,6 +183,7 @@ export function* newEnvironment(
     Activity: { Visible: false, Focused: false, RecentlyInteracted: false },
     ViewportDebug: false,
     Editor: yield* storedEditorEffect(),
+    Dictation: dictation,
   });
   return yield* entity<IEnvironment>({
     EnvironmentId: environmentId,
@@ -229,12 +231,8 @@ export function* init(draft: IEnvironment): IActionGenerator {
     Type: "projectFavicons",
     EnvironmentId: draft.EnvironmentId,
   });
-  yield* openResource(draft, "Server/Keybindings", {
-    Type: "serverKeybindings",
-    EnvironmentId: draft.EnvironmentId,
-  });
   yield* openConfigStream(draft);
-  yield* openDictation(draft);
+  yield* openDictation(draft.Local.Dictation);
   // A restored address isn't an open, and its thread's row hasn't arrived yet: the shell
   // receiver visits a due completion once the row lands and no page covers it.
   const selected = yield* addressThread();
@@ -350,7 +348,7 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
 function* forgetSession(draft: IEnvironment, threadId: string): IActionGenerator {
   yield* storeDraftEffect({ ThreadId: threadId, Draft: null });
   yield* storeDraftFilesEffect({ ThreadId: threadId, Files: [] });
-  yield* dropDictation(draft, threadId);
+  yield* dropDictation(draft.Local.Dictation, threadId);
   delete draft.Local.ThreadSessions[threadId];
   yield* rememberTerminalEffect({ ThreadId: threadId, Launch: null });
   if (draft.Local.SelectedThreadId === threadId) {
@@ -608,6 +606,8 @@ export function* newProject(
   return created;
 }
 leading(newProject);
+export const AddingProject = workTag("Environment/AddingProject");
+AddingProject.mark(addFolder, cloneProject, newProject);
 
 export function* cloneControl(
   draft: IEnvironment,
@@ -651,10 +651,27 @@ export function* panelShortcuts(draft: IEnvironment): ISelectorGenerator<IPanelS
 export function* currentProjectId(draft: IEnvironment): ISelectorGenerator<string | null> {
   const id = draft.Local.SelectedThreadId;
   if (id === null) return null;
-  return (
-    draft.Local.ThreadSessions[id]?.NewThreadProjectId ??
-    draft.Replica.Shell.Threads[id]?.projectId ??
-    null
+  return threadProjectId(draft.Replica, id, draft.Local.ThreadSessions[id]?.NewThreadProjectId);
+}
+
+/** The user's keybindings, merged with the defaults by the server. */
+export function* keybindings(draft: IEnvironment): ISelectorGenerator<ResolvedKeybindingsConfig> {
+  const held = draft.Replica.Config?.keybindings as unknown as
+    | ResolvedKeybindingsConfig
+    | undefined;
+  return held ?? DEFAULT_RESOLVED_KEYBINDINGS;
+}
+
+export function* addProjectSettings(
+  draft: IEnvironment,
+): ISelectorGenerator<IAddProjectSettings | null> {
+  const config = draft.Replica.Config;
+  return config === null ? null : addProjectSettingsOf(config);
+}
+
+export function* activeProjects(draft: IEnvironment): ISelectorGenerator<IWireProject[]> {
+  return Object.values(draft.Replica.Shell.Projects).filter(
+    (project) => project.archivedAt == null,
   );
 }
 
@@ -718,7 +735,12 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
     if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);
   },
   *"Dictation/TranscriptRefused"(draft, { ThreadId }) {
-    yield* refuseTranscript(draft, ThreadId);
+    yield* start(refuseTranscript, draft.Local.Dictation, ThreadId);
+  },
+  *"Dictation/Commit"(draft, { ThreadId, Before, Text, Mode }) {
+    const session = draft.Local.ThreadSessions[ThreadId];
+    if (session === undefined) yield* start(refuseTranscript, draft.Local.Dictation, ThreadId);
+    else yield* start(applyTranscript, session, Before, Text, Mode);
   },
   *"Thread/Started"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) return;
@@ -748,9 +770,6 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     openView,
     writeSetting,
     updateServerSettings,
-    archivedThreadCommand,
-    loadUsage,
-    refreshUsage,
     autoRefreshLimits,
     setPreferences,
     setProjectHidden,
@@ -761,13 +780,9 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     showMoreSettled,
     setAppearanceMode,
     startDictation,
-    stopDictation,
-    cancelDictation,
-    sendAfterDictation,
     setVoiceDestination,
   },
   {
-    dictation,
     sidebarLayout,
     minute,
     colorScheme,
@@ -776,6 +791,9 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     panelShortcuts,
     currentProjectId,
     currentProjectRoot,
+    activeProjects,
+    keybindings,
+    addProjectSettings,
     editors,
   },
 );

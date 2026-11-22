@@ -1,5 +1,5 @@
 import type { VcsStatusResult } from "@t3tools/contracts";
-import { type IOpenGenerator, latest, leading, open, openResource } from "treflex";
+import { type IOpenGenerator, latest, leading, open, openResource, workTag } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
 import type { IThreadPart } from "./checkout";
@@ -150,6 +150,9 @@ export function* createBranch(draft: IThreadDetails, name: string): IOpenGenerat
   yield* switchTo(draft, trimmed, true);
 }
 leading(createBranch);
+
+export const SwitchingBranch = workTag("Details/SwitchingBranch");
+SwitchingBranch.mark(selectBranch, createBranch);
 
 export default createEntityFeature<IThreadDetails>(import.meta.url)(
   { refreshStatus, loadBranches, selectBranch, createBranch },

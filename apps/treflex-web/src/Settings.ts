@@ -1,20 +1,15 @@
-import { type IActionGenerator, type IOpenGenerator, latest, open, start } from "treflex";
+import { type IActionGenerator, type IOpenGenerator, open, start } from "treflex";
 
 import type { IEnvironment } from "./Environment";
-import { threadCommand } from "./Environment";
 import { type IAddressView, setAddressView } from "./Infrastructure/address";
 import {
-  archivedShellEffect,
   type IWireClientSettings,
   type IWireInstanceMutation,
   type IWireSettingsPatch,
-  type IWireUsageInput,
   refreshProvidersEffect,
-  refreshUsageRatesEffect,
   storeClientSettingsEffect,
   storedClientSettingsEffect,
   updateServerSettingsEffect,
-  usageSummaryEffect,
 } from "./Infrastructure/settings";
 import type { IWireServerConfigEvent } from "./Infrastructure/serverConfigStream";
 import { modelFavoritesOf, providerOptions } from "./modelOptions";
@@ -23,6 +18,7 @@ import { reconcile } from "./rows";
 import { visitShown } from "./Shell";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
 import { closeDetailsPopover, followCheckout } from "./ThreadSession";
+import { loadModels } from "./VoiceModels";
 
 export function* openView(draft: IEnvironment, view: IAddressView | null): IActionGenerator {
   const covered = draft.Local.View !== null;
@@ -42,7 +38,12 @@ export function* showView(draft: IEnvironment, view: IAddressView | null): IActi
   const covered = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
   if (covered !== undefined) yield* start(closeDetailsPopover, covered);
   yield* start(loadSettings, draft);
-  if (next.Kind === "settings" && next.Page === "archived") yield* start(loadArchived, draft);
+  if (
+    next.Kind === "settings" &&
+    next.Page === "voice" &&
+    draft.Local.Preferences.VoiceDestination === "server"
+  )
+    yield* start(loadModels, draft.Local.Dictation);
 }
 
 export function* loadSettings(draft: IEnvironment): IActionGenerator {
@@ -133,58 +134,7 @@ export function* writeSetting(draft: IEnvironment, write: ISettingWrite): IOpenG
   else yield* updateServerSettings(draft, write.Patch);
 }
 
-export function* loadArchived(draft: IEnvironment): IOpenGenerator {
-  const environmentId = draft.EnvironmentId;
-  draft.Replica.Archived = yield* open(archivedShellEffect({ EnvironmentId: environmentId }));
-}
-latest(loadArchived);
-
-// Follows ArchivedThreadsPanel in apps/web/src/components/settings/ArchivedThreadsPanel.tsx.
-export function* archivedThreadCommand(
-  draft: IEnvironment,
-  threadId: string,
-  kind: "unarchive" | "delete",
-): IOpenGenerator {
-  yield* threadCommand(draft, threadId, { Kind: kind });
-  yield* loadArchived(draft);
-}
-
-// Follows the provisional read in packages/client-runtime/src/state/server.ts (usage summary query).
-export function* loadUsage(
-  draft: IEnvironment,
-  key: string,
-  input: IWireUsageInput,
-): IOpenGenerator {
-  const environmentId = draft.EnvironmentId;
-  const read = (extra: Partial<IWireUsageInput>) =>
-    open(usageSummaryEffect({ EnvironmentId: environmentId, Input: { ...input, ...extra } }));
-  let summary = yield* read({ provisional: true });
-  draft.Replica.Usage = { Key: key, Summary: summary };
-  if (!summary.sources.some((source) => source.refreshing === true)) return;
-  summary = yield* read({ awaitRefresh: true });
-  draft.Replica.Usage = { Key: key, Summary: summary };
-}
-latest(loadUsage);
-
-/**
- * Limits ask the server to re-probe its providers, whose new limits arrive on the config stream;
- * anything else refreshes prices and reads the window again.
- */
-export function* refreshUsage(
-  draft: IEnvironment,
-  usage: { Key: string; Input: IWireUsageInput } | null,
-): IOpenGenerator {
-  const environmentId = draft.EnvironmentId;
-  if (usage === null) {
-    yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: false }));
-    return;
-  }
-  yield* open(refreshUsageRatesEffect({ EnvironmentId: environmentId }));
-  yield* loadUsage(draft, usage.Key, usage.Input);
-}
-
-// Follows the automatic refresh in apps/web/src/components/usage/UsagePage.tsx, which runs when
-// the limits show and skips an environment refreshed in the last five minutes.
+/** The header's limits popover asks the server to re-probe, as the Usage page's limits tab does. */
 export function* autoRefreshLimits(draft: IEnvironment): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
   yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: true }));

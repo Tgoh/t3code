@@ -1106,8 +1106,8 @@ importers:
         specifier: 4.3.3
         version: 4.3.3
       treflex-eslint:
-        specifier: file:vendor/treflex-eslint-0.2.0.tgz
-        version: file:apps/treflex-web/vendor/treflex-eslint-0.2.0.tgz(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
+        specifier: file:vendor/treflex-eslint-0.2.1.tgz
+        version: file:apps/treflex-web/vendor/treflex-eslint-0.2.1.tgz(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
       vite-plugin-solid:
         specifier: ^2.11.7
         version: 2.11.17(@types/node@24.12.4)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@24.12.4)(@volar/typescript@2.4.28(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(@volar/typescript@2.4.28(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(solid-js@1.9.20)(supports-color@8.1.1)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)
@@ -12807,13 +12807,13 @@ packages:
     resolution: {integrity: sha512-6+cemagaGsOC8X3XWPCn7Ek+jjwyH2/NdTyBcEH7FtFjC3Ciyih2Xx6/GSRirZolxmxENtbvfwu1WV5RzutgCw==}
     engines: {node: '>=22'}
 
-  treflex-eslint@file:apps/treflex-web/vendor/treflex-eslint-0.2.0.tgz:
-    resolution: {integrity: sha512-sOGnPn1E5yMXgOr5wZK/q2VIElP1zTICMAfDLbTtWH0bpHuyy9OP3UyLfnf0YgM3huyH9WCFUGVIlAm3JiMBqQ==, tarball: file:apps/treflex-web/vendor/treflex-eslint-0.2.0.tgz}
-    version: 0.2.0
+  treflex-eslint@file:apps/treflex-web/vendor/treflex-eslint-0.2.1.tgz:
+    resolution: {integrity: sha512-hP3+2xyY/fls4yotA5AfgWTmQ2q0fx16bv0h+v3ZFPtOL6dTRBVqTO0uDjNGJzSO477PRydgEsk8LORkNBxt/A==, tarball: file:apps/treflex-web/vendor/treflex-eslint-0.2.1.tgz}
+    version: 0.2.1
     engines: {node: '>=22'}
     hasBin: true
     peerDependencies:
-      eslint: '>=9'
+      eslint: '>=9.1'
       typescript: '>=5.4 <6.1'
 
   treflex-solid@0.2.0:
@@ -24305,7 +24305,7 @@ snapshots:
       '@transcribe-cpp/linux-x64-cpu-vulkan': 0.4.1
       '@transcribe-cpp/win32-x64-cpu-vulkan': 0.4.1
 
-  treflex-eslint@file:apps/treflex-web/vendor/treflex-eslint-0.2.0.tgz(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3):
+  treflex-eslint@file:apps/treflex-web/vendor/treflex-eslint-0.2.1.tgz(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3):
     dependencies:
       '@typescript-eslint/utils': 8.73.0(eslint@10.15.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
       eslint: 10.15.0(jiti@2.7.0)(supports-color@8.1.1)

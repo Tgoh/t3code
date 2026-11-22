@@ -1,7 +1,7 @@
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import type { KeybindingCommand } from "@t3tools/contracts";
-import { DEFAULT_RESOLVED_KEYBINDINGS, isMacPlatform } from "@t3tools/shared/keybindings";
-import { useDispatch, useResource } from "treflex-solid";
+import { isMacPlatform } from "@t3tools/shared/keybindings";
+import { useDispatch } from "treflex-solid";
 import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 
 import { AddProjectPalette } from "./AddProject";
@@ -14,6 +14,7 @@ import {
   shouldRedirectInputToComposer,
   shouldTypeToFocusComposer,
 } from "./composerFocusRedirect";
+import Dictation from "./Dictation";
 import { DictationIndicator } from "./DictationControls";
 import Environment from "./Environment";
 import { adjacentThread, isEditable, resolveShortcutCommand, shortcutLabel } from "./keybindings";
@@ -90,8 +91,7 @@ const EnvironmentView = Environment.provider(() => {
       onChange: (collapsed) => void environment.setPreferences({ SidebarCollapsed: collapsed }),
     },
   );
-  const keybindingsResource = useResource(environment.state, "Server/Keybindings");
-  const keybindings = () => keybindingsResource.value() ?? DEFAULT_RESOLVED_KEYBINDINGS;
+  const keybindings = () => environment.keybindings();
   const platform = navigator.platform;
   const dispatch = useDispatch();
   const [palette, setPalette] = createSignal<IPaletteView | null>(null);
@@ -110,10 +110,7 @@ const EnvironmentView = Environment.provider(() => {
     void environment.selectThread(threadId, searchQuery);
     focusComposer();
   };
-  const projectIds = () =>
-    Object.values(environment.state.Replica.Shell.Projects)
-      .filter((project) => project.archivedAt == null)
-      .map((project) => project.id);
+  const projectIds = () => environment.activeProjects().map((project) => project.id);
   const newThreadHere = () => {
     const projectId = environment.currentProjectId() ?? projectIds()[0] ?? null;
     if (projectId === null) return setPalette("new-thread-in");
@@ -303,7 +300,7 @@ const EnvironmentView = Environment.provider(() => {
             <Presence when={sidebar.open()}>
               {() => <SheetBackdrop onClose={() => sidebar.setOpen(false)} />}
             </Presence>
-            <EnvironmentMain />
+            <EnvironmentMain state={environment.state.Local.Dictation} />
             <Presence when={palette() === "add-project"}>
               {() => <AddProjectPalette onClose={() => setPalette(null)} />}
             </Presence>
@@ -331,7 +328,7 @@ function SheetBackdrop(props: { onClose: () => void }) {
   );
 }
 
-function EnvironmentMain() {
+const EnvironmentMain = Dictation.provider(() => {
   const environment = Environment.use();
   const sidebar = useSidebarSheet();
   return (
@@ -371,7 +368,7 @@ function EnvironmentMain() {
       <DictationIndicator />
     </main>
   );
-}
+});
 
 export const App = Root.provider(() => {
   const root = Root.use();

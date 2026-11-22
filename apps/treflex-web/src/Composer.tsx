@@ -26,7 +26,7 @@ import {
 import { formatContextTokens } from "./compaction";
 import { CompactToggle, ModelPicker, PermissionsChip } from "./ComposerMenus";
 import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
-import { dictationBusy } from "./Dictation";
+import Dictation, { dictationBusy } from "./Dictation";
 import { DictationPill, DictationPreview, MicButton, useVoiceOffered } from "./DictationControls";
 import Environment from "./Environment";
 import {
@@ -395,7 +395,8 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const overlays = useOverlays();
   const navigation = useNavigation();
   const voiceOffered = useVoiceOffered();
-  const voice = () => environment.dictation();
+  const dictation = Dictation.use();
+  const voice = () => dictation.recording();
   const ownsVoice = () => voice().ThreadId === held().ThreadId && voice().Phase !== "idle";
   const dictating = () => ownsVoice() && dictationBusy(voice().Phase);
   const voiceElsewhere = () => !ownsVoice() && dictationBusy(voice().Phase);
@@ -450,7 +451,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     });
     if (dictating()) {
       props.onSend?.();
-      void environment.sendAfterDictation(held().ThreadId, mode);
+      void dictation.sendAfterDictation(held().ThreadId, mode);
       return;
     }
     if (canSend()) props.onSend?.();
@@ -472,14 +473,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     () => {
       if (answering() || !voiceOffered()) return;
       if (dictating()) {
-        if (voice().Phase === "recording") void environment.stopDictation();
+        if (voice().Phase === "recording") void dictation.stopDictation();
       } else if (!voiceElsewhere()) startDictation();
     },
     (event) => {
       if (event.key !== "Escape" || !dictating() || event.defaultPrevented) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      void environment.cancelDictation();
+      void dictation.cancelDictation();
     },
   );
 

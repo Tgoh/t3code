@@ -6,7 +6,7 @@ import type { IApprovalDecision } from "./Infrastructure/commandEffects";
 import { Markdown } from "./Markdown";
 import OpenThread from "./OpenThread";
 import { type IAnswering, type IQuestion, questionProgress } from "./questions";
-import RuntimeRequest, { answerRequest, canAnswer, dismissRequest } from "./RuntimeRequest";
+import RuntimeRequest, { canAnswer, Responding } from "./RuntimeRequest";
 import ThreadSession from "./ThreadSession";
 import { RowIcon, workLine } from "./TimelineRows";
 import { viewOf } from "./turnItemView";
@@ -14,7 +14,6 @@ import { BANNER, BANNER_BODY, BANNER_FRAME, BANNER_TITLE, ERROR_TEXT } from "./u
 
 const APPROVAL_STATE = "inline-flex items-center gap-1 text-warning-foreground [&>svg]:size-3.5";
 
-const RESPONSES = [answerRequest, dismissRequest];
 const QUESTION_MARK = "flex h-5 flex-none items-center justify-center";
 const OPTION_MARK =
   "inline-flex size-4 items-center justify-center border border-[color-mix(in_srgb,var(--foreground)_55%,transparent)] bg-background data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground";
@@ -23,7 +22,7 @@ const QUESTION_NOTE = "mx-0 mt-1.5 mb-0 text-[12px]";
 export const PendingApproval = RuntimeRequest.provider(() => {
   const thread = OpenThread.use();
   const request = RuntimeRequest.use();
-  const responding = useInFlight(RESPONSES, () => request.state);
+  const responding = useInFlight(Responding, () => request.state);
   const item = createMemo(() => {
     const held = thread.requestItems()[request.state.id];
     return held?.type === "approval_request" ? held : null;
@@ -121,7 +120,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
   const thread = OpenThread.use();
   const session = ThreadSession.use();
   const request = RuntimeRequest.use();
-  const responding = useInFlight(RESPONSES, () => request.state);
+  const responding = useInFlight(Responding, () => request.state);
   const requestId = request.state.id;
   const item = createMemo(() => {
     const held = thread.requestItems()[requestId];

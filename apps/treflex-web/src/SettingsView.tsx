@@ -3,6 +3,7 @@ import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { createMemo, createSignal, For, type JSX, Match, onCleanup, Show, Switch } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
+import ArchivedThreads, { getDefaultArchivedThreads, useArchivedThreads } from "./ArchivedThreads";
 import { ProjectBadge, ProviderIcon } from "./brand";
 import type { IAppearanceMode } from "./colorScheme";
 import Environment from "./Environment";
@@ -1023,10 +1024,12 @@ function KeybindingsPage() {
 type IArchivedThread = IWireArchivedShell["threads"][number];
 
 // Follows ArchivedThreadsPanel.tsx.
-function ArchivedPage() {
+const ArchivedPage = ArchivedThreads.provider(() => {
   const environment = Environment.use();
+  const page = useArchivedThreads(environment.state.EnvironmentId, environment.threadCommand);
+  const command = page.command;
   const groups = createMemo(() => {
-    const archived = environment.state.Replica.Archived;
+    const archived = page.state.Archived;
     if (archived === null) return null;
     const byProject = new Map<string, IArchivedThread[]>();
     for (const thread of archived.threads) {
@@ -1088,9 +1091,7 @@ function ArchivedPage() {
                             variant="outline"
                             aria-label="Unarchive"
                             data-tip="Unarchive"
-                            onClick={() =>
-                              void environment.archivedThreadCommand(thread.id, "unarchive")
-                            }
+                            onClick={() => command(thread.id, "unarchive")}
                           >
                             <Icons.ArchiveX />
                           </IconButton>
@@ -1131,7 +1132,7 @@ function ArchivedPage() {
                       variant="destructive"
                       onClick={() => {
                         setDeleting(null);
-                        void environment.archivedThreadCommand(thread.id, "delete");
+                        command(thread.id, "delete");
                       }}
                     >
                       Delete
@@ -1145,7 +1146,7 @@ function ArchivedPage() {
       )}
     </Show>
   );
-}
+}, getDefaultArchivedThreads);
 
 function AboutPage() {
   const environment = Environment.use();

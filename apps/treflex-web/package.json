@@ -32,7 +32,7 @@
     "@types/node": "catalog:",
     "playwright-core": "1.64.1",
     "tailwindcss": "catalog:",
-    "treflex-eslint": "file:vendor/treflex-eslint-0.2.0.tgz",
+    "treflex-eslint": "file:vendor/treflex-eslint-0.2.1.tgz",
     "vite-plugin-solid": "^2.11.7",
     "vite-plus": "catalog:"
   }

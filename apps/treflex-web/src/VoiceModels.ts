@@ -1,6 +1,5 @@
 import {
   type IActionGenerator,
-  type IEntity,
   inFlight,
   type IOpenGenerator,
   latest,
@@ -10,8 +9,8 @@ import {
   startTimer,
   stopTimer,
 } from "treflex";
-import { createComponentFeature } from "treflex-solid";
 
+import type { IDictation } from "./Dictation";
 import {
   type IVoiceModel,
   voiceModelCommandEffect,
@@ -28,40 +27,26 @@ declare module "treflex" {
 // Follows the progress poll in apps/web/src/components/settings/VoiceSettingsPanel.tsx.
 export const POLL_MS = 1_000;
 
-/** Voice settings' model list, for this client's one environment. */
-export interface IVoiceModels extends IEntity {
-  Models: IVoiceModel[] | null;
-  Picked: string | null;
-  Error: string | null;
-}
-
-export function getDefaultVoiceModels(): Omit<IVoiceModels, "$Id"> {
-  return { Models: null, Picked: null, Error: null };
-}
-
 const busy = (model: IVoiceModel) => model.state === "downloading" || model.state === "verifying";
 
-function* follow(draft: IVoiceModels, models: IVoiceModel[]): IActionGenerator {
+export function* follow(draft: IDictation, models: IVoiceModel[]): IActionGenerator {
   draft.Models = models;
   if (models.some(busy)) yield* startTimer(draft, "Voice/Poll", VoiceModelsReceiver, POLL_MS);
 }
 
-export function* loadModels(draft: IVoiceModels): IOpenGenerator {
+export function* loadModels(draft: IDictation): IOpenGenerator {
   try {
     yield* follow(draft, yield* open(voiceModelsEffect()));
+    draft.ModelsError = null;
   } catch (error) {
-    draft.Error = serverError(error).message;
+    draft.ModelsError = serverError(error).message;
   }
 }
 latest(loadModels);
 
-export function* pickModel(draft: IVoiceModels, modelId: string): IActionGenerator {
-  draft.Picked = modelId;
-}
-
 /** A model just downloaded is put in use unless it already is, as stock's setup does. */
-export function* downloadModel(draft: IVoiceModels, modelId: string): IOpenGenerator {
-  draft.Error = null;
+export function* downloadModel(draft: IDictation, modelId: string): IOpenGenerator {
+  draft.ModelsError = null;
   yield* startTimer(draft, "Voice/Poll", VoiceModelsReceiver, POLL_MS);
   try {
     let result = yield* open(voiceModelCommandEffect({ Command: "download", ModelId: modelId }));
@@ -72,42 +57,37 @@ export function* downloadModel(draft: IVoiceModels, modelId: string): IOpenGener
     }
     yield* follow(draft, result.Models);
   } catch (error) {
-    draft.Error = serverError(error).message;
+    draft.ModelsError = serverError(error).message;
   }
 }
 leading(downloadModel);
 
-export function* selectModel(draft: IVoiceModels, modelId: string): IOpenGenerator {
+export function* selectModel(draft: IDictation, modelId: string): IOpenGenerator {
   yield* command(draft, "select", modelId);
 }
 leading(selectModel);
 
-export function* cancelDownload(draft: IVoiceModels, modelId: string): IOpenGenerator {
+export function* cancelDownload(draft: IDictation, modelId: string): IOpenGenerator {
   yield* command(draft, "cancel", modelId);
 }
 leading(cancelDownload);
 
-function* command(draft: IVoiceModels, kind: "select" | "cancel", modelId: string): IOpenGenerator {
-  draft.Error = null;
+function* command(draft: IDictation, kind: "select" | "cancel", modelId: string): IOpenGenerator {
+  draft.ModelsError = null;
   try {
     yield* follow(
       draft,
       (yield* open(voiceModelCommandEffect({ Command: kind, ModelId: modelId }))).Models,
     );
   } catch (error) {
-    draft.Error = serverError(error).message;
+    draft.ModelsError = serverError(error).message;
   }
 }
 
-export const VoiceModelsReceiver = receiver<IVoiceModels>("VoiceModelsReceiver")({
+export const VoiceModelsReceiver = receiver<IDictation>("VoiceModelsReceiver")({
   *"Voice/Poll"(draft) {
     yield* loadModels(draft);
     if (draft.Models?.some(busy) === true || (yield* inFlight(downloadModel, draft))) return;
     yield* stopTimer(draft, "Voice/Poll");
   },
 });
-
-export default createComponentFeature<IVoiceModels>(import.meta.url)(
-  { loadModels, pickModel, downloadModel, selectModel, cancelDownload },
-  {},
-);

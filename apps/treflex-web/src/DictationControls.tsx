@@ -4,7 +4,7 @@ import type { SpeechStreamText } from "@t3tools/contracts";
 import { useResource } from "treflex-solid";
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 
-import { type IDictation, MISSING_MODEL, STALE_DRAFT } from "./Dictation";
+import Dictation, { type IRecording, MISSING_MODEL, STALE_DRAFT } from "./Dictation";
 import Environment from "./Environment";
 import { canCaptureVoice } from "./Infrastructure/dictation";
 import { Check, CircleAlert, LoaderCircle, Mic, X } from "./icons";
@@ -78,8 +78,8 @@ export function MicButton(props: {
 }
 
 function useLive() {
-  const environment = Environment.use();
-  return useResource(() => environment.state, "Voice/Dictation");
+  const voice = Dictation.use();
+  return useResource(() => voice.state, "Voice/Dictation");
 }
 
 const BARS = Array.from({ length: 24 }, (_, index) => index);
@@ -138,10 +138,11 @@ function Elapsed(props: { startedAt: number | null }) {
 }
 
 // Follows ComposerSpeechRecordingPill and VoiceInputErrorPill in apps/web/src/components/chat.
-export function DictationPill(props: { dictation: IDictation; onRetry: () => void }) {
+export function DictationPill(props: { dictation: IRecording; onRetry: () => void }) {
   const environment = Environment.use();
+  const voice = Dictation.use();
   const phase = () => props.dictation.Phase;
-  const cancel = () => void environment.cancelDictation();
+  const cancel = () => void voice.cancelDictation();
   return (
     <Show
       when={phase() !== "error"}
@@ -241,7 +242,7 @@ export function DictationPill(props: { dictation: IDictation; onRetry: () => voi
             data-tip="Finish voice input"
             onPointerDown={keepFocus}
             onMouseDown={keepFocus}
-            onClick={() => void environment.stopDictation()}
+            onClick={() => void voice.stopDictation()}
           >
             <Check />
           </button>
@@ -281,7 +282,8 @@ export function DictationPreview() {
 /** Shows a recording whose thread isn't on screen, so it can be finished or returned to. */
 export function DictationIndicator() {
   const environment = Environment.use();
-  const held = () => environment.dictation();
+  const voice = Dictation.use();
+  const held = () => voice.recording();
   const threadId = () => held().ThreadId;
   const offScreen = () =>
     threadId() !== null &&

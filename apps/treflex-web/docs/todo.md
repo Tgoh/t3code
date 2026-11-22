@@ -6,15 +6,7 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 From an audit of how the port uses treflex 0.1.0. Most of the code already follows the treflex docs. What doesn't is two entities that each do several jobs, and parent views that work out data and pass it down. It runs as three threads, grouped so they touch different files; each item says which.
 
-- **Split `Environment`.** **In progress:** `treflex/restructure-environment`, with the next two items. Give dictation its own entity under `Local` that owns the `Voice/Dictation` resource and receiver. Move the voice model list (`VoiceModels.ts`, a settings-page component feature today) onto it: dictation's missing-model check and the settings page both care which models are installed, so keep one list. Load it when server dictation is in use, and keep it fresh with the existing receiver and poll, so a download's progress survives leaving the page. Make the archived and usage settings pages component features (`createComponentFeature`) whose data lives only while the page is open. That removes `Replica.Archived`, `Replica.Usage`, four `REPLICA_WRITERS` entries, and the two different ways the loads are triggered (`openView` and `onMount`), including `UsageView.tsx`'s `loadUsage` and `autoRefreshLimits` on mount. Also: make the non-archived projects list one selector (four views rebuild it now), and give `Environment.currentProjectId` and `ThreadSession.projectId` one source (one reads `Shell.Threads`, the other `OpenThreads`). `Dictation.recordingOptions` resolves the project a third way, and should use it too.
-- **Drop the duplicate keybindings stream.** **In progress:** `treflex/restructure-environment`. `Server/Keybindings` (`Infrastructure/serverKeybindings.ts`) opens a second subscription for keybindings that `Server/Config` already writes to `Replica.Config.keybindings`. Delete the resource and have `App.tsx` read the config.
-- **Add project's settings come from the config.** **In progress:** `treflex/restructure-environment`. `addProjectSettingsImpl` fetches the server config again to read four values that `Replica.Config` already holds (`addProjectBaseDirectory`, `ghqCloneLayout`, `newProjectsRoot`, the platform). Make them a selector over the config and delete the effect, as was done for editors. Add project's folder browsing stays in its component state.
-- **Thinner sidebar rows.** **In progress:** `treflex/restructure-small`, with the smaller items. `Sidebar.tsx`'s `card()` passes `ThreadCard` 14 props, most of them worked out per row. Let the card read from its thread, as timeline rows do, and keep only cross-row values in the parent, such as `mixedProviders` and the search highlight.
-- **Smaller items.** **In progress:** `treflex/restructure-small`.
-  - Share one receiver registration between `index.tsx` and `Model.test.ts`. The test copy already lacks `GitReceiver` and `VoiceModelsReceiver`.
-  - Turn the remaining transients on Local entities into plain fields.
-  - Use work tags instead of the five `useInFlight([...])` action lists.
-  - Give features hand-picked ids instead of `import.meta.url`. Last, after the session and environment threads have merged, since it touches every feature file.
+- **Hand-picked feature ids.** **In progress:** `treflex/restructure-small`. Give features hand-picked ids instead of `import.meta.url`. Last, after the session and environment threads have merged, since it touches every feature file.
 
 ## 2. Style parity
 
@@ -70,9 +62,8 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 ## Waiting on treflex
 
 - **Checks that keep agents off React habits.** treflex's verdicts are in `docs/wip/13-external/views-start-work-from-their-lifecycle.md` in the reflex repo. When each one ships, turn it on here and fix what it finds.
-  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo. There will be no npm release: when the build is done, treflex's Main thread sends the branch (`claude/eslint-0.2.1`, `treflex-eslint` 0.2.1, which works with core 0.2.0) and a pack command, and the client vendors the tarball in place of `vendor/treflex-eslint-0.2.0.tgz`. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the client's override in the root `vite.config.ts`, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`; a bare disable comment doesn't suppress it. Its action has to be `leading` and check state before it writes.
-  2. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
-  3. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
+  1. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
+  2. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
 
   Screen-caused work, such as loading the next page when a list's end scrolls into view, gets a named opt-in at the call site instead of being banned.
 
@@ -90,7 +81,7 @@ Any time; none of it touches the client.
 
 - **Make `vp run check:changed` pass for this app.** Every thread reports the same two failures, which hide real ones.
   - Its test step runs this app's tests in the root vitest project, which lacks the app's `solid` and `browser` resolve conditions, so about 140 tests fail there that pass from `apps/treflex-web`. Give the app its own vitest project in the root config, or exclude it from the root run and have `check:changed` run it from its folder.
-  - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.2.0.tgz`.
+  - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.2.1.tgz`.
 
   Both mean editing upstream's root config, so keep the change small. See "Setup: `vp run check:changed` fails this app's tests" in `issues.md`.
 

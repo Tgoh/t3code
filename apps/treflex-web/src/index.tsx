@@ -6,9 +6,6 @@ import "@fontsource-variable/inter";
 import "./index.css";
 
 import { App } from "./App";
-import { DictationReceiver } from "./Dictation";
-import { VoiceModelsReceiver } from "./VoiceModels";
-import { EnvironmentReceiver } from "./Environment";
 import { openExternalLinksInSafari } from "./externalLinks";
 import {
   addressThreadImpl,
@@ -28,7 +25,6 @@ import {
 import { provideMinute } from "./Infrastructure/clock";
 import { commandOutput } from "./Infrastructure/commandOutput";
 import {
-  addProjectSettingsImpl,
   assetUrlImpl,
   browseFoldersImpl,
   cloneControlImpl,
@@ -75,7 +71,6 @@ import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
 import { projectFavicons } from "./Infrastructure/projectFavicons";
 import { serverConfigStream } from "./Infrastructure/serverConfigStream";
-import { serverKeybindings } from "./Infrastructure/serverKeybindings";
 import { shellStream } from "./Infrastructure/shellStream";
 import { rememberedTerminalImpl, rememberTerminalImpl } from "./Infrastructure/terminalMemory";
 import { sourceControlImplementations } from "./Infrastructure/sourceControlImpl";
@@ -85,7 +80,6 @@ import { threadHistoryPageImpl } from "./Infrastructure/threadHistory";
 import { threadStream } from "./Infrastructure/threadStream";
 import { appearance } from "./Infrastructure/appearance";
 import { deviceActivity, reportActivityImpl } from "./Infrastructure/clientActivityImpl";
-import { ActivityReceiver } from "./Activity";
 import {
   clockNowImpl,
   storedAppearanceMode,
@@ -95,13 +89,8 @@ import {
   storePreferencesImpl,
 } from "./Infrastructure/preferences";
 import { resolveScheme, SYSTEM_DARK_QUERY } from "./colorScheme";
-import { PreferencesReceiver } from "./Preferences";
-import { ThreadReceiver } from "./OpenThread";
-import { getDefaultRoot, load, RootReceiver } from "./Root";
-import { ShellReceiver } from "./Shell";
-import { GitReceiver } from "./GitWork";
-import { TerminalReceiver } from "./Terminal";
-import { RewindReceiver } from "./ThreadSession";
+import { registerReceivers } from "./receivers";
+import { getDefaultRoot, load } from "./Root";
 
 await pairFromUrl();
 
@@ -126,7 +115,6 @@ runtime.registerImplementation(mergeBackImpl);
 runtime.registerImplementation(threadTitlesImpl);
 runtime.registerImplementation(queueCommandImpl);
 runtime.registerImplementation(projectCommandImpl);
-runtime.registerImplementation(addProjectSettingsImpl);
 runtime.registerImplementation(browseFoldersImpl);
 runtime.registerImplementation(searchEntriesImpl);
 runtime.registerImplementation(searchThreadsImpl);
@@ -156,7 +144,6 @@ runtime.registerResourceType("vcsStatus", vcsStatus);
 runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);
 runtime.registerResourceType("projectFavicons", projectFavicons);
-runtime.registerResourceType("serverKeybindings", serverKeybindings);
 runtime.registerResourceType("serverConfigStream", serverConfigStream, {
   endOnReceiverFailure: true,
 });
@@ -187,17 +174,7 @@ runtime.registerResourceType("deviceActivity", deviceActivity);
 runtime.registerImplementation(reportActivityImpl);
 runtime.registerResourceType("shellStream", shellStream, { endOnReceiverFailure: true });
 runtime.registerResourceType("threadStream", threadStream, { endOnReceiverFailure: true });
-runtime.registerReceiver(RootReceiver);
-runtime.registerReceiver(EnvironmentReceiver);
-runtime.registerReceiver(ShellReceiver);
-runtime.registerReceiver(ThreadReceiver);
-runtime.registerReceiver(TerminalReceiver);
-runtime.registerReceiver(RewindReceiver);
-runtime.registerReceiver(GitReceiver);
-runtime.registerReceiver(PreferencesReceiver);
-runtime.registerReceiver(ActivityReceiver);
-runtime.registerReceiver(DictationReceiver);
-runtime.registerReceiver(VoiceModelsReceiver);
+registerReceivers(runtime);
 // The Environment applies the scheme once it connects; this paints the loading screen in it.
 document.documentElement.dataset.theme = resolveScheme(
   storedAppearanceMode(),
