@@ -36,8 +36,6 @@ Replay and one provider are verified. A real Claude Haiku turn from this client 
 
 The RPC client decodes each stream item into `DateTime`s and the app encodes it back to hold plain data in the tree. This is negligible per delta (about 0.03 ms each way) but about 80 ms on a 1,000-item snapshot. If that matters, the fix is a protocol client without the decode, which `client-runtime` doesn't offer.
 
-The tree therefore holds the encoded form, but `Wire<T>` in `Infrastructure/wire.ts` types it as the decoded one with strings for dates. They differ wherever a schema transforms more than a date: a subagent's notification source is `background_task` with `work: "subagent"` in the tree, where stock's decoded `kind` is `subagent`. `notificationSource` in `subagents.ts` decodes that one, and it's the only such field the port reads. Typing the tree from the schema's `Encoded` type doesn't work on Effect 4.1.3: it comes out as `unknown` or `Json` for the stream types. The todo has the fix: encode with `toCodecJson(toType(S))`, so the tree holds what `Wire<T>` says.
-
 ## Mismatch: a cold open takes a full socket snapshot
 
 The stock client loads the first snapshot over HTTP and falls back to the socket, and seeds it from a thread cache it persists. This client always uses the socket and persists nothing, so a reload, or opening a thread not viewed in the last five minutes, waits for a snapshot. Reconnects and returns to a retained thread resume from the cursor.
@@ -65,9 +63,11 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - Each runtime request, so an answer marks only its own request's buttons. The answer waits inside `open(...)`, so a server update or snapshot folds into the request while nothing holds it, and `leading` still drops a second press during the wait. Its typed answers stay on the `ThreadSession`, keyed by request, because the replica's fold would delete them and an expired thread drops its data. `settleQuestions` clears them once the request is no longer pending.
 - The history window, which a snapshot with another cursor or has-more, or over a window holding a fetch error, replaces, ending its fetch and its mark. Its pages reach the thread through `History/Page`, and the thread drops a page from a window it no longer holds, which a page queued behind that snapshot would be. The window holds only its cursor, has-more and error; the rows stay on `OpenThread`. Once treflex has `stop(action, owner)`, `loadEarlier` can move onto `OpenThread` and the window entity can go.
 
-## Gap: a request's turn item is indexed in the replica, not by a selector
+## Gap: a selector can't search every turn item for a request's
 
-`OpenThread.RequestItemIds` maps each runtime request to the turn item that asks it. It stands in for a keyed fold over records, which treflex lacks: a selector can't build an index incrementally, so one that found request items re-scanned every turn item on each added row, about 60 ms at 20,000 items. The receiver keeps the map instead, so every path that writes turn items has to update it too. Today those are `applyTurnItem` (stream events), `applySnapshot`, and `mergeOlderRows` (`History/Page`). The map isn't needed: stock searches turn items from the newest end, and only for pending requests, which reads only the tail. The todo has that change.
+Stock's `derivePendingThreadRequests` searches every turn item for each pending request. Here every read goes through the view proxy, so a selector that reads every held item, even through `Object.keys`, costs about 200 ms per added row at 20,000 items. `requestItems` walks `Timeline` from the newest row instead, which reads only the rows after the request's item, and nothing when no request is pending.
+
+The timeline doesn't hold every request's item. A bounded snapshot keeps a pending request's item in `turnItems` after its window drops the row (`isRetainedDependency` in `apps/server/src/orchestration-v2/threadHistoryPaging.ts`), and stock shows the request from it. A timeline walk would read every row and miss it, so `applySnapshot` records those items in `OpenThread.RowlessRequestItemIds`, which `requestItems` reads first. Only a snapshot takes a held item's row away, and every new item gets a row, so a held item is always on the timeline or in that list.
 
 ## Feedback for treflex
 
@@ -100,8 +100,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 
 - Deferred work isn't opted into (`acceptDeferredWork`), and `deferredWork` isn't preserved across updates, so a fold never loads work on opening as stock's does.
 - History pages load older rows only, with no `throughEntryId` jump.
-- History responses are held unchecked, so a turn item type this client doesn't know reaches the tree.
-- `encodeThreadItem`'s unknown-event pass-through has no test: the app has no `@effect/vitest`, and lint bars running effects by hand in tests.
+- `ServerSettings`' `automaticGitFetchInterval` and `providerHealthRefreshInterval` sit in the tree as `{_tag: "Millis", value}`, which `Wire<T>` doesn't describe. No patch reflex builds carries them; one that does must send that shape, since `decodePatch` rejects a plain number.
 - The timeline window follows its top row when that row moves, so a top row moved far down (`placeRow` on an ordinal change) would collapse the window to the tail until the sentinel grows it back. No known server path moves an old row.
 - The address uses `replaceState`, so selecting threads adds no back-button history.
 - Tool output isn't fetched: the wire omits it, the row says so, and `getTurnItem` would fill it in.

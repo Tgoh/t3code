@@ -4,7 +4,6 @@ import {
   type INotificationItem,
   type ISubagent,
   notificationEvent,
-  notificationSource,
   notifiedSubagent,
 } from "./subagents";
 
@@ -35,18 +34,10 @@ describe("a notification about a subagent", () => {
   const beta = agent("task-b", "child-b");
   const agents = { [alpha.id]: alpha, [beta.id]: beta };
 
-  it("finds its task from the wire's encoded source, as stock's decoded one", () => {
-    const encoded = notification({
-      kind: "background_task",
-      work: "subagent",
-      childThreadId: "child-b",
-    });
-    expect(notificationSource(encoded)).toEqual({ kind: "subagent", childThreadId: "child-b" });
-    expect(notifiedSubagent(agents, encoded)).toBe(beta);
+  it("finds its task from the child thread", () => {
+    const named = notification({ kind: "subagent", childThreadId: "child-b" });
+    expect(notifiedSubagent(agents, named)).toBe(beta);
     expect(notifiedSubagent(agents, notification({ kind: "background_task" }))).toBeNull();
-    expect(notificationSource(notification({ kind: "background_command" }))).toEqual({
-      kind: "command",
-    });
   });
 
   it("finds a delegated task by its task ids", () => {

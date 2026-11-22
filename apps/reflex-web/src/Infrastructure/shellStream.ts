@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema";
 import type { IResourceImplementation } from "treflex";
 
 import { followItems } from "./followItems";
-import type { IWireShellItem } from "./wire";
+import { type IWireShellItem, wireCodec } from "./wire";
 
 declare module "treflex" {
   interface IResourceTypeRegistry {
@@ -16,7 +16,7 @@ declare module "treflex" {
   }
 }
 
-const encodeItem = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2ShellStreamItem));
+const encodeItem = Schema.encodeEffect(wireCodec(OrchestrationV2ShellStreamItem));
 
 export const shellStream: IResourceImplementation<"shellStream"> = (params, r) => {
   let cursor = typeof r.resumeFrom === "number" ? r.resumeFrom : 0;

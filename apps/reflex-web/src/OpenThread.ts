@@ -99,8 +99,8 @@ export interface IOpenThread extends IEntity {
   ContextHandoffs: Record<string, IWireProjection["contextHandoffs"][number]>;
   ContextTransfers: Record<string, IWireProjection["contextTransfers"][number]>;
   TurnItems: Record<string, IWireTurnItem>;
-  /** Runtime request id to the turn item that asks it. */
-  RequestItemIds: Record<string, string>;
+  /** Items asking a request that the last snapshot sent outside its window, so without a row. */
+  RowlessRequestItemIds: string[];
   InheritedItems: Record<string, IWireTurnItem>;
   Timeline: string[];
   Rows: Record<string, ITimelineRow>;
@@ -137,7 +137,7 @@ export function getDefaultOpenThread(
     ContextHandoffs: {},
     ContextTransfers: {},
     TurnItems: {},
-    RequestItemIds: {},
+    RowlessRequestItemIds: [],
     InheritedItems: {},
     Timeline: [],
     Rows: {},
@@ -287,17 +287,12 @@ function restoreQueuedUserRows(draft: IOpenThread, runId: string): void {
   }
 }
 
-function indexRequestItem(index: Record<string, string>, item: IWireTurnItem): void {
-  if ("requestId" in item && typeof item.requestId === "string") index[item.requestId] ??= item.id;
-}
-
 function applyTurnItem(draft: IOpenThread, wire: IWireTurnItem): void {
   const held = draft.TurnItems[wire.id];
   const payload = restoreBodies(wire, draft);
   if (held === undefined && hasPartialWindow(draft) && isUnloadedHistory(draft, payload)) return;
   const heldOrdinal = held?.ordinal;
   put(draft.TurnItems, payload);
-  indexRequestItem(draft.RequestItemIds, payload);
   placeRow(draft, payload, heldOrdinal);
   const watermark = draft.LatestLocalTurnOrdinal;
   if (hasPartialWindow(draft) && (watermark === null || payload.ordinal > watermark)) {
@@ -477,9 +472,9 @@ function applySnapshot(
   reconcile(draft.ContextHandoffs, byId(projection.contextHandoffs));
   reconcile(draft.ContextTransfers, byId(projection.contextTransfers));
   reconcile(draft.TurnItems, turnItems);
-  const requestItemIds: Record<string, string> = {};
-  for (const held of Object.values(turnItems)) indexRequestItem(requestItemIds, held);
-  reconcile(draft.RequestItemIds, requestItemIds);
+  draft.RowlessRequestItemIds = Object.values(turnItems)
+    .filter((held) => "requestId" in held && rows[held.id] === undefined)
+    .map((held) => held.id);
   reconcile(draft.InheritedItems, inherited);
   reconcile(draft.Rows, rows);
   reconcile(draft.Timeline, timeline);
@@ -628,10 +623,7 @@ function mergeOlderRows(draft: IOpenThread, items: IWireHistoryPage["items"]): v
     if (hasRow) continue;
     draft.Rows[id] = shape;
     if (!local) draft.InheritedItems[id] = item;
-    else {
-      draft.TurnItems[id] ??= item;
-      indexRequestItem(draft.RequestItemIds, draft.TurnItems[id]!);
-    }
+    else draft.TurnItems[id] ??= item;
   }
   if (head.length === 0) return;
   draft.Timeline = [...head, ...draft.Timeline.filter((id) => !inPage.has(id))];
@@ -753,15 +745,22 @@ const pendingIds = (draft: IOpenThread): string[] =>
     .map((request) => request.id);
 
 /** Each pending request's turn item, by request id. */
+// Follows derivePendingThreadRequests in packages/client-runtime/src/state/threadRequests.ts, which
+// searches every turn item. Here a read of every held item costs frames at 20,000 items, and so does
+// a timeline walk that misses, so the rowless items go first.
 export function* requestItems(
   draft: IOpenThread,
 ): ISelectorGenerator<Record<string, IWireTurnItem>> {
   const items: Record<string, IWireTurnItem> = {};
-  for (const id of pendingIds(draft)) {
-    const itemId = draft.RequestItemIds[id];
-    const item = itemId === undefined ? undefined : draft.TurnItems[itemId];
-    if (item !== undefined) items[id] = item;
-  }
+  const unfound = new Set(pendingIds(draft));
+  const claim = (item: IWireTurnItem | undefined) => {
+    if (item !== undefined && "requestId" in item && unfound.delete(item.requestId))
+      items[item.requestId] = item;
+  };
+  if (unfound.size === 0) return items;
+  for (const id of draft.RowlessRequestItemIds) claim(draft.TurnItems[id]);
+  for (let index = draft.Timeline.length - 1; index >= 0 && unfound.size > 0; index -= 1)
+    claim(draft.TurnItems[draft.Timeline[index]!]);
   return items;
 }
 

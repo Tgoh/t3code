@@ -32,6 +32,7 @@ import {
   assistantItem,
   commandItem,
   event,
+  localRow,
   longThread,
   message,
   snapshotOf,
@@ -316,19 +317,29 @@ it("a keystroke while compaction is offered", async () => {
 
 it("a row-adding delta while a request is pending", async () => {
   const rows = [];
-  for (const size of SIZES) {
+  // The server keeps a pending request's item in turnItems after the window drops its row.
+  for (const [placement, size] of SIZES.flatMap((size) => [
+    ["newest row", size] as const,
+    ["no row", size] as const,
+  ])) {
     const projection = longThread(size);
     projection.runtimeRequests = [
       { id: "r-0", kind: "command", status: "pending", responseCapability: { type: "live" } },
     ] as never;
-    projection.turnItems.push({
+    const asking = {
       ...commandItem("approval-r-0", "run-0", size),
       type: "approval_request",
       requestId: "r-0",
       requestKind: "command",
       prompt: "rm -rf build",
-    } as unknown as IWireTurnItem);
+    } as unknown as IWireTurnItem;
+    projection.turnItems.push(asking);
+    if (placement === "newest row") projection.visibleTurnItems.push(localRow(asking, size));
     const { runtime, send, thread } = await connected(projection);
+    const selects: number[] = [];
+    for (let index = 0; index < 50; index += 1) {
+      selects.push(await timed(() => runtime.processSelector(requestItems, thread)));
+    }
     const dispose = createRoot((disposeRoot) => {
       createEffect(() => void runtime.processSelector(pendingApprovalIds, thread));
       createEffect(() => void runtime.processSelector(pendingQuestionIds, thread));
@@ -349,10 +360,11 @@ it("a row-adding delta while a request is pending", async () => {
       samples.push(await timed(() => send(next)));
     }
     dispose();
-    rows.push({ items: size, rowAdded: summary(samples) });
+    rows.push({ items: size, placement, select: summary(selects), rowAdded: summary(samples) });
   }
   console.log(
-    "(e) time per row-adding delta with a request pending, ms\n" + JSON.stringify(rows, null, 1),
+    "(e) one requestItems read, and a row-adding delta, with a request pending, ms\n" +
+      JSON.stringify(rows),
   );
 });
 
