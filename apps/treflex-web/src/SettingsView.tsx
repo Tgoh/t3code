@@ -59,10 +59,17 @@ import { clockNow, relativeTime } from "./timestamps";
 import { Badge } from "./ui/Badge";
 import { Button, buttonVariants } from "./ui/Button";
 import { DraftInput } from "./ui/DraftInput";
-import { Select, WrapSelect } from "./ui/Field";
 import { Input } from "./ui/Input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/InputGroup";
 import { Kbd, KbdGroup } from "./ui/Kbd";
+import {
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuRadioItemIndicator,
+  openMenuFromKeys,
+} from "./ui/Menu";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -87,6 +94,7 @@ const note = "m-0 px-4 text-[13px] text-muted-foreground [&_code]:text-[12px]";
 const titleIcon = "inline-flex items-center gap-2 [&>svg]:size-4";
 const mutedValue = "text-[13px] text-muted-foreground";
 const toolbar = "flex items-center gap-2 px-4 text-[14px]";
+const rowSelect = "w-full md:w-auto md:min-w-44";
 const monoNote = "font-mono text-[11px] font-normal text-muted-foreground";
 const headline =
   "inline-flex items-center gap-1.5 text-[12px] leading-[1.35] text-muted-foreground";
@@ -401,46 +409,39 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
   const value = () => props.row.Read(props.held);
   const write = (next: ISettingValue) =>
     void environment.writeSetting(props.row.Write(next, props.held));
+  // Only availability rebuilds the control, so a change of value keeps its focus.
+  const available = createMemo(() => value() !== null);
+  const current = () => String(value());
   const control = (): JSX.Element => {
     const control = props.row.Control;
-    const current = value();
-    if (current === null) return <span class={mutedValue}>Unavailable</span>;
+    if (!available()) return <span class={mutedValue}>Unavailable</span>;
     switch (control.Kind) {
       case "switch":
         return (
-          <Switch checked={current === true} aria-label={props.row.Title} onCheckedChange={write} />
+          <Switch checked={value() === true} aria-label={props.row.Title} onCheckedChange={write} />
         );
-      case "select": {
-        const options = (
-          <For each={control.Options}>
-            {(option) => (
-              <option value={option.Value} disabled={option.Disabled?.(props.held) === true}>
-                {option.Label}
-              </option>
-            )}
-          </For>
+      case "select":
+        return (
+          <Select value={current()} onValueChange={write}>
+            <SelectTrigger size="sm" class={rowSelect} aria-label={props.row.Title}>
+              <SelectValue>
+                {control.Options.find((option) => option.Value === current())?.Label ?? current()}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              <For each={control.Options}>
+                {(option) => (
+                  <SelectItem
+                    value={option.Value}
+                    disabled={option.Disabled?.(props.held) === true}
+                  >
+                    {option.Label}
+                  </SelectItem>
+                )}
+              </For>
+            </SelectPopup>
+          </Select>
         );
-        const shared = {
-          class: "min-w-44",
-          "aria-label": props.row.Title,
-          value: String(current),
-          onChange: (event: Event & { currentTarget: HTMLSelectElement }) =>
-            write(event.currentTarget.value),
-        };
-        return control.Wrap === true ? (
-          <WrapSelect
-            {...shared}
-            label={
-              control.Options.find((option) => option.Value === String(current))?.Label ??
-              String(current)
-            }
-          >
-            {options}
-          </WrapSelect>
-        ) : (
-          <Select {...shared}>{options}</Select>
-        );
-      }
       case "number":
         return (
           <Input
@@ -450,7 +451,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
             min={control.Min}
             max={control.Max}
             aria-label={props.row.Title}
-            value={String(current)}
+            value={current()}
             onChange={(event) => write(Number(event.currentTarget.value))}
           />
         );
@@ -462,7 +463,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
             aria-label={props.row.Title}
             placeholder={control.Placeholder}
             spellcheck={false}
-            value={String(current)}
+            value={current()}
             onCommit={write}
           />
         );
@@ -679,31 +680,35 @@ function ProvidersPage() {
                           description={INSTANCE_IDLE_COMPACTION_DESCRIPTION}
                           settingId="instanceIdleCompaction"
                           control={
-                            <WrapSelect
-                              class="min-w-44"
-                              aria-label="Compact idle threads"
-                              label={
-                                INSTANCE_IDLE_COMPACTION_OPTIONS.find(
-                                  (option) =>
-                                    option.Value === instanceIdleCompaction(held().settings, row),
-                                )?.Label ?? ""
-                              }
+                            <Select
                               value={instanceIdleCompaction(held().settings, row)}
-                              onChange={(event) =>
+                              onValueChange={(value) =>
                                 void environment.updateServerSettings(
                                   {},
-                                  instanceIdleCompactionWrite(
-                                    held().settings,
-                                    row,
-                                    event.currentTarget.value,
-                                  ),
+                                  instanceIdleCompactionWrite(held().settings, row, value),
                                 )
                               }
                             >
-                              <For each={INSTANCE_IDLE_COMPACTION_OPTIONS}>
-                                {(option) => <option value={option.Value}>{option.Label}</option>}
-                              </For>
-                            </WrapSelect>
+                              <SelectTrigger
+                                size="sm"
+                                class={rowSelect}
+                                aria-label="Compact idle threads"
+                              >
+                                <SelectValue>
+                                  {INSTANCE_IDLE_COMPACTION_OPTIONS.find(
+                                    (option) =>
+                                      option.Value === instanceIdleCompaction(held().settings, row),
+                                  )?.Label ?? ""}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectPopup align="start" alignItemWithTrigger={false}>
+                                <For each={INSTANCE_IDLE_COMPACTION_OPTIONS}>
+                                  {(option) => (
+                                    <SelectItem value={option.Value}>{option.Label}</SelectItem>
+                                  )}
+                                </For>
+                              </SelectPopup>
+                            </Select>
                           }
                         />
                       </Show>
@@ -854,7 +859,6 @@ function StatusDot(props: { row: IProviderRow }) {
   );
 }
 
-// Follows ProjectSettingsPanel.tsx: name, pin, archive and removal for one picked project.
 const ProjectsPage = Shell.provider(() => {
   const environment = Environment.use();
   const shell = Shell.use();
@@ -867,20 +871,60 @@ const ProjectsPage = Shell.provider(() => {
   const project = () =>
     shell.state.Projects[picked() ?? environment.currentProjectId() ?? ""] ?? null;
   const [removing, setRemoving] = createSignal<IWireProject | null>(null);
+  const [scopeMenu, setScopeMenu] = createSignal<HTMLElement | null>(null);
+  const scopeLabel = () => project()?.title ?? "Choose a project";
   return (
     <>
       <div class={`${toolbar} text-muted-foreground`}>
-        <span>Applying settings for</span>
-        <Select
-          class="min-w-44"
-          aria-label="Project"
-          value={project()?.id ?? ""}
-          onChange={(event) => setPicked(event.currentTarget.value || null)}
+        <span class="shrink-0">Applying settings for</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="min-w-0 max-w-72"
+          aria-label={`Project scope: ${scopeLabel()}`}
+          aria-haspopup="menu"
+          aria-expanded="false"
+          onClick={(event) => {
+            const trigger = event.currentTarget;
+            setScopeMenu((held) => (held === null ? trigger : null));
+          }}
+          onKeyDown={(event) => {
+            const trigger = event.currentTarget;
+            openMenuFromKeys(event, () => setScopeMenu(trigger));
+          }}
         >
-          <option value="">Choose a project</option>
-          <For each={projects()}>{(entry) => <option value={entry.id}>{entry.title}</option>}</For>
-        </Select>
+          <Show when={project()}>{(held) => <ProjectBadge project={held()} size={14} />}</Show>
+          <span class="min-w-0 truncate">{scopeLabel()}</span>
+          <Icons.ChevronDown
+            aria-hidden="true"
+            stroke-width={1.75}
+            class="-me-0.5 size-3.5 shrink-0 text-muted-foreground opacity-70"
+          />
+        </Button>
       </div>
+      <Presence when={scopeMenu()}>
+        {(anchor) => (
+          <MenuPopup anchor={anchor()} align="start" onClose={() => setScopeMenu(null)}>
+            <div class="w-72 max-w-full">
+              <MenuRadioGroup value={project()?.id ?? ""} onValueChange={setPicked}>
+                <For each={projects()}>
+                  {(entry) => (
+                    <MenuRadioItem value={entry.id} closeOnClick label={entry.title}>
+                      <span class="flex min-w-0 items-center gap-2">
+                        <ProjectBadge project={entry} size={14} />
+                        <span class="min-w-0 flex-1">
+                          <span class="block truncate">{entry.title}</span>
+                        </span>
+                        <MenuRadioItemIndicator />
+                      </span>
+                    </MenuRadioItem>
+                  )}
+                </For>
+              </MenuRadioGroup>
+            </div>
+          </MenuPopup>
+        )}
+      </Presence>
       <Show
         when={project()}
         keyed

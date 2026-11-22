@@ -36,8 +36,9 @@ import UsagePage, { getDefaultUsagePage, RefreshingUsage, useUsagePage } from ".
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
 import { Button } from "./ui/Button";
-import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
+import { BREADCRUMB, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { RefreshIcon } from "./ui/RefreshIcon";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
 import { Skeleton } from "./ui/Skeleton";
 import { Toggle, ToggleGroup } from "./ui/ToggleGroup";
 import {
@@ -130,6 +131,14 @@ export const UsageView = UsagePage.provider(() => {
     if (daysChanged) load(nextDays);
     if (limitsShown) void page.autoRefreshLimits(environmentId);
   };
+  const choosePeriod = (value: string | undefined) => {
+    const picked = WINDOWS.find((entry) => String(entry.Days) === value);
+    if (picked !== undefined) choose(metric(), picked.Days);
+  };
+  const chooseMetric = (value: string | undefined) => {
+    const picked = METRICS.find((entry) => entry.Value === value);
+    if (picked !== undefined) choose(picked.Value, days());
+  };
   const shown = () => page.state.Usage;
   const merged = createMemo((): MergedUsage | null => {
     const held = shown();
@@ -153,42 +162,75 @@ export const UsageView = UsagePage.provider(() => {
   };
   return (
     <div class="flex h-full min-h-0 flex-col">
-      <PageHeader variant="page" class="max-md:h-auto max-md:flex-wrap max-md:py-2">
+      <PageHeader variant="page" class="@container/usage-header">
         <SidebarToggle />
         <div class={BREADCRUMB}>
           <h1 class={CRUMB_TITLE}>Usage</h1>
           <Show when={metric() !== "limits"}>
-            <span class={CRUMB_SEPARATOR}>·</span>
-            <span class={CRUMB_MUTED}>{windowLabel()}</span>
+            <span class="ms-1.5 hidden min-w-0 truncate text-xs font-normal text-muted-foreground @7xl/usage-header:block">
+              {windowLabel()}
+            </span>
           </Show>
         </div>
         <div class="flex items-center gap-2">
-          <Show when={metric() !== "limits"}>
+          <div class="hidden items-center gap-2 @4xl/usage-header:flex">
+            <Show when={metric() !== "limits"}>
+              <ToggleGroup
+                aria-label="Period"
+                value={[String(days())]}
+                onValueChange={(next) => choosePeriod(next[0])}
+              >
+                <For each={WINDOWS}>
+                  {(entry) => <Toggle value={String(entry.Days)}>{entry.Label}</Toggle>}
+                </For>
+              </ToggleGroup>
+            </Show>
             <ToggleGroup
-              aria-label="Period"
-              value={[String(days())]}
-              onValueChange={(next) => {
-                const picked = WINDOWS.find((entry) => String(entry.Days) === next[0]);
-                if (picked !== undefined) choose(metric(), picked.Days);
-              }}
+              aria-label="Metric"
+              value={[metric()]}
+              onValueChange={(next) => chooseMetric(next[0])}
             >
-              <For each={WINDOWS}>
-                {(entry) => <Toggle value={String(entry.Days)}>{entry.Label}</Toggle>}
+              <For each={METRICS}>
+                {(entry) => <Toggle value={entry.Value}>{entry.Label}</Toggle>}
               </For>
             </ToggleGroup>
-          </Show>
-          <ToggleGroup
-            aria-label="Metric"
-            value={[metric()]}
-            onValueChange={(next) => {
-              const picked = METRICS.find((entry) => entry.Value === next[0]);
-              if (picked !== undefined) choose(picked.Value, days());
-            }}
-          >
-            <For each={METRICS}>
-              {(entry) => <Toggle value={entry.Value}>{entry.Label}</Toggle>}
-            </For>
-          </ToggleGroup>
+          </div>
+          <div class="flex items-center gap-1 @4xl/usage-header:hidden">
+            <Show when={metric() !== "limits"}>
+              <Select value={String(days())} onValueChange={choosePeriod}>
+                <SelectTrigger
+                  size="compact"
+                  variant="ghost"
+                  class="w-auto min-w-0"
+                  aria-label="Period"
+                >
+                  <SelectValue>{WINDOWS.find((entry) => entry.Days === days())?.Label}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <For each={WINDOWS}>
+                    {(entry) => <SelectItem value={String(entry.Days)}>{entry.Label}</SelectItem>}
+                  </For>
+                </SelectPopup>
+              </Select>
+            </Show>
+            <Select value={metric()} onValueChange={chooseMetric}>
+              <SelectTrigger
+                size="compact"
+                variant="ghost"
+                class="w-auto min-w-0"
+                aria-label="Metric"
+              >
+                <SelectValue>
+                  {METRICS.find((entry) => entry.Value === metric())?.Label}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <For each={METRICS}>
+                  {(entry) => <SelectItem value={entry.Value}>{entry.Label}</SelectItem>}
+                </For>
+              </SelectPopup>
+            </Select>
+          </div>
           <Button
             variant="ghost"
             size="icon-sm"

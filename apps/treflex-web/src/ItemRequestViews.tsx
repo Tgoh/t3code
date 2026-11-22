@@ -29,7 +29,7 @@ import ItemRequest, {
 } from "./ItemRequest";
 import OpenThread from "./OpenThread";
 import { Button, buttonVariants } from "./ui/Button";
-import { Select } from "./ui/Field";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
 import { Input } from "./ui/Input";
 import { Dialog } from "./ui/Dialog";
 import { Presence } from "./ui/Presence";
@@ -560,14 +560,18 @@ function AccessPicker(props: {
         What agents here may do there
       </span>
       <Select
-        aria-labelledby={labelId}
         value={props.value}
         disabled={props.disabled}
-        onChange={(event) => props.onChange(event.currentTarget.value as AuthMcpClientAccess)}
+        onValueChange={(value) => props.onChange(value as AuthMcpClientAccess)}
       >
-        <For each={AuthMcpClientAccess.literals}>
-          {(option) => <option value={option}>{ACCESS[option].Label}</option>}
-        </For>
+        <SelectTrigger aria-labelledby={labelId}>
+          <SelectValue>{ACCESS[props.value].Label}</SelectValue>
+        </SelectTrigger>
+        <SelectPopup alignItemWithTrigger={false}>
+          <For each={AuthMcpClientAccess.literals}>
+            {(option) => <SelectItem value={option}>{ACCESS[option].Label}</SelectItem>}
+          </For>
+        </SelectPopup>
       </Select>
       <p class={NOTE}>
         {ACCESS[props.value].Description} An agent never gets more access there than its own mode

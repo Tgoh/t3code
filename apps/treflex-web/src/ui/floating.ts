@@ -26,7 +26,13 @@ export interface IPlacement {
   sideOffset: number;
   alignOffset?: number | undefined;
   collisionPadding?: number | undefined;
-  collisionAvoidance?: { side?: ICollision; align?: ICollision } | undefined;
+  collisionAvoidance?:
+    | {
+        side?: ICollision;
+        align?: ICollision;
+        fallbackAxisSide?: "none" | "end";
+      }
+    | undefined;
 }
 
 /** A popup's anchor: an element, or a point such as a context menu's. */
@@ -63,7 +69,7 @@ function middleware(placement: IPlacement): Middleware[] {
           },
           mainAxis: sideMode === "flip",
           crossAxis: alignMode === "flip" ? "alignment" : false,
-          fallbackAxisSideDirection: "end",
+          fallbackAxisSideDirection: placement.collisionAvoidance?.fallbackAxisSide ?? "end",
         });
   const shifter = shiftDisabled
     ? null
@@ -171,6 +177,21 @@ export function follow(
   });
 }
 
+/** Base UI's modal backdrop: it covers the page except the trigger, so presses there still land. */
+export function backdropStyle(trigger: HTMLElement | null | undefined) {
+  const box = trigger?.getBoundingClientRect();
+  return {
+    position: "fixed",
+    inset: "0px",
+    "user-select": "none",
+    "-webkit-user-select": "none",
+    "clip-path":
+      box === undefined
+        ? undefined
+        : `polygon(0% 0%,100% 0%,100% 100%,0% 100%,0% 0%,${box.left}px ${box.top}px,${box.left}px ${box.bottom}px,${box.right}px ${box.bottom}px,${box.right}px ${box.top}px,${box.left}px ${box.top}px)`,
+  } as const;
+}
+
 const POSITIONER_SELECTOR = "[data-floating-positioner]";
 
 /** Whether the node is inside any menu or popover positioner. */
@@ -222,6 +243,11 @@ export function createPopup(options: {
    * suppresses the browser's menu, while the new target's own context menu still opens.
    */
   contextMenu?: boolean;
+  /**
+   * Places the positioner itself on open, in place of following the anchor, and says whether it
+   * did; when it returns false the popup follows its anchor as usual.
+   */
+  position?: (positioner: HTMLElement) => boolean;
   /** Places focus on open, and again when it reopens mid-exit. */
   initialFocus: () => void;
 }) {
@@ -238,7 +264,7 @@ export function createPopup(options: {
   const trigger = options.trigger ?? null;
   const returnTo = () => trigger ?? opener;
   const startFollowing = () => {
-    if (positioner === undefined) return;
+    if (positioner === undefined || options.position?.(positioner) === true) return;
     stop = follow(positioner, options.anchor, options.placement, () => options.onClose("outside"));
   };
   const watchContextMenu = () => {

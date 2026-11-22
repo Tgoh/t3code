@@ -1,6 +1,7 @@
 const GROUPS = {
   position: /^(?:static|fixed|absolute|relative|sticky)$/,
   width: /^(?:w|size)-/,
+  minWidth: /^min-w-/,
 };
 
 /**

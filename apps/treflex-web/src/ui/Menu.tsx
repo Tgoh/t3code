@@ -11,11 +11,18 @@ import {
 } from "solid-js";
 import { Portal } from "solid-js/web";
 
-import { ChevronRight, Search } from "../icons";
-import { stepHighlight } from "../listNavigation";
+import { Check, ChevronRight, Search } from "../icons";
 import type { ICloseReason } from "../overlays";
-import { createPopup, type IAlign, type IAnchor, type IPlacement, type ISide } from "./floating";
+import {
+  backdropStyle,
+  createPopup,
+  type IAlign,
+  type IAnchor,
+  type IPlacement,
+  type ISide,
+} from "./floating";
 import { Input, type InputProps } from "./Input";
+import { createItemNavigation, MENU_TYPEAHEAD_RESET_MS } from "./itemNavigation";
 import { Presence } from "./Presence";
 
 const POPUP =
@@ -59,7 +66,6 @@ const SUB_TRIGGER =
   "[&>svg:not(:last-child)]:-mx-0.5 flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-base text-foreground outline-none data-disabled:cursor-not-allowed data-disabled:pointer-events-none data-highlighted:bg-accent data-popup-open:bg-accent data-inset:ps-8 data-highlighted:text-accent-foreground data-popup-open:text-accent-foreground data-disabled:opacity-64 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground [&>svg:not(:last-child):not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&>svg]:shrink-0";
 
 const ITEM_SELECTOR = '[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"]';
-const TYPEAHEAD_RESET_MS = 500;
 const SUBMENU_DELAY_MS = 100;
 
 type IDensity = "default" | "touch";
@@ -123,9 +129,6 @@ const SubContext = createContext<ISub>();
 
 const flag = (on: boolean | undefined) => (on === true ? "" : undefined);
 
-const labelOf = (item: HTMLElement) =>
-  (item.dataset.label ?? item.textContent ?? "").trim().toLowerCase();
-
 /** Base UI's submenu delay, cancelled when the owner unmounts. */
 function delayed() {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -177,11 +180,15 @@ function menuNavigation(props: ISurface) {
       else if (sub === undefined) element?.focus({ preventScroll: true });
     },
   });
-  let highlighted: HTMLElement | null = null;
+  // Keys land on disabled items too, as Base UI's do; only the first highlight on open skips them.
+  const navigation = createItemNavigation({
+    container: () => element,
+    selector: ITEM_SELECTOR,
+    loop: true,
+    typeaheadResetMs: MENU_TYPEAHEAD_RESET_MS,
+  });
   let openSub: IOpenSub | null = null;
   const subClosing = delayed();
-  let typed = "";
-  let typedAt = -Infinity;
 
   const level: IMenuLevel = {
     close: sub === undefined ? () => props.onClose("outside") : sub.parent.close,
@@ -197,21 +204,9 @@ function menuNavigation(props: ISurface) {
     holdSub: subClosing.cancel,
   };
 
-  // Keys land on disabled items too, as Base UI's do; only the first highlight on open skips them.
-  const items = () =>
-    element === undefined ? [] : [...element.querySelectorAll<HTMLElement>(ITEM_SELECTOR)];
-  const enabledItems = () => items().filter((item) => !item.hasAttribute("data-disabled"));
-  const setHighlight = (item: HTMLElement | null) => {
-    if (highlighted === item) return;
-    highlighted?.removeAttribute("data-highlighted");
-    highlighted = item;
-    item?.setAttribute("data-highlighted", "");
-  };
-  const focusItem = (item: HTMLElement | undefined, scroll = true) => {
-    if (item === undefined) return;
-    item.focus({ preventScroll: true });
-    if (scroll) item.scrollIntoView({ block: "nearest" });
-  };
+  const enabledItems = () =>
+    navigation.items().filter((item) => !item.hasAttribute("data-disabled"));
+  const focusItem = navigation.focusItem;
   const closeOpenSub = (except?: HTMLElement) => {
     if (openSub === null || openSub.trigger === except) return;
     openSub.close();
@@ -229,35 +224,14 @@ function menuNavigation(props: ISurface) {
     onCleanup(() => sub.parent.releaseSub(entry));
   }
   const clearHighlight = () => {
+    const highlighted = navigation.highlighted();
     if (highlighted === null || highlighted.hasAttribute("data-popup-open")) return;
     if (element?.contains(document.activeElement)) element.focus({ preventScroll: true });
   };
 
   const onKeyDown: JSX.EventHandler<HTMLDivElement, KeyboardEvent> = (event) => {
     if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-    const list = items();
-    const index = highlighted === null ? -1 : list.indexOf(highlighted);
-    const move = (target: HTMLElement | undefined) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (target !== undefined && target !== openSub?.trigger) closeOpenSub();
-      focusItem(target);
-    };
-    const typing = event.timeStamp - typedAt < TYPEAHEAD_RESET_MS && typed !== "";
     switch (event.key) {
-      case "ArrowDown":
-      case "ArrowUp": {
-        const next = stepHighlight(
-          index < 0 ? null : index,
-          list.length,
-          event.key === "ArrowDown" ? 1 : -1,
-        );
-        return move(next === null ? undefined : list[next]);
-      }
-      case "Home":
-        return move(list[0]);
-      case "End":
-        return move(list.at(-1));
       case "ArrowLeft":
         if (sub === undefined) return;
         event.preventDefault();
@@ -271,35 +245,27 @@ function menuNavigation(props: ISurface) {
         if (event.shiftKey) event.preventDefault();
         level.close();
         return;
-      case "Enter":
-      case " ":
-        if (event.key === " " && typing) break;
-        if (highlighted === null || event.target instanceof HTMLInputElement) return;
-        event.preventDefault();
-        highlighted.click();
-        return;
     }
-    if (event.key.length !== 1) return;
-    if (!typing) typed = "";
-    typedAt = event.timeStamp;
-    typed += event.key.toLowerCase();
-    const start = typed.length === 1 ? index + 1 : Math.max(index, 0);
-    const match = [...list.slice(start), ...list.slice(0, start)].find((item) =>
-      labelOf(item).startsWith(typed),
-    );
+    const target = navigation.resolve(event);
+    if (target === null) return;
     event.preventDefault();
+    if (target === "activate") {
+      navigation.highlighted()?.click();
+      return;
+    }
     event.stopPropagation();
-    if (match !== undefined) move(match);
+    if (target !== undefined && target !== openSub?.trigger) closeOpenSub();
+    focusItem(target);
   };
 
   const onPointerMove: JSX.EventHandler<HTMLDivElement, PointerEvent> = (event) => {
     sub?.parent.holdSub();
-    const item = (event.target as Element).closest<HTMLElement>(ITEM_SELECTOR);
-    if (item === null || !element?.contains(item) || item.hasAttribute("data-disabled")) {
+    const item = navigation.itemAt(event.target);
+    if (item === null || item.hasAttribute("data-disabled")) {
       clearHighlight();
       return;
     }
-    if (item === highlighted) return;
+    if (item === navigation.highlighted()) return;
     focusItem(item, false);
     if (openSub !== null && openSub.trigger !== item) {
       subClosing.start(() => closeOpenSub(item));
@@ -311,16 +277,6 @@ function menuNavigation(props: ISurface) {
     const next = event.relatedTarget;
     if (openSub === null || (next instanceof Node && openSub.contains(next))) return;
     subClosing.start(() => closeOpenSub());
-  };
-
-  const onFocusIn: JSX.EventHandler<HTMLDivElement, FocusEvent> = (event) => {
-    const item = (event.target as Element).closest<HTMLElement>(ITEM_SELECTOR);
-    setHighlight(item !== null && element?.contains(item) === true ? item : null);
-  };
-
-  const onFocusOut: JSX.EventHandler<HTMLDivElement, FocusEvent> = (event) => {
-    const next = event.relatedTarget;
-    if (!(next instanceof Node) || !element?.contains(next)) setHighlight(null);
   };
 
   return {
@@ -335,15 +291,9 @@ function menuNavigation(props: ISurface) {
     onKeyDown,
     onPointerMove,
     onPointerLeave,
-    onFocusIn,
-    onFocusOut,
+    onFocusIn: navigation.onFocusIn,
+    onFocusOut: navigation.onFocusOut,
   };
-}
-
-function cutout(trigger: HTMLElement | null | undefined): string | undefined {
-  if (trigger == null) return undefined;
-  const box = trigger.getBoundingClientRect();
-  return `polygon(0% 0%,100% 0%,100% 100%,0% 100%,0% 0%,${box.left}px ${box.top}px,${box.left}px ${box.bottom}px,${box.right}px ${box.bottom}px,${box.right}px ${box.top}px,${box.left}px ${box.top}px)`;
 }
 
 function MenuSurface(props: ISurface & { children: JSX.Element }) {
@@ -356,13 +306,7 @@ function MenuSurface(props: ISurface & { children: JSX.Element }) {
             ref={(held) => navigation.backdrop(held)}
             role="presentation"
             data-base-ui-inert=""
-            style={{
-              position: "fixed",
-              inset: "0px",
-              "user-select": "none",
-              "-webkit-user-select": "none",
-              "clip-path": cutout(props.trigger),
-            }}
+            style={backdropStyle(props.trigger)}
           />
         </Show>
         <div
@@ -443,6 +387,7 @@ export function MenuPopup(props: IPopupProps) {
         align: local.align ?? "center",
         sideOffset: local.sideOffset ?? 4,
         alignOffset: local.alignOffset ?? 0,
+        collisionAvoidance: { fallbackAxisSide: "none" },
       }}
       label={local.label}
       width={local.width ?? "default"}
@@ -708,10 +653,31 @@ export function MenuRadioItem(
       data-unchecked={flag(!checked())}
       data-slot="menu-radio-item"
     >
-      <Show when={local.class === undefined} fallback={item.children}>
-        <span class="min-w-0 flex-1">{item.children}</span>
-      </Show>
+      <RadioItemContext.Provider value={checked}>
+        <Show when={local.class === undefined} fallback={item.children}>
+          <span class="min-w-0 flex-1">{item.children}</span>
+        </Show>
+      </RadioItemContext.Provider>
     </div>
+  );
+}
+
+const RadioItemContext = createContext<Accessor<boolean>>(() => false);
+
+/** The check a `MenuRadioItem` shows while it's the group's value. */
+export function MenuRadioItemIndicator() {
+  const checked = useContext(RadioItemContext);
+  return (
+    <Show when={checked()}>
+      <span
+        aria-hidden="true"
+        class="flex shrink-0"
+        data-checked=""
+        data-slot="menu-radio-item-indicator"
+      >
+        <Check class="size-3.5" />
+      </span>
+    </Show>
   );
 }
 

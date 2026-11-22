@@ -49,7 +49,7 @@ import {
 } from "./ui/Menu";
 import { EMPTY_NOTE } from "./ui/notes";
 import { Presence } from "./ui/Presence";
-import { SidebarInput, SidebarMenuButton, sidebarMenuButtonVariants } from "./ui/Sidebar";
+import { SidebarInput, SidebarMenuButton } from "./ui/Sidebar";
 import { useSidebarSheet } from "./viewport";
 
 const CONNECTION_LABEL: Record<string, string> = {
@@ -458,33 +458,15 @@ export const Sidebar = Shell.provider(() => {
           )}
         </Show>
         <Show when={projects().length > 1}>
-          {/* A native select stretched invisibly over the icon, which keeps the native popup. */}
-          <label
-            class={sidebarMenuButtonVariants({
-              size: "icon-sm-narrow",
-              class:
-                "relative shrink-0 has-[select:focus-visible]:ring-2 has-[select:focus-visible]:ring-inset",
-            })}
+          <SidebarHeaderButton
+            size="icon-sm-narrow"
+            aria-label="New thread in project"
             data-tip="New thread in project"
+            aria-pressed={navigation.palette() === "new-thread-in"}
+            onClick={() => navigation.setPalette("new-thread-in")}
           >
             <ChevronDown class="size-3.5" />
-            <select
-              class="absolute inset-0 w-full cursor-pointer opacity-0"
-              aria-label="New thread in project"
-              value=""
-              onChange={(event) => {
-                environment.newThread(event.currentTarget.value);
-                event.currentTarget.value = "";
-              }}
-            >
-              <option value="" disabled>
-                New thread in…
-              </option>
-              <For each={projects()}>
-                {(project) => <option value={project.id}>{project.title}</option>}
-              </For>
-            </select>
-          </label>
+          </SidebarHeaderButton>
         </Show>
         <SidebarHeaderButton
           size="icon-sm-narrow"

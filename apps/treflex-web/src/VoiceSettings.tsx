@@ -7,8 +7,10 @@ import { canCaptureVoice, type IVoiceModel } from "./Infrastructure/dictation";
 import type { IVoiceDestination } from "./Infrastructure/preferences";
 import { SettingsRowFrame, SettingsSection } from "./SettingsView";
 import { Button } from "./ui/Button";
-import { Select, WrapSelect } from "./ui/Field";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
 import { downloadModel } from "./VoiceModels";
+
+const rowSelect = "w-full md:w-auto md:min-w-44";
 
 const megabytes = (bytes: number) =>
   bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
@@ -50,22 +52,22 @@ export function VoiceSetup() {
         }
         control={
           <Select
-            class="min-w-44"
-            aria-label="Transcribe with"
-            value={destination() ?? ""}
-            onChange={(event) =>
-              void environment.setVoiceDestination(event.currentTarget.value as IVoiceDestination)
+            value={destination()}
+            onValueChange={(value) =>
+              void environment.setVoiceDestination(value as IVoiceDestination)
             }
           >
-            <Show when={destination() === null}>
-              <option value="" disabled>
-                Choose…
-              </option>
-            </Show>
-            <option value="server" disabled={!supported()}>
-              {environment.state.Label}
-            </option>
-            <option value="off">Off</option>
+            <SelectTrigger size="sm" class={rowSelect} aria-label="Transcribe with">
+              <SelectValue placeholder="Choose…">
+                {destination() === "server" ? environment.state.Label : "Off"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              <SelectItem value="server" disabled={!supported()}>
+                {environment.state.Label}
+              </SelectItem>
+              <SelectItem value="off">Off</SelectItem>
+            </SelectPopup>
           </Select>
         }
       />
@@ -111,18 +113,24 @@ function ModelRow() {
       }
       control={
         <>
-          <WrapSelect
-            class="max-w-64 min-w-44"
-            aria-label="Transcription model"
-            label={chosen() === null ? "" : modelLabel(chosen()!)}
+          <Select
+            value={chosen()?.id ?? null}
             disabled={models() === null || downloading()}
-            value={chosen()?.id ?? ""}
-            onChange={(event) => setPicked(event.currentTarget.value)}
+            onValueChange={setPicked}
           >
-            <For each={ordered()}>
-              {(model) => <option value={model.id}>{modelLabel(model)}</option>}
-            </For>
-          </WrapSelect>
+            <SelectTrigger
+              size="sm"
+              class={`${rowSelect} md:max-w-64`}
+              aria-label="Transcription model"
+            >
+              <SelectValue>{chosen() === null ? "" : modelLabel(chosen()!)}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              <For each={ordered()}>
+                {(model) => <SelectItem value={model.id}>{modelLabel(model)}</SelectItem>}
+              </For>
+            </SelectPopup>
+          </Select>
           <Show when={chosen()}>
             {(model) => (
               <Show
