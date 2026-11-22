@@ -1,11 +1,17 @@
-import { createContext, type JSX, splitProps, useContext } from "solid-js";
+import { createContext, createSignal, type JSX, splitProps, useContext } from "solid-js";
 
+import { createRoving } from "./roving";
 import { Toggle as ToggleComponent, type ToggleSize, type ToggleVariant } from "./Toggle";
 
-const Group = createContext<{ variant: ToggleVariant; size: ToggleSize }>({
-  variant: "default",
-  size: "default",
-});
+interface IGroup {
+  variant: ToggleVariant;
+  size: ToggleSize;
+  pressed: (value: string) => boolean;
+  press: (value: string, pressed: boolean) => void;
+  roving: ReturnType<typeof createRoving>;
+}
+
+const Group = createContext<IGroup>();
 
 const BASE =
   "flex w-fit *:focus-visible:z-10 dark:*:[[data-slot=separator]:has(+[data-slot=toggle]:hover)]:before:bg-input/64 dark:*:[[data-slot=separator]:has(+[data-slot=toggle][data-pressed])]:before:bg-input dark:*:[[data-slot=toggle]:hover+[data-slot=separator]]:before:bg-input/64 dark:*:[[data-slot=toggle][data-pressed]+[data-slot=separator]]:before:bg-input";
@@ -17,18 +23,34 @@ const JOINED = {
     "*:not-first:not-data-[slot=separator]:before:-top-[0.5px] *:not-last:not-data-[slot=separator]:before:-bottom-[0.5px] flex-col *:not-first:rounded-t-none *:not-last:rounded-b-none *:not-first:border-t-0 *:not-last:border-b-0 *:not-first:before:rounded-t-none *:not-last:before:rounded-b-none *:data-[slot=toggle]:not-last:before:hidden dark:*:last:before:hidden dark:*:first:before:block",
 };
 
-/** Each `Toggle` inside carries its own `pressed` and click; the group gives them its look. */
+/**
+ * Base UI's toggle group: `value` lists the pressed toggles, and pressing the pressed one of a
+ * single-choice group empties it. One tab stop; the arrow keys, Home and End move focus only.
+ */
 export function ToggleGroup(
   props: JSX.HTMLAttributes<HTMLDivElement> & {
+    value: readonly string[];
+    onValueChange: (value: string[]) => void;
+    multiple?: boolean;
     variant?: ToggleVariant;
     size?: ToggleSize;
     orientation?: "horizontal" | "vertical";
   },
 ) {
-  const [local, rest] = splitProps(props, ["variant", "size", "orientation", "class", "children"]);
+  const [local, rest] = splitProps(props, [
+    "value",
+    "onValueChange",
+    "multiple",
+    "variant",
+    "size",
+    "orientation",
+    "class",
+    "children",
+  ]);
   const variant = () => local.variant ?? "segmented";
   const size = () => local.size ?? (variant() === "segmented" ? "segmented" : "default");
   const orientation = () => local.orientation ?? "horizontal";
+  const roving = createRoving({ orientation, homeEnd: true });
   const shape = () =>
     variant() === "segmented"
       ? "gap-0.5 rounded-lg bg-input/40 p-0.5"
@@ -53,6 +75,8 @@ export function ToggleGroup(
       ]
         .filter(Boolean)
         .join(" ")}
+      onFocusIn={roving.onFocusIn}
+      onKeyDown={roving.onKeyDown}
     >
       <Group.Provider
         value={{
@@ -62,6 +86,14 @@ export function ToggleGroup(
           get size() {
             return size();
           },
+          pressed: (value) => local.value.includes(value),
+          press: (value, pressed) => {
+            const held = local.value.filter((entry) => entry !== value);
+            local.onValueChange(
+              pressed ? (local.multiple === true ? [...held, value] : [value]) : held,
+            );
+          },
+          roving,
         }}
       >
         {local.children}
@@ -70,9 +102,16 @@ export function ToggleGroup(
   );
 }
 
-export function Toggle(props: Parameters<typeof ToggleComponent>[0]) {
+export function Toggle(
+  props: Omit<Parameters<typeof ToggleComponent>[0], "pressed" | "value" | "onClick"> & {
+    value: string;
+  },
+) {
   const group = useContext(Group);
-  const [local, rest] = splitProps(props, ["variant", "size"]);
+  if (group === undefined) throw new Error("A grouped Toggle must sit in a ToggleGroup.");
+  const [local, rest] = splitProps(props, ["variant", "size", "value", "disabled"]);
+  const [element, setElement] = createSignal<HTMLButtonElement>();
+  const pressed = () => group.pressed(local.value);
   return (
     <ToggleComponent
       data-variant={local.variant ?? group.variant}
@@ -80,6 +119,20 @@ export function Toggle(props: Parameters<typeof ToggleComponent>[0]) {
       variant={local.variant ?? group.variant}
       size={local.size ?? group.size}
       {...rest}
+      ref={(item) => {
+        setElement(item);
+        group.roving.register(item, {
+          active: () => false,
+          disabled: () =>
+            local.disabled === true ||
+            rest["aria-disabled"] === true ||
+            rest["aria-disabled"] === "true",
+        });
+      }}
+      tabIndex={group.roving.tabIndex(element())}
+      disabled={local.disabled}
+      pressed={pressed()}
+      onClick={() => group.press(local.value, !pressed())}
     />
   );
 }

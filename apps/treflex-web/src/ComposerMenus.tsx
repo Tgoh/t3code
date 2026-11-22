@@ -24,8 +24,7 @@ import { arrowStep, focusStep } from "./listNavigation";
 import { MenuPopup, MenuRadioGroup, MenuRadioItem, openMenuFromKeys } from "./ui/Menu";
 import { PopoverPopup } from "./ui/Popover";
 import { Presence } from "./ui/Presence";
-import { Segment, Segmented } from "./ui/Segmented";
-import { MenuSwitch } from "./ui/Switch";
+import { Switch } from "./ui/Switch";
 import {
   FAVORITES_TAB,
   type IBooleanDescriptor,
@@ -76,6 +75,10 @@ export const RUNTIME_MODE_CONFIG: Record<
 const PERMISSION_ITEM =
   "flex h-6 flex-1 cursor-pointer items-center justify-center text-muted-foreground outline-none first:rounded-l-md last:rounded-r-md data-disabled:cursor-not-allowed data-disabled:opacity-40 data-checked:bg-input/72 data-checked:text-foreground data-highlighted:text-foreground not-data-checked:data-highlighted:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
+const SEGMENTS = "flex rounded-lg bg-input/40 p-0.5";
+const FOOTER_SEGMENT =
+  "flex h-6 cursor-pointer items-center justify-center gap-1 px-2 text-muted-foreground text-xs outline-none first:rounded-l-md last:rounded-r-md hover:text-foreground data-checked:bg-input/72 data-checked:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+
 const OPEN_HOVER =
   "hover:bg-foreground/9 hover:text-foreground aria-expanded:bg-foreground/9 aria-expanded:text-foreground";
 const COMPOSER_CONTROL = `inline-flex h-7 min-w-0 flex-initial cursor-pointer items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 py-0 text-[14px] leading-5 font-medium whitespace-nowrap text-foreground/80 ${OPEN_HOVER} [&>svg]:size-4 [&>svg]:flex-none`;
@@ -94,8 +97,7 @@ const PROVIDER_TAB =
 const PICKER_GRID =
   "group/picker grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_11.75rem] grid-rows-[minmax(0,1fr)_auto] [grid-template-areas:'providers_models_effort'_'footer_footer_footer'] data-searching:grid-cols-[minmax(0,1fr)_11.75rem] data-searching:[grid-template-areas:'models_effort'_'footer_footer'] max-sm:grid-cols-[auto_minmax(0,1fr)] max-sm:grid-rows-[minmax(0,1fr)_minmax(0,auto)_auto] max-sm:[grid-template-areas:'providers_models'_'providers_effort'_'footer_footer'] max-sm:data-searching:grid-cols-[minmax(0,1fr)_11.75rem] max-sm:data-searching:[grid-template-areas:'models_effort'_'footer_footer']";
 
-const boltClass = (ultra: boolean) =>
-  ultra ? "fill-current text-primary" : "fill-current text-warning";
+const boltClass = (ultra: boolean) => (ultra ? "fill-current text-primary" : "fill-current");
 
 function PermissionsSection(props: {
   mode: IWireRuntimeMode;
@@ -835,21 +837,43 @@ function OptionSwitchRow(props: { descriptor: IBooleanDescriptor; traits: ITrait
   const pick = usePick();
   const checked = () => props.descriptor.currentValue === true;
   return (
-    <button
-      type="button"
-      role="switch"
-      class={`${EFFORT_ROW} py-1`}
-      aria-checked={checked()}
-      aria-label={props.descriptor.label}
-      data-effort-row
-      tabIndex={-1}
-      onClick={() => pick.toggle(props.traits, props.descriptor.id, !checked())}
-    >
+    <label class={`${EFFORT_ROW} py-1 has-focus-visible:bg-foreground/9`}>
       <span class={`${ROW_TEXT} flex flex-col`}>
         <span class={SMALL_MUTED}>{props.descriptor.label}</span>
         <span>{checked() ? "On" : "Off"}</span>
       </span>
-      <MenuSwitch on={checked()} />
+      <Switch
+        size="sm"
+        checked={checked()}
+        aria-label={props.descriptor.label}
+        data-effort-row
+        tabIndex={-1}
+        onCheckedChange={(next) => pick.toggle(props.traits, props.descriptor.id, next)}
+      />
+    </label>
+  );
+}
+
+function SpeedSegment(props: {
+  checked: boolean;
+  label: string;
+  tip?: string | undefined;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={props.checked}
+      data-checked={props.checked || undefined}
+      class={FOOTER_SEGMENT}
+      data-tip={props.tip}
+      onClick={props.onPick}
+    >
+      <Show when={props.label === "Fast" || props.label === "Ultrafast"}>
+        <Zap class={`size-3 ${boltClass(props.label === "Ultrafast")}`} />
+      </Show>
+      {props.label}
     </button>
   );
 }
@@ -864,61 +888,51 @@ function PickerFooter(props: { traits: ITraits | null }) {
     <div class="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2 [grid-area:footer]">
       <Show when={props.traits?.Speed ?? null}>
         {(speed) => (
-          <Segmented role="radiogroup" aria-label={speed().label}>
+          <div role="radiogroup" aria-label={speed().label} class={SEGMENTS}>
             <For each={selectableProviderOptionChoices(speed())}>
               {(option) => (
-                <Segment
-                  labelled
-                  role="radio"
-                  aria-checked={pick.value(speed()) === option.id}
-                  data-tip={option.description}
-                  onClick={() => pick.select(props.traits!, speed(), option.id)}
-                >
-                  <Show when={option.label === "Fast" || option.label === "Ultrafast"}>
-                    <Zap class={boltClass(option.label === "Ultrafast")} />
-                  </Show>
-                  {option.label}
-                </Segment>
+                <SpeedSegment
+                  checked={pick.value(speed()) === option.id}
+                  label={option.label}
+                  tip={option.description}
+                  onPick={() => pick.select(props.traits!, speed(), option.id)}
+                />
               )}
             </For>
-          </Segmented>
+          </div>
         )}
       </Show>
       <Show when={props.traits?.Speed === null ? props.traits.Fast : null}>
         {(fast) => (
-          <Segmented role="radiogroup" aria-label={fast().label}>
+          <div role="radiogroup" aria-label={fast().label} class={SEGMENTS}>
             <For each={[false, true]}>
               {(value) => (
-                <Segment
-                  labelled
-                  role="radio"
-                  aria-checked={(fast().currentValue === true) === value}
-                  onClick={() => pick.toggle(props.traits!, fast().id, value)}
-                >
-                  <Show when={value}>
-                    <Zap class={boltClass(false)} />
-                  </Show>
-                  {value ? "Fast" : "Standard"}
-                </Segment>
+                <SpeedSegment
+                  checked={(fast().currentValue === true) === value}
+                  label={value ? "Fast" : "Standard"}
+                  onPick={() => pick.toggle(props.traits!, fast().id, value)}
+                />
               )}
             </For>
-          </Segmented>
+          </div>
         )}
       </Show>
       <Show when={props.traits?.Ultracode ?? null}>
         {(ultracode) => (
-          <Segmented>
-            <Segment
-              labelled
+          <div class={SEGMENTS}>
+            <button
+              type="button"
+              class={FOOTER_SEGMENT}
               aria-pressed={ultracode().currentValue === true}
+              data-checked={ultracode().currentValue === true || undefined}
               onClick={() =>
                 pick.toggle(props.traits!, ultracode().id, ultracode().currentValue !== true)
               }
             >
-              <Workflow />
+              <Workflow class="size-3" />
               {ultracode().label}
-            </Segment>
-          </Segmented>
+            </button>
+          </div>
         )}
       </Show>
       <button

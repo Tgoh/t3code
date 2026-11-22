@@ -1,7 +1,7 @@
 import { useInFlight } from "treflex-solid";
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 
-import { Check, ChevronDown, ShieldQuestion, X } from "./icons";
+import { ChevronDown, ShieldQuestion, X } from "./icons";
 import type { IApprovalDecision } from "./Infrastructure/commandEffects";
 import { Markdown } from "./Markdown";
 import OpenThread from "./OpenThread";
@@ -10,15 +10,27 @@ import RuntimeRequest, { canAnswer, Responding } from "./RuntimeRequest";
 import ThreadSession from "./ThreadSession";
 import { RowIcon, workLine } from "./TimelineRows";
 import { viewOf } from "./turnItemView";
+import { CheckboxMark } from "./ui/Checkbox";
 import { Kbd } from "./ui/Kbd";
 import { BANNER, BANNER_BODY, BANNER_FRAME, BANNER_TITLE, ERROR_TEXT } from "./ui/notice";
 
 const APPROVAL_STATE = "inline-flex items-center gap-1 text-warning-foreground [&>svg]:size-3.5";
 
 const QUESTION_MARK = "flex h-5 flex-none items-center justify-center";
-const OPTION_MARK =
-  "inline-flex size-4 items-center justify-center border border-[color-mix(in_srgb,var(--foreground)_55%,transparent)] bg-background data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground";
 const QUESTION_NOTE = "mx-0 mt-1.5 mb-0 text-[12px]";
+
+function OptionRadio(props: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      class={`relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-full border border-foreground/55 bg-background not-dark:bg-clip-padding sm:size-4 dark:bg-input/32 ${props.checked ? "shadow-none" : "shadow-xs/5"}`}
+    >
+      <Show when={props.checked}>
+        <span class="-inset-px absolute flex items-center justify-center rounded-full bg-primary before:size-2 before:rounded-full before:bg-primary-foreground sm:before:size-1.5" />
+      </Show>
+    </span>
+  );
+}
 
 export const PendingApproval = RuntimeRequest.provider(() => {
   const thread = OpenThread.use();
@@ -263,18 +275,12 @@ export const PendingQuestion = RuntimeRequest.provider<{
                             onClick={() => choose(question(), value())}
                           >
                             <span class={`${QUESTION_MARK} min-w-0`}>
-                              <span
-                                class={
-                                  question().multiSelect
-                                    ? `${OPTION_MARK} rounded-[4px] [&>svg]:size-3 [&>svg]:[stroke-width:3]`
-                                    : `${OPTION_MARK} rounded-full data-checked:before:size-1.5 data-checked:before:rounded-full data-checked:before:bg-primary-foreground data-checked:before:content-['']`
-                                }
-                                data-checked={selected(value()) || undefined}
+                              <Show
+                                when={question().multiSelect}
+                                fallback={<OptionRadio checked={selected(value())} />}
                               >
-                                <Show when={question().multiSelect && selected(value())}>
-                                  <Check />
-                                </Show>
-                              </span>
+                                <CheckboxMark checked={selected(value())} variant="contrast" />
+                              </Show>
                             </span>
                             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                               <span class="text-[14px] leading-5 font-medium">{option.label}</span>

@@ -1,34 +1,62 @@
-const SWITCH =
-  "group relative h-5 w-[34px] flex-none cursor-pointer rounded-full border-0 bg-input p-0.5 disabled:cursor-default disabled:opacity-50 aria-checked:bg-primary";
+import { type JSX, splitProps } from "solid-js";
 
-export function Switch(props: {
-  checked: boolean;
-  label: string;
-  disabled?: boolean;
-  class?: string;
-  onChange: (checked: boolean) => void;
-}) {
+const ROOT =
+  "inline-flex h-[calc(var(--thumb-size)+2px)] w-[calc(var(--thumb-size)*2-2px)] shrink-0 cursor-pointer items-center rounded-full p-[2px] outline-none transition-[background-color,box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background data-checked:bg-primary data-unchecked:bg-input data-disabled:cursor-not-allowed data-disabled:opacity-64 data-[mixed]:bg-input";
+const SIZES = {
+  default: "[--thumb-size:--spacing(5)] sm:[--thumb-size:--spacing(4)]",
+  sm: "[--thumb-size:--spacing(4)] sm:[--thumb-size:--spacing(3.5)]",
+};
+
+const THUMB =
+  "pointer-events-none block size-[calc(var(--thumb-size)-2px)] shrink-0 origin-left in-[[role=switch]:active,[data-slot=label]:active,[data-slot=field-label]:active]:not-data-disabled:scale-x-110 in-[[role=switch]:active,[data-slot=label]:active,[data-slot=field-label]:active]:rounded-[var(--thumb-size)/calc(var(--thumb-size)*1.1)] rounded-(--thumb-size) bg-background shadow-sm/5 dark:data-unchecked:bg-muted-foreground [transition:translate_.15s,border-radius_.15s,scale_.1s_.1s,transform-origin_.15s] data-checked:origin-right";
+// Stands in for tailwind-merge: mixed centres the thumb in place of the checked offset.
+const THUMB_OFFSET = {
+  default: "data-checked:translate-x-[calc(var(--thumb-size)-4px)]",
+  mixed:
+    "translate-x-[calc((var(--thumb-size)-4px)/2)] opacity-70 data-checked:translate-x-[calc((var(--thumb-size)-4px)/2)]",
+};
+
+const flag = (on: boolean | undefined) => (on === true ? "" : undefined);
+
+export function Switch(
+  props: Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> & {
+    checked: boolean;
+    onCheckedChange: (checked: boolean) => void;
+    size?: keyof typeof SIZES;
+    mixed?: boolean;
+  },
+) {
+  const [local, rest] = splitProps(props, [
+    "checked",
+    "onCheckedChange",
+    "size",
+    "mixed",
+    "class",
+    "disabled",
+  ]);
   return (
     <button
       type="button"
       role="switch"
-      class={`${SWITCH} ${props.class ?? ""}`}
-      aria-checked={props.checked}
-      aria-label={props.label}
-      disabled={props.disabled}
-      onClick={() => props.onChange(!props.checked)}
+      data-slot="switch"
+      {...rest}
+      data-checked={flag(local.checked)}
+      data-unchecked={flag(!local.checked)}
+      data-disabled={flag(local.disabled)}
+      data-size={local.size ?? "default"}
+      data-mixed={flag(local.mixed)}
+      aria-checked={local.mixed === true ? "mixed" : local.checked}
+      disabled={local.disabled}
+      class={[ROOT, SIZES[local.size ?? "default"], local.class].filter(Boolean).join(" ")}
+      onClick={() => local.onCheckedChange(!local.checked)}
     >
-      <span class="block size-4 rounded-full bg-white shadow-[0_1px_2px_rgb(0_0_0/20%)] transition-transform duration-150 ease-[ease] group-aria-checked:translate-x-[14px]" />
+      <span
+        class={`${THUMB} ${THUMB_OFFSET[local.mixed === true ? "mixed" : "default"]}`}
+        data-slot="switch-thumb"
+        data-checked={flag(local.checked)}
+        data-unchecked={flag(!local.checked)}
+        data-disabled={flag(local.disabled)}
+      />
     </button>
-  );
-}
-
-/** The switch drawn inside a menu row, which itself carries the switch role. */
-export function MenuSwitch(props: { on: boolean }) {
-  return (
-    <span
-      class="relative h-4 w-7 flex-none rounded-full bg-input after:absolute after:top-0.5 after:left-0.5 after:size-3 after:rounded-full after:bg-white data-on:bg-primary data-on:after:left-3.5"
-      data-on={props.on ? "" : undefined}
-    />
   );
 }

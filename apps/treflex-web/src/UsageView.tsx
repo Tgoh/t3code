@@ -164,29 +164,29 @@ export const UsageView = UsagePage.provider(() => {
         </div>
         <div class="flex items-center gap-2">
           <Show when={metric() !== "limits"}>
-            <ToggleGroup aria-label="Period">
+            <ToggleGroup
+              aria-label="Period"
+              value={[String(days())]}
+              onValueChange={(next) => {
+                const picked = WINDOWS.find((entry) => String(entry.Days) === next[0]);
+                if (picked !== undefined) choose(metric(), picked.Days);
+              }}
+            >
               <For each={WINDOWS}>
-                {(entry) => (
-                  <Toggle
-                    pressed={days() === entry.Days}
-                    onClick={() => choose(metric(), entry.Days)}
-                  >
-                    {entry.Label}
-                  </Toggle>
-                )}
+                {(entry) => <Toggle value={String(entry.Days)}>{entry.Label}</Toggle>}
               </For>
             </ToggleGroup>
           </Show>
-          <ToggleGroup aria-label="Metric">
+          <ToggleGroup
+            aria-label="Metric"
+            value={[metric()]}
+            onValueChange={(next) => {
+              const picked = METRICS.find((entry) => entry.Value === next[0]);
+              if (picked !== undefined) choose(picked.Value, days());
+            }}
+          >
             <For each={METRICS}>
-              {(entry) => (
-                <Toggle
-                  pressed={metric() === entry.Value}
-                  onClick={() => choose(entry.Value, days())}
-                >
-                  {entry.Label}
-                </Toggle>
-              )}
+              {(entry) => <Toggle value={entry.Value}>{entry.Label}</Toggle>}
             </For>
           </ToggleGroup>
           <Button
@@ -463,13 +463,16 @@ function UsageOverview(props: {
       <section class="flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <h2 class={HEADING}>Breakdown</h2>
-          <ToggleGroup aria-label="Usage breakdown">
-            <Toggle pressed={breakdown() === "model"} onClick={() => setBreakdown("model")}>
-              Model
-            </Toggle>
-            <Toggle pressed={breakdown() === "time"} onClick={() => setBreakdown("time")}>
-              {hourly() ? "Hour" : "Day"}
-            </Toggle>
+          <ToggleGroup
+            aria-label="Usage breakdown"
+            value={[breakdown()]}
+            onValueChange={(next) => {
+              const picked = next[0];
+              if (picked === "model" || picked === "time") setBreakdown(picked);
+            }}
+          >
+            <Toggle value="model">Model</Toggle>
+            <Toggle value="time">{hourly() ? "Hour" : "Day"}</Toggle>
           </ToggleGroup>
         </div>
         <Show when={breakdown() === "time"}>

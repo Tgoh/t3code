@@ -407,7 +407,9 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
     if (current === null) return <span class={mutedValue}>Unavailable</span>;
     switch (control.Kind) {
       case "switch":
-        return <Switch checked={current === true} label={props.row.Title} onChange={write} />;
+        return (
+          <Switch checked={current === true} aria-label={props.row.Title} onCheckedChange={write} />
+        );
       case "select": {
         const options = (
           <For each={control.Options}>
@@ -641,8 +643,8 @@ function ProvidersPage() {
                       </button>
                       <Switch
                         checked={row.Enabled}
-                        label={`Enable ${row.Name}`}
-                        onChange={(enabled) => {
+                        aria-label={`Enable ${row.Name}`}
+                        onCheckedChange={(enabled) => {
                           const write = providerEnabledWrite(held().settings, row, enabled);
                           void environment.updateServerSettings(write.Patch, write.Mutation);
                         }}
@@ -808,10 +810,11 @@ function ProvidersPage() {
                             </Button>
                             <Switch
                               class="ml-2"
+                              size="sm"
                               checked={!model.Hidden}
-                              label={`Show ${model.Name} in the model picker`}
+                              aria-label={`Show ${model.Name} in the model picker`}
                               disabled={model.Custom}
-                              onChange={(shown) =>
+                              onCheckedChange={(shown) =>
                                 void environment.updateServerSettings(
                                   modelHiddenPatch(row.InstanceId, model.Slug, !shown),
                                 )
@@ -924,8 +927,8 @@ const ProjectsPage = Shell.provider(() => {
                 control={
                   <Switch
                     checked={current.pinnedAt != null}
-                    label="Pin"
-                    onChange={(pinned) =>
+                    aria-label="Pin project"
+                    onCheckedChange={(pinned) =>
                       void environment.projectCommand(current.id, {
                         Kind: pinned ? "pin" : "unpin",
                       })

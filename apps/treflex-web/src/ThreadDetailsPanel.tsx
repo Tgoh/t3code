@@ -73,6 +73,7 @@ import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession, { mergeBack } from "./ThreadSession";
 import { AgentElapsed } from "./AgentElapsed";
 import { Button } from "./ui/Button";
+import { Checkbox } from "./ui/Checkbox";
 import { Input } from "./ui/Input";
 import { Label } from "./ui/Label";
 import {
@@ -288,10 +289,10 @@ function CommitDialog(props: {
                 {(file) => (
                   <li>
                     <label class="flex items-center gap-2 font-mono text-[12px]">
-                      <input
-                        type="checkbox"
+                      <Checkbox
+                        aria-label={`Include ${file.path}`}
                         checked={!excluded().has(file.path)}
-                        onChange={() => toggle(file.path)}
+                        onCheckedChange={() => toggle(file.path)}
                       />
                       <span class={LABEL}>{file.path}</span>
                       <span class={DIFF_COUNTS}>
