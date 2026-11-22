@@ -66,7 +66,7 @@ export function getDefaultShell(environmentId: string): Omit<IShell, "$Id"> {
 }
 
 const streamState = (draft: IShell) =>
-  transient(draft, "Shell/StreamState", { Synchronized: false, EverSynchronized: false });
+  transient(draft, "Shell/StreamState", { Synchronized: false });
 
 export function* openShellStream(draft: IShell): IActionGenerator {
   yield* openResource(
@@ -160,11 +160,15 @@ const lastVisit = (draft: IShell) =>
   transient(draft, "Shell/Visit", {
     ThreadId: null as string | null,
     Completion: null as string | null,
+    /** A visit sent that neither succeeded, nor was refused, nor shows in the thread's row. */
+    Unconfirmed: null as { ThreadId: string; VisitedAt: string } | null,
   });
 
 export interface IVisitOptions {
   /** Skips the once-per-completion dedupe. */
   Again?: boolean;
+  /** Resends an unconfirmed visit to the shown thread, if it's still due. */
+  Retry?: boolean;
   /** The user opened the thread, which counts toward search ranking even when it's already read. */
   Opened?: boolean;
   /** The palette query that picked the thread. */
@@ -184,19 +188,23 @@ export function* visitShown(draft: IShell, options: IVisitOptions = {}): IOpenGe
   const row = threadId === null ? undefined : draft.Threads[threadId];
   if (threadId === null || row === undefined) return;
   const visit = yield* lastVisit(draft);
+  if (options.Retry === true && visit.Unconfirmed?.ThreadId !== threadId) return;
   const completion = row.latestRunCompletedAt ?? null;
   const repeat = visit.ThreadId === threadId && visit.Completion === completion;
-  if (repeat && options.Again !== true && options.Opened !== true) return;
+  const forced = options.Again === true || options.Opened === true || options.Retry === true;
+  if (repeat && !forced) return;
   visit.ThreadId = threadId;
   visit.Completion = completion;
   if (!needsVisit(row) && options.Opened !== true) return;
   const environmentId = draft.EnvironmentId;
+  const visitedAt = row.updatedAt;
   const command: IThreadCommand = {
     Kind: "visit",
-    VisitedAt: row.updatedAt,
+    VisitedAt: visitedAt,
     ...(options.Opened === true ? { Opened: true } : {}),
     ...(options.SearchQuery ? { SearchQuery: options.SearchQuery.slice(0, 200) } : {}),
   };
+  visit.Unconfirmed = { ThreadId: threadId, VisitedAt: visitedAt };
   try {
     yield* open(
       withCommandId((commandId) =>
@@ -211,11 +219,22 @@ export function* visitShown(draft: IShell, options: IVisitOptions = {}): IOpenGe
   } catch (error) {
     // A visit is bookkeeping the user didn't ask for, and the next one covers it.
     serverError(error);
+    // A refusal and a dropped socket both arrive as a ServerError; only the second is worth a retry.
+    if (!(yield* streamState(draft)).Synchronized) return;
   }
+  const held = yield* lastVisit(draft);
+  if (held.Unconfirmed?.ThreadId === threadId && held.Unconfirmed.VisitedAt === visitedAt)
+    held.Unconfirmed = null;
 }
 
 // Starts the visit only when the item left the shown thread due, so streaming updates stay cheap.
 function* visitIfDue(draft: IShell): IActionGenerator {
+  const visit = yield* lastVisit(draft);
+  const sent = visit.Unconfirmed;
+  const echoed = sent === null ? undefined : draft.Threads[sent.ThreadId]?.lastVisitedAt;
+  // The server applied the visit even if its answer was lost, so a later mark-unread stays.
+  if (sent !== null && echoed != null && Date.parse(echoed) >= Date.parse(sent.VisitedAt))
+    visit.Unconfirmed = null;
   const selected = yield* getData(draft, "Selection");
   const row =
     selected?.SelectedThreadId == null ? undefined : draft.Threads[selected.SelectedThreadId];
@@ -230,17 +249,16 @@ function* reopenLater(draft: IShell): IActionGenerator {
 export const ShellReceiver = receiver<IShell>("ShellReceiver")({
   *"Shell/Stream"(draft, message) {
     if (isEnded(message)) {
+      (yield* streamState(draft)).Synchronized = false;
       // A batch the receiver failed would fail again on every reopen.
       if (message.$Ended.Reason !== "receiver-failed") yield* reopenLater(draft);
       return;
     }
     if (!("Item" in message)) (yield* streamState(draft)).Synchronized = false;
     else if (message.Item.kind === "synchronized") {
-      const stream = yield* streamState(draft);
-      stream.Synchronized = true;
-      // A visit sent while the stream was down may never have reached the server.
-      if (stream.EverSynchronized) yield* start(visitShown, draft, { Again: true });
-      stream.EverSynchronized = true;
+      (yield* streamState(draft)).Synchronized = true;
+      if ((yield* lastVisit(draft)).Unconfirmed !== null)
+        yield* start(visitShown, draft, { Retry: true });
     } else {
       applyItem(draft, message.Item);
       yield* visitIfDue(draft);

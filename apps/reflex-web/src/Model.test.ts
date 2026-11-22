@@ -2947,19 +2947,19 @@ describe("writing to the server", () => {
       server.runtime.dispatch(openView, server.envId(), next).then(settled);
     const select = (threadId: string, searchQuery?: string) =>
       server.runtime.dispatch(selectThread, server.envId(), threadId, searchQuery).then(settled);
-    const reconnect = async () => {
-      await server.runtime.dispatch(
+    const drop = () =>
+      server.runtime.dispatch(
         ShellReceiver.handle,
         server.shellId(),
         { Type: "Shell/Stream", Resubscribing: true },
         { publisher: { Id: server.shellId() } },
       );
-      await server.sendShell({ kind: "synchronized" } as IWireShellItem);
-      await settled();
-    };
+    const resync = () => server.sendShell({ kind: "synchronized" } as IWireShellItem).then(settled);
+    const reconnect = () => drop().then(resync);
     const T1 = "2026-01-01T01:00:00.000Z";
     const T2 = "2026-01-01T02:00:00.000Z";
     const T3 = "2026-01-01T03:00:00.000Z";
+    const T4 = "2026-01-01T04:00:00.000Z";
 
     // A restored address isn't an open, and the first sync has nothing to retry.
     await reconnect();
@@ -2987,17 +2987,28 @@ describe("writing to the server", () => {
     await settled();
     expect(take()).toEqual([]);
 
-    // A reconnect retries a visit that's still due, and only then.
+    // A refusal isn't retried after a reconnect.
     refuse = false;
-    await reconnect();
-    expect(take()).toEqual([shown]);
-    await deliver(THREAD_ID, T2, T2);
     await reconnect();
     expect(take()).toEqual([]);
 
-    // Marked unread while shown, it stays unread.
-    await deliver(THREAD_ID, T2, T1);
+    // A visit lost while the stream is down is retried once it resyncs, and only that once.
+    await drop();
+    refuse = true;
+    await deliver(THREAD_ID, T3, T2);
     await settled();
+    expect(take()).toEqual([shown]);
+    refuse = false;
+    await resync();
+    expect(take()).toEqual([shown]);
+    await deliver(THREAD_ID, T3, T3);
+    await reconnect();
+    expect(take()).toEqual([]);
+
+    // Marked unread while shown, it stays unread, across a reconnect too.
+    await deliver(THREAD_ID, T3, T2);
+    await settled();
+    await reconnect();
     expect(take()).toEqual([]);
 
     // Selecting is an open, even for a thread that's already read, and the palette sends its query.
@@ -3010,7 +3021,7 @@ describe("writing to the server", () => {
     expect(take()).toEqual([]);
 
     // Opening and closing a page over a read thread sends nothing; selecting from it is an open.
-    await deliver(THREAD_ID, T2, T2);
+    await deliver(THREAD_ID, T3, T3);
     await view({ Kind: "usage" });
     await view(null);
     expect(take()).toEqual([]);
@@ -3020,7 +3031,7 @@ describe("writing to the server", () => {
 
     // A visit still in flight doesn't hold back the next thread's.
     hold = true;
-    await deliver(THREAD_ID, T3, T2);
+    await deliver(THREAD_ID, T4, T3);
     await settled();
     expect(take()).toEqual([shown]);
     hold = false;
