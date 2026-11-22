@@ -150,9 +150,7 @@ export const Sidebar = Shell.provider(() => {
       .sort((left, right) => left.title.localeCompare(right.title));
   const [moreMenu, setMoreMenu] = createSignal<{ X: number; Y: number } | null>(null);
   const projects = () =>
-    Object.values(shell.state.Projects).filter(
-      (project) => project.archivedAt == null && !hiddenProjects().has(project.id),
-    );
+    environment.activeProjects().filter((project) => !hiddenProjects().has(project.id));
   const scope = createMemo(() => new Set(layout().Scope));
   const [scopeMenu, setScopeMenu] = createSignal<{ X: number; Y: number } | null>(null);
   const scopeLabel = () => {

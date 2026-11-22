@@ -1,13 +1,14 @@
-import { For, onMount, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { useInFlight } from "treflex-solid";
 
+import Dictation from "./Dictation";
 import Environment from "./Environment";
 import { canCaptureVoice, type IVoiceModel } from "./Infrastructure/dictation";
 import type { IVoiceDestination } from "./Infrastructure/preferences";
 import { SettingsRowFrame, SettingsSection } from "./SettingsView";
 import { Button } from "./ui/Button";
 import { Select, WrapSelect } from "./ui/Field";
-import VoiceModels, { downloadModel, getDefaultVoiceModels } from "./VoiceModels";
+import { downloadModel } from "./VoiceModels";
 
 const megabytes = (bytes: number) =>
   bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
@@ -81,9 +82,9 @@ export function VoiceSetup() {
   );
 }
 
-const ModelRow = VoiceModels.provider(() => {
-  const voice = VoiceModels.use();
-  onMount(() => void voice.loadModels());
+function ModelRow() {
+  const voice = Dictation.use();
+  const [picked, setPicked] = createSignal<string | null>(null);
   const downloading = useInFlight(downloadModel, () => voice.state);
   const models = () => voice.state.Models;
   const ordered = () =>
@@ -94,16 +95,15 @@ const ModelRow = VoiceModels.provider(() => {
     );
   const active = () => models()?.find((model) => model.active) ?? null;
   const chosen = () =>
-    models()?.find((model) => model.id === (voice.state.Picked ?? active()?.id)) ??
-    ordered()[0] ??
-    null;
+    models()?.find((model) => model.id === (picked() ?? active()?.id)) ?? ordered()[0] ?? null;
   return (
     <SettingsRowFrame
       settingId="voiceModel"
       title="Model"
       description={
         <>
-          {voice.state.Error ?? (chosen() === null ? "Loading models…" : modelState(chosen()!))}
+          {voice.state.ModelsError ??
+            (chosen() === null ? "Loading models…" : modelState(chosen()!))}
           <Show when={chosen()?.description}>
             {(text) => <span class="mt-1 block">{text()}</span>}
           </Show>
@@ -117,7 +117,7 @@ const ModelRow = VoiceModels.provider(() => {
             label={chosen() === null ? "" : modelLabel(chosen()!)}
             disabled={models() === null || downloading()}
             value={chosen()?.id ?? ""}
-            onChange={(event) => void voice.pickModel(event.currentTarget.value)}
+            onChange={(event) => setPicked(event.currentTarget.value)}
           >
             <For each={ordered()}>
               {(model) => <option value={model.id}>{modelLabel(model)}</option>}
@@ -150,4 +150,4 @@ const ModelRow = VoiceModels.provider(() => {
       }
     />
   );
-}, getDefaultVoiceModels);
+}

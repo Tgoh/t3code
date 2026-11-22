@@ -1,4 +1,3 @@
-// @effect-diagnostics globalDate:off -- View-only usage windows, outside any Effect runtime.
 import {
   EnvironmentId,
   USAGE_CONTRACT_VERSION,
@@ -14,7 +13,6 @@ import {
   formatPercent,
   formatTokens,
   formatUsd,
-  makeWindow,
   usageSourceMessages,
 } from "@t3tools/shared/usageFormat";
 import { displayLimitWindows, type LimitPace, type LimitPool } from "@t3tools/shared/usageLimits";
@@ -27,14 +25,14 @@ import {
   mergeUsage,
 } from "@t3tools/shared/usageMerge";
 import { useInFlight } from "treflex-solid";
-import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
 import { ChartNoAxesColumn, RefreshCw, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
 import { limitPools, limitPresentations } from "./limits";
-import { loadUsage, refreshUsage } from "./Settings";
+import UsagePage, { getDefaultUsagePage, loadUsage, refreshUsage, useUsagePage } from "./UsagePage";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
 import { IconButton } from "./ui/IconButton";
@@ -113,35 +111,24 @@ const shownDays = (held: number): number =>
 const metricField = (metric: "cost" | "tokens"): "costUsd" | "totalTokens" =>
   metric === "cost" ? "costUsd" : "totalTokens";
 
-const windowInput = (days: number): IWireUsageInput =>
-  makeWindow(days, new Date(), days === 1 ? "hour" : "day") as IWireUsageInput;
-
-export function UsageView() {
+export const UsageView = UsagePage.provider(() => {
   const environment = Environment.use();
-  const refreshing = useInFlight([refreshUsage, loadUsage], () => environment.state);
+  const environmentId = environment.state.EnvironmentId;
   const metric = () => shownMetric(environment.state.Local.Preferences.Usage.Metric);
   const days = () => shownDays(environment.state.Local.Preferences.Usage.Days);
-  const [input, setInput] = createSignal(windowInput(days()));
-  const load = (windowDays: number) => {
-    const next = windowInput(windowDays);
-    setInput(next);
-    void environment.loadUsage(String(windowDays), next);
-  };
-  onMount(() => load(days()));
-  createEffect(
-    on(
-      () => metric() === "limits",
-      (limits) => {
-        if (limits) void environment.autoRefreshLimits();
-      },
-    ),
-  );
+  const { page, input, load } = useUsagePage(environmentId, {
+    Days: days(),
+    Limits: metric() === "limits",
+  });
+  const refreshing = useInFlight([refreshUsage, loadUsage], () => page.state);
   const choose = (nextMetric: IMetric, nextDays: number) => {
     const daysChanged = nextDays !== days();
+    const limitsShown = nextMetric === "limits" && metric() !== "limits";
     void environment.setPreferences({ Usage: { Metric: nextMetric, Days: nextDays } });
     if (daysChanged) load(nextDays);
+    if (limitsShown) void page.autoRefreshLimits(environmentId);
   };
-  const shown = () => environment.state.Replica.Usage;
+  const shown = () => page.state.Usage;
   const merged = createMemo((): MergedUsage | null => {
     const held = shown();
     if (held === null) return null;
@@ -205,7 +192,8 @@ export function UsageView() {
             data-tip={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             disabled={refreshing()}
             onClick={() =>
-              void environment.refreshUsage(
+              void page.refreshUsage(
+                environmentId,
                 metric() === "limits" ? null : { Key: String(days()), Input: input() },
               )
             }
@@ -245,7 +233,7 @@ export function UsageView() {
       </div>
     </div>
   );
-}
+}, getDefaultUsagePage);
 
 function UsageOverview(props: {
   usage: MergedUsage;

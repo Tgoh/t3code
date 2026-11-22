@@ -16,7 +16,6 @@ import {
   type IActionGenerator,
   type IEffect,
   type IEntity,
-  type IActionContext,
   type IFailureEvent,
   inFlight,
   type IRuntime,
@@ -25,7 +24,6 @@ import {
   settled,
 } from "treflex";
 import { pinOrderKeyBetween } from "@t3tools/shared/pinOrderKey";
-import * as Cause from "effect/Cause";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
 
 import {
@@ -53,23 +51,21 @@ import type { IReportActivity } from "./Infrastructure/clientActivity";
 import { adjacentThread } from "./keybindings";
 import {
   cancelDictation,
-  dictation,
   DictationReceiver,
-  type IDictation,
+  type IRecording,
   MISSING_MODEL,
+  recording,
   sendAfterDictation,
   setVoiceDestination,
   STALE_DRAFT,
   startDictation,
 } from "./Dictation";
+import { downloadModel, POLL_MS, selectModel, VoiceModelsReceiver } from "./VoiceModels";
 import { continueDefaultBranch, pull, runGitAction } from "./GitWork";
 import { loadEarlier } from "./HistoryWindow";
 import {
-  archivedThreadCommand,
   autoRefreshLimits,
-  loadUsage,
   openView,
-  refreshUsage,
   toggleModelFavorite,
   updateServerSettings,
   writeSetting,
@@ -106,7 +102,7 @@ import type {
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
-import { serverFailure, thrownOf } from "./Infrastructure/serverError";
+import { serverFailure } from "./Infrastructure/serverError";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import type { IPreferences } from "./Infrastructure/preferences";
 import {
@@ -394,6 +390,7 @@ async function connect(
   runtime.registerReceiver(PreferencesReceiver);
   runtime.registerReceiver(ActivityReceiver);
   runtime.registerReceiver(DictationReceiver);
+  runtime.registerReceiver(VoiceModelsReceiver);
   await runtime.dispatch(load, "Root");
   await settled();
   const environment = () => runtime.state.Environments[0] as IEnvironment;
@@ -4398,13 +4395,9 @@ function settingsServer() {
   const calls: Array<{ Type: string; [key: string]: unknown }> = [];
   let settings = { favorites: [], sidebarAutoSettleAfterDays: 7 } as Record<string, unknown>;
   let client = { toolCallVisibility: "showAll" } as Record<string, unknown>;
-  let refreshing = true;
   const commands = {
     refreshProviders: (effect: { Automatic: boolean }) => {
       calls.push({ Type: "refreshProviders", Automatic: effect.Automatic });
-    },
-    refreshUsageRates: () => {
-      calls.push({ Type: "refreshUsageRates" });
     },
     updateServerSettings: (effect: { Patch: object; InstanceMutation: unknown }) => {
       calls.push({
@@ -4420,17 +4413,8 @@ function settingsServer() {
       calls.push({ Type: "storeClientSettings", Settings: effect.Settings });
       client = effect.Settings;
     },
-    archivedShell: () => {
-      calls.push({ Type: "archivedShell" });
-      return { projects: [], threads: [] };
-    },
     threadCommand: (effect: { Command: IThreadCommand }) => {
       calls.push({ Type: "threadCommand", Command: effect.Command });
-    },
-    usageSummary: (effect: { Input: Record<string, unknown> }) => {
-      calls.push({ Type: "usageSummary", Input: effect.Input });
-      const sources = [{ refreshing: refreshing && effect.Input.provisional === true }];
-      return { buckets: [], sources, contractVersion: 6 };
     },
   };
   return {
@@ -4441,9 +4425,6 @@ function settingsServer() {
       type: "snapshot",
       config: { settings: { ...settings }, providers: [], keybindings: [], issues: [] },
     }),
-    stopRefreshing: () => {
-      refreshing = false;
-    },
   };
 }
 
@@ -4602,70 +4583,14 @@ describe("settings and usage", () => {
     expect(usedPercent()).toBe(39);
   });
 
-  it("refresh limits by asking the server to re-probe its providers, and leave the result to the stream", async () => {
+  it("the header's limits refresh asks the server to re-probe, and leaves the result to the stream", async () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, fake.commands);
     await server.runtime.dispatch(autoRefreshLimits, server.envId());
-    await server.runtime.dispatch(refreshUsage, server.envId(), null);
     expect(fake.calls.filter((call) => call.Type === "refreshProviders")).toEqual([
       { Type: "refreshProviders", Automatic: true },
-      { Type: "refreshProviders", Automatic: false },
     ]);
     expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(false);
-  });
-
-  it("unarchive a thread with stock's command and read the archive again", async () => {
-    const fake = settingsServer();
-    const server = await connect(undefined, null, fake.commands);
-    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "archived" });
-    await settled();
-    expect(server.environment().Replica.Archived).toEqual({ projects: [], threads: [] });
-    await server.runtime.dispatch(archivedThreadCommand, server.envId(), "t-9", "unarchive");
-    expect(fake.calls.slice(-2)).toEqual([
-      { Type: "threadCommand", Command: { Kind: "unarchive" } },
-      { Type: "archivedShell" },
-    ]);
-  });
-
-  it("show a provisional usage summary, then wait for the refresh it reports", async () => {
-    const fake = settingsServer();
-    const server = await connect(undefined, null, fake.commands);
-    const input = { sinceDay: "2026-10-19", untilDay: "2026-11-17", timeZone: "UTC" };
-    await server.runtime.dispatch(loadUsage, server.envId(), "30", input as never);
-    expect(
-      fake.calls.filter((call) => call.Type === "usageSummary").map((call) => call.Input),
-    ).toEqual([
-      { ...input, provisional: true },
-      { ...input, awaitRefresh: true },
-    ]);
-    expect(server.environment().Replica.Usage?.Key).toBe("30");
-    fake.stopRefreshing();
-    await server.runtime.dispatch(loadUsage, server.envId(), "7", input as never);
-    expect(fake.calls.filter((call) => call.Type === "usageSummary")).toHaveLength(3);
-  });
-
-  it("drop a usage read a newer one replaced, silently, though its request ends interrupted", async () => {
-    const fake = settingsServer();
-    const server = await connect(undefined, null, {
-      ...fake.commands,
-      usageSummary: (effect: { Input: { sinceDay: string } }, action?: IActionContext) =>
-        effect.Input.sinceDay === "replaced"
-          ? new Promise((_resolve, reject) =>
-              action?.signal.addEventListener("abort", () => reject(thrownOf(Cause.interrupt()))),
-            )
-          : { buckets: [], sources: [], contractVersion: 6 },
-    });
-    const input = { sinceDay: "2026-10-19", untilDay: "2026-11-17", timeZone: "UTC" };
-    const replaced = server.runtime.dispatch(loadUsage, server.envId(), "30", {
-      ...input,
-      sinceDay: "replaced",
-    } as never);
-    await settled();
-    await server.runtime.dispatch(loadUsage, server.envId(), "7", input as never);
-    await replaced;
-    await settled();
-    expect(server.environment().Replica.Usage?.Key).toBe("7");
-    expect(server.runtime.state.Failure).toBeUndefined();
   });
 });
 
@@ -4998,6 +4923,16 @@ describe("dictation", () => {
     gpuDevices: [],
   };
   const EMPTY = { Text: "", Start: 0, End: 0 };
+  const voiceModel = (id: string, state: string, active = false) => ({
+    id,
+    name: id,
+    description: "",
+    size: 100,
+    state,
+    active,
+    recommended: false,
+  });
+  const IN_USE = [voiceModel("parakeet", "installed", true)];
 
   async function dictating(
     status: object = READY,
@@ -5014,6 +4949,7 @@ describe("dictation", () => {
       null,
       {
         voiceStatus: () => status,
+        voiceModels: () => IN_USE,
         storedClientSettings: () => copy(DEFAULT_CLIENT_SETTINGS),
         ...commands,
       },
@@ -5030,19 +4966,20 @@ describe("dictation", () => {
       preferences,
     );
     await server.open();
-    const state = () =>
-      server.runtime.processSelector(dictation, () => server.environment()) as IDictation;
+    const voice = () => server.environment().Local.Dictation;
+    const voiceId = () => voice().$Id;
+    const state = () => server.runtime.processSelector(recording, voice) as IRecording;
     const deliver = (message: object) =>
       server.runtime.dispatch(
         DictationReceiver.handle,
-        server.envId(),
+        voiceId(),
         { Type: "Voice/Dictation", ...message } as never,
-        { publisher: { Id: server.envId() } },
+        { publisher: { Id: voiceId() } },
       );
     const phase = (Phase: string, Error: string | null = null) =>
       deliver({ Kind: "state", ThreadId: THREAD_ID, Phase, Error, ErrorAction: null });
     const methods = () => calls.map((call) => call.Method);
-    return { server, calls, methods, state, deliver, phase };
+    return { server, calls, methods, state, deliver, phase, voice, voiceId };
   }
 
   it("reads the destination's status, then records the draft with the device's options", async () => {
@@ -5075,7 +5012,9 @@ describe("dictation", () => {
   });
 
   it("a missing model points to Voice settings instead of recording", async () => {
-    const { server, methods, state } = await dictating({ ...READY, state: "missing-model" });
+    const { server, methods, state } = await dictating(READY, {
+      voiceModels: () => [voiceModel("parakeet", "downloadable")],
+    });
     await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
     expect(methods()).toEqual([]);
     expect(state()).toMatchObject({
@@ -5083,6 +5022,50 @@ describe("dictation", () => {
       Error: MISSING_MODEL,
       ErrorAction: "settings",
     });
+  });
+
+  it("checks for a model in the list Voice settings shows, and records once one is put in use", async () => {
+    let catalog = [voiceModel("parakeet", "installed")];
+    const { server, methods, state, voice, voiceId } = await dictating(READY, {
+      voiceModels: () => catalog,
+      voiceModelCommand: () => {
+        catalog = [voiceModel("parakeet", "installed", true)];
+        return { Models: catalog, Cancelled: false };
+      },
+    });
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    expect(state().Error).toBe(MISSING_MODEL);
+    expect(voice().Models).toEqual([voiceModel("parakeet", "installed")]);
+
+    await server.runtime.dispatch(selectModel, voiceId(), "parakeet");
+    expect(voice().Models).toEqual(catalog);
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    expect(methods()).toEqual(["start"]);
+  });
+
+  it("keeps polling a download's progress after Voice settings closes", async () => {
+    let catalog: object[] = [voiceModel("parakeet", "downloadable")];
+    const { server, voice, voiceId } = await dictating(READY, {
+      voiceModels: () => catalog,
+      voiceModelCommand: () => new Promise(() => {}),
+    });
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "voice" });
+    await settled();
+    expect(voice().Models).toEqual(catalog);
+    void server.runtime.dispatch(downloadModel, voiceId(), "parakeet");
+    await settled();
+    await server.runtime.dispatch(openView, server.envId(), null);
+    expect(server.runtime.timers(voiceId())).toContainEqual(
+      expect.objectContaining({ Key: "Voice/Poll", IntervalMs: POLL_MS }),
+    );
+    catalog = [{ ...voiceModel("parakeet", "downloading"), downloaded: 40 }];
+    await server.runtime.dispatch(
+      VoiceModelsReceiver.handle,
+      voiceId(),
+      { Type: "Voice/Poll" },
+      { publisher: { Id: voiceId() } },
+    );
+    expect(voice().Models).toEqual(catalog);
   });
 
   it("an unchosen destination opens Voice settings, and turning voice off cancels", async () => {
@@ -5175,12 +5158,12 @@ describe("dictation", () => {
 
   it("a send while recording stops it and sends once the transcript is in", async () => {
     const sent: IStartTurn[] = [];
-    const { server, methods, deliver, phase } = await dictating(READY, {
+    const { server, methods, deliver, phase, voiceId } = await dictating(READY, {
       startTurn: (effect: IStartTurn) => void sent.push(effect),
     });
     await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
     await phase("recording");
-    await server.runtime.dispatch(sendAfterDictation, server.envId(), THREAD_ID, "auto");
+    await server.runtime.dispatch(sendAfterDictation, voiceId(), THREAD_ID, "auto");
     expect(methods()).toEqual(["start", "stop"]);
     expect(sent).toEqual([]);
     await phase("transcribing");
@@ -5193,17 +5176,17 @@ describe("dictation", () => {
 
   it("a failed transcript forgets the queued send, and cancel ends a recording", async () => {
     const sent: IStartTurn[] = [];
-    const { server, methods, state, phase } = await dictating(READY, {
+    const { server, methods, state, phase, voiceId } = await dictating(READY, {
       startTurn: (effect: IStartTurn) => void sent.push(effect),
     });
     await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
     await phase("recording");
-    await server.runtime.dispatch(sendAfterDictation, server.envId(), THREAD_ID, "auto");
+    await server.runtime.dispatch(sendAfterDictation, voiceId(), THREAD_ID, "auto");
     await phase("error", "No speech was detected.");
     expect(state()).toMatchObject({ Phase: "error", SubmitMode: null });
     await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
     await phase("recording");
-    await server.runtime.dispatch(cancelDictation, server.envId());
+    await server.runtime.dispatch(cancelDictation, voiceId());
     expect(state().Phase).toBe("idle");
     expect(methods()).toEqual(["start", "stop", "start", "cancel"]);
     expect(sent).toEqual([]);

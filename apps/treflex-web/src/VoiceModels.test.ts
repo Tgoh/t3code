@@ -1,12 +1,11 @@
 import { createTestRuntime, type IFailureEvent, settled, type ITestRuntimeOptions } from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
+import { getDefaultDictation, type IDictation } from "./Dictation";
 import type { IVoiceModel } from "./Infrastructure/dictation";
 import { serverFailure } from "./Infrastructure/serverError";
 import {
   downloadModel,
-  getDefaultVoiceModels,
-  type IVoiceModels,
   loadModels,
   POLL_MS,
   selectModel,
@@ -30,8 +29,8 @@ function rig(
 ) {
   const commands: ICommand[] = [];
   const failures: IFailureEvent[] = [];
-  const runtime = createTestRuntime<IVoiceModels>(
-    { $Id: ID, ...getDefaultVoiceModels() },
+  const runtime = createTestRuntime<IDictation>(
+    { $Id: ID, ...getDefaultDictation() },
     {
       voiceModels: catalog,
       voiceModelCommand: async (effect: ICommand) => {
@@ -130,7 +129,9 @@ describe("voice models", () => {
       { allowFailures: [selectModel] },
     );
     await voice.runtime.dispatch(selectModel, ID, "base");
-    expect(voice.runtime.state.Error).toBe("Model not found.");
+    expect(voice.runtime.state.ModelsError).toBe("Model not found.");
+    await voice.runtime.dispatch(loadModels, ID);
+    expect(voice.runtime.state.ModelsError).toBeNull();
 
     fail = new TypeError("models is undefined");
     await expect(voice.runtime.dispatch(selectModel, ID, "base")).rejects.toThrow(TypeError);

@@ -79,9 +79,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   const close = () => navigation.setPalette(null);
 
   const projects = createMemo(() =>
-    Object.values(shell.state.Projects)
-      .filter((project) => project.archivedAt == null)
-      .sort((left, right) => left.title.localeCompare(right.title)),
+    environment.activeProjects().toSorted((left, right) => left.title.localeCompare(right.title)),
   );
   const projectTitle = (projectId: string) => shell.state.Projects[projectId]?.title ?? null;
   const threads = createMemo(() =>
