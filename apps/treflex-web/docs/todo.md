@@ -8,6 +8,8 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 - **A long-running tab stops getting config updates.** **In progress:** `reflex/config-stream-stale`. Tam's reflex tab kept showing the usage ring at 100% after the server had fresh limits. A freshly loaded tab showed 78% from the same server, so the open tab's `Server/Config` stream had stopped applying `providerStatuses`. Find out why: a reconnect that doesn't resubscribe, a decode or encode failure that ends the stream, or an event that isn't applied. Fix it with a failing test first.
 
+- **Rename the `reflex-main` branch to `treflex-main`.** After the two items above merge, so no running thread's merge steps point at a branch that's gone. Rename it on origin and in the main checkout. Update `reflex-main` in `scripts/sync-upstream.ps1`, `CLAUDE.md` and the README, and the `syncupstream` and `promote` skills, including their port variable, now `TREFLEX_WEB_PORT`. Use the `treflex/` prefix for new branches.
+
 ## 1. Parity and polish
 
 - **Settings treflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
