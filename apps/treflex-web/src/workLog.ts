@@ -3,6 +3,7 @@ import {
   commandProgramName,
 } from "@t3tools/client-runtime/work-log/command-label";
 import {
+  commandlessCommandLabel,
   contextCompactionLabel,
   liveActivityToolStatus,
   normalizeCompactToolLabel,
@@ -17,6 +18,7 @@ import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
 import { formatFilePathPosition, splitFilePathPosition } from "@t3tools/shared/fileLinks";
 import {
   fileBasename,
+  isHostPath,
   isWindowsAbsolutePath,
   stripSlashPrefixedWindowsDrive,
 } from "@t3tools/shared/path";
@@ -265,7 +267,7 @@ export function formatWorkspaceRelativePath(
       displayPath = workspaceLabel;
     } else if (pathForCompare.startsWith(`${rootForCompare}/`)) {
       displayPath = `${workspaceLabel}/${normalizedPath.slice(normalizedRoot.length + 1)}`;
-    } else if (!normalizedPath.startsWith("/") && !isWindowsAbsolutePath(normalizedPath)) {
+    } else if (!isHostPath(normalizedPath)) {
       const relativePath = normalizedPath.replace(/^\.\/+/, "").replace(/^\/+/, "");
       displayPath = pathForCompare.startsWith(fold(`${workspaceLabel}/`))
         ? normalizedPath
@@ -358,6 +360,11 @@ export function workEntryDisplayLabel(entry: IWorkLogEntry, workspaceRoot: strin
   const presentation = resolveWorkEntryToolPresentation(entry);
   if (presentation) return presentation.displayName;
   if (entry.command?.trim()) return commandDisplayText(entry.command);
+  const commandless = commandlessCommandLabel(
+    entry,
+    liveActivityToolStatus(entry.toolLifecycleStatus, false),
+  );
+  if (commandless) return commandless;
   const action = toolGroupAction(entry);
   if (action === "code-search" || action === "search") {
     const searchLabel =
@@ -423,5 +430,5 @@ export function liveWorkEntryLabel(
               : "Ran";
     return `${verb} ${commandProgramName(command) ?? "command"}`;
   }
-  return workEntryDisplayLabel(entry, workspaceRoot);
+  return commandlessCommandLabel(entry, status) ?? workEntryDisplayLabel(entry, workspaceRoot);
 }
