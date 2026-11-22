@@ -61,9 +61,7 @@ After stage 3, which also changes `ThreadView`.
 
   Screen-caused work, such as loading the next page when a list's end scrolls into view, gets a named opt-in at the call site instead of being banned.
 
-## Lint
-
-- **A reason on every lifecycle callback.** treflex left this rule to the app. Add `reflex/require-lifecycle-reason` beside `t3code/no-unreasoned-state-sync` in `oxlint-plugin-t3code/`, scoped to `apps/reflex-web`. It should require a disable comment with a reason on every `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`, then annotate the existing sites.
+  4. **`treflex/require-lifecycle-reason`**, opt-in, requires a disable comment with a reason on every `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`. **In progress** in the reflex repo, for the same `treflex-eslint` 0.2.1 as rule 1, or 0.2.2. When it ships, turn it on with rule 1 and annotate the existing sites.
 
 ## Housekeeping
 
