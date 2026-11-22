@@ -1,5 +1,7 @@
 import { type JSX, splitProps } from "solid-js";
 
+import { Input, type InputProps } from "./Input";
+
 const BASE =
   "peer/menu-button flex cursor-pointer items-center gap-[var(--sidebar-control-gap)] overflow-hidden text-left outline-hidden transition-[width,height,padding] hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-inset active:bg-sidebar-row-active active:text-sidebar-foreground disabled:pointer-events-none disabled:opacity-64 aria-disabled:pointer-events-none aria-disabled:opacity-64 data-[active=true]:bg-sidebar-row-selected data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground data-[state=open]:hover:bg-sidebar-row-hover data-[state=open]:hover:text-sidebar-foreground group-data-[collapsible=icon]:size-8! [&>span:last-child]:truncate [&>svg:not([class*='size-'])]:size-4 [&>svg]:shrink-0 [&>svg]:text-[var(--sidebar-icon-color)] hover:[&>svg]:text-sidebar-foreground active:[&>svg]:text-sidebar-foreground data-[active=true]:[&>svg]:text-sidebar-foreground";
 
@@ -79,6 +81,22 @@ export function SidebarMenuButton(
         size: local.size,
         class: local.class,
       })}
+    />
+  );
+}
+
+export function SidebarInput(props: Omit<InputProps, "unstyled">) {
+  const [local, rest] = splitProps(props, ["class"]);
+  return (
+    <Input
+      {...rest}
+      class={[
+        "[&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground",
+        local.class,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      unstyled
     />
   );
 }

@@ -1,6 +1,7 @@
 // @effect-diagnostics globalDate:off -- View-only relative times, outside any Effect runtime.
 import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import {
+  children as resolveChildren,
   createMemo,
   createSignal,
   For,
@@ -55,19 +56,25 @@ import {
 import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow, relativeTime } from "./timestamps";
+import { Badge } from "./ui/Badge";
 import { Button, buttonVariants } from "./ui/Button";
-import { Input, Select, Textarea, WrapSelect } from "./ui/Field";
+import { DraftInput } from "./ui/DraftInput";
+import { Select, WrapSelect } from "./ui/Field";
+import { Input } from "./ui/Input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/InputGroup";
+import { Kbd, KbdGroup } from "./ui/Kbd";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
+import { SidebarInput } from "./ui/Sidebar";
 import { Switch } from "./ui/Switch";
+import { Textarea } from "./ui/Textarea";
 import { VoiceSetup } from "./VoiceSettings";
 
 const PRIVACY_POLICY_URL = "https://t3.codes/privacy-policy";
 
 const loading = "m-0 px-4 text-[13px] text-muted-foreground";
 const note = "m-0 px-4 text-[13px] text-muted-foreground [&_code]:text-[12px]";
-const badge = "rounded-full border px-1.5 py-0 text-[11px] font-normal text-muted-foreground";
 const titleIcon = "inline-flex items-center gap-2 [&>svg]:size-4";
 const mutedValue = "text-[13px] text-muted-foreground";
 const toolbar = "flex items-center gap-2 px-4 text-[14px]";
@@ -187,9 +194,9 @@ function SettingsNav(props: { page: string }) {
     >
       <div class="flex h-8 items-center gap-2 rounded-lg pr-1 pl-2 text-muted-foreground focus-within:bg-accent hover:bg-accent max-md:hidden">
         <Icons.Search />
-        <input
+        <SidebarInput
           ref={setSearchBox}
-          class="min-w-0 flex-1 border-0 bg-transparent px-0.5 py-px text-[14px] text-foreground outline-none"
+          class="min-w-0 flex-1"
           type="text"
           placeholder="Search"
           aria-label="Search settings"
@@ -215,10 +222,7 @@ function SettingsNav(props: { page: string }) {
             }
           }}
         />
-        <Show
-          when={searching()}
-          fallback={<kbd class="rounded-sm border bg-muted px-[5px] font-sans text-[11px]">/</kbd>}
-        >
+        <Show when={searching()} fallback={<Kbd>/</Kbd>}>
           <Button
             variant="ghost-muted"
             size="icon-micro"
@@ -330,25 +334,27 @@ export function SettingsRowFrame(props: {
   description?: JSX.Element;
   control?: JSX.Element;
   settingId?: string;
+  children?: JSX.Element;
 }) {
+  const below = resolveChildren(() => props.children);
   return (
-    <div
-      class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 px-4 py-3.5 max-md:grid-cols-[minmax(0,1fr)]"
-      data-setting-id={props.settingId}
-    >
-      <div>
-        <div class="flex flex-wrap items-center gap-2 text-[14px] font-medium">{props.title}</div>
-        <Show when={props.description}>
-          <p class="mx-0 mt-0.5 mb-0 max-w-2xl text-[12px] leading-[1.45] text-muted-foreground">
-            {props.description}
-          </p>
+    <div class={below() ? "px-4 pt-3.5" : "px-4 py-3.5"} data-setting-id={props.settingId}>
+      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 max-md:grid-cols-[minmax(0,1fr)]">
+        <div>
+          <div class="flex flex-wrap items-center gap-2 text-[14px] font-medium">{props.title}</div>
+          <Show when={props.description}>
+            <p class="mx-0 mt-0.5 mb-0 max-w-2xl text-[12px] leading-[1.45] text-muted-foreground">
+              {props.description}
+            </p>
+          </Show>
+        </div>
+        <Show when={props.control}>
+          <div class="flex items-center justify-end gap-2 max-md:flex-wrap max-md:justify-start">
+            {props.control}
+          </div>
         </Show>
       </div>
-      <Show when={props.control}>
-        <div class="flex items-center justify-end gap-2 max-md:flex-wrap max-md:justify-start">
-          {props.control}
-        </div>
-      </Show>
+      {below()}
     </div>
   );
 }
@@ -427,7 +433,8 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
       case "number":
         return (
           <Input
-            class="w-20 min-w-0"
+            size="sm"
+            class="w-full sm:w-24"
             type="number"
             min={control.Min}
             max={control.Max}
@@ -438,32 +445,37 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
         );
       case "text":
         return (
-          <Input
-            class="min-w-44"
+          <DraftInput
+            size="sm"
+            class="w-full sm:w-72"
             aria-label={props.row.Title}
             placeholder={control.Placeholder}
+            spellcheck={false}
             value={String(current)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-            }}
-            onBlur={(event) => {
-              if (event.currentTarget.value !== current) write(event.currentTarget.value);
-            }}
+            onCommit={write}
           />
         );
       case "textarea":
-        return (
-          <Textarea
-            class="min-w-72 max-md:w-full max-md:min-w-0"
-            aria-label={props.row.Title}
-            placeholder={control.Placeholder}
-            value={String(current)}
-            onBlur={(event) => {
-              if (event.currentTarget.value !== current) write(event.currentTarget.value);
-            }}
-          />
-        );
+        return undefined;
     }
+  };
+  const below = (): JSX.Element => {
+    const control = props.row.Control;
+    const current = value();
+    if (control.Kind !== "textarea" || current === null) return undefined;
+    return (
+      <div class="mt-3 max-w-2xl pb-3.5">
+        <Textarea
+          rows={4}
+          aria-label={props.row.Title}
+          placeholder={control.Placeholder}
+          value={String(current)}
+          onBlur={(event) => {
+            if (event.currentTarget.value !== current) write(event.currentTarget.value);
+          }}
+        />
+      </div>
+    );
   };
   return (
     <SettingsRowFrame
@@ -471,12 +483,13 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
         <>
           {props.row.Title}
           <Show when={!props.row.Applied}>
-            <span
-              class={badge}
+            <Badge
+              variant="outline"
+              size="sm"
               data-tip="Saved in this browser as stock saves it, but this client doesn't use it yet."
             >
               Not used here yet
-            </span>
+            </Badge>
           </Show>
           <Show
             when={
@@ -493,7 +506,9 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
       description={props.row.Description}
       settingId={props.row.Id}
       control={control()}
-    />
+    >
+      {below()}
+    </SettingsRowFrame>
   );
 }
 
@@ -690,7 +705,8 @@ function ProvidersPage() {
                       <div class="flex flex-wrap items-center gap-2 px-4 pt-0 pb-2">
                         <Show when={row.Models.length > MODEL_FILTER_THRESHOLD}>
                           <Input
-                            class="w-56"
+                            size="sm"
+                            class="w-56 max-w-full"
                             placeholder="Filter models"
                             aria-label="Filter models"
                             spellcheck={false}
@@ -741,7 +757,9 @@ function ProvidersPage() {
                                 {model.Slug}
                               </code>
                               <Show when={model.Custom}>
-                                <span class={badge}>Custom</span>
+                                <span class="shrink-0 text-2xs text-muted-foreground/70">
+                                  custom
+                                </span>
                               </Show>
                             </span>
                             <span class="contents max-md:order-last max-md:flex max-md:basis-full max-md:pl-8 max-md:empty:hidden">
@@ -865,15 +883,13 @@ const ProjectsPage = Shell.provider(() => {
                 title="Name"
                 description="The shared name for this project group in the sidebar and thread lists."
                 control={
-                  <Input
-                    class="min-w-44"
+                  <DraftInput
+                    size="sm"
+                    class="w-full sm:w-64"
                     aria-label="Project name"
                     value={current.title}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") event.currentTarget.blur();
-                    }}
-                    onBlur={(event) => {
-                      const title = event.currentTarget.value.trim();
+                    onCommit={(next) => {
+                      const title = next.trim();
                       if (title && title !== current.title) {
                         void environment.projectCommand(current.id, {
                           Kind: "rename",
@@ -983,14 +999,19 @@ function KeybindingsPage() {
       {(config) => (
         <>
           <div class={toolbar}>
-            <Input
-              class="w-full min-w-44"
-              type="search"
-              placeholder="Search keybindings"
-              aria-label="Search keybindings"
-              value={query()}
-              onInput={(event) => setQuery(event.currentTarget.value)}
-            />
+            <InputGroup class="min-w-0 basis-full **:[input]:h-9 sm:flex-1 sm:**:[input]:h-8">
+              <InputGroupAddon>
+                <Icons.Search aria-hidden="true" class="size-3.5" />
+              </InputGroupAddon>
+              <InputGroupInput
+                size="sm"
+                type="search"
+                placeholder="Search keybindings"
+                aria-label="Search keybindings"
+                value={query()}
+                onInput={(event) => setQuery(event.currentTarget.value)}
+              />
+            </InputGroup>
           </div>
           <p class={note}>
             Read-only here. Edit them in stock T3 Code or in{" "}
@@ -1006,7 +1027,9 @@ function KeybindingsPage() {
                         <span data-tip={row.Command}>
                           {row.Label}
                           <Show when={row.Source !== "Default"}>
-                            <span class={badge}>{row.Source}</span>
+                            <Badge variant="outline" size="sm">
+                              {row.Source}
+                            </Badge>
                           </Show>
                         </span>
                       }
@@ -1020,15 +1043,9 @@ function KeybindingsPage() {
                             <span class="text-[12px] text-muted-foreground">Unassigned</span>
                           }
                         >
-                          <span class="inline-flex gap-1">
-                            <For each={keyCaps(row.Key)}>
-                              {(cap) => (
-                                <kbd class="min-w-[22px] rounded-sm border bg-muted px-1.5 py-px text-center font-sans text-[12px]">
-                                  {cap}
-                                </kbd>
-                              )}
-                            </For>
-                          </span>
+                          <KbdGroup>
+                            <For each={keyCaps(row.Key)}>{(cap) => <Kbd>{cap}</Kbd>}</For>
+                          </KbdGroup>
                         </Show>
                       }
                     />

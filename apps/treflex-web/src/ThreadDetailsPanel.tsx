@@ -72,9 +72,12 @@ import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession, { mergeBack } from "./ThreadSession";
 import { AgentElapsed } from "./AgentElapsed";
 import { Button } from "./ui/Button";
+import { Input } from "./ui/Input";
+import { Label } from "./ui/Label";
 import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 import { Presence } from "./ui/Presence";
+import { Textarea } from "./ui/Textarea";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 
 const COMMIT_DIALOG_TITLE = "Commit changes";
@@ -94,9 +97,6 @@ const ICON_ACTION =
 const SECTION = "flex flex-col px-2 pt-2 pb-2.5";
 const ERROR = "mx-2.5 mt-0.5 mb-1 text-[12px] text-error-foreground wrap-anywhere";
 const NOTE = "m-0 px-2 py-1.5 text-[12px]";
-const FIELD_LABEL = "text-[13px] font-medium";
-const FIELD =
-  "rounded-lg border border-input bg-background px-2 py-1.5 text-[14px] text-foreground";
 
 const actionContext = (status: VcsStatusResult | null): IActionContext => ({
   RefName: status?.refName ?? null,
@@ -291,13 +291,10 @@ function CommitDialog(props: {
             </span>
           </span>
         </div>
-        <label class={FIELD_LABEL} for="commit-message">
-          Commit message (optional)
-        </label>
-        <textarea
-          id="commit-message"
-          class={`${FIELD} resize-y`}
-          rows={3}
+        <p class="text-sm font-medium">Commit message (optional)</p>
+        <Textarea
+          aria-label="Commit message (optional)"
+          size="sm"
           placeholder="Leave empty to auto-generate"
           value={message()}
           onInput={(event) => setMessage(event.currentTarget.value)}
@@ -346,22 +343,16 @@ function AddScriptDialog(props: {
           <DialogDescription>
             Scripts run in this thread's terminal, from its working folder.
           </DialogDescription>
-          <label class={FIELD_LABEL} for="script-name">
-            Name
-          </label>
-          <input
+          <Label for="script-name">Name</Label>
+          <Input
             id="script-name"
-            class={FIELD}
             autofocus
             value={name()}
             onInput={(event) => setName(event.currentTarget.value)}
           />
-          <label class={FIELD_LABEL} for="script-command">
-            Command
-          </label>
-          <input
+          <Label for="script-command">Command</Label>
+          <Textarea
             id="script-command"
-            class={`${FIELD} font-mono`}
             value={command()}
             onInput={(event) => setCommand(event.currentTarget.value)}
           />

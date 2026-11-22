@@ -216,12 +216,19 @@ A running turn deliberately doesn't follow stock, so the text on screen stays st
 
 These mirror `apps/web/src/components/ui`, with stock's variants, sizes and class strings; an upstream sync ports their class changes. Some sizes and variants are stock `className` overrides made into names: Button's `icon-titlebar` is `SidebarTrigger`'s own, `media-navigation-inline` is the one `SidebarChrome` passes to `SidebarTrigger`, and the sidebar button's `icon-sm` is `SidebarHeaderIconButton`'s.
 
-| Here                 | Stock source                                                                                    |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| `ui/Button.tsx`      | `apps/web/src/components/ui/button.tsx`                                                         |
-| `ui/Toggle.tsx`      | `apps/web/src/components/ui/toggle.tsx`                                                         |
-| `ui/ToggleGroup.tsx` | `apps/web/src/components/ui/toggle-group.tsx`                                                   |
-| `ui/Sidebar.tsx`     | `SidebarMenuButton` and `sidebarMenuButtonVariants` in `apps/web/src/components/ui/sidebar.tsx` |
+| Here                 | Stock source                                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `ui/Button.tsx`      | `apps/web/src/components/ui/button.tsx`                                                                         |
+| `ui/Toggle.tsx`      | `apps/web/src/components/ui/toggle.tsx`                                                                         |
+| `ui/ToggleGroup.tsx` | `apps/web/src/components/ui/toggle-group.tsx`                                                                   |
+| `ui/Sidebar.tsx`     | `SidebarMenuButton`, `sidebarMenuButtonVariants` and `SidebarInput` in `apps/web/src/components/ui/sidebar.tsx` |
+| `ui/Input.tsx`       | `apps/web/src/components/ui/input.tsx`                                                                          |
+| `ui/DraftInput.tsx`  | `apps/web/src/components/ui/draft-input.tsx`, `apps/web/src/hooks/useCommitOnBlur.ts`                           |
+| `ui/Textarea.tsx`    | `apps/web/src/components/ui/textarea.tsx`                                                                       |
+| `ui/InputGroup.tsx`  | `apps/web/src/components/ui/input-group.tsx`                                                                    |
+| `ui/Label.tsx`       | `apps/web/src/components/ui/label.tsx`                                                                          |
+| `ui/Kbd.tsx`         | `apps/web/src/components/ui/kbd.tsx`                                                                            |
+| `ui/Badge.tsx`       | `apps/web/src/components/ui/badge.tsx`                                                                          |
 
 ## Running it
 
@@ -274,7 +281,7 @@ Tailwind v4 with preflight, like stock. `src/index.css` is the entry: it carries
 
 ### Shared controls
 
-`src/ui/` holds the controls every area uses, each owning its look the way stock's `components/ui` do: `Button`, `InlineButton`, `Toggle`, `ToggleGroup`, `SidebarMenuButton`, `Input`, `Select`, `WrapSelect` (for labels too long for a phone row), `Textarea`, `Switch`, `MenuSwitch`, `Segmented` and `Segment`, `Popup`, `MenuItem`, `MenuHeading`, `MenuCheck`, `MenuSeparator`, the `Dialog` parts, `Modal`, and the tooltip host. Pick a `variant` or `size`, and pass `class` only for layout (margin, width, position) or a property the variant doesn't set. If no variant fits, add one there rather than restyling at the call site. `buttonVariants()` and `sidebarMenuButtonVariants()` return the class string for an element that can't be a `<button>`, such as a link or a label. A `Toggle`'s `pressed` prop sets both `aria-pressed` and `data-pressed`; a popup trigger built on `Button` sets `data-pressed` itself while its popup is open.
+`src/ui/` holds the controls every area uses, each owning its look the way stock's `components/ui` do: `Button`, `InlineButton`, `Toggle`, `ToggleGroup`, `SidebarMenuButton`, `SidebarInput`, `Input`, `DraftInput` (commits on blur or Enter), `Textarea` (grows with its text), `InputGroup` with `InputGroupAddon` and `InputGroupInput`, `Label`, `Kbd` and `KbdGroup`, `Badge`, `Select`, `WrapSelect` (for labels too long for a phone row), `Switch`, `MenuSwitch`, `Segmented` and `Segment`, `Popup`, `MenuItem`, `MenuHeading`, `MenuCheck`, `MenuSeparator`, the `Dialog` parts, `Modal`, and the tooltip host. Pick a `variant` or `size`, and pass `class` only for layout (margin, width, position) or a property the variant doesn't set. If no variant fits, add one there rather than restyling at the call site. `buttonVariants()` and `sidebarMenuButtonVariants()` return the class string for an element that can't be a `<button>`, such as a link or a label. A field's `class` goes on its `data-slot="input-control"` wrapper, as stock's does; mark a bad value with `aria-invalid`. A `Toggle`'s `pressed` prop sets both `aria-pressed` and `data-pressed`; a popup trigger built on `Button` sets `data-pressed` itself while its popup is open.
 
 ## Setting up a machine
 

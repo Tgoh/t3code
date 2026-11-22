@@ -20,7 +20,9 @@ import { Folder, FolderGit2 } from "./icons";
 import { MARK, STATUS_LABEL, STATUS_TONE } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   FolderOpen,
   FolderPlus,
   MessageSquare,
@@ -42,7 +44,6 @@ import {
   PALETTE_BACKDROP,
   PALETTE_FOOTER,
   PALETTE_GROUP,
-  PALETTE_HINT,
   PALETTE_INPUT,
   PALETTE_INPUT_ROW,
   PALETTE_KBD,
@@ -53,6 +54,7 @@ import {
   PALETTE_ROW_TEXT,
   PALETTE_ROW_TITLE,
 } from "./ui/palette";
+import { Kbd, KbdGroup } from "./ui/Kbd";
 import { usePresence } from "./ui/Presence";
 
 const META_TEXT = "min-w-0 truncate";
@@ -431,21 +433,29 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
             </Show>
           </div>
           <footer class={PALETTE_FOOTER}>
-            <span class={PALETTE_HINT}>
-              <kbd class={PALETTE_KBD}>↑</kbd>
-              <kbd class={PALETTE_KBD}>↓</kbd> Navigate
-            </span>
-            <span class={PALETTE_HINT}>
-              <kbd class={PALETTE_KBD}>Enter</kbd> Select
-            </span>
+            <KbdGroup>
+              <Kbd>
+                <ArrowUp />
+              </Kbd>
+              <Kbd>
+                <ArrowDown />
+              </Kbd>
+              <span>Navigate</span>
+            </KbdGroup>
+            <KbdGroup>
+              <Kbd>Enter</Kbd>
+              <span>Select</span>
+            </KbdGroup>
             <Show when={submenu() !== null}>
-              <span class={PALETTE_HINT}>
-                <kbd class={PALETTE_KBD}>Backspace</kbd> Back
-              </span>
+              <KbdGroup>
+                <Kbd>Backspace</Kbd>
+                <span>Back</span>
+              </KbdGroup>
             </Show>
-            <span class={PALETTE_HINT}>
-              <kbd class={PALETTE_KBD}>Esc</kbd> Close
-            </span>
+            <KbdGroup>
+              <Kbd>Esc</Kbd>
+              <span>Close</span>
+            </KbdGroup>
           </footer>
         </div>
       </div>

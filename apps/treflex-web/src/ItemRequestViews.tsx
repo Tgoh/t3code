@@ -29,7 +29,8 @@ import ItemRequest, {
 } from "./ItemRequest";
 import OpenThread from "./OpenThread";
 import { Button, buttonVariants } from "./ui/Button";
-import { Input, Select } from "./ui/Field";
+import { Select } from "./ui/Field";
+import { Input } from "./ui/Input";
 import {
   Dialog,
   DialogDescription,

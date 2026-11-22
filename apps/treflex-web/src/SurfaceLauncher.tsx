@@ -14,6 +14,7 @@ import { arrowStep, stepHighlight } from "./listNavigation";
 import { useNavigation } from "./navigation";
 import { PanelHeader } from "./RightPanel";
 import { type ISurfaceAction, type ISurfaceKind, shortcutAction } from "./surfaces";
+import { Kbd } from "./ui/Kbd";
 
 const ITEM =
   "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-0 text-left text-[14px] text-foreground hover:not-aria-disabled:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] data-highlighted:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] aria-disabled:cursor-default aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:flex-none";
@@ -23,9 +24,7 @@ function ItemContent(props: { action: ISurfaceAction }) {
     <>
       {ICONS[props.action.Kind]()}
       <span class="min-w-0 flex-1 truncate">{props.action.Label}</span>
-      <kbd class="rounded-sm border border-border bg-muted px-1 py-0 font-[family-name:inherit] text-[11px] leading-4 text-muted-foreground">
-        {props.action.Shortcut}
-      </kbd>
+      <Kbd>{props.action.Shortcut}</Kbd>
     </>
   );
 }

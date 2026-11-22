@@ -10,6 +10,7 @@ import RuntimeRequest, { canAnswer, Responding } from "./RuntimeRequest";
 import ThreadSession from "./ThreadSession";
 import { RowIcon, workLine } from "./TimelineRows";
 import { viewOf } from "./turnItemView";
+import { Kbd } from "./ui/Kbd";
 import { BANNER, BANNER_BODY, BANNER_FRAME, BANNER_TITLE, ERROR_TEXT } from "./ui/notice";
 
 const APPROVAL_STATE = "inline-flex items-center gap-1 text-warning-foreground [&>svg]:size-3.5";
@@ -285,9 +286,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
                             </span>
                             <Show when={index() < 9}>
                               <span class={`${QUESTION_MARK} min-w-6`}>
-                                <kbd class="min-w-[18px] rounded-[4px] border border-border bg-muted px-1 py-0 text-center [font-family:inherit] text-[11px] leading-4 text-muted-foreground">
-                                  {index() + 1}
-                                </kbd>
+                                <Kbd>{index() + 1}</Kbd>
                               </span>
                             </Show>
                           </button>

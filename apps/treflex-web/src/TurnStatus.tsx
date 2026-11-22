@@ -25,6 +25,7 @@ import { Button } from "./ui/Button";
 import { Popup, POPOVER_MOTION } from "./ui/Menu";
 import { Presence } from "./ui/Presence";
 import { BANNER_TITLE } from "./ui/notice";
+import { Textarea } from "./ui/Textarea";
 import { useWorkspaceRoot } from "./workspaceRoot";
 import {
   liveWorkEntryLabel,
@@ -263,8 +264,7 @@ function QueuedRow(props: { runId: string }) {
     <div class="mt-1.5 flex items-center gap-2 wrap-anywhere">
       <Show when={editing() !== null} fallback={<QueuedMessage runId={props.runId} />}>
         <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-          <textarea
-            class="resize-y rounded-[10px] border border-input bg-background px-2.5 py-1.5"
+          <Textarea
             aria-label="Edit queued message"
             rows={3}
             value={editing() ?? ""}

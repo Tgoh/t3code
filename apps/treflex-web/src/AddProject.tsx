@@ -46,7 +46,16 @@ import {
 import Environment, { AddingProject } from "./Environment";
 import { serverError } from "./Infrastructure/serverError";
 import { arrowStep, stepHighlight } from "./listNavigation";
-import { ArrowLeft, CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  CornerLeftUp,
+  Folder,
+  FolderGit2,
+  FolderPlus,
+  Link,
+} from "./icons";
 import { browseFoldersEffect, type IFolderListing } from "./Infrastructure/commandEffects";
 import {
   PALETTE,
@@ -56,10 +65,8 @@ import {
   PALETTE_ERROR,
   PALETTE_FOOTER,
   PALETTE_GROUP,
-  PALETTE_HINT,
   PALETTE_INPUT,
   PALETTE_INPUT_ROW,
-  PALETTE_KBD,
   PALETTE_LIST,
   PALETTE_NOTE,
   PALETTE_ROW,
@@ -70,6 +77,7 @@ import {
   PALETTE_SUBMIT,
   PALETTE_WARNING,
 } from "./ui/palette";
+import { Kbd, KbdGroup } from "./ui/Kbd";
 import { usePresence } from "./ui/Presence";
 
 const SUMMARY =
@@ -489,7 +497,9 @@ export function AddProjectPalette(props: { onClose: () => void }) {
                   onClick={() => button().Run()}
                 >
                   {button().Label}
-                  <kbd class={PALETTE_KBD}>{shortcut()}</kbd>
+                  <KbdGroup class="pointer-events-none -me-0.5">
+                    <Kbd>{shortcut()}</Kbd>
+                  </KbdGroup>
                 </button>
               )}
             </Show>
@@ -580,25 +590,33 @@ export function AddProjectPalette(props: { onClose: () => void }) {
             </div>
           </Show>
           <footer class={PALETTE_FOOTER}>
-            <span class={PALETTE_HINT}>
-              <kbd class={PALETTE_KBD}>↑</kbd>
-              <kbd class={PALETTE_KBD}>↓</kbd> Navigate
-            </span>
+            <KbdGroup>
+              <Kbd>
+                <ArrowUp />
+              </Kbd>
+              <Kbd>
+                <ArrowDown />
+              </Kbd>
+              <span>Navigate</span>
+            </KbdGroup>
             <Show when={footerAction()}>
               {(action) => (
-                <span class={PALETTE_HINT}>
-                  <kbd class={PALETTE_KBD}>Enter</kbd> {action()}
-                </span>
+                <KbdGroup>
+                  <Kbd>Enter</Kbd>
+                  <span>{action()}</span>
+                </KbdGroup>
               )}
             </Show>
             <Show when={stack().length > 1}>
-              <span class={PALETTE_HINT}>
-                <kbd class={PALETTE_KBD}>Backspace</kbd> Back
-              </span>
+              <KbdGroup>
+                <Kbd>Backspace</Kbd>
+                <span>Back</span>
+              </KbdGroup>
             </Show>
-            <span class={PALETTE_HINT}>
-              <kbd class={PALETTE_KBD}>Esc</kbd> Close
-            </span>
+            <KbdGroup>
+              <Kbd>Esc</Kbd>
+              <span>Close</span>
+            </KbdGroup>
           </footer>
         </div>
       </div>

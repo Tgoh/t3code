@@ -53,5 +53,3 @@ export const PALETTE_WARNING = "mx-2 my-1.5 text-[13px] wrap-anywhere text-warni
 
 export const PALETTE_FOOTER =
   "flex flex-wrap gap-x-3.5 gap-y-1 border-t border-border px-3 py-[7px] text-[12px] text-muted-foreground";
-
-export const PALETTE_HINT = "inline-flex items-center gap-1";

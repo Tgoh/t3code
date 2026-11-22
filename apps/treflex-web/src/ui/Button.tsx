@@ -1,5 +1,7 @@
 import { type JSX, splitProps } from "solid-js";
 
+import { overrides } from "./merge";
+
 const BASE =
   "[&_svg]:-mx-0.5 inline-flex shrink-0 cursor-pointer items-center justify-center border font-medium outline-none transition-[box-shadow,scale] [&:not([aria-haspopup]):not(:disabled):not([aria-disabled=true])]:will-change-[scale] [&:active:not([aria-haspopup])]:scale-[0.97] before:pointer-events-none before:absolute before:inset-0 pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-64 aria-disabled:cursor-not-allowed aria-disabled:opacity-64 [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)] [&_svg]:pointer-events-none [&_svg]:shrink-0";
 
@@ -175,9 +177,6 @@ const VARIANTS = {
 export type ButtonVariant = keyof typeof VARIANTS;
 export type ButtonSize = keyof typeof SIZES;
 
-// A call site that positions the button replaces the base `relative`, as tailwind-merge would.
-const PLACED = /(?:^|\s)(?:absolute|fixed|sticky)(?:\s|$)/;
-
 /** The button look, for an element that can't be a `<button>`, such as a link or a label. */
 export function buttonVariants(
   options: {
@@ -192,7 +191,7 @@ export function buttonVariants(
     IParts?,
   ];
   const parts: IParts = { ...PARTS, ...sizeParts, ...variantParts };
-  if (options.class !== undefined && PLACED.test(options.class)) delete parts.position;
+  if (overrides(options.class, "position")) delete parts.position;
   return [BASE, ...Object.values(parts), sizeClass, variantClass, options.class]
     .filter(Boolean)
     .join(" ");
