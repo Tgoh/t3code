@@ -13,7 +13,7 @@ const RECONNECTING = new Set(["connecting", "backoff", "offline", "blocked"]);
 const DRAWER = [
   "relative flex min-h-0 flex-[0_0_280px] flex-col border-t border-border bg-(--terminal-background)",
   "in-[.panel-sheet]:absolute in-[.panel-sheet]:inset-x-0 in-[.panel-sheet]:bottom-0 in-[.panel-sheet]:z-56 in-[.panel-sheet]:h-[min(60%,420px)] in-[.panel-sheet]:overflow-hidden in-[.panel-sheet]:rounded-t-[12px] in-[.panel-sheet]:pb-(--safe-bottom) in-[.panel-sheet]:shadow-[0_-8px_24px_rgb(0_0_0/12%)]",
-  "transition-[translate,opacity] duration-200 ease-in-out data-entering:in-[.panel-sheet]:translate-y-full data-entering:not-in-[.panel-sheet]:translate-y-2 data-entering:not-in-[.panel-sheet]:opacity-0",
+  "transition-[translate,opacity] duration-200 ease-in-out data-starting-style:in-[.panel-sheet]:translate-y-full data-starting-style:not-in-[.panel-sheet]:translate-y-2 data-starting-style:not-in-[.panel-sheet]:opacity-0",
 ].join(" ");
 
 export const TerminalPanel = Terminal.provider(() => {

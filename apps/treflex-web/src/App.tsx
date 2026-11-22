@@ -38,7 +38,7 @@ import { CHAT_STAGE, ThreadView } from "./ThreadView";
 import { EMPTY_NOTE } from "./ui/notes";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Presence, usePresence } from "./ui/Presence";
-import { TooltipHost } from "./ui/tooltip";
+import { TooltipHost } from "./ui/Tooltip";
 import { UsageView } from "./UsageView";
 import { ViewportDebug } from "./ViewportDebug";
 import {
@@ -319,8 +319,7 @@ function SheetBackdrop(props: { onClose: () => void }) {
   const presence = usePresence();
   return (
     <div
-      class="absolute inset-0 z-49 bg-(--dialog-backdrop) backdrop-blur-[4px] transition-opacity duration-200 starting:opacity-0 data-closing:pointer-events-none data-closing:opacity-0"
-      data-closing={presence.closing() ? "" : undefined}
+      class="absolute inset-0 z-49 bg-(--dialog-backdrop) backdrop-blur-[4px] transition-opacity duration-200 data-starting-style:opacity-0 data-ending-style:pointer-events-none data-ending-style:opacity-0"
       aria-hidden="true"
       ref={(element) => presence.track(element)}
       onClick={() => props.onClose()}

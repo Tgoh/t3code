@@ -69,7 +69,7 @@ export function MenuHeading(props: { children: JSX.Element }) {
  * apps/web/src/components/ui/popover.tsx.
  */
 export const POPOVER_MOTION =
-  "transition-[scale,opacity] starting:scale-98 starting:opacity-0 data-closing:pointer-events-none data-closing:scale-98 data-closing:opacity-0";
+  "transition-[scale,opacity] data-starting-style:scale-98 data-starting-style:opacity-0 data-ending-style:pointer-events-none data-ending-style:scale-98 data-ending-style:opacity-0";
 
 const SURFACE = `fixed z-[120] flex max-h-[calc(100vh-16px)] min-w-52 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPOVER_MOTION}`;
 
@@ -121,7 +121,6 @@ export function Popup(props: {
       class={props.class ?? SURFACE}
       role={props.role ?? "menu"}
       aria-label={props.label}
-      data-closing={presence.closing() ? "" : undefined}
       ref={(popup) => {
         setElement(popup);
         presence.track(popup);

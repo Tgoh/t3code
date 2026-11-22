@@ -364,7 +364,6 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
     <Portal>
       <div
         class={PALETTE_BACKDROP}
-        data-closing={presence.closing() ? "" : undefined}
         ref={(element) => presence.track(element)}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) close();
@@ -372,7 +371,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
       >
         <div
           class={PALETTE}
-          data-closing={presence.closing() ? "" : undefined}
+          ref={(element) => presence.track(element)}
           role="dialog"
           aria-modal="true"
           aria-label="Command palette"

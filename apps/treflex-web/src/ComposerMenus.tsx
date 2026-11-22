@@ -469,7 +469,13 @@ function PickerContent(props: { traits: ITraits | null }) {
   });
 
   return (
-    <div class={PICKER_GRID} data-searching={searching() ? "" : undefined} data-model-picker>
+    <div
+      class={PICKER_GRID}
+      data-searching={searching() ? "" : undefined}
+      data-model-picker
+      data-tip-group
+      data-tip-delay="0"
+    >
       <div
         class="flex w-11 flex-col gap-1 overflow-y-auto bg-muted/30 p-1 [grid-area:providers] [scrollbar-width:none] group-data-searching/picker:hidden"
         role="toolbar"
@@ -589,6 +595,7 @@ function PickerContent(props: { traits: ITraits | null }) {
                 class={`${MODEL_ROW} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`}
                 data-highlighted={index() === highlight() ? "" : undefined}
                 data-tip={blockOf(model.InstanceId) ?? undefined}
+                data-tip-side="left"
                 onPointerMove={() => setHighlight(index())}
                 onClick={() => choose(model)}
               >

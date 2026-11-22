@@ -446,7 +446,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     <Portal>
       <div
         class={PALETTE_BACKDROP}
-        data-closing={presence.closing() ? "" : undefined}
         ref={(element) => presence.track(element)}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) props.onClose();
@@ -454,7 +453,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
       >
         <div
           class={PALETTE}
-          data-closing={presence.closing() ? "" : undefined}
+          ref={(element) => presence.track(element)}
           role="dialog"
           aria-modal="true"
           aria-label="Add project"

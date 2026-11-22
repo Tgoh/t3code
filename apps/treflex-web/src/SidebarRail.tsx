@@ -72,6 +72,7 @@ export function SidebarRail(props: IRailProps) {
       style={{ left: "calc(var(--sidebar-width) + env(safe-area-inset-left))" }}
       aria-label="Resize Sidebar"
       data-tip="Drag to resize sidebar"
+      data-tip-side="right"
       onPointerDown={drag.onPointerDown}
       onPointerMove={drag.onPointerMove}
       onPointerUp={drag.finish}

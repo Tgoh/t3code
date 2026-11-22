@@ -41,7 +41,7 @@ import Shell, {
 import { modelDisplay } from "./ThreadSession";
 import { relativeTime, timeUntil } from "./timestamps";
 import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
-import { hoverCard } from "./ui/tooltip";
+import { hoverCard } from "./ui/Tooltip";
 import { longPress, useSidebarSheet } from "./viewport";
 
 const HOVER_LINE =
@@ -336,7 +336,7 @@ export function ThreadCard(props: {
         tabindex="0"
         data-tip=""
         data-tip-side="right"
-        data-tip-delay="150"
+        data-tip-align="start"
         ref={hoverCard(ThreadHoverCard, hover)}
         data-compact={props.compact ? "" : undefined}
         data-pinned={props.thread.pinnedAt != null ? "" : undefined}

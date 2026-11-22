@@ -162,6 +162,8 @@ function FileChip(props: { link: IFileLink }) {
         class={FILE_LINK}
         dir="ltr"
         data-tip={props.link.TargetPath}
+        data-tip-variant="code"
+        data-tip-hoverable
         onClick={(event) => {
           event.stopPropagation();
           const held = media();
@@ -341,7 +343,11 @@ function LinkToken(props: ITokenProps) {
           fallback={
             <Show
               when={EXTERNAL_LINK.test(link().href) || isEditorLinkHref(link().href)}
-              fallback={<a data-tip={link().href}>{inner()}</a>}
+              fallback={
+                <a data-tip={link().href} data-tip-hoverable>
+                  {inner()}
+                </a>
+              }
             >
               <a
                 href={link().href}
@@ -998,6 +1004,7 @@ function CodeToken(props: ITokenProps) {
       data-wrap={wrapped()}
       data-language={fence().Language}
       data-highlighted={html() !== null}
+      data-tip-hoverable
     >
       <div class="flex items-center justify-between gap-2 pt-1.5 pr-1.5 pl-3 text-[color-mix(in_srgb,var(--foreground)_72%,transparent)] select-none">
         <CodeTitle fence={fence()} />
@@ -1096,7 +1103,7 @@ export function Markdown(props: {
         <Show
           when={lexed().WholeHtml}
           fallback={
-            <div class="chat-markdown" onClick={openHtmlThreadLink}>
+            <div class="chat-markdown" onClick={openHtmlThreadLink} data-tip-shared>
               <Index each={lexed().Blocks}>
                 {(token, index) => (
                   <TopBlock

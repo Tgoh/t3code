@@ -64,11 +64,11 @@ const RIGHT_PANEL = [
   "flex h-full min-w-0 flex-[0_0_min(42rem,53%)] flex-col border-l border-border bg-background",
   "in-[.panel-sheet]:absolute in-[.panel-sheet]:inset-y-0 in-[.panel-sheet]:right-0 in-[.panel-sheet]:z-60 in-[.panel-sheet]:pr-[env(safe-area-inset-right)] in-[.panel-sheet]:shadow-[0_8px_24px_rgb(0_0_0/12%)]",
   "not-max-[761px]:in-[.panel-sheet]:w-[min(42vw,28rem)] not-max-[761px]:in-[.panel-sheet]:min-w-80 max-[761px]:in-[.panel-sheet]:w-[min(88vw,24rem)]",
-  "transition-[translate,opacity] duration-200 ease-in-out data-entering:in-[.panel-sheet]:translate-x-full data-entering:not-in-[.panel-sheet]:translate-x-8 data-entering:not-in-[.panel-sheet]:opacity-0",
+  "transition-[translate,opacity] duration-200 ease-in-out data-starting-style:in-[.panel-sheet]:translate-x-full data-starting-style:not-in-[.panel-sheet]:translate-x-8 data-starting-style:not-in-[.panel-sheet]:opacity-0",
 ].join(" ");
 
 const BACKDROP =
-  "absolute inset-0 z-55 bg-(--dialog-backdrop) backdrop-blur-[4px] transition-opacity duration-200 ease-in-out data-entering:opacity-0";
+  "absolute inset-0 z-55 bg-(--dialog-backdrop) backdrop-blur-[4px] transition-opacity duration-200 ease-in-out data-starting-style:opacity-0";
 
 const CRUMB_LINK =
   "group/crumb inline-flex flex-none cursor-pointer items-center gap-1.5 rounded-xs border-0 bg-transparent p-0 text-muted-foreground hover:text-foreground";
@@ -496,6 +496,7 @@ const ThreadBody = ThreadSession.provider(() => {
             class="min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-x-hidden overflow-y-auto px-[calc(var(--gutter)-var(--app-scrollbar-width))] pt-2 pb-[calc(var(--composer-height,0px)+var(--turn-status-height))] [mask-image:linear-gradient(to_bottom,transparent_0,black_1.5rem)] focus-visible:outline-none"
             ref={scroller}
             data-timeline
+            data-tip-scroll-dismiss
             tabIndex={-1}
             onScroll={() => {
               const next = position();

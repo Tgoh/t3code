@@ -2,13 +2,12 @@
 // apps/web/src/components/ui/command.tsx: centred near the top, one input row, grouped rows and a
 // footer of key hints.
 
-// The backdrop fades on ::before, so its fade doesn't multiply into the palette's own. Both take
-// `data-closing` while a `Presence` holds them for the exit.
+// The backdrop fades on ::before, so its fade doesn't multiply into the palette's own.
 export const PALETTE_BACKDROP =
-  "fixed inset-0 z-130 flex justify-center px-4 pt-[10vh] pb-4 before:absolute before:inset-0 before:-z-1 before:bg-(--dialog-backdrop) before:backdrop-blur-[4px] before:transition-opacity before:duration-200 starting:before:opacity-0 data-closing:pointer-events-none data-closing:before:opacity-0";
+  "fixed inset-0 z-130 flex justify-center px-4 pt-[10vh] pb-4 before:absolute before:inset-0 before:-z-1 before:bg-(--dialog-backdrop) before:backdrop-blur-[4px] before:transition-opacity before:duration-200 data-starting-style:before:opacity-0 data-ending-style:pointer-events-none data-ending-style:before:opacity-0";
 
 export const PALETTE =
-  "flex max-h-[80vh] w-[min(36rem,100%)] flex-col self-start overflow-hidden rounded-xl border border-border bg-popover text-foreground shadow-[0_16px_40px_-8px_rgb(0_0_0/25%)] transition-[scale,opacity] duration-200 ease-in-out starting:scale-98 starting:opacity-0 data-closing:scale-98 data-closing:opacity-0";
+  "flex max-h-[80vh] w-[min(36rem,100%)] flex-col self-start overflow-hidden rounded-xl border border-border bg-popover text-foreground shadow-[0_16px_40px_-8px_rgb(0_0_0/25%)] transition-[scale,opacity] duration-200 ease-in-out data-starting-style:scale-98 data-starting-style:opacity-0 data-ending-style:scale-98 data-ending-style:opacity-0";
 
 export const PALETTE_INPUT_ROW = "flex items-center gap-2 border-b border-border px-2.5 py-2";
 

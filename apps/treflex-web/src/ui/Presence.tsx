@@ -9,18 +9,20 @@ import {
   useContext,
 } from "solid-js";
 
+const STARTING = "data-starting-style";
+const ENDING = "data-ending-style";
+
 interface IPresence {
-  closing: Accessor<boolean>;
-  /** Registers an element whose transitions the unmount waits for. */
+  /**
+   * Registers an element whose transitions the unmount waits for, and gives it Base UI's
+   * `data-starting-style` for its first frame and `data-ending-style` while it's held for the exit.
+   */
   track: (element: HTMLElement) => void;
 }
 
-const PresenceContext = createContext<IPresence>({ closing: () => false, track: () => {} });
+const PresenceContext = createContext<IPresence>({ track: () => {} });
 
-/**
- * The surface's side of `Presence`: spread `data-closing` from `closing()` and pass `track` as a
- * ref, so `data-closing:` styles play the exit transition before the surface unmounts.
- */
+/** The surface's side of `Presence`: pass `track` as a ref. */
 export const usePresence = () => useContext(PresenceContext);
 
 /**
@@ -34,6 +36,7 @@ export function Presence<T>(props: {
 }) {
   const [held, setHeld] = createSignal<NonNullable<T>>();
   const elements = new Set<HTMLElement>();
+  let ending = false;
   let generation = 0;
   createRenderEffect(
     on(
@@ -41,16 +44,33 @@ export function Presence<T>(props: {
       (when) => {
         const run = ++generation;
         if (when) {
+          for (const element of elements) {
+            if (!element.isConnected) elements.delete(element);
+            else if (ending) element.removeAttribute(ENDING);
+          }
+          ending = false;
           setHeld(() => when as NonNullable<T>);
           return;
         }
         if (held() === undefined) return;
+        ending = true;
+        for (const element of elements) {
+          element.removeAttribute(STARTING);
+          element.setAttribute(ENDING, "");
+        }
         // Closing mid-entrance cancels the entrance, whose promise settles before the exit has
-        // run, so the wait reads the transitions again until none is left.
+        // run, so the wait reads the transitions again until none is left. An infinite animation
+        // (a spinner inside) never finishes, so it's left out, as Base UI does.
         const settle = async () => {
           for (;;) {
             const running = [...elements].flatMap((element) =>
-              element.isConnected ? element.getAnimations({ subtree: true }) : [],
+              element.isConnected
+                ? element
+                    .getAnimations({ subtree: true })
+                    .filter(
+                      (animation) => animation.effect?.getComputedTiming().endTime !== Infinity,
+                    )
+                : [],
             );
             if (running.length === 0 || run !== generation) return;
             await Promise.allSettled(running.map((animation) => animation.finished));
@@ -61,6 +81,7 @@ export function Presence<T>(props: {
             void settle().then(() => {
               if (run !== generation) return;
               elements.clear();
+              ending = false;
               setHeld(undefined);
             }),
         );
@@ -68,8 +89,15 @@ export function Presence<T>(props: {
     ),
   );
   const presence: IPresence = {
-    closing: () => !props.when && held() !== undefined,
-    track: (element) => elements.add(element),
+    track: (element) => {
+      elements.add(element);
+      if (ending) {
+        element.setAttribute(ENDING, "");
+        return;
+      }
+      element.setAttribute(STARTING, "");
+      requestAnimationFrame(() => element.removeAttribute(STARTING));
+    },
   };
   return (
     <PresenceContext.Provider value={presence}>

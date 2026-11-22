@@ -124,6 +124,7 @@ export function SidebarToggle(props: { inSidebar?: boolean }) {
         class={props.inSidebar === true ? "mr-2 -ml-1" : undefined}
         aria-label="Toggle main sidebar"
         data-tip={withShortcut("Toggle sidebar", navigation.shortcut("sidebar.toggle"))}
+        data-tip-side="bottom"
         aria-expanded={sidebar.sheet() ? sidebar.open() : !sidebar.collapsed()}
         onClick={() => sidebar.toggle()}
       >
@@ -596,6 +597,8 @@ export const Sidebar = Shell.provider(() => {
             class={THREAD_LIST}
             id="sidebar-search-results"
             role="listbox"
+            data-tip-group
+            data-tip-delay="150"
             aria-label="Thread search results"
           >
             <For each={resultGroups()}>
@@ -647,7 +650,7 @@ export const Sidebar = Shell.provider(() => {
           </Show>
         }
       >
-        <ul class={THREAD_LIST} ref={setList}>
+        <ul class={THREAD_LIST} ref={setList} data-tip-group data-tip-delay="150">
           <For each={sections().Pinned}>{(thread) => card(thread, "pinned")}</For>
           <Show
             when={

@@ -21,16 +21,16 @@ export const PHONE_QUERY = "(max-width: 639px)";
 export const SHORT_TOUCH_QUERY = "(pointer: coarse) and (max-height: 500px)";
 
 /**
- * Holds a freshly mounted panel in its `data-entering:` style until its first frame has painted,
- * then lets it transition in. `@starting-style` starts the transition before that frame, so a
- * slow mount (the terminal in WebKit) paints it already finished.
+ * Holds a freshly mounted panel in its `data-starting-style:` style until its first frame has
+ * painted, then lets it transition in. `@starting-style` starts the transition before that frame,
+ * so a slow mount (the terminal in WebKit) paints it already finished.
  */
 export function enterPanel(element: HTMLElement) {
   queueMicrotask(() => {
     if (!element.closest(".panel-motion")) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    element.dataset.entering = "";
-    requestAnimationFrame(() => requestAnimationFrame(() => delete element.dataset.entering));
+    element.dataset.startingStyle = "";
+    requestAnimationFrame(() => requestAnimationFrame(() => delete element.dataset.startingStyle));
   });
 }
 
