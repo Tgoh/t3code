@@ -123,6 +123,7 @@ import {
   seededDrafts,
 } from "./questions";
 import { answerRequest, canAnswer, type IRuntimeRequest } from "./RuntimeRequest";
+import { minute } from "./Infrastructure/clock";
 import { delay } from "./Infrastructure/delay";
 import type {
   IWireArchivedShell,
@@ -173,8 +174,6 @@ export interface ISelection extends IEntity {
   Preferences: { AppearanceMode: IAppearanceMode; CompactionDismissed: string[] };
   SystemDark: boolean;
   ClientSettings: { followUpBehavior: ActiveTurnComposerAction } | null;
-  /** The device clock, a minute at a time. */
-  Now: number;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -759,7 +758,7 @@ function* compactionCandidate(draft: IThreadSession): ISelectorGenerator<number 
     Idle: Object.values(open.Runs).every(
       (run) => !ACTIVE_RUN.has(run.status) && run.status !== "queued",
     ),
-    Now: local?.Now ?? 0,
+    Now: yield* minute(),
     EnvironmentId: draft.EnvironmentId,
     Dismissed: local?.Preferences.CompactionDismissed ?? [],
   });

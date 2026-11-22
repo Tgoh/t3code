@@ -25,6 +25,7 @@ import {
   updateServerSettingsImpl,
   usageSummaryImpl,
 } from "./Infrastructure/settingsImpl";
+import { provideMinute } from "./Infrastructure/clock";
 import { commandOutput } from "./Infrastructure/commandOutput";
 import {
   addProjectSettingsImpl,
@@ -108,6 +109,7 @@ const runtime = createRuntime(getDefaultRoot("Root"), {
 runtime.on("failure", (failure) =>
   console.error(`[reflex-web] ${failure.Label} failed:`, failure.Error),
 );
+provideMinute(runtime);
 runtime.registerImplementation(environmentInfoImpl);
 runtime.registerImplementation(threadHistoryPageImpl);
 runtime.registerImplementation(startTurnImpl);

@@ -46,8 +46,10 @@ Root
    │  └─ OpenThreads: runs, messages, turn items, requests (selected and recently left)
    └─ Local              (only this client knows it)
       ├─ ThreadSessions: draft, attachments, panels, terminal UI
-      └─ Preferences, sidebar shelves, clock, system scheme
+      └─ Preferences, sidebar shelves, system scheme
 ```
+
+The minute clock isn't in the tree: it's the `Minute` outside value (`Infrastructure/clock.ts`), which views and selectors read with `minute`, since no work starts from it. An action that needs the time reads the `clockNow` effect.
 
 - **Only what arrives from the server writes to the replica:** the stream receivers (the server config among them, which also derives the composer's provider list and favorites), history pages, an open thread's lookup of its lineage titles, settings writes' replies, the archive and usage reads in `Settings.ts`, plus opening and closing a thread. Commands change it only through what the stream delivers next. A thread's own commands are `ThreadSession` actions, so their draft can't reach the replica. An answer runs on its runtime request's entity, but writes only a transient error, which sits in the `TransientState` root rather than the replica. `REPLICA_WRITERS` in `testing/threadFixture.ts` lists the writers, and any `Model.test.ts` test fails when another action writes the replica.
 - **Data about running work isn't state.** Busy marks are `inFlight` reads of `leading` or `latest` actions, which views make with `useInFlight` and only a selector combining busy with other state, such as `diffLoading`, makes itself. Stream sync and terminal status are transients, and a stream's end is read from its resource status.

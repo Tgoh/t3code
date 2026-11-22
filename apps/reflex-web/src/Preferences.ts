@@ -6,34 +6,25 @@ import {
   receiver,
   resource,
   start,
-  startTimer,
 } from "treflex";
 
 import { type IAppearanceMode, type IColorScheme, resolveScheme } from "./colorScheme";
 import type { IEnvironment } from "./Environment";
-import {
-  clockNowEffect,
-  type IPreferences,
-  storePreferencesEffect,
-} from "./Infrastructure/preferences";
+import { minute } from "./Infrastructure/clock";
+import { type IPreferences, storePreferencesEffect } from "./Infrastructure/preferences";
 import { sidebarRowThreadId, sidebarThreads, subagentRequests } from "./Shell";
 import { type ISidebarLayout, layoutSidebar, SETTLED_PAGE } from "./sidebarLayout";
 import { followColorScheme } from "./ThreadSession";
 import { liveScope } from "./threadSearch";
-import { MINUTE } from "./timestamps";
 
 declare module "treflex" {
   interface IResourceRegistry {
     "Device/Appearance": { Type: "appearance" };
   }
-  interface ITimerRegistry {
-    "Environment/Clock": {};
-  }
 }
 
-/** Opens what keeps `Local`'s clock and system scheme current. */
+/** Opens what keeps `Local`'s system scheme current. */
 export function* followDevice(draft: IEnvironment): IActionGenerator {
-  yield* startTimer(draft, "Environment/Clock", PreferencesReceiver, MINUTE);
   yield* openResource(draft, "Device/Appearance", PreferencesReceiver, { Type: "appearance" });
 }
 
@@ -122,7 +113,7 @@ export function* sidebarLayout(draft: IEnvironment): ISelectorGenerator<ISidebar
     Threads: yield* sidebarThreads(shell),
     Projects: shell.Projects,
     SelectedId: yield* sidebarRowThreadId(shell),
-    Now: draft.Local.Now,
+    Now: yield* minute(),
     Subagents: yield* subagentRequests(shell),
     Preferences: draft.Local.Preferences,
     Shelves: draft.Local.Shelves,
@@ -130,9 +121,6 @@ export function* sidebarLayout(draft: IEnvironment): ISelectorGenerator<ISidebar
 }
 
 export const PreferencesReceiver = receiver<IEnvironment>("PreferencesReceiver")({
-  *"Environment/Clock"(draft) {
-    draft.Local.Now = yield* clockNowEffect();
-  },
   *"Device/Appearance"(draft, message) {
     if (isEnded(message)) return;
     draft.Local.SystemDark = message.SystemDark;

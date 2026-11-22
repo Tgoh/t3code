@@ -43,16 +43,24 @@ export function UsageRing() {
       environment.state.Label,
       environment.state.Replica.Config?.providers,
     );
-  const weekly = createMemo(() => weeklyLimit(limitPools(presentations(), clockNow())), null, {
-    equals: (left, right) => left?.UsedPercent === right?.UsedPercent && left?.Tone === right?.Tone,
-  });
+  const weekly = createMemo(
+    () => {
+      const now = environment.minute();
+      return weeklyLimit(limitPools(presentations(), now), now);
+    },
+    null,
+    {
+      equals: (left, right) =>
+        left?.UsedPercent === right?.UsedPercent && left?.Tone === right?.Tone,
+    },
+  );
   const label = () => {
     const held = weekly();
     return held === null
       ? "Weekly limit not reported"
       : `Weekly limit: ${held.RemainingPercent}% left`;
   };
-  // The reset countdown is read when the tip shows, so the ring never re-renders on a clock.
+  // The reset countdown is read when the tip shows, since the minute clock would leave it stale.
   const freshTip = (event: Event) => {
     const now = clockNow();
     (event.currentTarget as HTMLElement).dataset.tip = weeklyLimitTip(

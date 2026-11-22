@@ -370,6 +370,7 @@ async function connect(
       },
     },
   );
+  const clock = runtime.provideExternal("Minute", { read: () => device.Now });
   const strayWriters = new Set<string | null>();
   tapReplicaWriters(runtime, (name) => {
     if (!REPLICA_WRITERS.has(name)) strayWriters.add(name);
@@ -408,6 +409,7 @@ async function connect(
   return {
     runtime,
     takeFailures: () => failures.splice(0),
+    clock,
     address,
     terminals,
     models,
@@ -1866,17 +1868,9 @@ describe("the sidebar", () => {
     await first.runtime.dispatch(toggleShelf, envId, "Snoozed");
     expect(read().Order).toEqual(["t-2", "t-1", "nap"]);
     expect(read().Sections.Snoozed.map((thread) => thread.id)).toEqual(["nap"]);
-    await first.runtime.dispatch(
-      PreferencesReceiver.handle,
-      envId,
-      { Type: "Environment/Clock" },
-      { publisher: { Id: envId } },
-    );
+    first.clock.changed();
     expect(read().Sections.Snoozed).toEqual([]);
     expect(read().Order).toEqual(["nap", "t-2", "t-1"]);
-    expect(first.runtime.timers(envId)).toMatchObject([
-      { Key: "Environment/Clock", IntervalMs: 60_000 },
-    ]);
 
     const second = await connect(undefined, null, {}, undefined, undefined, chosen);
     expect(second.environment().Local.Preferences).toEqual(chosen);

@@ -46,7 +46,6 @@ import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
 import { editorChoices, type IEditors } from "./editors";
 import { getDefaultGitWork, type IGitWork } from "./GitWork";
 import {
-  clockNowEffect,
   type IPreferences,
   storedEditorEffect,
   storedPreferencesEffect,
@@ -100,6 +99,7 @@ import {
   startDictation,
   stopDictation,
 } from "./Dictation";
+import { minute } from "./Infrastructure/clock";
 import { serverError } from "./Infrastructure/serverError";
 import { lookUpLineageTitles } from "./lineageTitles";
 import { toSortableThread } from "./projectOrder";
@@ -168,7 +168,6 @@ export function* newEnvironment(
     ClientSettings: yield* storedClientSettingsEffect(),
     Preferences: yield* storedPreferencesEffect(),
     Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: SETTLED_PAGE },
-    Now: yield* clockNowEffect(),
     SystemDark: false,
     ViewportDebug: false,
     Editor: yield* storedEditorEffect(),
@@ -732,6 +731,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
   {
     dictation,
     sidebarLayout,
+    minute,
     colorScheme,
     selectedOpenThread,
     selectedDraftSession,

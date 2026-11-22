@@ -139,7 +139,7 @@ export const Sidebar = Shell.provider(() => {
   const local = () => environment.state.Local;
   const preferences = () => local().Preferences;
   const layout = createMemo(() => environment.sidebarLayout());
-  const now = () => local().Now;
+  const now = () => environment.minute();
   const [second, setSecond] = createSignal(Date.now());
   const hiddenProjects = createMemo(() => new Set(preferences().HiddenProjects));
   const hiddenList = () =>
