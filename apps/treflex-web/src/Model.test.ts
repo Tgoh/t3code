@@ -24,6 +24,7 @@ import {
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
+import { pinOrderKeyBetween } from "@t3tools/shared/pinOrderKey";
 import * as Cause from "effect/Cause";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
 
@@ -41,6 +42,7 @@ import {
   preferEditor,
   projectCommand,
   removeProject,
+  reorderPin,
   selectThread,
   settleThread,
   threadCommand,
@@ -1635,20 +1637,6 @@ describe("the sidebar", () => {
     ]);
   });
 
-  it("puts a folder's Main threads first, in their own order", () => {
-    const at = "2026-01-01T00:00:00.000Z";
-    const titled = (id: string, title: string) => row(id, "p", at, { title });
-    const projects = { p: { id: "p", title: "P", workspaceRoot: "/p" } };
-    const active = [
-      titled("a", "Fix the build"),
-      titled("m1", " main "),
-      titled("b", "Main branch"),
-      titled("m2", "MAIN"),
-    ];
-    const [folder] = projectFolders(active as never, projects as never);
-    expect(folder!.Threads.map((thread) => thread.id)).toEqual(["m1", "m2", "a", "b"]);
-  });
-
   it("leaves a hidden project out of every section and its folder, except the selected thread", () => {
     const at = "2026-01-01T00:00:00.000Z";
     const later = "2099-01-01T00:00:00.000Z";
@@ -1700,10 +1688,10 @@ describe("the sidebar", () => {
       h: project("h", "Hidden"),
     };
     const threads = [
-      row("pin", "a", at, { pinnedAt: at }),
       row("a1", "a", at, { createdAt: at }),
-      row("main", "a", at, { title: "Main", createdAt: at }),
+      row("pin", "a", at, { pinnedAt: at, pinOrderKey: "n" }),
       row("b1", "b", at, { createdAt: "2026-01-03T00:00:00.000Z" }),
+      row("first", "a", at, { pinnedAt: at, pinOrderKey: "c", createdAt: at }),
       row("h1", "h", at),
       row("nap", "b", at, { snoozedUntil: later, snoozedAt: at }),
       row("done", "a", at, { settledOverride: "settled", settledAt: at }),
@@ -1724,16 +1712,22 @@ describe("the sidebar", () => {
       });
     const order = (...args: Parameters<typeof layout>) => layout(...args).Order;
 
-    expect(order()).toEqual(["pin", "main", "a1", "b1"]);
-    expect(layout().Folders.map((folder) => folder.ProjectId)).toEqual(["a", "b"]);
-    expect(order({ GroupByProject: false })).toEqual(["pin", "a1", "main", "b1"]);
+    const ids = (list: { id: string }[]) => list.map((thread) => thread.id);
+    expect(order()).toEqual(["first", "pin", "a1", "b1"]);
+    expect(layout().Folders.map((folder) => [folder.ProjectId, ids(folder.Threads)])).toEqual([
+      ["a", ["first", "pin", "a1"]],
+      ["b", ["b1"]],
+    ]);
+    expect(layout().Sections.Pinned).toEqual([]);
+    expect(order({ GroupByProject: false })).toEqual(["first", "pin", "a1", "b1"]);
+    expect(ids(layout({ GroupByProject: false }).Sections.Pinned)).toEqual(["first", "pin"]);
     expect(layout({ GroupByProject: false }).Folders).toEqual([]);
-    expect(order({ ProjectOrder: ["b", "a"] })).toEqual(["pin", "b1", "main", "a1"]);
-    expect(order({ ProjectSort: "created_at" })).toEqual(["pin", "b1", "main", "a1"]);
-    expect(order({ ClosedFolders: ["a"] })).toEqual(["pin", "b1"]);
-    expect(order({ ClosedFolders: ["a"] }, "a1")).toEqual(["pin", "a1", "b1"]);
-    expect(order({}, "h1")).toEqual(["pin", "main", "a1", "b1", "h1"]);
-    expect(order({ HiddenProjects: [] })).toEqual(["pin", "main", "a1", "b1", "h1"]);
+    expect(order({ ProjectOrder: ["b", "a"] })).toEqual(["b1", "first", "pin", "a1"]);
+    expect(order({ ProjectSort: "created_at" })).toEqual(["b1", "first", "pin", "a1"]);
+    expect(order({ ClosedFolders: ["a"] })).toEqual(["b1"]);
+    expect(order({ ClosedFolders: ["a"] }, "a1")).toEqual(["a1", "b1"]);
+    expect(order({}, "h1")).toEqual(["first", "pin", "a1", "b1", "h1"]);
+    expect(order({ HiddenProjects: [] })).toEqual(["first", "pin", "a1", "b1", "h1"]);
 
     expect(order({ ProjectScope: ["b"] })).toEqual(["b1"]);
     expect(layout({ ProjectScope: ["b"] }).Visible.map((thread) => thread.id)).toEqual([
@@ -1743,10 +1737,43 @@ describe("the sidebar", () => {
     expect(layout({ ProjectScope: ["h"] }).Scope).toEqual([]);
     expect(order({ ProjectScope: ["h"] })).toEqual(order());
 
-    expect(order({}, null, { SnoozedOpen: true })).toEqual(["pin", "main", "a1", "b1", "nap"]);
-    expect(order({}, "nap")).toEqual(["pin", "main", "a1", "b1", "nap"]);
-    expect(order({}, null, { SettledOpen: true })).toEqual(["pin", "main", "a1", "b1", "done"]);
+    expect(order({}, null, { SnoozedOpen: true })).toEqual(["first", "pin", "a1", "b1", "nap"]);
+    expect(order({}, "nap")).toEqual(["first", "pin", "a1", "b1", "nap"]);
+    expect(order({}, null, { SettledOpen: true })).toEqual(["first", "pin", "a1", "b1", "done"]);
     expect(order({}, null, { SettledOpen: true, SettledShown: 0 })).toEqual(order());
+  });
+
+  it("reorders a pinned thread with a key between its new neighbours, clear of other folders' keys", async () => {
+    const commands: { ThreadId: string; Command: IThreadCommand }[] = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: IThreadCommand }) => {
+        commands.push({ ThreadId: effect.ThreadId, Command: effect.Command });
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    const pinned = (id: string, projectId: string, pinOrderKey: string) =>
+      row(id, projectId, at, { pinnedAt: at, pinOrderKey, createdAt: at });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [
+          { id: "a", title: "Alpha", workspaceRoot: "/a" },
+          { id: "b", title: "Beta", workspaceRoot: "/b" },
+        ],
+        threads: [
+          pinned("x", "a", "b"),
+          pinned("y", "a", "d"),
+          pinned("z", "a", "f"),
+          pinned("other", "b", "c"),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.runtime.dispatch(reorderPin, server.envId(), "z", ["x", "z", "y"]);
+    const key = pinOrderKeyBetween("c", "d")!;
+    expect(commands).toEqual([{ ThreadId: "z", Command: { Kind: "reorderPin", OrderKey: key } }]);
+    expect(key > "b" && key < "d" && key !== "c").toBe(true);
   });
 
   it("settles the open thread and moves to the sidebar's next unparked row, and the shortcut toggles", async () => {

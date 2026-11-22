@@ -15,7 +15,6 @@ import {
 } from "@t3tools/shared/paletteSearch";
 
 import type { IWireThreadShell } from "./Infrastructure/wire";
-import { isMainThread } from "./Shell";
 
 export type IThreadSearchMatch = EnvironmentThreadSearchMatch;
 
@@ -117,8 +116,8 @@ export interface IResultGroup {
 }
 
 /**
- * Lays results out as the sidebar lists threads: grouped by project in folder order, with a Main
- * thread leading its project, or as one ranked list.
+ * Lays results out as the sidebar lists threads: grouped by project in folder order, ranked within
+ * each, or as one ranked list.
  */
 export function groupResults(
   results: readonly ISearchResult[],
@@ -136,12 +135,7 @@ export function groupResults(
   }
   return [...groups]
     .filter(([, held]) => held.length > 0)
-    .map(([projectId, held]) => ({
-      ProjectId: projectId,
-      Results: held.sort(
-        (left, right) => Number(isMainThread(right.Thread)) - Number(isMainThread(left.Thread)),
-      ),
-    }));
+    .map(([projectId, held]) => ({ ProjectId: projectId, Results: held }));
 }
 
 /**

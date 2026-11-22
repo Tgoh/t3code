@@ -28,7 +28,7 @@ import { useMessageSearch } from "./messageSearch";
 import { RENAME_THREAD_EVENT, useNavigation } from "./navigation";
 import { groupResults, type ISearchResult, rankMessages, searchThreads } from "./threadSearch";
 import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder";
-import { createProjectDrag } from "./projectDrag";
+import { createListDrag } from "./listDrag";
 import { isProjectSort, PROJECT_SORT_LABELS } from "./projectOrder";
 import Root from "./Root";
 import { arrowStep, stepHighlight } from "./listNavigation";
@@ -64,9 +64,11 @@ const THREAD_LIST =
   "relative m-0 flex min-h-0 flex-1 list-none flex-col gap-[5px] overflow-y-auto px-2 pt-0.5 pb-[calc(8px+var(--safe-bottom))] [scrollbar-width:none]";
 const FOLDER_GROUP = "list-none [[data-folder-group]+&]:mt-3";
 // Each row after the header hangs off a guide line under the folder's chevron, reaching up into
-// the rows' gap so it reads as one line; the main thread's row draws it as a green bar.
+// the rows' gap so it reads as one line; a pinned row draws it as a green bar, kept to its own row.
 const FOLDER_ROWS =
-  "m-0 flex list-none flex-col gap-[5px] p-0 [&>li+li]:relative [&>li+li]:pl-3.5 [&>li+li]:before:absolute [&>li+li]:before:-top-[5px] [&>li+li]:before:bottom-0 [&>li+li]:before:left-3 [&>li+li]:before:w-px [&>li+li]:before:bg-sidebar-border [&>li:has(>[data-main])]:before:top-0 [&>li:has(>[data-main])]:before:left-[11px] [&>li:has(>[data-main])]:before:w-[3px] [&>li:has(>[data-main])]:before:rounded-[2px] [&>li:has(>[data-main])]:before:bg-success";
+  "m-0 flex list-none flex-col gap-[5px] p-0 [&>li+li]:relative [&>li+li]:pl-3.5 [&>li+li]:before:absolute [&>li+li]:before:-top-[5px] [&>li+li]:before:bottom-0 [&>li+li]:before:left-3 [&>li+li]:before:w-px [&>li+li]:before:bg-sidebar-border [&>li:has(>[data-pinned])]:before:top-0 [&>li:has(>[data-pinned])]:before:left-[11px] [&>li:has(>[data-pinned])]:before:w-[3px] [&>li:has(>[data-pinned])]:before:rounded-[2px] [&>li:has(>[data-pinned])]:before:bg-success";
+const DRAG_GHOST =
+  "pointer-events-none fixed top-0 left-0 z-140 flex max-w-64 items-center gap-1.5 rounded-md border border-border bg-popover px-2.5 py-1 text-[13px] font-medium whitespace-nowrap text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]";
 const SIDEBAR_ERROR = "mx-[18px] mt-0 mb-2 text-[12px] text-error-foreground";
 const COUNT = "ml-auto tabular-nums";
 
@@ -189,11 +191,27 @@ export const Sidebar = Shell.provider(() => {
     () => new Map(layout().Folders.map((folder) => [folder.ProjectId, folder])),
   );
   const [list, setList] = createSignal<HTMLElement>();
-  const drag = createProjectDrag({
+  const drag = createListDrag({
     list,
-    order: () => [...folders().keys()],
-    onDrop: (order) => void environment.setPreferences({ ProjectOrder: order }),
+    blocks: (held) => [...held.querySelectorAll<HTMLElement>("[data-folder-id]")],
+    idOf: (block) => block.dataset.folderId!,
+    anchorOf: (block) => block.querySelector("[data-folder-header]"),
+    onDrop: (_, order) => void environment.setPreferences({ ProjectOrder: order }),
   });
+  const pinDrag = createListDrag({
+    list,
+    blocks: (held, threadId) =>
+      [...held.querySelectorAll<HTMLElement>("[data-pin-id]")].filter(
+        (block) => block.dataset.pinFolder === shell.state.Threads[threadId]?.projectId,
+      ),
+    idOf: (block) => block.dataset.pinId!,
+    onDrop: (threadId, order) => void environment.reorderPin(threadId, order),
+  });
+  const draggedPin = () => shell.state.Threads[pinDrag.dragging() ?? ""];
+  const dropLine = () => {
+    const top = drag.lineTop() ?? pinDrag.lineTop();
+    return top === null ? null : { Top: top };
+  };
   const [removingProject, setRemovingProject] = createSignal<string | null>(null);
   const [renamingProject, setRenamingProject] = createSignal<string | null>(null);
   const [projectMenu, setProjectMenu] = createSignal<{ Id: string; X: number; Y: number } | null>(
@@ -295,8 +313,16 @@ export const Sidebar = Shell.provider(() => {
     section: ICardSection,
     compact = false,
     search?: ISearchResult,
+    inFolder = false,
   ) => (
     <ThreadCard
+      onDragStart={
+        inFolder && thread.pinnedAt != null
+          ? (event) =>
+              pinDrag.begin(event, thread.id, (x, y) => setMenu({ Id: thread.id, X: x, Y: y }))
+          : undefined
+      }
+      dragging={pinDrag.dragging() === thread.id}
       search={
         search && {
           ranges: search.Ranges,
@@ -652,7 +678,11 @@ export const Sidebar = Shell.provider(() => {
                         open={!closedFolders().has(projectId)}
                         renaming={renamingProject() === projectId}
                         draggable={projectSort() === "manual"}
-                        onDragStart={(event) => drag.begin(event, projectId)}
+                        onDragStart={(event) =>
+                          drag.begin(event, projectId, (x, y) =>
+                            setProjectMenu({ Id: projectId, X: x, Y: y }),
+                          )
+                        }
                         onToggle={() => void environment.toggleFolder(projectId)}
                         onMenu={(x, y) => setProjectMenu({ Id: projectId, X: x, Y: y })}
                         onRenamed={(title) => {
@@ -673,19 +703,21 @@ export const Sidebar = Shell.provider(() => {
                             : folder().Threads
                         }
                       >
-                        {(thread) => card(thread, "active", true)}
+                        {(thread) => card(thread, "active", true, undefined, true)}
                       </For>
                     </ul>
                   </li>
                 );
               }}
             </For>
-            <Show when={drag.lineTop() !== null}>
-              <li
-                class="pointer-events-none absolute right-3 left-3 h-0.5 list-none rounded-[1px] bg-primary"
-                style={{ top: `${drag.lineTop()}px` }}
-                aria-hidden="true"
-              />
+            <Show when={dropLine()}>
+              {(line) => (
+                <li
+                  class="pointer-events-none absolute right-3 left-3 h-0.5 list-none rounded-[1px] bg-primary"
+                  style={{ top: `${line().Top}px` }}
+                  aria-hidden="true"
+                />
+              )}
             </Show>
           </Show>
           <Show when={sections().Pinned.length === 0 && sections().Active.length === 0}>
@@ -766,13 +798,16 @@ export const Sidebar = Shell.provider(() => {
       </Presence>
       <Show when={folders().get(drag.dragging() ?? "")} keyed>
         {(folder) => (
-          <div
-            class="pointer-events-none fixed top-0 left-0 z-140 flex max-w-64 items-center gap-1.5 rounded-md border border-border bg-popover px-2.5 py-1 text-[13px] font-medium whitespace-nowrap text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]"
-            ref={drag.setGhost}
-            aria-hidden="true"
-          >
+          <div class={DRAG_GHOST} ref={drag.setGhost} aria-hidden="true">
             <ProjectBadge project={folder.Project} size={12} />
             <span>{folder.Project?.title ?? "Unknown project"}</span>
+          </div>
+        )}
+      </Show>
+      <Show when={draggedPin()} keyed>
+        {(thread) => (
+          <div class={DRAG_GHOST} ref={pinDrag.setGhost} aria-hidden="true">
+            <span class="truncate">{thread.title}</span>
           </div>
         )}
       </Show>

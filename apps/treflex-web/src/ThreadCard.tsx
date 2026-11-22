@@ -33,7 +33,6 @@ import Shell, {
   activityAt,
   canSnooze,
   isBusy,
-  isMainThread,
   type ISidebarStatus,
   isSnoozed,
   sidebarStatus,
@@ -221,6 +220,9 @@ export function ThreadCard(props: {
   second: number;
   onMenu: (x: number, y: number) => void;
   onRenamed: (title: string | null) => void;
+  /** Starts a drag that reorders the row; a touch drag's long-press also stands in for the menu's. */
+  onDragStart?: ((event: PointerEvent) => void) | undefined;
+  dragging?: boolean;
   /** As a search result: where the title matches, the matching message, and the keyboard's row. */
   search?:
     | {
@@ -294,9 +296,13 @@ export function ThreadCard(props: {
   );
   return (
     <li
+      class="data-dragging:opacity-40"
       id={props.search?.id}
       role={props.search ? "option" : undefined}
       aria-selected={props.search ? props.search.highlighted : undefined}
+      data-pin-id={props.onDragStart ? props.thread.id : undefined}
+      data-pin-folder={props.onDragStart ? props.thread.projectId : undefined}
+      data-dragging={props.dragging ? "" : undefined}
     >
       <div
         class="group/card block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left not-data-selected:hover:bg-sidebar-row-hover not-data-selected:focus-visible:bg-sidebar-row-hover not-data-selected:has-[:focus-visible]:bg-sidebar-row-hover data-compact:py-1.5 data-dimmed:opacity-70 data-dimmed:hover:opacity-100 data-highlighted:not-data-selected:bg-sidebar-row-hover data-highlighted:not-data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ring)_50%,transparent)] data-selected:bg-sidebar-row-active data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--sidebar-border)_70%,transparent)] [@media(hover:none)]:select-none [@media(hover:none)]:[-webkit-touch-callout:none]"
@@ -307,7 +313,7 @@ export function ThreadCard(props: {
         data-tip-delay="150"
         ref={hoverCard(ThreadHoverCard, hover)}
         data-compact={props.compact ? "" : undefined}
-        data-main={isMainThread(props.thread) ? "" : undefined}
+        data-pinned={props.thread.pinnedAt != null ? "" : undefined}
         data-selected={props.selected ? "" : undefined}
         data-highlighted={props.search?.highlighted === true ? "" : undefined}
         data-receded={
@@ -333,7 +339,14 @@ export function ThreadCard(props: {
           event.preventDefault();
           props.onMenu(event.clientX, event.clientY);
         }}
-        onPointerDown={press.onPointerDown}
+        onPointerDown={(event) => {
+          const drag = props.renaming ? undefined : props.onDragStart;
+          if (drag !== undefined && !(event.target as Element).closest("button, input")) {
+            drag(event);
+            if (event.pointerType === "touch") return;
+          }
+          press.onPointerDown(event);
+        }}
         onPointerMove={(event) => {
           press.onPointerMove(event);
           if (props.search && !props.search.highlighted) props.search.onHover();

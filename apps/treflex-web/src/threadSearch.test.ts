@@ -128,7 +128,7 @@ describe("rankMessages", () => {
 describe("groupResults", () => {
   const result = (thread: IWireThreadShell) => ({ Thread: thread, Ranges: [], Match: null });
 
-  it("groups by project in folder order with a Main thread leading, and lists the rest after", () => {
+  it("groups by project in folder order, ranked within each, and lists the rest after", () => {
     const results = [
       result(shell("1", "Feature", "p2")),
       result(shell("2", "Other", "p1")),
@@ -137,7 +137,7 @@ describe("groupResults", () => {
     ];
     const groups = groupResults(results, ["p1", "p2", "p3"]);
     expect(groups.map((group) => group.ProjectId)).toEqual(["p1", "p2", "p9"]);
-    expect(titles(groups[1]!.Results)).toEqual([" main ", "Feature"]);
+    expect(titles(groups[1]!.Results)).toEqual(["Feature", " main "]);
   });
 
   it("keeps the ranked order as one list when the sidebar isn't grouped", () => {

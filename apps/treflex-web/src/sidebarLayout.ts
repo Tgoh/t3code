@@ -56,10 +56,12 @@ export function layoutSidebar(input: ISidebarInput): ISidebarLayout {
     scope,
     selectedId,
   );
-  const sections = sidebarSections(visible, input.Now, input.Subagents);
+  const sorted = sidebarSections(visible, input.Now, input.Subagents);
+  // Grouped by project, pinned threads lead their own folder rather than a Pinned section.
+  const sections = preferences.GroupByProject ? { ...sorted, Pinned: [] } : sorted;
   const folders = preferences.GroupByProject
     ? orderFolders(
-        projectFolders(sections.Active, input.Projects, hidden).filter(
+        projectFolders([...sorted.Pinned, ...sorted.Active], input.Projects, hidden).filter(
           (folder) => scope.size === 0 || scope.has(folder.ProjectId) || folder.Threads.length > 0,
         ),
         preferences.ProjectSort,

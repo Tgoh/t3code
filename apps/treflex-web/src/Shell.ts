@@ -3,6 +3,7 @@ import { resolveListedAncestorThreadRef } from "@t3tools/client-runtime/state/th
 import {
   resolveThreadActivityTimestamp,
   sortActiveThreadsByOrderKey,
+  sortPinnedThreadsByOrderKey,
 } from "@t3tools/client-runtime/state/thread-sort";
 import { isListedThreadLineage, isProviderNativeSubagentThread } from "@t3tools/contracts";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
@@ -598,11 +599,6 @@ export interface IProjectFolder {
   Threads: IWireThreadShell[];
 }
 
-/** A thread titled "Main", trimmed and in any case, leads its project folder. */
-export function isMainThread(thread: IWireThreadShell): boolean {
-  return thread.title.trim().toLowerCase() === "main";
-}
-
 /** Leaves out threads of projects hidden on this client, except the selected one. */
 export function unhiddenThreads(
   threads: IWireThreadShell[],
@@ -613,8 +609,9 @@ export function unhiddenThreads(
   return threads.filter((thread) => !hidden.has(thread.projectId) || thread.id === selectedId);
 }
 
+/** Folds `threads` into a folder per project, keeping their order within each folder. */
 export function projectFolders(
-  active: IWireThreadShell[],
+  threads: IWireThreadShell[],
   projects: Record<string, IWireProject>,
   hidden: ReadonlySet<string> = new Set(),
 ): IProjectFolder[] {
@@ -630,10 +627,7 @@ export function projectFolders(
   for (const project of Object.values(projects)) {
     if (project.archivedAt == null && !hidden.has(project.id)) folderOf(project.id);
   }
-  for (const thread of active) folderOf(thread.projectId).Threads.push(thread);
-  for (const folder of folders.values()) {
-    folder.Threads.sort((left, right) => Number(isMainThread(right)) - Number(isMainThread(left)));
-  }
+  for (const thread of threads) folderOf(thread.projectId).Threads.push(thread);
   return [...folders.values()];
 }
 
@@ -650,9 +644,7 @@ export function sidebarSections(
     else if (thread.pinnedAt != null) sections.Pinned.push(thread);
     else sections.Active.push(thread);
   }
-  sections.Pinned.sort((left, right) =>
-    (left.pinOrderKey ?? left.id).localeCompare(right.pinOrderKey ?? right.id),
-  );
+  sections.Pinned = sortPinnedThreadsByOrderKey(sections.Pinned);
   sections.Snoozed.sort(
     (left, right) => Date.parse(left.snoozedUntil ?? "") - Date.parse(right.snoozedUntil ?? ""),
   );

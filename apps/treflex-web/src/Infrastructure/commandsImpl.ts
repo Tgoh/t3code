@@ -15,6 +15,7 @@ import {
   mergeThreadBack,
   pinThread,
   promoteQueuedRun,
+  reorderPinnedThread,
   respondToThreadApproval,
   respondToThreadUserInput,
   resumeThreadQueue,
@@ -318,6 +319,8 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
       return void (await run(pinThread(common)));
     case "unpin":
       return void (await run(unpinThread(common)));
+    case "reorderPin":
+      return void (await run(reorderPinnedThread({ ...common, orderKey: command.OrderKey })));
     case "rename":
       return void (await run(updateThreadMetadata({ ...common, title: command.Title })));
     case "visit":

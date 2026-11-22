@@ -2,7 +2,10 @@ import {
   findProjectByPath,
   inferProjectTitleFromPath,
 } from "@t3tools/client-runtime/state/projects";
-import { getLatestThreadForProject } from "@t3tools/client-runtime/state/thread-sort";
+import {
+  getLatestThreadForProject,
+  planPinnedReorder,
+} from "@t3tools/client-runtime/state/thread-sort";
 import {
   bind,
   entity,
@@ -365,6 +368,25 @@ export function* threadCommand(
   if (command.Kind === "delete") yield* forgetSession(draft, threadId);
 }
 
+// Follows the reorder-pinned plan in apps/web/src/components/Sidebar.tsx, which writes the moved
+// thread's key between its new neighbours, or respreads the keys when they leave no room.
+/** Moves a pinned thread to its place in `order`, the pinned threads it now sits among. */
+export function* reorderPin(
+  draft: IEnvironment,
+  threadId: string,
+  order: string[],
+): IOpenGenerator {
+  const keysById = new Map(
+    Object.values(draft.Replica.Shell.Threads)
+      .filter((thread) => thread.pinnedAt != null)
+      .map((thread) => [thread.id, thread.pinOrderKey] as const),
+  );
+  const writes = planPinnedReorder({ orderedIds: order, keysById, movedId: threadId });
+  for (const write of writes) {
+    yield* threadCommand(draft, write.id, { Kind: "reorderPin", OrderKey: write.orderKey });
+  }
+}
+
 // Follows attemptSettle and planForwardNavigation in apps/web/src/components/Sidebar.tsx.
 /** Settles a thread and, when it's the open one, moves on to the next unparked row or a new thread. */
 export function* settleThread(draft: IEnvironment, threadId: string): IOpenGenerator {
@@ -700,6 +722,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     selectThread,
     newThread,
     threadCommand,
+    reorderPin,
     settleThread,
     toggleSettleOpenThread,
     projectCommand,

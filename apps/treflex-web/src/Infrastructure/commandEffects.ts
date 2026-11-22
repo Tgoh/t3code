@@ -184,6 +184,7 @@ export type IThreadCommand =
   | { Kind: "unsnooze" }
   | { Kind: "pin" }
   | { Kind: "unpin" }
+  | { Kind: "reorderPin"; OrderKey: string }
   | { Kind: "rename"; Title: string }
   | { Kind: "visit"; VisitedAt: string; Opened?: true; SearchQuery?: string }
   | { Kind: "markUnread" }
