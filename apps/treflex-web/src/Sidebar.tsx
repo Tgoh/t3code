@@ -125,8 +125,6 @@ export const Sidebar = Shell.provider(() => {
   const navigation = useNavigation();
   const selected = () => shell.sidebarRowThreadId();
   const providers = () => environment.state.Replica.Providers;
-  const providerName = (instanceId: string) =>
-    providers().find((provider) => provider.InstanceId === instanceId)?.Name ?? instanceId;
   const stream = useResource(() => shell.state, "Shell/Stream");
   const connection = () => {
     const status = stream.status();
@@ -338,23 +336,10 @@ export const Sidebar = Shell.provider(() => {
       section={section}
       compact={compact}
       showProvider={mixedProviders()}
-      projectName={shell.state.Projects[thread.projectId]?.title ?? "Unknown project"}
-      model={modelDisplay(providers(), thread.modelSelection)}
-      previousProviders={(thread.providerInstanceHistory ?? [])
-        .filter((instanceId) => instanceId !== thread.modelSelection.instanceId)
-        .map(providerName)}
-      selected={selected() === thread.id}
       renaming={renaming() === thread.id}
-      now={now()}
       second={second()}
       onMenu={(x, y) => setMenu({ Id: thread.id, X: x, Y: y })}
-      onRenamed={(title) => {
-        setRenaming(null);
-        const trimmed = title?.trim();
-        if (trimmed && trimmed !== thread.title) {
-          environment.threadCommand(thread.id, { Kind: "rename", Title: trimmed });
-        }
-      }}
+      onRenameEnd={() => setRenaming(null)}
     />
   );
   return (
@@ -768,7 +753,6 @@ export const Sidebar = Shell.provider(() => {
               thread={thread}
               x={menu()?.X ?? 0}
               y={menu()?.Y ?? 0}
-              now={now()}
               onRename={() => setRenaming(thread.id)}
               onClose={() => setMenu(null)}
             />
