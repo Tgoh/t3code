@@ -6,7 +6,7 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 From an audit of how the port uses treflex 0.1.0. Most of the code already follows the treflex docs. What doesn't is two entities that each do several jobs, and parent views that work out data and pass it down. It runs as three threads, grouped so they touch different files; each item says which.
 
-- **Hand-picked feature ids.** **In progress:** `treflex/restructure-small`. Give features hand-picked ids instead of `import.meta.url`. Last, after the session and environment threads have merged, since it touches every feature file.
+- **Hand-picked feature ids.** **In progress:** `treflex/feature-ids`. Give features hand-picked ids instead of `import.meta.url`.
 
 ## 2. Style parity
 
