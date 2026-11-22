@@ -6,7 +6,7 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 Nothing hand-rolled that stock already has. Before parity and the missing features, so new work uses the shared components.
 
-- **Shared components, the gaps left.** **In progress:** `treflex/style-components`, ported and waiting on Tam's go to merge. What remains once it merges:
+- **Shared components, the gaps left.** Stock's tokens and `components/ui` are ported (see the README's "Components copied from stock"). What remains:
   - Stock's overlay scrollbars, which need JavaScript scrollbars; treflex keeps native ones.
   - Press-and-drag to pick a menu item, and Select's popup growing as it scrolls in aligned mode.
   - `MiddleTruncate`, for branch and path names.
