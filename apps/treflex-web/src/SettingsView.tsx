@@ -987,17 +987,26 @@ function KeybindingsPage() {
                           </Show>
                         </span>
                       }
-                      description={row.When === "" ? undefined : `When ${row.When}`}
+                      description={
+                        row.When === "" || row.Unassigned ? undefined : `When ${row.When}`
+                      }
                       control={
-                        <span class="inline-flex gap-1">
-                          <For each={keyCaps(row.Key)}>
-                            {(cap) => (
-                              <kbd class="min-w-[22px] rounded-sm border bg-muted px-1.5 py-px text-center font-sans text-[12px]">
-                                {cap}
-                              </kbd>
-                            )}
-                          </For>
-                        </span>
+                        <Show
+                          when={!row.Unassigned}
+                          fallback={
+                            <span class="text-[12px] text-muted-foreground">Unassigned</span>
+                          }
+                        >
+                          <span class="inline-flex gap-1">
+                            <For each={keyCaps(row.Key)}>
+                              {(cap) => (
+                                <kbd class="min-w-[22px] rounded-sm border bg-muted px-1.5 py-px text-center font-sans text-[12px]">
+                                  {cap}
+                                </kbd>
+                              )}
+                            </For>
+                          </span>
+                        </Show>
                       }
                     />
                   )}

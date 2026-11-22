@@ -17,6 +17,8 @@ export interface IKeybindingRow {
   Key: string;
   When: string;
   Source: "Default" | "Custom" | "Project";
+  /** The command's default key turned off with `when: false`. */
+  Unassigned: boolean;
 }
 
 export interface IKeybindingGroup {
@@ -116,6 +118,11 @@ const DEFAULT_IDS = new Set(
       `${binding.command}\0${shortcutText(binding.shortcut)}\0${whenText(binding.whenAst)}`,
   ),
 );
+const DEFAULT_KEYS = new Set(
+  DEFAULT_RESOLVED_KEYBINDINGS.map(
+    (binding) => `${binding.command}\0${shortcutText(binding.shortcut)}`,
+  ),
+);
 
 function compareCommands(left: string, right: string): number {
   const leftRank = USAGE_ORDER.indexOf(left);
@@ -144,6 +151,7 @@ export function keybindingGroups(keybindings: ResolvedKeybindingsConfig): IKeybi
         : DEFAULT_IDS.has(id)
           ? "Default"
           : "Custom",
+      Unassigned: when === "false" && DEFAULT_KEYS.has(`${binding.command}\0${key}`),
     });
   }
   const sorted = [...rows.values()].sort(

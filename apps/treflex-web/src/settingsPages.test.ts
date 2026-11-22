@@ -446,6 +446,26 @@ describe("keybinding rows", () => {
       "mod+alt+r",
       "Default",
     ]);
+    expect(rename?.Unassigned).toBe(false);
+  });
+
+  it("read a default's key under `when: false` as unassigned", () => {
+    const shortcut = {
+      key: "b",
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      modKey: true,
+    };
+    const rows = keybindingGroups([
+      { command: "sidebar.toggle", shortcut, whenAst: { type: "identifier", name: "false" } },
+    ] as never).flatMap((group) => group.Rows);
+    expect(
+      rows
+        .filter((row) => row.Command === "sidebar.toggle" && row.When === "false")
+        .map((row) => row.Unassigned),
+    ).toEqual([true]);
   });
 });
 
