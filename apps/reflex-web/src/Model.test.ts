@@ -43,6 +43,8 @@ import {
   threadCommand,
   toggleSettleOpenThread,
 } from "./Environment";
+import { ActivityReceiver } from "./Activity";
+import type { IReportActivity } from "./Infrastructure/clientActivity";
 import { adjacentThread } from "./keybindings";
 import {
   cancelDictation,
@@ -382,6 +384,7 @@ async function connect(
   runtime.registerReceiver(TerminalReceiver);
   runtime.registerReceiver(RewindReceiver);
   runtime.registerReceiver(PreferencesReceiver);
+  runtime.registerReceiver(ActivityReceiver);
   runtime.registerReceiver(DictationReceiver);
   await runtime.dispatch(load, "Root");
   await settled();
@@ -1865,9 +1868,9 @@ describe("the sidebar", () => {
     );
     expect(read().Sections.Snoozed).toEqual([]);
     expect(read().Order).toEqual(["nap", "t-2", "t-1"]);
-    expect(first.runtime.timers(envId)).toMatchObject([
-      { Key: "Environment/Clock", IntervalMs: 60_000 },
-    ]);
+    expect(first.runtime.timers(envId)).toContainEqual(
+      expect.objectContaining({ Key: "Environment/Clock", IntervalMs: 60_000 }),
+    );
 
     const second = await connect(undefined, null, {}, undefined, undefined, chosen);
     expect(second.environment().Local.Preferences).toEqual(chosen);
@@ -5084,5 +5087,72 @@ describe("dictation", () => {
     await phase("recording");
     await server.runtime.dispatch(threadCommand, server.envId(), THREAD_ID, { Kind: "delete" });
     expect(methods()).toEqual(["start", "cancel"]);
+  });
+});
+
+describe("client activity", () => {
+  async function reporting() {
+    const reports: IReportActivity[] = [];
+    const server = await connect(undefined, null, {
+      reportActivity: (effect: IReportActivity) => void reports.push(copy(effect)),
+    });
+    const deliver = (message: object) =>
+      server.runtime.dispatch(ActivityReceiver.handle, server.envId(), message as never, {
+        publisher: { Id: server.envId() },
+      });
+    return { server, reports, deliver, tick: () => deliver({ Type: "Activity/Report" }) };
+  }
+
+  it("reports on the interval, with git status for the shown thread's checkout", async () => {
+    const { server, reports, tick } = await reporting();
+    expect(server.runtime.timers(server.envId())).toContainEqual(
+      expect.objectContaining({ Key: "Activity/Report", IntervalMs: 25_000 }),
+    );
+    await tick();
+    expect(reports.at(-1)).toMatchObject({
+      EnvironmentId: ENV,
+      Scopes: [{ type: "provider-status" }],
+    });
+
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/repo" }],
+        threads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.open();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    await tick();
+    expect(reports.at(-1)?.Scopes).toEqual([
+      { type: "provider-status" },
+      { type: "vcs-status", cwd: "/repo" },
+    ]);
+
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "general" });
+    await tick();
+    expect(reports.at(-1)?.Scopes).toEqual([{ type: "provider-status" }]);
+  });
+
+  it("reports the device's visibility, focus and interaction as each changes", async () => {
+    const { reports, deliver } = await reporting();
+    await deliver({
+      Type: "Device/Activity",
+      Visible: true,
+      Focused: true,
+      RecentlyInteracted: true,
+    });
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({ Visible: true, Focused: true, RecentlyInteracted: true });
+    await deliver({
+      Type: "Device/Activity",
+      Visible: false,
+      Focused: false,
+      RecentlyInteracted: false,
+    });
+    expect(reports).toHaveLength(2);
+    expect(reports[1]).toMatchObject({ Visible: false, Focused: false, RecentlyInteracted: false });
   });
 });

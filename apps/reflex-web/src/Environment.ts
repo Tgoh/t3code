@@ -23,7 +23,9 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
+import { followActivity } from "./Activity";
 import { addressThread, addressView, setAddressThread } from "./Infrastructure/address";
+import type { IDeviceActivity } from "./Infrastructure/clientActivity";
 import {
   cloneControlEffect,
   type INewProject,
@@ -140,6 +142,7 @@ export interface IEnvironment extends IEntity {
     Preferences: IPreferences;
     Shelves: IShelves;
     SystemDark: boolean;
+    Activity: IDeviceActivity;
     ViewportDebug: boolean;
     /** The editor this device last opened with, as stock stores it. */
     Editor: string | null;
@@ -170,6 +173,7 @@ export function* newEnvironment(
     Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: SETTLED_PAGE },
     Now: yield* clockNowEffect(),
     SystemDark: false,
+    Activity: { Visible: false, Focused: false, RecentlyInteracted: false },
     ViewportDebug: false,
     Editor: yield* storedEditorEffect(),
   });
@@ -209,6 +213,7 @@ export function* init(draft: IEnvironment): IActionGenerator {
   yield* registerDataSource(draft, "Selection", draft.Local);
   bind(draft, EnvironmentReceiver);
   yield* followDevice(draft);
+  yield* followActivity(draft);
   yield* openShellStream(draft.Replica.Shell);
   yield* openResource(draft, "Project/Clones", {
     Type: "projectClones",
