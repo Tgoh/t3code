@@ -100,15 +100,17 @@ function* recordingOptions(
     null;
   const projectName =
     projectId === null ? "" : (draft.Replica.Shell.Projects[projectId]?.title ?? "");
+  const { speechCustomWords, speechHints } = resolveSpeechVocabulary({
+    personal: settings.speechCustomWords,
+    project: [],
+    hints: [projectName],
+  });
   return {
     Options: {
       speechLanguage: settings.speechLanguage,
       speechTranslateToEnglish: settings.speechTranslateToEnglish,
-      speechCustomWords: resolveSpeechVocabulary({
-        personal: settings.speechCustomWords,
-        project: [],
-        hints: [projectName],
-      }),
+      speechCustomWords,
+      ...(speechHints.length > 0 ? { speechHints } : {}),
       speechRemoveFillerWords: settings.speechRemoveFillerWords,
       speechSilenceFiltering: settings.speechSilenceFiltering,
     },
