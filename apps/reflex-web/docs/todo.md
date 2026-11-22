@@ -10,9 +10,6 @@ Each item fixes data or work that's wrong today.
   - Every decode of tree data has to use the same codec, at least `decodeMutation` and `decodePatch` in `settingsImpl.ts`. The full codec rejects a secret environment variable in the new shape.
   - Client settings in localStorage use reflex's format, not stock's, so read and write them with the same codec. Stock's localStorage is on another origin anyway. Run both codecs over the current saved value first. If they differ, fall back to the full codec when reading.
   - Decode the history page (`threadHistory.ts`) and the voice JSON (`dictation.ts`), and re-encode them with the same codec. Both are cast from raw JSON today, so history items keep the legacy notification source and skip the decode's cleanup.
-- **Derive each request's turn item instead of indexing it.** Remove `OpenThread.RequestItemIds` and `indexRequestItem`. Have `requestItems` walk `Timeline` from the newest item, for pending requests only, until it finds the item whose `requestId` matches. That's how stock does it (`derivePendingThreadRequests` in `packages/client-runtime/src/state/threadRequests.ts`). The old 60 ms cost came from a selector that read every turn item. This one reads only the tail, and nothing when no request is pending. Before you delete the index:
-  - Measure at 20,000 items with a pending request.
-  - Check a request whose item is outside the loaded history window.
 - **Put state on the right side of the line, and start work from events.** The line is in `CLAUDE.md`: what causes the work, and whether a restore would bring that back. Git status and the Usage page wait for their stage 4 items; do the rest now.
   - **Move to main state:**
     - **Command output** (`CommandOutput.tsx`). Whether a row is expanded is already on `ThreadSession`, so `toggleRowExpanded` should open the output subscription, not the row's mount.
