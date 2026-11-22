@@ -37,6 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/Modal";
+import { Presence } from "./ui/Presence";
 
 type IVisibility = "local" | "inherited" | "synthetic";
 type SecretRequestItem = Extract<IWireTurnItem, { type: "secret_request" }>;
@@ -318,16 +319,16 @@ const PendingLink = ItemRequest.provider<{ item: LinkRequestItem }>((props) => {
           {picksMachine(props.item) ? "Choose machine…" : "Review link…"}
         </Button>
       </div>
-      <Show when={opened()} keyed>
+      <Presence when={opened()} keyed>
         {(open) => (
           <LinkDialog
             item={props.item}
             onClose={() => {
-              if (opened() === open) setOpened(null);
+              if (opened() === open()) setOpened(null);
             }}
           />
         )}
-      </Show>
+      </Presence>
     </div>
   );
 });
