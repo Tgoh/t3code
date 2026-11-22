@@ -171,7 +171,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
     const onKeyDown = (event: KeyboardEvent) => {
       const question = progress().Question;
       if (question === null || locked() || collapsed()) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       if (target instanceof HTMLElement && target.closest(SHORTCUT_BLOCKERS)) return;
