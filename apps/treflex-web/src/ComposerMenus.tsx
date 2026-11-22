@@ -1,5 +1,13 @@
 import { selectableProviderOptionChoices } from "@t3tools/client-runtime/model-traits";
-import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
+import {
+  type Component,
+  createMemo,
+  createSignal,
+  createUniqueId,
+  For,
+  onMount,
+  Show,
+} from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import { hasProviderIcon, ProviderIcon } from "./brand";
@@ -12,7 +20,6 @@ import {
   Lock,
   Minimize2,
   PenLine,
-  Search,
   ShieldCheck,
   ShieldOff,
   Star,
@@ -21,6 +28,7 @@ import {
 } from "./icons";
 import type { IWireRuntimeMode } from "./Infrastructure/commandEffects";
 import { arrowStep, focusStep } from "./listNavigation";
+import { ComboboxEmpty, ComboboxSearchInput } from "./ui/Combobox";
 import { MenuPopup, MenuRadioGroup, MenuRadioItem, openMenuFromKeys } from "./ui/Menu";
 import { PopoverPopup } from "./ui/Popover";
 import { Presence } from "./ui/Presence";
@@ -386,6 +394,8 @@ function PickerContent(props: { traits: ITraits | null }) {
   const [listElement, setListElement] = createSignal<HTMLUListElement>();
   const [rail, setRail] = createSignal<HTMLDivElement>();
   const searching = () => query().trim() !== "";
+  const listId = createUniqueId();
+  const rowId = (index: number) => `${listId}-${index}`;
 
   const focusEffort = () => {
     const held = column();
@@ -505,67 +515,65 @@ function PickerContent(props: { traits: ITraits | null }) {
         </For>
       </div>
       <div class="flex min-h-0 flex-col border-r border-l border-border/70 bg-muted/40 [grid-area:models] group-data-searching/picker:border-l-0 max-sm:border-r-0">
-        <label
-          class={`${COLUMN_HEAD} flex items-center gap-2 transition-[border-color] focus-within:border-ring [&_svg]:size-3.5 [&_svg]:flex-none`}
-        >
-          <Search />
-          <input
-            class="h-[26px] min-w-0 flex-1 border-0 bg-transparent px-0.5 text-[14px] text-foreground outline-none"
-            data-model-search
-            ref={setSearch}
-            type="text"
-            placeholder="Search models..."
-            aria-label="Search models"
-            value={query()}
-            onInput={(event) => {
-              setQuery(event.currentTarget.value);
-              setHighlight(searching() && rowCount() > 0 ? 0 : -1);
-            }}
-            onKeyDown={(event) => {
-              if (event.isComposing) return;
-              if (
-                !event.altKey &&
-                !event.ctrlKey &&
-                !event.metaKey &&
-                !searching() &&
-                ((event.key === "ArrowLeft" && !event.shiftKey && query() === "") ||
-                  (event.key === "Tab" && event.shiftKey))
-              ) {
-                event.preventDefault();
-                focusRail();
-              } else if (arrowStep(event.key) !== null) {
-                event.preventDefault();
-                moveHighlight(arrowStep(event.key)!);
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                chooseRow(highlight());
-              } else if (
-                event.key === "ArrowRight" &&
-                event.currentTarget.selectionStart === query().length
-              ) {
-                const model = models()[highlight()];
-                if (model !== undefined && !isSelected(model)) choose(model);
-                else if (focusEffort()) event.preventDefault();
-              }
-            }}
-          />
-        </label>
+        <ComboboxSearchInput
+          data-model-search
+          ref={setSearch}
+          type="text"
+          placeholder="Search models..."
+          aria-label="Search models"
+          aria-controls={rowCount() > 0 ? listId : undefined}
+          aria-activedescendant={
+            highlight() >= 0 && highlight() < rowCount() ? rowId(highlight()) : undefined
+          }
+          value={query()}
+          onInput={(event) => {
+            setQuery(event.currentTarget.value);
+            setHighlight(searching() && rowCount() > 0 ? 0 : -1);
+          }}
+          onKeyDown={(event) => {
+            if (event.isComposing) return;
+            if (
+              !event.altKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !searching() &&
+              ((event.key === "ArrowLeft" && !event.shiftKey && query() === "") ||
+                (event.key === "Tab" && event.shiftKey))
+            ) {
+              event.preventDefault();
+              focusRail();
+            } else if (arrowStep(event.key) !== null) {
+              event.preventDefault();
+              moveHighlight(arrowStep(event.key)!);
+            } else if (event.key === "Enter") {
+              event.preventDefault();
+              chooseRow(highlight());
+            } else if (
+              event.key === "ArrowRight" &&
+              event.currentTarget.selectionStart === query().length
+            ) {
+              const model = models()[highlight()];
+              if (model !== undefined && !isSelected(model)) choose(model);
+              else if (focusEffort()) event.preventDefault();
+            }
+          }}
+        />
+        <Show when={rowCount() === 0}>
+          <ComboboxEmpty>
+            {tab() === FAVORITES_TAB && query() === "" ? "No favorites yet" : "No models found"}
+          </ComboboxEmpty>
+        </Show>
         <ul
-          class="m-0 min-h-0 flex-1 list-none overflow-y-auto overscroll-contain p-2"
+          id={listId}
+          class="m-0 min-h-0 flex-1 list-none overflow-y-auto overscroll-contain p-2 empty:hidden"
           role="listbox"
           aria-label="Models"
           ref={setListElement}
         >
-          <For
-            each={models()}
-            fallback={
-              <li class={EMPTY}>
-                {tab() === FAVORITES_TAB && query() === "" ? "No favorites yet" : "No models found"}
-              </li>
-            }
-          >
+          <For each={models()}>
             {(model, index) => (
               <li
+                id={rowId(index())}
                 role="option"
                 aria-selected={isSelected(model)}
                 aria-disabled={blockOf(model.InstanceId) !== null}
@@ -611,6 +619,7 @@ function PickerContent(props: { traits: ITraits | null }) {
           <Show when={list().Legacy}>
             {(legacy) => (
               <li
+                id={rowId(models().length)}
                 role="option"
                 aria-expanded={legacy().Expanded}
                 class={`${MODEL_ROW} text-muted-foreground data-highlighted:text-foreground`}

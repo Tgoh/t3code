@@ -15,16 +15,24 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  createUniqueId,
   For,
   type JSX,
   Match,
   on,
-  onMount,
   Show,
   Switch,
 } from "solid-js";
-import { Portal } from "solid-js/web";
 
+import {
+  CommandPaletteContent,
+  ITEM_ICON_CLASS,
+  PaletteBackButton,
+  PaletteEmptyState,
+  PaletteResultRow,
+  PaletteSubmitButton,
+  PaletteTitleIcon,
+} from "./CommandPaletteContent";
 import {
   browsePlatform,
   browseTarget,
@@ -46,45 +54,24 @@ import {
 import Environment, { AddingProject } from "./Environment";
 import { serverError } from "./Infrastructure/serverError";
 import { arrowStep, stepHighlight } from "./listNavigation";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  CornerLeftUp,
-  Folder,
-  FolderGit2,
-  FolderPlus,
-  Link,
-} from "./icons";
+import { CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
 import { browseFoldersEffect, type IFolderListing } from "./Infrastructure/commandEffects";
 import {
-  PALETTE,
-  PALETTE_ADDON,
-  PALETTE_BACK,
-  PALETTE_BACKDROP,
-  PALETTE_ERROR,
-  PALETTE_FOOTER,
-  PALETTE_GROUP,
-  PALETTE_INPUT,
-  PALETTE_INPUT_ROW,
-  PALETTE_LIST,
-  PALETTE_NOTE,
-  PALETTE_ROW,
-  PALETTE_ROW_COMPACT,
-  PALETTE_ROW_DETAIL,
-  PALETTE_ROW_TEXT,
-  PALETTE_ROW_TITLE,
-  PALETTE_SUBMIT,
-  PALETTE_WARNING,
-} from "./ui/palette";
-import { Kbd, KbdGroup } from "./ui/Kbd";
-import { usePresence } from "./ui/Presence";
+  CommandDialog,
+  CommandDialogPopup,
+  CommandGroup,
+  CommandList,
+  type ICommandInputEndInset,
+} from "./ui/Command";
 
-const SUMMARY =
-  "flex items-center gap-2.5 border-b border-border px-3.5 py-2 [&>svg]:size-4 [&>svg]:flex-none [&>svg]:text-muted-foreground";
-const SUMMARY_TEXT = "flex min-w-0 flex-col";
-const SUMMARY_TITLE = "text-[14px] font-medium";
-const SUMMARY_DETAIL = "text-[12px] wrap-anywhere text-muted-foreground";
+const SUMMARY_ROW = "flex min-h-8 items-center gap-2 rounded-sm px-2 py-1.5";
+const SUMMARY_TEXT = "flex min-w-0 flex-1 flex-col";
+const SUMMARY_TITLE = "truncate text-foreground text-sm";
+const SUMMARY_DETAIL = "truncate text-muted-foreground/85 text-xs";
+const DESCRIPTION = "min-w-0 text-muted-foreground/70 text-xs";
+const STATUS = "px-4 py-3 text-sm text-muted-foreground";
+const ERROR = "px-4 py-3 text-sm wrap-anywhere text-error-foreground";
+const WARNING = "px-4 py-3 text-sm wrap-anywhere text-warning-foreground";
 
 const UNKNOWN_SETTINGS: IAddProjectSettings = {
   BaseDirectory: "",
@@ -130,19 +117,18 @@ type IView =
 type IBrowseRow = { Kind: "up" } | { Kind: "folder"; Name: string; FullPath: string };
 
 const SOURCE_ICONS: Record<IAddProjectSourceId, () => JSX.Element> = {
-  new: () => <FolderGit2 />,
-  local: () => <FolderPlus />,
-  url: () => <Link />,
+  new: () => <FolderGit2 class={ITEM_ICON_CLASS} />,
+  local: () => <FolderPlus class={ITEM_ICON_CLASS} />,
+  url: () => <Link class={ITEM_ICON_CLASS} />,
 };
 
 const isMac = () => typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
 const modifierLabel = () => (isMac() ? "⌘" : "Ctrl");
 
-// Follows the add-project views of CommandPalette in apps/web/src/components/CommandPalette.tsx:
-// a sources list, then a folder browser, a clone URL and destination, or a new project's name.
 export function AddProjectPalette(props: { onClose: () => void }) {
   const environment = Environment.use();
-  const presence = usePresence();
+  const listId = createUniqueId();
+  const submitId = createUniqueId();
   const settings = () => environment.addProjectSettings();
   const cwd = () => environment.currentProjectRoot();
   const platform = () => browsePlatform(settings()?.Os ?? "");
@@ -163,7 +149,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
       element?.focus();
       element?.setSelectionRange(element.value.length, element.value.length);
     });
-  onMount(focusInput);
 
   const initialQuery = (next: IView): string => {
     const held = settings() ?? UNKNOWN_SETTINGS;
@@ -283,7 +268,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     if (row.Kind === "up") up();
     else open(row.Name);
   };
-  // Follows the Tab branch of handleKeyDown in apps/web/src/components/CommandPalette.tsx.
   const complete = () => {
     const held = highlight();
     if (held !== null) return openRow(rows()[held]);
@@ -336,7 +320,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
 
   const rowCount = () =>
     view().Kind === "sources" ? sources().length : browsing() ? rows().length : 0;
-  // A new filter keeps the first source highlighted, as stock's autocomplete does.
   createEffect(
     on(sources, () => {
       if (view().Kind === "sources") setHighlight(sources().length === 0 ? null : 0);
@@ -349,15 +332,9 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     }),
   );
 
-  // Follows handleKeyDown in apps/web/src/components/CommandPalette.tsx.
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.isComposing || event.keyCode === 229) return;
     const current = view();
-    if (event.key === "Escape") {
-      event.preventDefault();
-      props.onClose();
-      return;
-    }
     if (event.key === "Backspace" && query() === "" && stack().length > 1) {
       event.preventDefault();
       back();
@@ -434,191 +411,193 @@ export function AddProjectPalette(props: { onClose: () => void }) {
       return kind === "clone-dest"
         ? "Press Enter to create this folder and clone into it."
         : "Press Enter to create this folder and add it as a project.";
-    if (pending()) return "Loading folders…";
-    const failure = listingError();
-    if (failure !== null) return `Couldn't list this folder: ${failure}`;
-    if (browsing() && directory() !== "" && rows().length === 0) return "No folders here.";
-    if (kind === "sources" && sources().length === 0) return "No matching sources.";
+    if (pending() || listingError() !== null) return null;
+    if (browsing() && directory() !== "") return "No folders here.";
+    if (kind === "sources") return "No matching sources.";
     return null;
   };
 
+  const endInset = (): ICommandInputEndInset => {
+    const kind = view().Kind;
+    if (kind === "clone-url" || kind === "new") return "lg";
+    if (!browsing()) return "none";
+    if (willCreate()) return "xl";
+    return highlight() === null ? "sm" : "md";
+  };
+  const rowId = (index: number) => `${listId}-${index}`;
+  const activeRow = () => {
+    const held = highlight();
+    return held === null || rowCount() === 0 ? undefined : rowId(held);
+  };
+
   return (
-    <Portal>
-      <div
-        class={PALETTE_BACKDROP}
-        ref={(element) => presence.track(element)}
-        onPointerDown={(event) => {
-          if (event.target === event.currentTarget) props.onClose();
-        }}
-      >
-        <div
-          class={PALETTE}
-          ref={(element) => presence.track(element)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Add project"
-        >
-          <div class={PALETTE_INPUT_ROW}>
-            <Show
-              when={stack().length > 1}
-              fallback={
-                <span class={PALETTE_ADDON}>
-                  <FolderPlus />
-                </span>
-              }
-            >
-              <button type="button" class={PALETTE_BACK} aria-label="Back" onClick={back}>
-                <ArrowLeft />
-              </button>
+    <CommandDialog onClose={props.onClose}>
+      <CommandDialogPopup aria-label="Add project" class="overflow-hidden">
+        <CommandPaletteContent
+          inputProps={{
+            "aria-label": view().Kind === "sources" ? "Search sources" : placeholder() || "Path",
+            placeholder: placeholder(),
+            "aria-controls": settings() && rowCount() > 0 ? listId : undefined,
+            "aria-activedescendant": activeRow(),
+            "aria-describedby": accessory() === null ? undefined : submitId,
+            value: query(),
+            ref: setInput,
+            onInput: (event) => {
+              changeQuery(event.currentTarget.value);
+              if (browsing()) setHighlight(null);
+              setError(null);
+            },
+            onKeyDown,
+          }}
+          startAddon={
+            <Show when={stack().length > 1} fallback={<FolderPlus />}>
+              <PaletteBackButton onClick={back} />
             </Show>
-            <input
-              class={PALETTE_INPUT}
-              aria-label={view().Kind === "sources" ? "Search sources" : placeholder() || "Path"}
-              placeholder={placeholder()}
-              spellcheck={false}
-              autocomplete="off"
-              value={query()}
-              ref={setInput}
-              onInput={(event) => {
-                changeQuery(event.currentTarget.value);
-                if (browsing()) setHighlight(null);
-                setError(null);
-              }}
-              onKeyDown={onKeyDown}
-            />
+          }
+          endInset={endInset()}
+          inputAccessory={
             <Show when={accessory()}>
               {(button) => (
-                <button
-                  type="button"
-                  class={PALETTE_SUBMIT}
+                <PaletteSubmitButton
+                  id={submitId}
+                  label={button().Label}
+                  shortcutLabel={shortcut()}
+                  ariaLabel={`${button().Label} (${shortcut()})`}
                   disabled={button().Disabled}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => button().Run()}
-                >
-                  {button().Label}
-                  <KbdGroup class="pointer-events-none -me-0.5">
-                    <Kbd>{shortcut()}</Kbd>
-                  </KbdGroup>
-                </button>
+                  onSubmit={() => button().Run()}
+                />
               )}
             </Show>
-          </div>
-          <Show when={settings()} fallback={<p class={PALETTE_NOTE}>Loading…</p>}>
+          }
+          footerActionLabel={footerAction()}
+          showBackHint={stack().length > 1}
+        >
+          <Show when={settings()} fallback={<div class={STATUS}>Loading…</div>}>
             <Switch>
               <Match when={cloneRemote()}>
                 {(remote) => (
-                  <div class={SUMMARY}>
-                    <Link />
-                    <div class={SUMMARY_TEXT}>
-                      <span class={SUMMARY_TITLE}>{cloneFolder()}</span>
-                      <span class={SUMMARY_DETAIL}>{remote()}</span>
+                  <div class="shrink-0 p-2 pb-0">
+                    <div class="px-2 py-1.5 font-medium text-muted-foreground text-xs">
+                      Repository
+                    </div>
+                    <div class={SUMMARY_ROW}>
+                      <PaletteTitleIcon>
+                        <Link class={ITEM_ICON_CLASS} />
+                      </PaletteTitleIcon>
+                      <span class={SUMMARY_TEXT}>
+                        <span class={SUMMARY_TITLE}>{cloneFolder()}</span>
+                        <span class={SUMMARY_DETAIL}>{remote()}</span>
+                      </span>
                     </div>
                   </div>
                 )}
               </Match>
               <Match when={view().Kind === "new" && settings()?.NewProjectsRoot}>
                 {(root) => (
-                  <div class={SUMMARY}>
-                    <FolderGit2 />
-                    <div class={SUMMARY_TEXT}>
-                      <span class={SUMMARY_TITLE}>
-                        {newProjectName() === "" ? "New project" : newProjectName()}
-                      </span>
-                      <span class={SUMMARY_DETAIL}>
-                        {newProjectName() === ""
-                          ? `Goes in ${root()}`
-                          : `Creates ${getNewProjectPathPreview(root(), newProjectName())}`}
+                  <div class="p-2 pb-0">
+                    <div class={SUMMARY_ROW}>
+                      <PaletteTitleIcon>
+                        <FolderGit2 class={ITEM_ICON_CLASS} />
+                      </PaletteTitleIcon>
+                      <span class={SUMMARY_TEXT}>
+                        <span class={SUMMARY_TITLE}>
+                          {newProjectName() === "" ? "New project" : newProjectName()}
+                        </span>
+                        <span class={SUMMARY_DETAIL}>
+                          {newProjectName() === ""
+                            ? `Goes in ${root()}`
+                            : `Creates ${getNewProjectPathPreview(root(), newProjectName())}`}
+                        </span>
                       </span>
                     </div>
                   </div>
                 )}
               </Match>
             </Switch>
-            <Show when={error()}>{(shown) => <p class={PALETTE_ERROR}>{shown()}</p>}</Show>
-            <Show when={notice()}>{(shown) => <p class={PALETTE_WARNING}>{shown()}</p>}</Show>
-            <div class={PALETTE_LIST} ref={setList} role="listbox">
-              <Show when={view().Kind === "sources" && sources().length > 0}>
-                <p class={PALETTE_GROUP}>Sources</p>
-                <For each={sources()}>
-                  {(source, index) => (
-                    <button
-                      type="button"
-                      class={PALETTE_ROW}
-                      role="option"
-                      aria-selected={highlight() === index()}
-                      data-row={index()}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onPointerMove={() => setHighlight(index())}
-                      onClick={() => runSource(source.Id)}
-                    >
-                      {SOURCE_ICONS[source.Id]()}
-                      <span class={PALETTE_ROW_TEXT}>
-                        <span class={PALETTE_ROW_TITLE}>{source.Title}</span>
-                        <span class={PALETTE_ROW_DETAIL}>{source.Description}</span>
-                      </span>
-                    </button>
-                  )}
-                </For>
-              </Show>
-              <Show when={browsing() && rows().length > 0}>
-                <p class={PALETTE_GROUP}>
-                  {view().Kind === "clone-dest" ? "Select where to clone" : "Directories"}
-                </p>
-                <For each={rows()}>
-                  {(row, index) => (
-                    <button
-                      type="button"
-                      class={PALETTE_ROW_COMPACT}
-                      role="option"
-                      aria-selected={highlight() === index()}
-                      data-row={index()}
-                      data-tip={row.Kind === "folder" ? row.FullPath : undefined}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onPointerMove={() => setHighlight(index())}
-                      onClick={() => openRow(row)}
-                    >
-                      {row.Kind === "up" ? <CornerLeftUp /> : <Folder />}
-                      <span class={PALETTE_ROW_TITLE}>{row.Kind === "up" ? ".." : row.Name}</span>
-                    </button>
-                  )}
-                </For>
-              </Show>
-              <Show when={emptyMessage()}>
-                {(message) => <p class={PALETTE_NOTE}>{message()}</p>}
-              </Show>
-            </div>
-          </Show>
-          <footer class={PALETTE_FOOTER}>
-            <KbdGroup>
-              <Kbd>
-                <ArrowUp />
-              </Kbd>
-              <Kbd>
-                <ArrowDown />
-              </Kbd>
-              <span>Navigate</span>
-            </KbdGroup>
-            <Show when={footerAction()}>
-              {(action) => (
-                <KbdGroup>
-                  <Kbd>Enter</Kbd>
-                  <span>{action()}</span>
-                </KbdGroup>
+            <Show when={error()}>
+              {(shown) => (
+                <div role="alert" class={ERROR}>
+                  {shown()}
+                </div>
               )}
             </Show>
-            <Show when={stack().length > 1}>
-              <KbdGroup>
-                <Kbd>Backspace</Kbd>
-                <span>Back</span>
-              </KbdGroup>
+            <Show when={notice()}>
+              {(shown) => (
+                <div role="status" class={WARNING}>
+                  {shown()}
+                </div>
+              )}
             </Show>
-            <KbdGroup>
-              <Kbd>Esc</Kbd>
-              <span>Close</span>
-            </KbdGroup>
-          </footer>
-        </div>
-      </div>
-    </Portal>
+            <Show when={listingError()}>
+              {(failure) => (
+                <div role="alert" class={STATUS}>
+                  Couldn't list this folder: {failure()}
+                </div>
+              )}
+            </Show>
+            <Show when={pending()}>
+              <div role="status" class={STATUS}>
+                Loading folders…
+              </div>
+            </Show>
+            <Show
+              when={rowCount() > 0}
+              fallback={
+                <Show when={emptyMessage()}>
+                  {(message) => <PaletteEmptyState message={message()} />}
+                </Show>
+              }
+            >
+              <CommandList id={listId} ref={setList}>
+                <Show when={view().Kind === "sources"}>
+                  <CommandGroup label="Sources">
+                    <For each={sources()}>
+                      {(source, index) => (
+                        <PaletteResultRow
+                          id={rowId(index())}
+                          index={index()}
+                          active={highlight() === index()}
+                          icon={SOURCE_ICONS[source.Id]()}
+                          title={source.Title}
+                          detail={<span class={DESCRIPTION}>{source.Description}</span>}
+                          onHover={() => setHighlight(index())}
+                          onChoose={() => runSource(source.Id)}
+                        />
+                      )}
+                    </For>
+                  </CommandGroup>
+                </Show>
+                <Show when={browsing()}>
+                  <CommandGroup
+                    label={view().Kind === "clone-dest" ? "Select where to clone" : "Directories"}
+                  >
+                    <For each={rows()}>
+                      {(row, index) => (
+                        <PaletteResultRow
+                          id={rowId(index())}
+                          index={index()}
+                          active={highlight() === index()}
+                          icon={
+                            row.Kind === "up" ? (
+                              <CornerLeftUp class={ITEM_ICON_CLASS} />
+                            ) : (
+                              <Folder class={ITEM_ICON_CLASS} />
+                            )
+                          }
+                          title={row.Kind === "up" ? ".." : row.Name}
+                          tip={row.Kind === "folder" ? row.FullPath : undefined}
+                          onHover={() => setHighlight(index())}
+                          onChoose={() => openRow(row)}
+                        />
+                      )}
+                    </For>
+                  </CommandGroup>
+                </Show>
+              </CommandList>
+            </Show>
+          </Show>
+        </CommandPaletteContent>
+      </CommandDialogPopup>
+    </CommandDialog>
   );
 }

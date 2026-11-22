@@ -1,9 +1,24 @@
 // @effect-diagnostics globalDate:off -- Ranking samples the clock once, when the palette opens.
 import { getLatestThreadForProject } from "@t3tools/client-runtime/state/thread-sort";
 import { findSearchTokenRanges } from "@t3tools/shared/paletteSearch";
-import { createEffect, createMemo, createSignal, For, type JSX, on, onMount, Show } from "solid-js";
-import { Portal } from "solid-js/web";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  createUniqueId,
+  For,
+  type JSX,
+  on,
+  Show,
+} from "solid-js";
 
+import {
+  CommandPaletteContent,
+  ITEM_ICON_CLASS,
+  PaletteBackButton,
+  PaletteEmptyState,
+  PaletteResultRow,
+} from "./CommandPaletteContent";
 import {
   filterPalette,
   type IPaletteGroup,
@@ -17,19 +32,9 @@ import Environment from "./Environment";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { Highlighted } from "./Highlighted";
 import { Folder, FolderGit2 } from "./icons";
-import { MARK, STATUS_LABEL, STATUS_TONE } from "./ThreadCard";
+import { STATUS_LABEL, STATUS_TONE } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  FolderOpen,
-  FolderPlus,
-  MessageSquare,
-  PenLine,
-  Search,
-  SquarePen,
-} from "./icons";
+import { FolderOpen, FolderPlus, MessageSquare, PenLine, Search, SquarePen } from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { useMessageSearch } from "./messageSearch";
 import { toSortableThread } from "./projectOrder";
@@ -37,46 +42,29 @@ import { type IPaletteView, useNavigation } from "./navigation";
 import Shell, { activityAt, isSnoozed, sidebarStatus } from "./Shell";
 import { rankMessages, threadSubject } from "./threadSearch";
 import { relativeTime } from "./timestamps";
-import {
-  PALETTE,
-  PALETTE_ADDON,
-  PALETTE_BACK,
-  PALETTE_BACKDROP,
-  PALETTE_FOOTER,
-  PALETTE_GROUP,
-  PALETTE_INPUT,
-  PALETTE_INPUT_ROW,
-  PALETTE_KBD,
-  PALETTE_LIST,
-  PALETTE_NOTE,
-  PALETTE_ROW,
-  PALETTE_ROW_DETAIL,
-  PALETTE_ROW_TEXT,
-  PALETTE_ROW_TITLE,
-} from "./ui/palette";
-import { Kbd, KbdGroup } from "./ui/Kbd";
-import { usePresence } from "./ui/Presence";
+import { CommandDialog, CommandDialogPopup, CommandGroup, CommandList } from "./ui/Command";
 
 const META_TEXT = "min-w-0 truncate";
+const MATCH_LINE = "truncate text-xs text-muted-foreground/85";
+const MATCH_MARK = "bg-transparent font-semibold text-foreground";
+const DESCRIPTION = "min-w-0 text-muted-foreground/70 text-xs";
 
 const ICONS: Record<IPaletteIcon, () => JSX.Element> = {
-  "new-thread": () => <SquarePen />,
-  "add-project": () => <FolderPlus />,
-  project: () => <FolderOpen />,
-  thread: () => <MessageSquare />,
-  focus: () => <Search />,
-  rename: () => <PenLine />,
+  "new-thread": () => <SquarePen class={ITEM_ICON_CLASS} />,
+  "add-project": () => <FolderPlus class={ITEM_ICON_CLASS} />,
+  project: () => <FolderOpen class={ITEM_ICON_CLASS} />,
+  thread: () => <MessageSquare class={ITEM_ICON_CLASS} />,
+  focus: () => <Search class={ITEM_ICON_CLASS} />,
+  rename: () => <PenLine class={ITEM_ICON_CLASS} />,
 };
 
 const NEW_THREAD_IN = "action:new-thread-in";
 
-// Follows CommandPalette in apps/web/src/components/CommandPalette.tsx: actions, recent threads,
-// and, for a query, ranked actions, threads, projects and message matches.
 export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => {
   const environment = Environment.use();
   const shell = Shell.use();
   const navigation = useNavigation();
-  const presence = usePresence();
+  const listId = createUniqueId();
   const now = Date.now();
   const close = () => navigation.setPalette(null);
 
@@ -242,9 +230,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   const submenu = () => stack().at(-1) ?? null;
   const [query, setQuery] = createSignal("");
   const [highlight, setHighlight] = createSignal(0);
-  const [input, setInput] = createSignal<HTMLInputElement>();
   const [list, setList] = createSignal<HTMLElement>();
-  onMount(() => queueMicrotask(() => input()?.focus()));
 
   const searchesThreads = () => submenu() === null && !query().startsWith(">");
   const messageSearch = useMessageSearch(() => (searchesThreads() ? query() : ""));
@@ -334,11 +320,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.isComposing || event.keyCode === 229) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      close();
-    } else if (event.key === "Backspace" && query() === "" && submenu() !== null) {
+    if (event.key === "Backspace" && query() === "" && submenu() !== null) {
       event.preventDefault();
       back();
     } else if (arrowStep(event.key) !== null) {
@@ -353,117 +335,71 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   };
 
   const rowIndex = (item: IPaletteItem) => rows().indexOf(item);
+  const rowId = (index: number) => `${listId}-${index}`;
   const emptyMessage = () => {
-    if (rows().length > 0) return null;
     if (messageSearch.pending()) return "Searching thread messages…";
     if (messageSearch.failed()) return "Couldn't search thread messages.";
-    return "No matching commands, projects or threads.";
+    return "No matching commands, projects, or threads.";
   };
 
   return (
-    <Portal>
-      <div
-        class={PALETTE_BACKDROP}
-        ref={(element) => presence.track(element)}
-        onPointerDown={(event) => {
-          if (event.target === event.currentTarget) close();
-        }}
-      >
-        <div
-          class={PALETTE}
-          ref={(element) => presence.track(element)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Command palette"
-        >
-          <div class={PALETTE_INPUT_ROW}>
-            <Show
-              when={submenu() !== null}
-              fallback={
-                <span class={PALETTE_ADDON}>
-                  <Search />
-                </span>
-              }
-            >
-              <button type="button" class={PALETTE_BACK} aria-label="Back" onClick={back}>
-                <ArrowLeft />
-              </button>
-            </Show>
-            <input
-              class={PALETTE_INPUT}
-              aria-label="Search commands, projects, and threads"
-              placeholder={
-                submenu() === null ? "Search commands, projects, and threads..." : "Search..."
-              }
-              spellcheck={false}
-              autocomplete="off"
-              role="combobox"
-              aria-expanded="true"
-              aria-controls="palette-list"
-              value={query()}
-              ref={setInput}
-              onInput={(event) => changeQuery(event.currentTarget.value)}
-              onKeyDown={onKeyDown}
-            />
-          </div>
-          <div class={PALETTE_LIST} id="palette-list" ref={setList} role="listbox">
-            <For each={groups()}>
-              {(group) => (
-                <>
-                  <p class={PALETTE_GROUP}>{group.Label}</p>
-                  <For each={group.Items}>
-                    {(item) => (
-                      <PaletteRow
-                        item={item}
-                        index={rowIndex(item)}
-                        highlighted={highlight() === rowIndex(item)}
-                        query={messageSearch.query()}
-                        shortcut={item.Shortcut ? navigation.shortcut(item.Shortcut) : null}
-                        onHover={() => setHighlight(rowIndex(item))}
-                        onChoose={() => choose(item)}
-                      />
-                    )}
-                  </For>
-                </>
-              )}
-            </For>
-            <Show when={emptyMessage()}>
-              {(message) => <p class={PALETTE_NOTE}>{message()}</p>}
-            </Show>
-          </div>
-          <footer class={PALETTE_FOOTER}>
-            <KbdGroup>
-              <Kbd>
-                <ArrowUp />
-              </Kbd>
-              <Kbd>
-                <ArrowDown />
-              </Kbd>
-              <span>Navigate</span>
-            </KbdGroup>
-            <KbdGroup>
-              <Kbd>Enter</Kbd>
-              <span>Select</span>
-            </KbdGroup>
+    <CommandDialog onClose={close}>
+      <CommandDialogPopup aria-label="Command palette" class="overflow-hidden">
+        <CommandPaletteContent
+          inputProps={{
+            "aria-label": "Search commands, projects, and threads",
+            placeholder:
+              submenu() === null ? "Search commands, projects, and threads..." : "Search...",
+            "aria-controls": rows().length > 0 ? listId : undefined,
+            "aria-activedescendant": rows().length > 0 ? rowId(highlight()) : undefined,
+            value: query(),
+            onInput: (event) => changeQuery(event.currentTarget.value),
+            onKeyDown,
+          }}
+          startAddon={
             <Show when={submenu() !== null}>
-              <KbdGroup>
-                <Kbd>Backspace</Kbd>
-                <span>Back</span>
-              </KbdGroup>
+              <PaletteBackButton onClick={back} />
             </Show>
-            <KbdGroup>
-              <Kbd>Esc</Kbd>
-              <span>Close</span>
-            </KbdGroup>
-          </footer>
-        </div>
-      </div>
-    </Portal>
+          }
+          footerActionLabel="Select"
+          footerTrailing={
+            <Show when={messageSearch.pending()}>
+              <span class="text-muted-foreground text-xs">Searching messages…</span>
+            </Show>
+          }
+          showBackHint={submenu() !== null}
+        >
+          <Show when={rows().length > 0} fallback={<PaletteEmptyState message={emptyMessage()} />}>
+            <CommandList id={listId} ref={setList}>
+              <For each={groups()}>
+                {(group) => (
+                  <CommandGroup label={group.Label}>
+                    <For each={group.Items}>
+                      {(item) => (
+                        <PaletteRow
+                          item={item}
+                          id={rowId(rowIndex(item))}
+                          index={rowIndex(item)}
+                          highlighted={highlight() === rowIndex(item)}
+                          query={messageSearch.query()}
+                          shortcut={item.Shortcut ? navigation.shortcut(item.Shortcut) : null}
+                          submenu={item.Submenu !== undefined || item.Value === NEW_THREAD_IN}
+                          onHover={() => setHighlight(rowIndex(item))}
+                          onChoose={() => choose(item)}
+                        />
+                      )}
+                    </For>
+                  </CommandGroup>
+                )}
+              </For>
+            </CommandList>
+          </Show>
+        </CommandPaletteContent>
+      </CommandDialogPopup>
+    </CommandDialog>
   );
 });
 
-// Follows ThreadRowLeadingStatus in apps/web/src/components/ThreadStatusIndicators.tsx, with the
-// sidebar's status.
 function ThreadStatusLabel(props: { threadId: string }) {
   const shell = Shell.use();
   const status = () => {
@@ -476,7 +412,7 @@ function ThreadStatusLabel(props: { threadId: string }) {
     <Show when={status()}>
       {(held) => (
         <span
-          class={`mr-1.5 inline-flex flex-none items-center gap-1 align-[1px] text-[10px] leading-4 font-medium ${STATUS_TONE[held()]}`}
+          class={`inline-flex flex-none items-center gap-1 text-[10px] leading-4 font-medium ${STATUS_TONE[held()]}`}
         >
           <span class="size-1.5 rounded-full bg-current" />
           {STATUS_LABEL[held()]}
@@ -488,8 +424,6 @@ function ThreadStatusLabel(props: { threadId: string }) {
 
 const MetaDot = () => <span class="flex-none opacity-50">·</span>;
 
-// Follows ThreadCommandSubtitle in apps/web/src/components/ThreadCommandSubtitle.tsx: project,
-// environment, workspace and the provider that runs the thread.
 function ThreadMeta(props: { threadId: string }) {
   const environment = Environment.use();
   const shell = Shell.use();
@@ -538,16 +472,19 @@ function ThreadMeta(props: { threadId: string }) {
 
 function PaletteRow(props: {
   item: IPaletteItem;
+  id: string;
   index: number;
   highlighted: boolean;
   query: string;
   shortcut: string | null;
+  submenu: boolean;
   onHover: () => void;
   onChoose: () => void;
 }) {
   const title = () => {
     const item = props.item;
-    if (item.Ranges !== undefined) return <Highlighted text={item.Title} ranges={item.Ranges} />;
+    if (item.Ranges !== undefined)
+      return <Highlighted text={item.Title} ranges={item.Ranges} markClass={MATCH_MARK} />;
     if (item.Emphasis !== undefined && item.Title.endsWith(item.Emphasis)) {
       return (
         <>
@@ -562,51 +499,48 @@ function PaletteRow(props: {
     const item = props.item;
     if (item.Snippet !== undefined)
       return (
-        <Highlighted
-          text={item.Snippet}
-          ranges={findSearchTokenRanges(item.Snippet, props.query)}
-        />
+        <span class={MATCH_LINE}>
+          <Highlighted
+            text={item.Snippet}
+            ranges={findSearchTokenRanges(item.Snippet, props.query)}
+            markClass={MATCH_MARK}
+          />
+        </span>
       );
     if (item.Hint !== undefined)
       return (
-        <>
-          {item.Hint.label}: <Highlighted text={item.Hint.text} ranges={item.Hint.ranges} />
-        </>
+        <span class={MATCH_LINE}>
+          <span class="text-muted-foreground/70">{item.Hint.label}:</span>{" "}
+          <Highlighted text={item.Hint.text} ranges={item.Hint.ranges} markClass={MATCH_MARK} />
+        </span>
       );
-    if (item.ThreadId !== undefined) return <ThreadMeta threadId={item.ThreadId} />;
-    return item.Description;
+    if (item.ThreadId !== undefined)
+      return (
+        <span class={DESCRIPTION}>
+          <ThreadMeta threadId={item.ThreadId} />
+        </span>
+      );
+    if (item.Description === undefined || item.Description === "") return undefined;
+    return <span class={DESCRIPTION}>{item.Description}</span>;
   };
   return (
-    <button
-      type="button"
-      class={`${PALETTE_ROW} ${MARK}`}
-      role="option"
-      aria-selected={props.highlighted}
-      data-row={props.index}
-      onMouseDown={(event) => event.preventDefault()}
-      onPointerMove={() => {
-        if (!props.highlighted) props.onHover();
-      }}
-      onClick={() => props.onChoose()}
-    >
-      {ICONS[props.item.Icon]()}
-      <span class={PALETTE_ROW_TEXT}>
-        <span class={PALETTE_ROW_TITLE}>
-          <Show when={props.item.ThreadId}>
-            {(threadId) => <ThreadStatusLabel threadId={threadId()} />}
-          </Show>
-          {title()}
-        </span>
-        <Show when={detail()}>
-          <span class={PALETTE_ROW_DETAIL}>{detail()}</span>
+    <PaletteResultRow
+      id={props.id}
+      index={props.index}
+      active={props.highlighted}
+      icon={ICONS[props.item.Icon]()}
+      title={title()}
+      titleLeading={
+        <Show when={props.item.ThreadId}>
+          {(threadId) => <ThreadStatusLabel threadId={threadId()} />}
         </Show>
-      </span>
-      <Show when={props.item.Timestamp}>
-        <span class="flex-none text-[12px] text-muted-foreground tabular-nums">
-          {props.item.Timestamp}
-        </span>
-      </Show>
-      <Show when={props.shortcut}>{(label) => <kbd class={PALETTE_KBD}>{label()}</kbd>}</Show>
-    </button>
+      }
+      detail={detail()}
+      timestamp={props.item.Timestamp}
+      shortcut={props.shortcut}
+      submenu={props.submenu}
+      onHover={props.onHover}
+      onChoose={props.onChoose}
+    />
   );
 }

@@ -2,7 +2,7 @@ import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import type { KeybindingCommand } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useDispatch } from "treflex-solid";
-import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 
 import { AddProjectPalette } from "./AddProject";
 import { ProjectBadge } from "./brand";
@@ -96,6 +96,16 @@ const EnvironmentView = Environment.provider(() => {
   const platform = navigator.platform;
   const dispatch = useDispatch();
   const [palette, setPalette] = createSignal<IPaletteView | null>(null);
+  // Each open is a new session with its own Presence, so a reopen mounts a fresh palette while
+  // the closing one exits with its old content. The two latest are enough to cover an exit.
+  const paletteSession = createMemo(() => {
+    const view = palette();
+    return view === null ? null : { View: view };
+  });
+  const paletteSessions = createMemo<ReadonlyArray<{ View: IPaletteView }>>((held) => {
+    const session = paletteSession();
+    return session === null || held.includes(session) ? held : [...held.slice(-1), session];
+  }, []);
   // The on-screen keyboard would cover a phone's thread, so the sheet layout leaves focus alone.
   const focusComposer = () => {
     if (sidebar.sheet()) return;
@@ -302,12 +312,19 @@ const EnvironmentView = Environment.provider(() => {
               {() => <SheetBackdrop onClose={() => sidebar.setOpen(false)} />}
             </Presence>
             <EnvironmentMain state={environment.state.Local.Dictation} />
-            <Presence when={palette() === "add-project"}>
-              {() => <AddProjectPalette onClose={() => setPalette(null)} />}
-            </Presence>
-            <Presence when={palette() === "add-project" ? null : palette()} keyed>
-              {(view) => <CommandPalette state={environment.state.Replica.Shell} view={view()} />}
-            </Presence>
+            <For each={paletteSessions()}>
+              {(session) => (
+                <Presence when={paletteSession() === session}>
+                  {() =>
+                    session.View === "add-project" ? (
+                      <AddProjectPalette onClose={() => setPalette(null)} />
+                    ) : (
+                      <CommandPalette state={environment.state.Replica.Shell} view={session.View} />
+                    )
+                  }
+                </Presence>
+              )}
+            </For>
           </NavigationContext.Provider>
         </OverlayContext.Provider>
       </SidebarSheetContext.Provider>

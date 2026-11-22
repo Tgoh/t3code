@@ -39,6 +39,7 @@ export function createKeyDispatcher(input: {
     onKeyDown: (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if (event.key === "Escape") {
+        if (event.isComposing) return;
         if (input.overlays.escape() || input.closeSheet()) handled(event);
         return;
       }

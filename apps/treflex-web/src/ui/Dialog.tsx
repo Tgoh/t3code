@@ -1,9 +1,11 @@
 import {
   type Accessor,
   createContext,
+  createRenderEffect,
   createSignal,
   createUniqueId,
   type JSX,
+  on,
   onCleanup,
   type Setter,
   Show,
@@ -12,7 +14,7 @@ import {
 } from "solid-js";
 
 import { X } from "../icons";
-import { useOverlay } from "../overlays";
+import { useOverlays } from "../overlays";
 import { Button, type ButtonVariant } from "./Button";
 import {
   DIALOG_DESCRIPTION_CLASS,
@@ -93,8 +95,9 @@ function initialFocusTarget(popup: HTMLElement): HTMLElement | null {
 }
 
 // Preflight leaves the UA's modal box on <dialog>; this one only holds the backdrop and viewport.
+// Its z-index counts only while it exits, out of the top layer.
 const DIALOG_ROOT =
-  "fixed inset-0 m-0 size-full max-h-none max-w-none overflow-visible border-0 bg-transparent p-0 text-inherit outline-none backdrop:bg-transparent data-ending-style:pointer-events-none";
+  "fixed inset-0 z-[120] m-0 size-full max-h-none max-w-none overflow-visible border-0 bg-transparent p-0 text-inherit outline-none backdrop:bg-transparent data-ending-style:pointer-events-none";
 
 export type IPopupProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, "class" | "role" | "style"> & {
   /** What takes focus on open; null leaves it on the popup. */
@@ -105,25 +108,30 @@ export type IPopupProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, "class" | "ro
 };
 
 /**
- * The surface both dialog kinds share: a modal `<dialog>` in the top layer holding stock's
+ * The surface every dialog kind shares: a modal `<dialog>` in the top layer holding stock's
  * backdrop, viewport and popup. Escape closes it; a press outside the popup closes only a plain
- * dialog. On close, focus goes back to what had it on open.
+ * dialog. When the close starts, focus goes back to what had it on open.
  */
 export function DialogSurface(
   props: IPopupProps & {
-    slot: "dialog" | "alert-dialog";
+    slot: "dialog" | "alert-dialog" | "command-dialog";
     backdropClass: string;
     viewportClass: string;
+    viewportStyle?: JSX.CSSProperties;
     popupClass: string;
     closeButton: boolean;
+    /** Closes on a press of the backdrop, for a viewport that lets presses through to it. */
+    closeOnBackdropPress?: boolean;
   },
 ) {
   const [local, rest] = splitProps(props, [
     "slot",
     "backdropClass",
     "viewportClass",
+    "viewportStyle",
     "popupClass",
     "closeButton",
+    "closeOnBackdropPress",
     "initialFocus",
     "class",
     "children",
@@ -139,18 +147,73 @@ export function DialogSurface(
   const [dialog, setDialog] = createSignal<HTMLDialogElement>();
   const [popup, setPopup] = createSignal<HTMLDivElement>();
   const [pressedOutside, setPressedOutside] = createSignal(false);
-  useOverlay({
+  const overlays = useOverlays();
+  const overlay = {
     modal: true,
     close: () => root.close(),
-    contains: (node) => dialog()?.contains(node) === true,
-  });
-  onCleanup(() => {
-    // Unmounting an open modal drops focus to <body>, and the opener is inert until close().
-    dialog()?.close();
+    contains: (node: Node) => dialog()?.contains(node) === true,
+  };
+  let leaveStack: (() => void) | null = overlays.push(overlay);
+  const returnFocus = () => {
+    const element = dialog();
     const active = document.activeElement;
     const target = opener();
-    const lost = active === null || active === document.body || dialog()?.contains(active);
-    if (lost === true && target?.isConnected === true) target.focus({ preventScroll: true });
+    const lost = active === null || active === document.body || element?.contains(active);
+    if (lost !== true) return;
+    if (target?.isConnected === true) target.focus({ preventScroll: true });
+    else if (active instanceof HTMLElement && element?.contains(active)) active.blur();
+  };
+  // The page is interactive again as soon as the close starts: the exiting dialog turns
+  // non-modal and inert, so whatever the close leads to can take focus at once.
+  const leave = (element: HTMLDialogElement) => {
+    leaveStack?.();
+    leaveStack = null;
+    // Leaving the top layer cancels the transitions in flight, so each node is held where it was
+    // and its exit starts again from there.
+    const ending = [element, ...element.querySelectorAll<HTMLElement>("[data-ending-style]")]
+      .filter((node) => node.hasAttribute("data-ending-style"))
+      .map((node) => {
+        const style = getComputedStyle(node);
+        return { node, held: [style.opacity, style.scale, style.translate] as const };
+      });
+    for (const { node, held } of ending) {
+      node.style.opacity = held[0];
+      node.style.scale = held[1];
+      node.style.translate = held[2];
+      node.removeAttribute("data-ending-style");
+    }
+    element.inert = true;
+    element.close();
+    element.show();
+    element.getBoundingClientRect();
+    for (const { node } of ending) {
+      node.style.removeProperty("opacity");
+      node.style.removeProperty("scale");
+      node.style.removeProperty("translate");
+      node.setAttribute("data-ending-style", "");
+    }
+    returnFocus();
+  };
+  createRenderEffect(
+    on(
+      presence.exiting,
+      (exiting, was) => {
+        const element = dialog();
+        if (element === undefined || !element.open) return;
+        if (exiting) return leave(element);
+        if (was !== true) return;
+        element.inert = false;
+        element.close();
+        leaveStack = overlays.push(overlay);
+        open(element);
+      },
+      { defer: true },
+    ),
+  );
+  onCleanup(() => {
+    leaveStack?.();
+    dialog()?.close();
+    returnFocus();
   });
   const outside = (target: EventTarget | null) => {
     const element = popup();
@@ -158,7 +221,7 @@ export function DialogSurface(
   };
   const open = (element: HTMLDialogElement) => {
     const surface = popup();
-    if (!element.isConnected || element.open || surface === undefined) return;
+    if (!element.isConnected || element.open || surface === undefined || presence.exiting()) return;
     const opened = returnTarget();
     if (opened !== undefined) setOpener(opened);
     element.showModal();
@@ -186,9 +249,13 @@ export function DialogSurface(
         ref={(element) => presence.track(element)}
         class={local.backdropClass}
         data-slot={`${local.slot}-backdrop`}
+        onPointerDown={() => {
+          if (local.closeOnBackdropPress === true) root.close();
+        }}
       />
       <div
         class={local.viewportClass}
+        style={local.viewportStyle}
         data-slot={`${local.slot}-viewport`}
         onPointerDown={(event) => {
           setPressedOutside(!root.alert && event.button === 0 && outside(event.target));
