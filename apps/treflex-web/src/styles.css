@@ -129,7 +129,7 @@
   --composer-shadow: 0 1px 2px rgb(0 0 0 / 5%);
   --media-ring: rgb(0 0 0 / 9%);
 
-  --sidebar: oklch(96% 0.005 286.375);
+  --sidebar: var(--zinc-50);
   --sidebar-foreground: var(--zinc-900);
   --sidebar-muted-foreground: var(--zinc-500);
   --sidebar-border: var(--zinc-200);
@@ -211,8 +211,8 @@
   --diff-added-icon: var(--success-foreground);
   --terminal-cursor: rgb(180 203 255);
   --terminal-selection-background: rgb(180 203 255 / 25%);
-  --app-scrollbar-thumb: rgb(255 255 255 / 8%);
-  --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
+  --app-scrollbar-thumb: rgb(255 255 255 / 36%);
+  --app-scrollbar-thumb-hover: rgb(255 255 255 / 45%);
   --composer-outline: color-mix(in srgb, #fff 5%, transparent);
   --composer-surface: var(--raised);
   --composer-shadow: 0 14px 32px -18px rgb(0 0 0 / 75%);
@@ -387,9 +387,8 @@ body {
   overflow: hidden;
 }
 
-/* Chrome's own placeholder grey, which preflight replaces with half the text colour. */
 ::placeholder {
-  color: #757575;
+  color: var(--contrast-placeholder);
 }
 
 :where(button, summary, a):focus-visible {
