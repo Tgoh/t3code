@@ -34,7 +34,7 @@ import ThreadSession, { closeRightPanel } from "./ThreadSession";
 import { CHAT_STAGE, ThreadView } from "./ThreadView";
 import { EMPTY_NOTE } from "./ui/notes";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
-import { Presence } from "./ui/Presence";
+import { Presence, usePresence } from "./ui/Presence";
 import { TooltipHost } from "./ui/tooltip";
 import { UsageView } from "./UsageView";
 import { ViewportDebug } from "./ViewportDebug";
@@ -274,13 +274,9 @@ const EnvironmentView = Environment.provider(() => {
         <OverlayContext.Provider value={overlays}>
           <NavigationContext.Provider value={navigation}>
             <Sidebar state={environment.state.Replica.Shell} />
-            <Show when={sidebar.open()}>
-              <div
-                class="absolute inset-0 z-49 bg-(--dialog-backdrop) backdrop-blur-[4px]"
-                aria-hidden="true"
-                onClick={() => sidebar.setOpen(false)}
-              />
-            </Show>
+            <Presence when={sidebar.open()}>
+              {() => <SheetBackdrop onClose={() => sidebar.setOpen(false)} />}
+            </Presence>
             <EnvironmentMain />
             <Presence when={palette() === "add-project"}>
               {() => <AddProjectPalette onClose={() => setPalette(null)} />}
@@ -294,6 +290,20 @@ const EnvironmentView = Environment.provider(() => {
     </div>
   );
 });
+
+// Follows SheetBackdrop in apps/web/src/components/ui/sheet.tsx.
+function SheetBackdrop(props: { onClose: () => void }) {
+  const presence = usePresence();
+  return (
+    <div
+      class="absolute inset-0 z-49 bg-(--dialog-backdrop) backdrop-blur-[4px] transition-opacity duration-200 starting:opacity-0 data-closing:pointer-events-none data-closing:opacity-0"
+      data-closing={presence.closing() ? "" : undefined}
+      aria-hidden="true"
+      ref={(element) => presence.track(element)}
+      onClick={() => props.onClose()}
+    />
+  );
+}
 
 function EnvironmentMain() {
   const environment = Environment.use();
