@@ -48,17 +48,16 @@ const HOVER_LINE =
   "flex min-w-0 items-center gap-2 [&_.provider-icon]:opacity-60 [&_.provider-icon]:grayscale [&_span]:min-w-0 [&_span]:truncate [&_svg.lucide]:size-3";
 const hoverLine = `${HOVER_LINE} [&_span]:text-[color-mix(in_srgb,var(--foreground)_75%,transparent)]`;
 
-const CARD_LINE = "flex h-5 min-w-0 items-center gap-1.5";
-const TITLE_LINE = "flex min-h-5 min-w-0 items-start gap-1.5";
+const CARD_LINE = "relative flex h-5 min-w-0 items-center gap-1.5 bg-inherit";
+const TITLE_LINE = "relative flex min-h-5 min-w-0 items-start gap-1.5 bg-inherit";
 export const MARK = "[&_mark]:bg-transparent [&_mark]:font-bold [&_mark]:text-inherit";
-// The status and the actions share one grid cell, so swapping them can't rewrap the title.
-const CARD_SWAP = "grid flex-none [&>*]:[grid-area:1/1] [&>*]:justify-self-end";
 // On touch a tap leaves :hover and focus on the card it selected, so there the status stays and
 // the actions open by long-press; only keyboard focus swaps them.
 const CARD_SLOT =
-  "inline-flex h-5 items-center group-hover/card:invisible group-focus-visible/card:invisible group-has-[:focus-visible]/card:invisible [@media(hover:hover)]:group-focus-within/card:invisible";
+  "inline-flex h-5 flex-none items-center group-hover/card:invisible group-focus-visible/card:invisible group-has-[:focus-visible]/card:invisible [@media(hover:hover)]:group-focus-within/card:invisible";
+// Laid over the line's end on the row's own background, so showing them can't rewrap the title.
 const CARD_ACTIONS =
-  "invisible -mr-1 inline-flex items-center gap-0.5 group-hover/card:visible group-focus-visible/card:visible group-has-[:focus-visible]/card:visible [@media(hover:hover)]:group-focus-within/card:visible";
+  "invisible absolute top-0 -right-1 inline-flex h-5 items-center gap-0.5 bg-inherit pl-1 group-hover/card:visible group-focus-visible/card:visible group-has-[:focus-visible]/card:visible [@media(hover:hover)]:group-focus-within/card:visible";
 export const CARD_ACTION =
   "inline-flex h-5 cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0 text-[12px] leading-4 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground [&_svg]:size-3.5";
 
@@ -276,7 +275,7 @@ export function ThreadCard(props: {
       aria-selected={props.search ? props.search.highlighted : undefined}
     >
       <div
-        class="group/card block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left not-data-selected:hover:bg-sidebar-row-hover data-compact:py-1.5 data-dimmed:opacity-70 data-dimmed:hover:opacity-100 data-highlighted:not-data-selected:bg-sidebar-row-hover data-highlighted:not-data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ring)_50%,transparent)] data-selected:bg-sidebar-row-active data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--sidebar-border)_70%,transparent)] [@media(hover:none)]:select-none [@media(hover:none)]:[-webkit-touch-callout:none]"
+        class="group/card block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left not-data-selected:hover:bg-sidebar-row-hover not-data-selected:focus-visible:bg-sidebar-row-hover not-data-selected:has-[:focus-visible]:bg-sidebar-row-hover data-compact:py-1.5 data-dimmed:opacity-70 data-dimmed:hover:opacity-100 data-highlighted:not-data-selected:bg-sidebar-row-hover data-highlighted:not-data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ring)_50%,transparent)] data-selected:bg-sidebar-row-active data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--sidebar-border)_70%,transparent)] [@media(hover:none)]:select-none [@media(hover:none)]:[-webkit-touch-callout:none]"
         role="button"
         tabindex="0"
         data-tip=""
@@ -335,84 +334,82 @@ export function ThreadCard(props: {
             {title()}
             {provider()}
           </Show>
-          <span class={CARD_SWAP}>
-            <span class={CARD_SLOT}>
-              <Show
-                when={status()}
-                fallback={
-                  <span class="flex-none text-[12px] leading-4 text-(--sidebar-secondary-label) tabular-nums">
-                    {props.section === "snoozed"
-                      ? timeUntil(props.thread.snoozedUntil ?? "", props.now)
-                      : relativeTime(activityAt(props.thread) ?? props.thread.updatedAt, props.now)}
-                  </span>
-                }
-              >
-                {(held) => (
-                  <span
-                    class={`inline-flex flex-none items-center gap-1 text-[12px] leading-4 font-medium ${STATUS_TONE[held()]}`}
-                  >
-                    <StatusIcon status={held()} />
-                    {STATUS_LABEL[held()]}
-                    <Show when={(isBusy(held()) || held() === "waiting") && workingFor()}>
-                      {(elapsed) => <span class="tabular-nums">{elapsed()}</span>}
-                    </Show>
-                  </span>
-                )}
-              </Show>
-            </span>
-            <span class={CARD_ACTIONS}>
-              <Switch>
-                <Match when={props.section === "settled"}>
-                  <button
-                    type="button"
-                    class={CARD_ACTION}
-                    aria-label="Un-settle thread"
-                    data-tip="Un-settle thread"
-                    onClick={(event) => act(event, { Kind: "unsettle" })}
-                  >
-                    <Undo2 />
-                  </button>
-                </Match>
-                <Match when={props.section === "snoozed"}>
-                  <button
-                    type="button"
-                    class={CARD_ACTION}
-                    aria-label="Wake thread now"
-                    data-tip="Wake thread now"
-                    onClick={(event) => act(event, { Kind: "unsnooze" })}
-                  >
-                    <AlarmClockOff />
-                  </button>
-                </Match>
-                <Match when={props.selected}>
-                  <button
-                    type="button"
-                    class={CARD_ACTION}
-                    aria-label="Settle thread"
-                    data-tip="Settle thread"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      environment.settleThread(props.thread.id);
-                    }}
-                  >
-                    <Check />
-                    Settle
-                  </button>
-                </Match>
-              </Switch>
-              <button
-                type="button"
-                class={CARD_ACTION}
-                aria-label="More actions"
-                data-tip="More actions"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  props.onMenu(event.clientX, event.clientY);
-                }}
-              >
-                <Ellipsis />
-              </button>
-            </span>
+          <span class={CARD_SLOT}>
+            <Show
+              when={status()}
+              fallback={
+                <span class="flex-none text-[12px] leading-4 text-(--sidebar-secondary-label) tabular-nums">
+                  {props.section === "snoozed"
+                    ? timeUntil(props.thread.snoozedUntil ?? "", props.now)
+                    : relativeTime(activityAt(props.thread) ?? props.thread.updatedAt, props.now)}
+                </span>
+              }
+            >
+              {(held) => (
+                <span
+                  class={`inline-flex flex-none items-center gap-1 text-[12px] leading-4 font-medium ${STATUS_TONE[held()]}`}
+                >
+                  <StatusIcon status={held()} />
+                  {STATUS_LABEL[held()]}
+                  <Show when={(isBusy(held()) || held() === "waiting") && workingFor()}>
+                    {(elapsed) => <span class="tabular-nums">{elapsed()}</span>}
+                  </Show>
+                </span>
+              )}
+            </Show>
+          </span>
+          <span class={CARD_ACTIONS}>
+            <Switch>
+              <Match when={props.section === "settled"}>
+                <button
+                  type="button"
+                  class={CARD_ACTION}
+                  aria-label="Un-settle thread"
+                  data-tip="Un-settle thread"
+                  onClick={(event) => act(event, { Kind: "unsettle" })}
+                >
+                  <Undo2 />
+                </button>
+              </Match>
+              <Match when={props.section === "snoozed"}>
+                <button
+                  type="button"
+                  class={CARD_ACTION}
+                  aria-label="Wake thread now"
+                  data-tip="Wake thread now"
+                  onClick={(event) => act(event, { Kind: "unsnooze" })}
+                >
+                  <AlarmClockOff />
+                </button>
+              </Match>
+              <Match when={props.selected}>
+                <button
+                  type="button"
+                  class={CARD_ACTION}
+                  aria-label="Settle thread"
+                  data-tip="Settle thread"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    environment.settleThread(props.thread.id);
+                  }}
+                >
+                  <Check />
+                  Settle
+                </button>
+              </Match>
+            </Switch>
+            <button
+              type="button"
+              class={CARD_ACTION}
+              aria-label="More actions"
+              data-tip="More actions"
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onMenu(event.clientX, event.clientY);
+              }}
+            >
+              <Ellipsis />
+            </button>
           </span>
         </span>
         <Show when={!props.compact}>
