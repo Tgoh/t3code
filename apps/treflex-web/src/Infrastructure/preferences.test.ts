@@ -7,6 +7,7 @@ function stubStorage(entries: Record<string, string>) {
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => held.get(key) ?? null,
     setItem: (key: string, value: string) => void held.set(key, value),
+    removeItem: (key: string) => void held.delete(key),
   });
   return held;
 }
@@ -21,6 +22,7 @@ describe("this device's preferences", () => {
       "reflex-web:hidden-projects": '["p-3"]',
       "reflex-web:project-scope": '["p-2"]',
       "reflex-web:sidebar-collapsed": "true",
+      chat_thread_sidebar_width: "312",
       "reflex-web:compaction-dismissed": '["env-1:claudeAgent",7]',
       "t3code:theme-appearance-mode": "dark",
       "t3code:usage-page-preferences:v1": '{"metric":"cost","windowDays":7}',
@@ -34,6 +36,7 @@ describe("this device's preferences", () => {
       HiddenProjects: ["p-3"],
       ProjectScope: ["p-2"],
       SidebarCollapsed: true,
+      SidebarWidth: 312,
       CompactionDismissed: ["env-1:claudeAgent"],
       AppearanceMode: "dark",
       Usage: { Metric: "cost", Days: 7 },
@@ -47,6 +50,7 @@ describe("this device's preferences", () => {
       "reflex-web:project-sort": '"sideways"',
       "reflex-web:closed-folders": "not json",
       "t3code:theme-appearance-mode": "sepia",
+      chat_thread_sidebar_width: '"wide"',
     });
     expect(readPreferences()).toEqual({
       GroupByProject: true,
@@ -56,6 +60,7 @@ describe("this device's preferences", () => {
       HiddenProjects: [],
       ProjectScope: [],
       SidebarCollapsed: false,
+      SidebarWidth: null,
       CompactionDismissed: [],
       AppearanceMode: "system",
       Usage: { Metric: "limits", Days: 30 },
@@ -84,6 +89,16 @@ describe("this device's preferences", () => {
       AppearanceMode: "light",
       Usage: { Metric: "tokens", Days: 90 },
     });
+    vi.unstubAllGlobals();
+  });
+
+  it("stores a dragged sidebar width as stock does, and a reset removes it", () => {
+    const held = stubStorage({});
+    writePreferences({ SidebarWidth: 300 });
+    expect(held.get("chat_thread_sidebar_width")).toBe("300");
+    writePreferences({ SidebarWidth: null });
+    expect(held.has("chat_thread_sidebar_width")).toBe(false);
+    expect(readPreferences().SidebarWidth).toBeNull();
     vi.unstubAllGlobals();
   });
 });

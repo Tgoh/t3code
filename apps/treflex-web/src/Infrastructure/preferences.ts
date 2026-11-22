@@ -13,6 +13,8 @@ export interface IPreferences {
   HiddenProjects: string[];
   ProjectScope: string[];
   SidebarCollapsed: boolean;
+  /** The dragged width in pixels, or null for the default. */
+  SidebarWidth: number | null;
   /** `environment:instance` keys of providers whose resume compaction was answered "Don't ask again". */
   CompactionDismissed: string[];
   AppearanceMode: IAppearanceMode;
@@ -60,11 +62,13 @@ export const clockNowEffect = defineEffect<IClockNowEffect, number>("clockNow", 
   settles: "sync",
 });
 
-// The theme, usage and editor keys are stock's (THEME_APPEARANCE_MODE_STORAGE_KEY,
-// usagePagePreferences.ts, editorPreferences.ts), so a browser on stock's origin reads the same values.
+// The theme, usage, editor and sidebar width keys are stock's (THEME_APPEARANCE_MODE_STORAGE_KEY,
+// usagePagePreferences.ts, editorPreferences.ts, THREAD_SIDEBAR_WIDTH_STORAGE_KEY), so a browser on
+// stock's origin reads the same values.
 export const APPEARANCE_MODE_KEY = "t3code:theme-appearance-mode";
 const USAGE_KEY = "t3code:usage-page-preferences:v1";
 const EDITOR_KEY = "t3code:last-editor";
+const SIDEBAR_WIDTH_KEY = "chat_thread_sidebar_width";
 // Named before the client became treflex; renaming them would drop every stored value.
 const KEYS = {
   GroupByProject: "reflex-web:group-by-project",
@@ -95,6 +99,14 @@ function write(key: string, value: string) {
   }
 }
 
+function remove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // As for write.
+  }
+}
+
 const ids = (held: unknown): string[] =>
   Array.isArray(held) ? held.filter((id): id is string => typeof id === "string") : [];
 
@@ -113,6 +125,7 @@ const voiceDestination = (held: unknown): IVoiceDestination =>
 export function readPreferences(): IPreferences {
   const sort = readJson(KEYS.ProjectSort);
   const usage = readJson(USAGE_KEY) as { metric?: unknown; windowDays?: unknown } | undefined;
+  const width = readJson(SIDEBAR_WIDTH_KEY);
   return {
     GroupByProject: readJson(KEYS.GroupByProject) !== false,
     ClosedFolders: ids(readJson(KEYS.ClosedFolders)),
@@ -121,6 +134,7 @@ export function readPreferences(): IPreferences {
     HiddenProjects: ids(readJson(KEYS.HiddenProjects)),
     ProjectScope: ids(readJson(KEYS.ProjectScope)),
     SidebarCollapsed: readJson(KEYS.SidebarCollapsed) === true,
+    SidebarWidth: typeof width === "number" && Number.isFinite(width) ? width : null,
     CompactionDismissed: ids(readJson(KEYS.CompactionDismissed)),
     AppearanceMode: storedAppearanceMode(),
     Usage: {
@@ -137,6 +151,9 @@ export function writePreferences(patch: Partial<IPreferences>) {
     else if (field === "Usage") {
       const usage = value as IPreferences["Usage"];
       write(USAGE_KEY, JSON.stringify({ metric: usage.Metric, windowDays: usage.Days }));
+    } else if (field === "SidebarWidth") {
+      if (value === null) remove(SIDEBAR_WIDTH_KEY);
+      else write(SIDEBAR_WIDTH_KEY, JSON.stringify(value));
     } else write(KEYS[field], JSON.stringify(value));
   }
 }

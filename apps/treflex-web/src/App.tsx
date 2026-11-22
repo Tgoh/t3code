@@ -30,6 +30,8 @@ import Root from "./Root";
 import { SettingsView } from "./SettingsView";
 import { createKeyDispatcher, runPanelShortcut } from "./shortcuts";
 import { Sidebar, SidebarToggle } from "./Sidebar";
+import { SidebarRail } from "./SidebarRail";
+import { shownSidebarWidth } from "./sidebarWidth";
 import ThreadSession, { closeRightPanel } from "./ThreadSession";
 import { CHAT_STAGE, ThreadView } from "./ThreadView";
 import { EMPTY_NOTE } from "./ui/notes";
@@ -254,6 +256,14 @@ const EnvironmentView = Environment.provider(() => {
     window.removeEventListener("paste", onPaste, true);
     document.removeEventListener("pointerdown", onPointerDown, true);
   });
+  const [viewportWidth, setViewportWidth] = createSignal(window.innerWidth);
+  const onResize = () => setViewportWidth(window.innerWidth);
+  window.addEventListener("resize", onResize);
+  onCleanup(() => window.removeEventListener("resize", onResize));
+  const [dragWidth, setDragWidth] = createSignal<number | null>(null);
+  const sidebarWidth = () =>
+    dragWidth() ??
+    shownSidebarWidth(environment.state.Local.Preferences.SidebarWidth, viewportWidth());
   const navigation: INavigation = {
     keybindings,
     shortcut: (command) => shortcutLabel(keybindings(), command, platform),
@@ -267,7 +277,8 @@ const EnvironmentView = Environment.provider(() => {
   };
   return (
     <div
-      class="layout fixed inset-x-0 top-[var(--viewport-top,0)] grid h-[var(--viewport-height,100%)] grid-cols-[calc(16rem+env(safe-area-inset-left))_minmax(0,1fr)] pt-[env(safe-area-inset-top)] [&:is(.sidebar-sheet,.sidebar-collapsed)]:grid-cols-[minmax(0,1fr)]"
+      class="layout fixed inset-x-0 top-[var(--viewport-top,0)] grid h-[var(--viewport-height,100%)] grid-cols-[calc(var(--sidebar-width)+env(safe-area-inset-left))_minmax(0,1fr)] pt-[env(safe-area-inset-top)] [&:is(.sidebar-sheet,.sidebar-collapsed)]:grid-cols-[minmax(0,1fr)]"
+      style={{ "--sidebar-width": `${sidebarWidth()}px` }}
       classList={{
         "sidebar-sheet": sidebar.sheet(),
         "sidebar-open": sidebar.open(),
@@ -278,6 +289,17 @@ const EnvironmentView = Environment.provider(() => {
         <OverlayContext.Provider value={overlays}>
           <NavigationContext.Provider value={navigation}>
             <Sidebar state={environment.state.Replica.Shell} />
+            <SidebarRail
+              width={sidebarWidth()}
+              onResize={setDragWidth}
+              onDone={(width) => {
+                if (width === null) return setDragWidth(null);
+                void environment
+                  .setPreferences({ SidebarWidth: width })
+                  .finally(() => setDragWidth(null));
+              }}
+              onReset={() => void environment.setPreferences({ SidebarWidth: null })}
+            />
             <Presence when={sidebar.open()}>
               {() => <SheetBackdrop onClose={() => sidebar.setOpen(false)} />}
             </Presence>

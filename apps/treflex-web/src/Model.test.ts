@@ -264,6 +264,7 @@ const storedPreferences: IPreferences = {
   HiddenProjects: [],
   ProjectScope: [],
   SidebarCollapsed: false,
+  SidebarWidth: null,
   CompactionDismissed: [],
   AppearanceMode: "system",
   Usage: { Metric: "limits", Days: 30 },
@@ -1866,6 +1867,7 @@ describe("the sidebar", () => {
     await first.runtime.dispatch(setPreferences, envId, { ProjectSort: "created_at" });
     await first.runtime.dispatch(setPreferences, envId, { ProjectOrder: ["p-2", "p-1"] });
     await first.runtime.dispatch(setPreferences, envId, { SidebarCollapsed: true });
+    await first.runtime.dispatch(setPreferences, envId, { SidebarWidth: 320 });
     await first.runtime.dispatch(setAppearanceMode, envId, "dark");
     const chosen: IPreferences = {
       ...storedPreferences,
@@ -1875,6 +1877,7 @@ describe("the sidebar", () => {
       ProjectSort: "created_at",
       ProjectOrder: ["p-2", "p-1"],
       SidebarCollapsed: true,
+      SidebarWidth: 320,
       AppearanceMode: "dark",
     };
     expect(first.device.Preferences).toEqual(chosen);
