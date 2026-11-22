@@ -6,8 +6,11 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Pins replace the hard-coded "Main".** Remove `isMainThread` (`Shell.ts`): the folder sort, `ThreadCard`'s `data-main` mark and `threadSearch.ts`'s boost. In project folders, pinned threads lead their own folder, ordered by `pinOrderKey`, instead of sitting in one Pinned section above the folders. Dragging a pinned thread among its folder's pins reorders them through stock's pin reorder (`reorderPinnedThread`, with `pinOrderKeyBetween` of its new neighbours). Ungrouped mode keeps stock's Pinned section. Waits on Tam's answers on the pin mark and touch drag.
-- **Sidebar rows run together.** A two-line title's line spacing equals the gap between rows, so rows blend. Tam picks from the mockups in `G:\Sorted\Code\t3code-dev-home\screenshots\mockups\sidebar-row-separation.png`.
+- **Pins replace the hard-coded "Main".** Remove `isMainThread` (`Shell.ts`): the folder sort, `ThreadCard`'s `data-main` mark and `threadSearch.ts`'s boost. In project folders, pinned threads lead their own folder, ordered by `pinOrderKey`, instead of sitting in one Pinned section above the folders. Dragging a pinned thread among its folder's pins reorders them through stock's pin reorder (`reorderPinnedThread`, with `pinOrderKeyBetween` of its new neighbours). Ungrouped mode keeps stock's Pinned section.
+  - Pinned rows keep today's green mark (the `data-main` bar), now meaning "pinned", with a gap between two pinned rows so their bars don't run into one.
+  - Dragging works by mouse, pen and touch (long-press to pick up on touch). Project folder drag is mouse and pen only today, so share the touch handling.
+- **Resizable sidebar.** Stock's sidebar can be resized by dragging its edge, the width is remembered per device, and double-clicking the edge resets it (`AppSidebarLayout.tsx`: `resizable` with `THREAD_SIDEBAR_WIDTH_STORAGE_KEY`, `SidebarRail`). Treflex's is fixed at `16rem` in `App.tsx`'s grid. Port stock's behaviour, with its minimum and maximum widths and the main content's minimum. A wider sidebar is what stops desktop titles wrapping: the phone sheet is about 378px wide against the desktop's 256px.
+- **Sidebar rows run together.** A two-line title's line spacing equals the gap between rows, so rows blend. Revisit after the resizable sidebar lands: with more width, fewer titles wrap. If it still blends, Tam picks from the mockups in `G:\Sorted\Code\t3code-dev-home\screenshots\mockups\sidebar-row-separation.png`.
 - **html-render and MCP app rows.** Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
 - **Photos from the phone.** Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
 - **Expired image URLs.** Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
@@ -66,22 +69,34 @@ After stage 2, which also changes `ThreadView`.
 ## Waiting on treflex
 
 - **Checks that keep agents off React habits.** treflex's verdicts are in `docs/wip/13-external/views-start-work-from-their-lifecycle.md` in the reflex repo. When each one ships, turn it on here and fix what it finds.
-  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo. There will be no npm release: when the build is done, treflex's Main thread sends the branch (`claude/eslint-0.2.1`, `treflex-eslint` 0.2.1, which works with core 0.2.0) and a pack command, and the client vendors the tarball in place of `vendor/treflex-eslint-0.2.0.tgz`. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the client's override in the root `vite.config.ts`, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`, and its action has to be `leading` and check state before it writes.
+  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo. There will be no npm release: when the build is done, treflex's Main thread sends the branch (`claude/eslint-0.2.1`, `treflex-eslint` 0.2.1, which works with core 0.2.0) and a pack command, and the client vendors the tarball in place of `vendor/treflex-eslint-0.2.0.tgz`. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the client's override in the root `vite.config.ts`, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`; a bare disable comment doesn't suppress it. Its action has to be `leading` and check state before it writes.
   2. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
   3. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
 
   Screen-caused work, such as loading the next page when a list's end scrolls into view, gets a named opt-in at the call site instead of being banned.
 
-  4. **`treflex/require-lifecycle-reason`**, opt-in, requires a disable comment with a reason on every `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`. **In progress** in the reflex repo, in the same vendored `treflex-eslint` 0.2.1 build as rule 1. Turn it on with rule 1 and annotate the existing sites.
+## Lint
+
+- **A reason on every lifecycle callback.** treflex dropped `require-lifecycle-reason`, since the repo already has the tool. Extend `t3code/no-unreasoned-state-sync` in `oxlint-plugin-t3code/` to Solid's `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`, for `apps/treflex-web/**` only, with its suppression-reason rule applying there too. Then annotate the existing sites with their reasons.
 
 ## Repo
 
 - **Sync upstream.** **In progress** in its own thread, through `/syncupstream`.
-- **Make `Tgoh/t3code` public**, as an example of treflex, with nothing linking to it yet. **In progress:** an audit in its own thread, report only. It checks the full history, every branch and tag on origin, issues and PRs, and Actions for anything that shouldn't be public. Tam flips the visibility after reading the audit.
+- **Cut over to a rewritten public repo**, as an example of treflex, with nothing linking to it yet. The audit found no secrets, but 39 commits carry a work email, and the old `handover.md` and commit e1084c2bcb name the employer's systems. Rewriting in place would leave the old commits fetchable by hash on GitHub, so the rewritten history goes to a new repo. Do it once the upstream sync has merged and no thread is running:
+  1. Mirror-clone, keeping only `main` and `treflex-main`. Run `git filter-repo`: a mailmap from the work email to `gohtam@gmail.com`, `--replace-text` for the employer's names and the tailnet host, a new message for e1084c2bcb, and drop `apps/reflex-web/docs/handover.md`. Re-run the audit's greps on the result.
+  2. Rename the private repo to `Tgoh/t3code-archive`, create a fresh private `Tgoh/t3code`, push the rewritten `main` and `treflex-main`, set `treflex-main` as default, and turn Actions, Issues and Projects off.
+  3. Point the main checkout's `origin` at the new repo, reset `treflex-main` to the rewritten history, and remove or recreate every worktree from it. Set this repo's own `user.email` to `gohtam@gmail.com`.
+  4. Tam makes it public. Delete the archive later.
 
 ## Housekeeping
 
 Any time; none of it touches the client.
+
+- **Make `vp run check:changed` pass for this app.** Every thread reports the same two failures, which hide real ones.
+  - Its test step runs this app's tests in the root vitest project, which lacks the app's `solid` and `browser` resolve conditions, so about 140 tests fail there that pass from `apps/treflex-web`. Give the app its own vitest project in the root config, or exclude it from the root run and have `check:changed` run it from its folder.
+  - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.2.0.tgz`.
+
+  Both mean editing upstream's root config, so keep the change small. See "Setup: `vp run check:changed` fails this app's tests" in `issues.md`.
 
 - **Record the verdicts.** Add treflex's verdicts to the "Feedback for treflex" section of `issues.md`. The friction write-up is at `G:\Sorted\Code\t3code-dev-home\notes\treflex-friction-from-t3code-port.md`, and the treflex side's verdicts are in the reflex repo's `docs/wip` (commit 2b37348).
 - **Server start time.** On a server restart, check whether the roughly 50 seconds between launch and the first log line comes back. See `G:\Sorted\Code\t3code-dev-home\dev-stack\server.log`.
