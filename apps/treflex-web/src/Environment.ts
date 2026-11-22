@@ -1,3 +1,5 @@
+import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import {
   findProjectByPath,
   inferProjectTitleFromPath,
@@ -122,7 +124,6 @@ import {
 declare module "treflex" {
   interface IResourceRegistry {
     "Project/Clones": { Type: "projectClones" };
-    "Server/Keybindings": { Type: "serverKeybindings" };
     "Server/Config": { Type: "serverConfigStream" };
   }
   interface ITimerRegistry {
@@ -222,10 +223,6 @@ export function* init(draft: IEnvironment): IActionGenerator {
   });
   yield* openResource(draft.Replica.Shell, "Project/Favicons", {
     Type: "projectFavicons",
-    EnvironmentId: draft.EnvironmentId,
-  });
-  yield* openResource(draft, "Server/Keybindings", {
-    Type: "serverKeybindings",
     EnvironmentId: draft.EnvironmentId,
   });
   yield* openConfigStream(draft);
@@ -657,6 +654,14 @@ export function* currentProjectId(draft: IEnvironment): ISelectorGenerator<strin
   return threadProjectId(draft.Replica, id, draft.Local.ThreadSessions[id]?.NewThreadProjectId);
 }
 
+/** The user's keybindings, merged with the defaults by the server. */
+export function* keybindings(draft: IEnvironment): ISelectorGenerator<ResolvedKeybindingsConfig> {
+  const held = draft.Replica.Config?.keybindings as unknown as
+    | ResolvedKeybindingsConfig
+    | undefined;
+  return held ?? DEFAULT_RESOLVED_KEYBINDINGS;
+}
+
 export function* activeProjects(draft: IEnvironment): ISelectorGenerator<IWireProject[]> {
   return Object.values(draft.Replica.Shell.Projects).filter(
     (project) => project.archivedAt == null,
@@ -766,6 +771,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     currentProjectId,
     currentProjectRoot,
     activeProjects,
+    keybindings,
     editors,
   },
 );

@@ -33,6 +33,7 @@ import {
   editors,
   EnvironmentReceiver,
   type IEnvironment,
+  keybindings,
   newProject,
   newThread,
   openThread,
@@ -4259,6 +4260,28 @@ describe("work started by events", () => {
     await server.runtime.dispatch(preferEditor, server.envId(), "zed");
     expect(listed().Preferred).toBe("zed");
     expect(server.device.Editor).toBe("zed");
+  });
+
+  it("reads the keybindings from the config stream, with no stream of their own", async () => {
+    const server = await connect();
+    const bound = () => server.runtime.processSelector(keybindings, server.environment);
+    const binding = (key: string) => ({ command: "sidebar.toggle", shortcut: { key } });
+    await server.sendConfig({
+      ...configSnapshot([replayProvider()]),
+      config: { ...configSnapshot([replayProvider()]).config, keybindings: [binding("b")] },
+    });
+    expect(bound()).toEqual([binding("b")]);
+    await server.sendConfig({
+      version: 1,
+      type: "keybindingsUpdated",
+      payload: { keybindings: [binding("k")], issues: [] },
+    });
+    expect(bound()).toEqual([binding("k")]);
+    const streams = server.runtime
+      .resources()
+      .filter((row) => row.Key.startsWith("Server/"))
+      .map((row) => row.Key);
+    expect(streams).toEqual(["Server/Config"]);
   });
 
   it("looks up related threads' titles once for each set the thread's lineage needs", async () => {

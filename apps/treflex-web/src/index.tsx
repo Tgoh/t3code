@@ -75,7 +75,6 @@ import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
 import { projectFavicons } from "./Infrastructure/projectFavicons";
 import { serverConfigStream } from "./Infrastructure/serverConfigStream";
-import { serverKeybindings } from "./Infrastructure/serverKeybindings";
 import { shellStream } from "./Infrastructure/shellStream";
 import { rememberedTerminalImpl, rememberTerminalImpl } from "./Infrastructure/terminalMemory";
 import { sourceControlImplementations } from "./Infrastructure/sourceControlImpl";
@@ -155,7 +154,6 @@ runtime.registerResourceType("vcsStatus", vcsStatus);
 runtime.registerResourceType("commandOutput", commandOutput);
 runtime.registerResourceType("projectClones", projectClones);
 runtime.registerResourceType("projectFavicons", projectFavicons);
-runtime.registerResourceType("serverKeybindings", serverKeybindings);
 runtime.registerResourceType("serverConfigStream", serverConfigStream, {
   endOnReceiverFailure: true,
 });

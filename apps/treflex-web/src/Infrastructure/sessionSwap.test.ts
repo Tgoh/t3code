@@ -11,7 +11,6 @@ import { reportActivityImpl } from "./clientActivityImpl";
 import { commandOutput } from "./commandOutput";
 import { projectClones } from "./projectClones";
 import { serverConfigStream } from "./serverConfigStream";
-import { serverKeybindings } from "./serverKeybindings";
 import { shellStream } from "./shellStream";
 import { terminalSession } from "./terminalSession";
 import { threadStream } from "./threadStream";
@@ -98,14 +97,6 @@ const CASES: ICase[] = [
       serverConfigStream({ Type: "serverConfigStream", EnvironmentId: ENVIRONMENT_ID }, r),
     event: keybindingsUpdated,
     delivered: items,
-  },
-  {
-    name: "serverKeybindings",
-    tag: WS_METHODS.subscribeServerConfig,
-    start: (r) =>
-      serverKeybindings({ Type: "serverKeybindings", EnvironmentId: ENVIRONMENT_ID }, r),
-    event: (marker) => ({ type: "keybindingsUpdated", payload: { keybindings: [marker] } }),
-    delivered: values,
   },
   {
     name: "vcsStatus",

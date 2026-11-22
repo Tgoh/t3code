@@ -1,7 +1,7 @@
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import type { KeybindingCommand } from "@t3tools/contracts";
-import { DEFAULT_RESOLVED_KEYBINDINGS, isMacPlatform } from "@t3tools/shared/keybindings";
-import { useDispatch, useResource } from "treflex-solid";
+import { isMacPlatform } from "@t3tools/shared/keybindings";
+import { useDispatch } from "treflex-solid";
 import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 
 import { AddProjectPalette } from "./AddProject";
@@ -91,8 +91,7 @@ const EnvironmentView = Environment.provider(() => {
       onChange: (collapsed) => void environment.setPreferences({ SidebarCollapsed: collapsed }),
     },
   );
-  const keybindingsResource = useResource(environment.state, "Server/Keybindings");
-  const keybindings = () => keybindingsResource.value() ?? DEFAULT_RESOLVED_KEYBINDINGS;
+  const keybindings = () => environment.keybindings();
   const platform = navigator.platform;
   const dispatch = useDispatch();
   const [palette, setPalette] = createSignal<IPaletteView | null>(null);
