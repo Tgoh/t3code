@@ -1,7 +1,14 @@
 import { createSignal, type JSX, Show, splitProps } from "solid-js";
 import { Portal } from "solid-js/web";
 
-import { createPopup, inFloating, type IAlign, type IAnchor, type ISide } from "./floating";
+import {
+  createPopup,
+  inFloating,
+  type IAlign,
+  type IAnchor,
+  type ISide,
+  tabbables,
+} from "./floating";
 import { overrides } from "./merge";
 
 const POSITIONER = "h-(--positioner-height) max-h-(--available-height) max-w-(--available-width)";
@@ -76,15 +83,6 @@ function popoverClasses(options: {
     viewport: join(viewport),
   };
 }
-
-const TABBABLE =
-  'button:not(:disabled),[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])';
-
-const tabbables = (root: HTMLElement) =>
-  [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter(
-    (element) =>
-      element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest("[inert]"),
-  );
 
 /**
  * A popover, placed against `anchor` and kept there while open. As Base UI's non-modal popover,

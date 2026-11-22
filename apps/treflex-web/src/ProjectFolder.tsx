@@ -25,13 +25,14 @@ import { CARD_ACTION, RenameInput } from "./ThreadCard";
 import { Button } from "./ui/Button";
 import { MenuItem, MenuPopup, MenuSeparator } from "./ui/Menu";
 import {
-  Dialog,
-  DialogDescription,
-  DialogError,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/Modal";
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "./ui/AlertDialog";
 
 export function ProjectMenu(props: {
   project: IWireProject;
@@ -135,21 +136,33 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
     else setFailure(`Failed to remove "${props.project.title}": ${error}`);
   };
   return (
-    <Dialog aria-labelledby="remove-project-title" onClose={props.onClose}>
-      <DialogHeader>
-        <DialogTitle id="remove-project-title">{copy().Title}</DialogTitle>
-        <DialogDescription>{copy().Description}</DialogDescription>
-        <Show when={failure()}>{(text) => <DialogError>{text()}</DialogError>}</Show>
-      </DialogHeader>
-      <DialogFooter>
-        <Button variant="outline" autofocus onClick={props.onClose}>
-          Cancel
-        </Button>
-        <Button variant="destructive" disabled={removing()} onClick={() => void confirm()}>
-          Confirm
-        </Button>
-      </DialogFooter>
-    </Dialog>
+    <AlertDialog onClose={props.onClose}>
+      <AlertDialogPopup>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{copy().Title}</AlertDialogTitle>
+          <Show when={copy().Description}>
+            {(description) => (
+              <AlertDialogDescription class="whitespace-pre-line">
+                {description()}
+              </AlertDialogDescription>
+            )}
+          </Show>
+          <Show when={failure()}>
+            {(text) => (
+              <p role="alert" class="text-sm text-destructive">
+                {text()}
+              </p>
+            )}
+          </Show>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogClose variant="outline">Cancel</AlertDialogClose>
+          <Button variant="destructive" disabled={removing()} onClick={() => void confirm()}>
+            Confirm
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogPopup>
+    </AlertDialog>
   );
 }
 
@@ -208,37 +221,39 @@ export function FolderHeader(props: {
         <Show when={!props.open && needsYou()}>
           <span class="size-1.5 flex-none rounded-full bg-info-foreground" aria-label="Needs you" />
         </Show>
-        <span class="ml-auto tabular-nums group-hover/folder:hidden group-focus-within/folder:hidden pointer-coarse:hidden">
-          {props.folder.Threads.length}
-        </span>
-        <Show when={props.folder.Project !== undefined}>
-          <span class="-mr-1 ml-auto hidden flex-none items-center gap-0.5 group-hover/folder:inline-flex group-focus-within/folder:inline-flex pointer-coarse:inline-flex">
-            <button
-              type="button"
-              class={CARD_ACTION}
-              aria-label={`New thread in ${title()}`}
-              data-tip="New thread"
-              onClick={(event) => {
-                event.stopPropagation();
-                environment.newThread(props.folder.ProjectId);
-              }}
-            >
-              <SquarePen />
-            </button>
-            <button
-              type="button"
-              class={CARD_ACTION}
-              aria-label="Project actions"
-              data-tip="Project actions"
-              onClick={(event) => {
-                event.stopPropagation();
-                props.onMenu(event.clientX, event.clientY);
-              }}
-            >
-              <Ellipsis />
-            </button>
+        <span class="ml-auto flex flex-none items-center">
+          <span class="tabular-nums group-hover/folder:hidden group-has-[button:focus]/folder:hidden pointer-coarse:hidden">
+            {props.folder.Threads.length}
           </span>
-        </Show>
+          <Show when={props.folder.Project !== undefined}>
+            <span class="inline-flex w-0 items-center gap-0.5 overflow-hidden group-hover/folder:-mr-1 group-hover/folder:w-auto group-focus-within/folder:-mr-1 group-focus-within/folder:w-auto pointer-coarse:-mr-1 pointer-coarse:w-auto">
+              <button
+                type="button"
+                class={CARD_ACTION}
+                aria-label={`New thread in ${title()}`}
+                data-tip="New thread"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  environment.newThread(props.folder.ProjectId);
+                }}
+              >
+                <SquarePen />
+              </button>
+              <button
+                type="button"
+                class={CARD_ACTION}
+                aria-label="Project actions"
+                data-tip="Project actions"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onMenu(event.clientX, event.clientY);
+                }}
+              >
+                <Ellipsis />
+              </button>
+            </span>
+          </Show>
+        </span>
       </div>
     </li>
   );

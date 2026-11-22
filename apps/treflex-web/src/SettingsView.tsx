@@ -63,7 +63,15 @@ import { Select, WrapSelect } from "./ui/Field";
 import { Input } from "./ui/Input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/InputGroup";
 import { Kbd, KbdGroup } from "./ui/Kbd";
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "./ui/AlertDialog";
 import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { SidebarInput } from "./ui/Sidebar";
@@ -1156,30 +1164,28 @@ const ArchivedPage = ArchivedThreads.provider(() => {
             {(held) => {
               const thread = held();
               return (
-                <Dialog aria-labelledby="delete-archived-title" onClose={() => setDeleting(null)}>
-                  <DialogHeader>
-                    <DialogTitle id="delete-archived-title">
-                      Delete thread "{thread.title}"?
-                    </DialogTitle>
-                    <DialogDescription>
-                      This permanently clears conversation history for this thread.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <Button variant="outline" autofocus onClick={() => setDeleting(null)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() => {
-                        setDeleting(null);
-                        command(thread.id, "delete");
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  </DialogFooter>
-                </Dialog>
+                <AlertDialog onClose={() => setDeleting(null)}>
+                  <AlertDialogPopup>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete thread "{thread.title}"?</AlertDialogTitle>
+                      <AlertDialogDescription class="whitespace-pre-line">
+                        This permanently clears conversation history for this thread.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogClose variant="outline">Cancel</AlertDialogClose>
+                      <Button
+                        variant="destructive"
+                        onClick={() => {
+                          setDeleting(null);
+                          command(thread.id, "delete");
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </AlertDialogFooter>
+                  </AlertDialogPopup>
+                </AlertDialog>
               );
             }}
           </Presence>

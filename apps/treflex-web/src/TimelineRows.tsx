@@ -60,7 +60,15 @@ import { canForkItem } from "./rewind";
 import ThreadSession, { editFromHere, forkFromRun, type IRewindChoice } from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
 import { Button, buttonVariants } from "./ui/Button";
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "./ui/AlertDialog";
 import { Presence } from "./ui/Presence";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 import { viewOf } from "./turnItemView";
@@ -689,28 +697,28 @@ export function RewindDialog() {
         const id = () => entry().Id as IAskId<IRewindChoice>;
         const choose = (choice?: IRewindChoice) => void session.chooseRewind(id(), choice);
         return (
-          <Dialog aria-labelledby="rewind-title" onClose={() => choose()}>
-            <DialogHeader>
-              <DialogTitle id="rewind-title">Edit from here?</DialogTitle>
-              <DialogDescription>
-                Rewind chat to before this message. Your prompt and attachments return to the
-                composer. “Revert files too” also undoes your own edits.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter class="flex-wrap">
-              <Button variant="outline" autofocus onClick={() => choose()}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive-outline"
-                disabled={!entry().Request.CanRestoreFiles}
-                onClick={() => choose("restoreFiles")}
-              >
-                Revert files too
-              </Button>
-              <Button onClick={() => choose("keepChanges")}>Revert and keep changes</Button>
-            </DialogFooter>
-          </Dialog>
+          <AlertDialog onClose={() => choose()}>
+            <AlertDialogPopup>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Edit from here?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Rewind chat to before this message. Your prompt and attachments return to the
+                  composer. “Revert files too” also undoes your own edits.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogClose variant="outline">Cancel</AlertDialogClose>
+                <Button
+                  variant="destructive-outline"
+                  disabled={!entry().Request.CanRestoreFiles}
+                  onClick={() => choose("restoreFiles")}
+                >
+                  Revert files too
+                </Button>
+                <Button onClick={() => choose("keepChanges")}>Revert and keep changes</Button>
+              </AlertDialogFooter>
+            </AlertDialogPopup>
+          </AlertDialog>
         );
       }}
     </Presence>

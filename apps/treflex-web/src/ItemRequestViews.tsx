@@ -31,15 +31,9 @@ import OpenThread from "./OpenThread";
 import { Button, buttonVariants } from "./ui/Button";
 import { Select } from "./ui/Field";
 import { Input } from "./ui/Input";
-import {
-  Dialog,
-  DialogDescription,
-  DialogError,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/Modal";
+import { Dialog } from "./ui/Dialog";
 import { Presence } from "./ui/Presence";
+import { WizardFooter, WizardHeader, WizardPanel, WizardPopup, WizardSteps } from "./ui/Wizard";
 
 type IVisibility = "local" | "inherited" | "synthetic";
 type SecretRequestItem = Extract<IWireTurnItem, { type: "secret_request" }>;
@@ -399,7 +393,7 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
   const thread = OpenThread.use();
   const request = ItemRequest.use();
   const busy = useInFlight([answerLink], () => request.state);
-  const titleId = createUniqueId();
+  const formId = createUniqueId();
   const pickMachine = picksMachine(props.item);
   const target = linkRequestTarget(props.item, [], pickMachine ? ANOTHER_ADDRESS : null);
   const targetName = target.kind === "machine" ? target.label : linkRequestTargetName(props.item);
@@ -427,38 +421,42 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
   };
 
   return (
-    <Dialog aria-labelledby={titleId} onClose={props.onClose}>
-      <form
-        autocomplete="off"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (finishesHere()) void submit();
-          else if (machineReady()) setStep("access");
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle id={titleId}>
-            {pickMachine ? "Link a machine" : `Link ${targetName}`}
-          </DialogTitle>
-          <DialogDescription>
-            Agents here can then launch, message and wait on threads there. Revoke it in that
-            machine's Sharing & access.
-          </DialogDescription>
+    <Dialog
+      onClose={() => {
+        // An answer that lands after a close would still link.
+        if (!busy()) props.onClose();
+      }}
+    >
+      <WizardPopup>
+        <WizardHeader
+          title={pickMachine ? "Link a machine" : `Link ${targetName}`}
+          description="Agents here can then launch, message and wait on threads there. Revoke it in that machine's Sharing & access."
+        >
           <Show when={steps.length > 1}>
-            <ol class="m-0 flex list-none gap-3 p-0 text-[12px] text-muted-foreground">
-              <For each={["Machine", "Access"]}>
-                {(name, index) => (
-                  <li
-                    class="aria-[current=step]:font-medium aria-[current=step]:text-foreground"
-                    aria-current={steps[index()] === step() ? "step" : undefined}
-                  >
-                    {index() + 1}. {name}
-                  </li>
-                )}
-              </For>
-            </ol>
+            <WizardSteps
+              steps={["Machine", "Access"]}
+              currentStep={steps.indexOf(step())}
+              summaries={[target.kind === "none" ? null : targetName, null]}
+              showSummaries
+              isStepDisabled={(index) => busy() || (index === 1 && !machineReady())}
+              onStepChange={(index) => {
+                const next = steps[index];
+                if (next !== undefined) setStep(next);
+              }}
+            />
           </Show>
-          <div class="mt-2 flex flex-col gap-4">
+        </WizardHeader>
+        <WizardPanel holdHeight={busy()}>
+          <form
+            id={formId}
+            class="space-y-4"
+            autocomplete="off"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (finishesHere()) void submit();
+              else if (machineReady()) setStep("access");
+            }}
+          >
             <Show
               when={step() === "machine"}
               fallback={
@@ -502,14 +500,14 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
             </Show>
             <Show when={attempted() && request.itemAnswerError()}>
               {(error) => (
-                <div role="alert">
-                  <DialogError>{error()}</DialogError>
-                </div>
+                <p role="alert" class="text-xs text-destructive">
+                  {error()}
+                </p>
               )}
             </Show>
-          </div>
-        </DialogHeader>
-        <DialogFooter>
+          </form>
+        </WizardPanel>
+        <WizardFooter>
           <Show
             when={step() === "access" && steps.length > 1}
             fallback={
@@ -522,11 +520,15 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
               Back
             </Button>
           </Show>
-          <Button type="submit" disabled={busy() || (finishesHere() ? !ready() : !machineReady())}>
+          <Button
+            form={formId}
+            type="submit"
+            disabled={busy() || (finishesHere() ? !ready() : !machineReady())}
+          >
             {busy() ? "Linking…" : finishesHere() ? "Link" : "Continue"}
           </Button>
-        </DialogFooter>
-      </form>
+        </WizardFooter>
+      </WizardPopup>
     </Dialog>
   );
 }

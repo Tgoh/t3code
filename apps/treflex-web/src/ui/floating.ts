@@ -177,6 +177,23 @@ const POSITIONER_SELECTOR = "[data-floating-positioner]";
 export const inFloating = (node: Node | null) =>
   node instanceof Element && node.closest(POSITIONER_SELECTOR) !== null;
 
+const returnTargets = new WeakMap<Element, () => HTMLElement | null>();
+
+/** Where focus goes when the menu or popover holding the node closes: its trigger or opener. */
+export function floatingReturnTarget(node: Node | null): HTMLElement | null {
+  const positioner = node instanceof Element ? node.closest(POSITIONER_SELECTOR) : null;
+  return positioner === null ? null : (returnTargets.get(positioner)?.() ?? null);
+}
+
+const TABBABLE =
+  'button:not(:disabled),[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])';
+
+export const tabbables = (root: HTMLElement) =>
+  [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter(
+    (element) =>
+      element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest("[inert]"),
+  );
+
 let nextId = 0;
 
 const elementId = (element: HTMLElement, prefix: string) => {
@@ -325,6 +342,7 @@ export function createPopup(options: {
     positioner: (element: HTMLElement) => {
       positioner = element;
       element.setAttribute("data-floating-positioner", "");
+      returnTargets.set(element, returnTo);
     },
     backdrop: (element: HTMLElement) => {
       backdrop = element;

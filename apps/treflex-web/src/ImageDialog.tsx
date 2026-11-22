@@ -1,32 +1,45 @@
-import type { JSX } from "solid-js";
+import { createSignal, type JSX } from "solid-js";
 
-import { X } from "./icons";
+import { ArrowLeft } from "./icons";
 import { Button } from "./ui/Button";
-import { Modal } from "./ui/Modal";
+import { Dialog, DialogPopup, DialogTitle } from "./ui/Dialog";
 
 /** A full-screen viewer that a click outside an interactive child closes. */
 export function MediaDialog(props: { onClose: () => void; children: JSX.Element }) {
+  const [back, setBack] = createSignal<HTMLButtonElement>();
   return (
-    <Modal
-      class="flex h-screen max-h-none w-screen max-w-none cursor-zoom-out items-center justify-center border-0 bg-transparent p-4 backdrop:bg-[rgb(0_0_0/80%)]"
-      onClose={() => props.onClose()}
-      onClick={() => props.onClose()}
-    >
-      {props.children}
-      <Button
-        variant="media-close"
-        size="icon-sm"
-        class="absolute top-4 right-4"
-        aria-label="Close preview"
+    <Dialog onClose={props.onClose}>
+      <DialogPopup
+        variant="media"
+        size="expanded"
+        mediaControlsPlacement="inside"
+        showCloseButton={false}
+        bottomStickOnMobile={false}
+        class="cursor-zoom-out"
+        initialFocus={() => back() ?? null}
+        onClick={() => props.onClose()}
       >
-        <X />
-      </Button>
-    </Modal>
+        <DialogTitle class="sr-only">Expanded media preview</DialogTitle>
+        <Button
+          ref={setBack}
+          size="sm"
+          variant="media-close"
+          class="absolute top-0 left-0 z-20 max-[8rem]:left-1/2 max-[8rem]:-translate-x-1/2"
+          aria-label="Back, close preview"
+        >
+          <ArrowLeft aria-hidden="true" />
+          Back
+        </Button>
+        <div class="relative isolate z-10 flex max-h-full max-w-[var(--media-width)] flex-col items-center">
+          {props.children}
+        </div>
+      </DialogPopup>
+    </Dialog>
   );
 }
 
 export const MEDIA_DIALOG_FIT =
-  "block max-h-[calc(100vh-32px)] max-w-[calc(100vw-32px)] rounded-lg object-contain";
+  "block max-h-[var(--media-height)] max-w-[var(--media-width)] rounded-lg object-contain";
 
 export function ImageDialog(props: { src: string; alt: string; onClose: () => void }) {
   return (

@@ -8,6 +8,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  createUniqueId,
   For,
   type JSX,
   Match,
@@ -83,7 +84,15 @@ import {
   MenuSeparator,
   openMenuFromKeys,
 } from "./ui/Menu";
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "./ui/Dialog";
 import { Presence } from "./ui/Presence";
 import { Textarea } from "./ui/Textarea";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
@@ -257,74 +266,80 @@ function CommitDialog(props: {
       return next;
     });
   return (
-    <Dialog aria-labelledby="commit-dialog-title" onClose={props.onClose}>
-      <DialogHeader>
-        <DialogTitle id="commit-dialog-title">{COMMIT_DIALOG_TITLE}</DialogTitle>
-        <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
-        <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 rounded-[12px] border border-border bg-[color-mix(in_srgb,var(--muted)_72%,transparent)] p-3 text-[14px]">
-          <span class="text-muted-foreground">Branch</span>
-          <span class="flex justify-between font-medium">
-            {props.status.refName ?? "(detached HEAD)"}
-            <Show when={props.status.isDefaultRef}>
-              <span class="font-normal text-warning-foreground">Default branch</span>
-            </Show>
-          </span>
-          <span class="text-muted-foreground">Files</span>
-          <ul class="col-span-full m-0 flex max-h-48 list-none flex-col gap-0.5 overflow-y-auto p-0">
-            <For each={files()}>
-              {(file) => (
-                <li>
-                  <label class="flex items-center gap-2 font-mono text-[12px]">
-                    <input
-                      type="checkbox"
-                      checked={!excluded().has(file.path)}
-                      onChange={() => toggle(file.path)}
-                    />
-                    <span class={LABEL}>{file.path}</span>
-                    <span class={DIFF_COUNTS}>
-                      <span class={ADDED_TEXT}>+{formatCount(file.insertions)}</span> /{" "}
-                      <span class={REMOVED_TEXT}>-{formatCount(file.deletions)}</span>
-                    </span>
-                  </label>
-                </li>
-              )}
-            </For>
-          </ul>
-          <span class={`${DIFF_COUNTS} col-span-full justify-self-end`}>
-            <span class={ADDED_TEXT}>
-              +{formatCount(selected().reduce((sum, file) => sum + file.insertions, 0))}
+    <Dialog onClose={props.onClose}>
+      <DialogPopup>
+        <DialogHeader>
+          <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
+          <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
+        </DialogHeader>
+        <DialogPanel>
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 rounded-[12px] border border-border bg-[color-mix(in_srgb,var(--muted)_72%,transparent)] p-3 text-[14px]">
+            <span class="text-muted-foreground">Branch</span>
+            <span class="flex justify-between font-medium">
+              {props.status.refName ?? "(detached HEAD)"}
+              <Show when={props.status.isDefaultRef}>
+                <span class="font-normal text-warning-foreground">Default branch</span>
+              </Show>
             </span>
-            /
-            <span class={REMOVED_TEXT}>
-              -{formatCount(selected().reduce((sum, file) => sum + file.deletions, 0))}
+            <span class="text-muted-foreground">Files</span>
+            <ul class="col-span-full m-0 flex max-h-48 list-none flex-col gap-0.5 overflow-y-auto p-0">
+              <For each={files()}>
+                {(file) => (
+                  <li>
+                    <label class="flex items-center gap-2 font-mono text-[12px]">
+                      <input
+                        type="checkbox"
+                        checked={!excluded().has(file.path)}
+                        onChange={() => toggle(file.path)}
+                      />
+                      <span class={LABEL}>{file.path}</span>
+                      <span class={DIFF_COUNTS}>
+                        <span class={ADDED_TEXT}>+{formatCount(file.insertions)}</span> /{" "}
+                        <span class={REMOVED_TEXT}>-{formatCount(file.deletions)}</span>
+                      </span>
+                    </label>
+                  </li>
+                )}
+              </For>
+            </ul>
+            <span class={`${DIFF_COUNTS} col-span-full justify-self-end`}>
+              <span class={ADDED_TEXT}>
+                +{formatCount(selected().reduce((sum, file) => sum + file.insertions, 0))}
+              </span>
+              /
+              <span class={REMOVED_TEXT}>
+                -{formatCount(selected().reduce((sum, file) => sum + file.deletions, 0))}
+              </span>
             </span>
-          </span>
-        </div>
-        <p class="text-sm font-medium">Commit message (optional)</p>
-        <Textarea
-          aria-label="Commit message (optional)"
-          size="sm"
-          placeholder="Leave empty to auto-generate"
-          value={message()}
-          onInput={(event) => setMessage(event.currentTarget.value)}
-        />
-      </DialogHeader>
-      <DialogFooter>
-        <Button variant="outline" size="sm" onClick={props.onClose}>
-          Cancel
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={selected().length === 0}
-          onClick={() => submit(true)}
-        >
-          Commit on new branch
-        </Button>
-        <Button size="sm" disabled={selected().length === 0} onClick={() => submit(false)}>
-          Commit
-        </Button>
-      </DialogFooter>
+          </div>
+          <div class="space-y-1">
+            <p class="text-sm font-medium">Commit message (optional)</p>
+            <Textarea
+              aria-label="Commit message (optional)"
+              size="sm"
+              placeholder="Leave empty to auto-generate"
+              value={message()}
+              onInput={(event) => setMessage(event.currentTarget.value)}
+            />
+          </div>
+        </DialogPanel>
+        <DialogFooter variant="bare">
+          <Button variant="outline" size="sm" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={selected().length === 0}
+            onClick={() => submit(true)}
+          >
+            Commit on new branch
+          </Button>
+          <Button size="sm" disabled={selected().length === 0} onClick={() => submit(false)}>
+            Commit
+          </Button>
+        </DialogFooter>
+      </DialogPopup>
     </Dialog>
   );
 }
@@ -336,45 +351,54 @@ function AddScriptDialog(props: {
   const [name, setName] = createSignal("");
   const [command, setCommand] = createSignal("");
   const ready = () => name().trim() !== "" && command().trim() !== "";
+  const formId = createUniqueId();
   return (
-    <Dialog aria-labelledby="add-script-title" onClose={props.onClose}>
-      <form
-        method="dialog"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!ready()) return;
-          props.onAdd(name().trim(), command().trim());
-          props.onClose();
-        }}
-      >
+    <Dialog onClose={props.onClose}>
+      <DialogPopup>
         <DialogHeader>
-          <DialogTitle id="add-script-title">Add project script</DialogTitle>
+          <DialogTitle>Add project script</DialogTitle>
           <DialogDescription>
             Scripts run in this thread's terminal, from its working folder.
           </DialogDescription>
-          <Label for="script-name">Name</Label>
-          <Input
-            id="script-name"
-            autofocus
-            value={name()}
-            onInput={(event) => setName(event.currentTarget.value)}
-          />
-          <Label for="script-command">Command</Label>
-          <Textarea
-            id="script-command"
-            value={command()}
-            onInput={(event) => setCommand(event.currentTarget.value)}
-          />
         </DialogHeader>
-        <DialogFooter>
+        <DialogPanel>
+          <form
+            id={formId}
+            class="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!ready()) return;
+              props.onAdd(name().trim(), command().trim());
+              props.onClose();
+            }}
+          >
+            <div class="space-y-1.5">
+              <Label for="script-name">Name</Label>
+              <Input
+                id="script-name"
+                value={name()}
+                onInput={(event) => setName(event.currentTarget.value)}
+              />
+            </div>
+            <div class="space-y-1.5">
+              <Label for="script-command">Command</Label>
+              <Textarea
+                id="script-command"
+                value={command()}
+                onInput={(event) => setCommand(event.currentTarget.value)}
+              />
+            </div>
+          </form>
+        </DialogPanel>
+        <DialogFooter variant="bare">
           <Button variant="outline" onClick={props.onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={!ready()}>
+          <Button form={formId} type="submit" disabled={!ready()}>
             Add script
           </Button>
         </DialogFooter>
-      </form>
+      </DialogPopup>
     </Dialog>
   );
 }
@@ -1102,40 +1126,42 @@ const Body = (props: IDetailsProps) => {
 
       <Presence when={pendingCopy()}>
         {(copy) => (
-          <Dialog aria-labelledby="default-branch-title" onClose={() => chooseDefaultBranch()}>
-            <DialogHeader>
-              <DialogTitle id="default-branch-title">{copy().title}</DialogTitle>
-              <DialogDescription>{copy().description}</DialogDescription>
-              <Show when={featureBranchBlock()}>
-                {(reason) => <p class="m-0 text-[12px] text-muted-foreground">{reason()}</p>}
-              </Show>
-            </DialogHeader>
-            <DialogFooter class="flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                class="w-full sm:mr-auto sm:w-auto"
-                onClick={() => chooseDefaultBranch()}
-              >
-                Abort
-              </Button>
-              <Button
-                variant="outline"
-                size="sm-multiline"
-                class="w-full max-w-full sm:w-auto"
-                onClick={() => chooseDefaultBranch("continue")}
-              >
-                {copy().continueLabel}
-              </Button>
-              <Button
-                size="sm-multiline"
-                class="w-full max-w-full sm:w-auto"
-                disabled={featureBranchBlock() !== null}
-                onClick={() => chooseDefaultBranch("featureBranch")}
-              >
-                Check out feature branch & continue
-              </Button>
-            </DialogFooter>
+          <Dialog onClose={() => chooseDefaultBranch()}>
+            <DialogPopup size="xl">
+              <DialogHeader>
+                <DialogTitle>{copy().title}</DialogTitle>
+                <DialogDescription>{copy().description}</DialogDescription>
+                <Show when={featureBranchBlock()}>
+                  {(reason) => <p class="text-xs text-muted-foreground">{reason()}</p>}
+                </Show>
+              </DialogHeader>
+              <DialogFooter variant="bare" class="sm:flex-wrap sm:items-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="w-full sm:mr-auto sm:w-auto"
+                  onClick={() => chooseDefaultBranch()}
+                >
+                  Abort
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm-multiline"
+                  class="w-full max-w-full sm:w-auto"
+                  onClick={() => chooseDefaultBranch("continue")}
+                >
+                  {copy().continueLabel}
+                </Button>
+                <Button
+                  size="sm-multiline"
+                  class="w-full max-w-full sm:w-auto"
+                  disabled={featureBranchBlock() !== null}
+                  onClick={() => chooseDefaultBranch("featureBranch")}
+                >
+                  Check out feature branch & continue
+                </Button>
+              </DialogFooter>
+            </DialogPopup>
           </Dialog>
         )}
       </Presence>
