@@ -80,6 +80,29 @@ export function openComboboxFromKeys(event: KeyboardEvent, open: () => void): vo
   queueMicrotask(() => (pendingOpenHighlight = null));
 }
 
+/** The combobox's trigger: a press or ArrowDown and ArrowUp call `onOpen` with it. */
+export function ComboboxTrigger(
+  props: Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "onKeyDown"> & {
+    onOpen: (trigger: HTMLButtonElement) => void;
+  },
+) {
+  const [local, rest] = splitProps(props, ["onOpen"]);
+  return (
+    <button
+      type="button"
+      aria-haspopup="listbox"
+      aria-expanded="false"
+      data-slot="combobox-trigger"
+      {...rest}
+      onClick={(event) => local.onOpen(event.currentTarget)}
+      onKeyDown={(event) => {
+        const trigger = event.currentTarget;
+        openComboboxFromKeys(event, () => local.onOpen(trigger));
+      }}
+    />
+  );
+}
+
 /**
  * Base UI's combobox list navigation with `autoHighlight`: focus stays on the input while the
  * highlight moves by index, so a list that re-renders keeps its highlight at the same row.

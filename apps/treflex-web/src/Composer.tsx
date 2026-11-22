@@ -82,8 +82,6 @@ const HIDDEN_COLLAPSED = "in-data-collapsed:hidden";
 const keepFocus = (event: MouseEvent) => event.preventDefault();
 const NOTE = "mx-4 my-1 text-[12px]";
 const ERROR = `${NOTE} text-error-foreground ${HIDDEN_COLLAPSED}`;
-const REMOVE_ATTACHMENT =
-  "inline-flex cursor-pointer items-center rounded-full border-0 p-0.5 [&_svg]:size-3.5";
 
 function useFocusRequests(focus: () => void) {
   onMount(() => {
@@ -129,7 +127,6 @@ function useAlternateHeld() {
   return held;
 }
 
-// Follows submitLabel and submitTooltip in apps/web/src/components/chat/ComposerPrimaryActions.tsx.
 function SendButton(props: {
   running: boolean;
   alternate: boolean;
@@ -316,7 +313,6 @@ function StopButton(props: { stopping: boolean; class: string; onStop: () => voi
   );
 }
 
-// Follows the pending-question branch of ComposerPrimaryActions in apps/web/src/components/chat.
 function AnswerActions(props: { question: IAnswering }) {
   const progress = () => props.question.progress();
   const responding = () => props.question.responding();
@@ -462,8 +458,6 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     session.send(mode);
     if (phone()) textarea.blur();
   };
-  // Follows useDictationShortcut in apps/web/src/speech: the shortcut finishes a recording or
-  // starts one at the caret, and Escape cancels a running one.
   const startDictation = () => {
     const atCaret = document.activeElement === textarea;
     const text = held().Draft;
@@ -530,7 +524,6 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     }
     return false;
   };
-  // Follows navigatePromptHistory in apps/web/src/components/chat/composerCommandKey.ts.
   const [historyPosition, setHistoryPosition] = createSignal<IPromptHistoryPosition | null>(null);
   const onHistoryKey = (event: KeyboardEvent): boolean => {
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
@@ -601,7 +594,6 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     else void intake.addFiles([decision.File], true);
     return true;
   };
-  // Follows insertTextAtEnd and pasteTextAtEnd in apps/web/src/components/chat/ChatComposer.tsx.
   useTypedText((event, typed) => {
     if (rewinding() || textarea.disabled || textarea.readOnly) return;
     event.preventDefault();
@@ -685,15 +677,17 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                       />
                     )}
                   </Show>
-                  <button
-                    type="button"
-                    class={`${REMOVE_ATTACHMENT} absolute top-[3px] right-[3px] bg-[rgb(0_0_0/60%)] text-white`}
-                    aria-label={`Remove ${file.Name}`}
-                    data-tip={`Remove ${file.Name}`}
-                    onClick={() => session.removeAttachment(file.Id)}
-                  >
-                    <X />
-                  </button>
+                  <span class="absolute right-1 top-1 flex">
+                    <Button
+                      variant="media-close"
+                      size="icon-xs"
+                      aria-label={`Remove ${file.Name}`}
+                      data-tip={`Remove ${file.Name}`}
+                      onClick={() => session.removeAttachment(file.Id)}
+                    >
+                      <X />
+                    </Button>
+                  </span>
                 </li>
               )}
             </For>
@@ -713,15 +707,15 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                   <span class="flex-none text-[12px] text-secondary-label">
                     {attachmentDetail(file.Name, file.SizeBytes, file.PastedText)}
                   </span>
-                  <button
-                    type="button"
-                    class={`${REMOVE_ATTACHMENT} bg-transparent text-muted-foreground`}
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={`Remove ${file.Name}`}
                     data-tip={`Remove ${file.Name}`}
                     onClick={() => session.removeAttachment(file.Id)}
                   >
                     <X />
-                  </button>
+                  </Button>
                 </li>
               )}
             </For>

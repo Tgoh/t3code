@@ -1,4 +1,7 @@
+import { onCleanup } from "solid-js";
+
 import { dragSidebarWidth } from "./sidebarWidth";
+import { SidebarRail as RailButton } from "./ui/Sidebar";
 
 interface IRailDrag {
   Pointer: number;
@@ -11,21 +14,30 @@ interface IRailDrag {
 interface IRailProps {
   width: number;
   onResize: (width: number) => void;
-  /** The drag ended, with the width to keep, or null when it never moved. */
+  /** The drag ended, with the width to keep, or null when it never moved or was abandoned. */
   onDone: (width: number | null) => void;
   onReset: () => void;
 }
 
 function railDrag(props: IRailProps) {
   const held: { Drag: IRailDrag | null } = { Drag: null };
+  const release = () => {
+    held.Drag = null;
+    document.body.style.removeProperty("cursor");
+    document.body.style.removeProperty("user-select");
+  };
+  // Collapsing the sidebar unmounts the rail mid-drag, which abandons the drag.
+  onCleanup(() => {
+    if (held.Drag === null) return;
+    release();
+    props.onDone(null);
+  });
   const finish = (event: PointerEvent & { currentTarget: HTMLElement }) => {
     const drag = held.Drag;
     if (drag === null || drag.Pointer !== event.pointerId) return;
-    held.Drag = null;
+    release();
     const rail = event.currentTarget;
     if (rail.hasPointerCapture(drag.Pointer)) rail.releasePointerCapture(drag.Pointer);
-    document.body.style.removeProperty("cursor");
-    document.body.style.removeProperty("user-select");
     props.onDone(drag.Moved ? drag.Width : null);
   };
   return {
@@ -61,18 +73,16 @@ function railDrag(props: IRailProps) {
   };
 }
 
-// Follows SidebarRail in apps/web/src/components/ui/sidebar.tsx and apps/web/src/hooks/useResizeDrag.ts.
-/** The sidebar's edge: dragging resizes it and a double-click resets it. Sits in the layout grid. */
+/**
+ * The open sidebar's edge: dragging resizes it and a double-click resets it. Sits in the layout
+ * grid, so the caller renders it only while the sidebar is a column.
+ */
 export function SidebarRail(props: IRailProps) {
   const drag = railDrag(props);
   return (
-    <button
-      type="button"
-      class="absolute inset-y-0 z-20 -ml-px w-4 -translate-x-1/2 cursor-col-resize touch-none border-0 bg-transparent p-0 after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border in-[.sidebar-collapsed]:hidden in-[.sidebar-sheet]:hidden"
+    <RailButton
+      class="-ml-px"
       style={{ left: "calc(var(--sidebar-width) + env(safe-area-inset-left))" }}
-      aria-label="Resize Sidebar"
-      data-tip="Drag to resize sidebar"
-      data-tip-side="right"
       onPointerDown={drag.onPointerDown}
       onPointerMove={drag.onPointerMove}
       onPointerUp={drag.finish}

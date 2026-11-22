@@ -175,7 +175,6 @@ const NOTIFICATION_ICONS: Record<string, Component> = {
   system: T3Mark,
 };
 
-// Follows workEntryIconName in apps/web/src/components/chat/TimelineWorkEntryRow.logic.ts.
 function NotificationIcon(props: { item: Extract<IWireTurnItem, { type: "notification" }> }) {
   return (
     <span class={WORK_ICON}>
@@ -406,14 +405,15 @@ function ChangedFiles(props: { item: IWireCheckpoint; turn: number | null }) {
         <span class="flex-1" />
         <Show when={props.turn}>
           {(turn) => (
-            <button
-              class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-lg border border-transparent bg-transparent px-1.5 py-0 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+            <Button
+              size="xs"
+              variant="ghost-muted"
               data-tip="Open this turn's diff"
               onClick={() => session.openDiff("turn", turn())}
             >
-              <FileDiff />
+              <FileDiff class="size-3" />
               Open diff
-            </button>
+            </Button>
           )}
         </Show>
       </header>
@@ -480,7 +480,6 @@ export function FoldHeader(props: { fold: IMessageFold; expanded: boolean; onTog
   );
 }
 
-// Follows QueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx.
 export function QueuedMessage(props: { runId: string }) {
   const thread = OpenThread.use();
   const environment = Environment.use();
@@ -627,7 +626,6 @@ function UserRow(props: IRowProps) {
   );
 }
 
-// Follows RevertUserMessageButton in apps/web/src/components/chat/TimelineUserMessageRow.tsx.
 function EditFromHere(props: IRowProps) {
   const session = ThreadSession.use();
   const turn = () => session.revertTargets()[props.id];
@@ -654,7 +652,6 @@ function EditFromHere(props: IRowProps) {
   );
 }
 
-// Follows AssistantForkButton in apps/web/src/components/chat/TimelineAssistantRows.tsx.
 function ForkFromHere(props: IRowProps) {
   const { thread, item } = useRow(props);
   const session = ThreadSession.use();
@@ -688,7 +685,6 @@ function ForkFromHere(props: IRowProps) {
   );
 }
 
-// Follows RevertConfirmHost in apps/web/src/components/chat/ChatOverlayHosts.tsx.
 export function RewindDialog() {
   const session = ThreadSession.use();
   return (

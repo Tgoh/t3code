@@ -10,6 +10,7 @@ import RuntimeRequest, { canAnswer, Responding } from "./RuntimeRequest";
 import ThreadSession from "./ThreadSession";
 import { RowIcon, workLine } from "./TimelineRows";
 import { viewOf } from "./turnItemView";
+import { InlineButton } from "./ui/Button";
 import { CheckboxMark } from "./ui/Checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/Collapsible";
 import { Kbd } from "./ui/Kbd";
@@ -75,9 +76,8 @@ export const PendingApproval = RuntimeRequest.provider(() => {
             {(option) => (
               <>
                 <span>·</span>
-                <button
-                  class="cursor-pointer border-0 bg-transparent p-0 text-[12px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-64 data-strong:font-medium data-strong:text-foreground"
-                  data-strong={option.decision === "accept" || undefined}
+                <InlineButton
+                  tone={option.decision === "accept" ? "default" : "muted"}
                   disabled={responding()}
                   onClick={() =>
                     request.answerRequest(
@@ -88,8 +88,8 @@ export const PendingApproval = RuntimeRequest.provider(() => {
                     )
                   }
                 >
-                  {option.label}
-                </button>
+                  <span class="whitespace-normal">{option.label}</span>
+                </InlineButton>
               </>
             )}
           </For>
@@ -126,8 +126,6 @@ export const UnansweredRequest = RuntimeRequest.provider(() => {
 const SHORTCUT_BLOCKERS =
   'select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [aria-modal="true"], [role="menu"], [role="combobox"]';
 
-// Follows ComposerPendingUserInputCard in apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
-// and the question callbacks in apps/web/src/components/chat/usePendingThreadRequests.ts.
 export const PendingQuestion = RuntimeRequest.provider<{
   composer: (answering: IAnswering) => JSX.Element;
 }>((props) => {

@@ -67,7 +67,7 @@ const CARD_SLOT =
 // Laid over the line's end on the row's own background, so showing them can't rewrap the title.
 const CARD_ACTIONS =
   "invisible absolute top-0 -right-1 inline-flex h-5 items-center gap-0.5 bg-inherit pl-1 before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-inherit before:[mask-image:linear-gradient(to_right,transparent,black)] group-hover/card:visible group-focus-visible/card:visible group-has-[:focus-visible]/card:visible [@media(hover:hover)]:group-focus-within/card:visible";
-export const CARD_ACTION =
+const CARD_ACTION =
   "inline-flex h-5 cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0 text-[12px] leading-4 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground [&_svg]:size-3.5";
 
 export const STATUS_TONE: Record<NonNullable<ISidebarStatus>, string> = {

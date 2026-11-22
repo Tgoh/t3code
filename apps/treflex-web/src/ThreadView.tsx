@@ -45,6 +45,7 @@ import {
 } from "./timelineWindow";
 
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
+import { Button } from "./ui/Button";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { SheetBackdrop, sheetPopupVariants } from "./ui/Sheet";
 import { createMediaQuery, enterPanel, PANEL_SHEET_QUERY } from "./viewport";
@@ -65,9 +66,6 @@ const RIGHT_PANEL_SHEET = `${sheetPopupVariants({ side: "right", surface: "right
 
 const CRUMB_LINK =
   "group/crumb inline-flex flex-none cursor-pointer items-center gap-1.5 rounded-xs border-0 bg-transparent p-0 text-muted-foreground hover:text-foreground";
-
-const SCROLL_TO_END =
-  "absolute bottom-[calc(100%+var(--turn-status-height)+4px)] left-1/2 z-30 inline-flex h-6 -translate-x-1/2 cursor-pointer items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--border)_60%,transparent)] bg-[color-mix(in_srgb,var(--background)_var(--glass-opacity),transparent)] px-[7px] py-0 text-[12px] font-medium whitespace-nowrap shadow-[0_1px_2px_rgb(0_0_0/5%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) hover:border-border [&_svg]:size-3.5";
 
 const LoadEarlier = HistoryWindow.provider(() => {
   const history = HistoryWindow.use();
@@ -555,10 +553,15 @@ const ThreadBody = ThreadSession.provider(() => {
           </div>
           <div class={COMPOSER_LANE} ref={lane}>
             <Show when={!stuck()}>
-              <button class={SCROLL_TO_END} onClick={scrollToEnd}>
-                <ChevronDown />
+              <Button
+                variant="glass"
+                size="xs"
+                class="absolute bottom-[calc(100%+var(--turn-status-height)+4px)] left-1/2 z-30 -translate-x-1/2"
+                onClick={scrollToEnd}
+              >
+                <ChevronDown class="size-3.5" />
                 Scroll to end
-              </button>
+              </Button>
             </Show>
             <TurnStatus state={turnState()} checklist={checklist()} />
             <For each={thread.pendingOtherIds()}>

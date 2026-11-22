@@ -24,9 +24,10 @@ const swallow = (event: Event) => {
 };
 
 /**
- * Pointer drag that reorders `blocks` inside the scrolling `list`. Touch picks up on a long-press
- * so a swipe still scrolls; a hold released in place calls `onHold`. Positions are measured once
- * per drag, so a move costs a binary search.
+ * Pointer drag that reorders `blocks` inside `list`, scrolling the `ScrollArea` viewport around it
+ * (or `list` itself) near its edges. Touch picks up on a long-press so a swipe still scrolls; a
+ * hold released in place calls `onHold`. Positions are measured once per drag, so a move costs a
+ * binary search.
  */
 export function createListDrag(options: {
   list: () => HTMLElement | undefined;
@@ -67,6 +68,7 @@ export function createListDrag(options: {
     if (event.button !== 0 || stop !== null) return;
     const list = options.list();
     if (list === undefined) return;
+    const scroller = list.closest<HTMLElement>("[data-slot=scroll-area-viewport]") ?? list;
     const touch = event.pointerType === "touch";
     const startX = event.clientX;
     const startY = event.clientY;
@@ -96,7 +98,7 @@ export function createListDrag(options: {
     };
     const scroll = () => {
       frame = 0;
-      const rect = list.getBoundingClientRect();
+      const rect = scroller.getBoundingClientRect();
       const over =
         pointerY < rect.top + EDGE
           ? pointerY - (rect.top + EDGE)
@@ -104,9 +106,9 @@ export function createListDrag(options: {
             ? pointerY - (rect.bottom - EDGE)
             : 0;
       if (over === 0) return;
-      const before = list.scrollTop;
-      list.scrollTop += Math.max(-MAX_SCROLL_STEP, Math.min(MAX_SCROLL_STEP, over / 2));
-      if (list.scrollTop === before) return;
+      const before = scroller.scrollTop;
+      scroller.scrollTop += Math.max(-MAX_SCROLL_STEP, Math.min(MAX_SCROLL_STEP, over / 2));
+      if (scroller.scrollTop === before) return;
       place();
       frame = requestAnimationFrame(scroll);
     };
@@ -180,7 +182,7 @@ export function createListDrag(options: {
     window.addEventListener("keydown", onKey, true);
   };
 
-  /** Where the drop line sits, in the list's scroll coordinates. */
+  /** Where the drop line sits, from the top of the list's content. */
   const lineTop = () => {
     const at = gap();
     if (at === null || measured === null) return null;

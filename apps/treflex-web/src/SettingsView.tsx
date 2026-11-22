@@ -57,7 +57,7 @@ import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow, relativeTime } from "./timestamps";
 import { Badge } from "./ui/Badge";
-import { Button, buttonVariants } from "./ui/Button";
+import { Button, buttonVariants, InlineButton } from "./ui/Button";
 import {
   Combobox,
   ComboboxEmpty,
@@ -90,7 +90,7 @@ import {
 } from "./ui/AlertDialog";
 import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
-import { SidebarInput } from "./ui/Sidebar";
+import { SidebarInput, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "./ui/Sidebar";
 import { Spinner } from "./ui/Spinner";
 import { Switch } from "./ui/Switch";
 import { Textarea } from "./ui/Textarea";
@@ -179,10 +179,6 @@ export function SettingsView(props: { page: string }) {
 }
 
 const SEARCH_ITEMS = settingsSearchItems();
-
-const navItem =
-  "flex cursor-pointer gap-2 rounded-lg border-0 bg-transparent px-2 text-left text-[14px] text-muted-foreground hover:not-disabled:bg-accent hover:not-disabled:text-foreground disabled:cursor-default disabled:opacity-45 aria-selected:bg-accent aria-selected:font-medium aria-selected:text-foreground aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground max-md:justify-center";
-const navGroup = "flex flex-col gap-0.5";
 
 function SettingsNav(props: { page: string }) {
   const environment = Environment.use();
@@ -273,32 +269,39 @@ function SettingsNav(props: { page: string }) {
             </p>
           }
         >
-          <div class={navGroup} role="listbox" aria-label="Settings search results">
+          <SidebarMenu role="listbox" aria-label="Settings search results">
             <For each={results()}>
               {(item, index) => (
-                <button
-                  class={`${navItem} min-h-10 items-start pt-1.5 pb-1`}
-                  role="option"
-                  aria-selected={index() === active()}
-                  tabindex="-1"
-                  onMouseMove={() => setActive(index())}
-                  onClick={() => open(item)}
-                >
-                  <Dynamic component={Icons[settingsPageOf(item.Page)?.Icon ?? "Settings2"]} />
-                  <span class="flex min-w-0 flex-col max-md:hidden">
-                    <span class="truncate font-medium text-foreground">{item.Title}</span>
-                    <span class="text-[11px]">{settingsPageOf(item.Page)?.Label}</span>
-                  </span>
-                </button>
+                <SidebarMenuItem role="presentation">
+                  <SidebarMenuButton
+                    role="option"
+                    aria-selected={index() === active()}
+                    tabIndex={-1}
+                    size="sm-search-result"
+                    isActive={index() === active()}
+                    onMouseMove={() => setActive(index())}
+                    onClick={() => open(item)}
+                  >
+                    <Dynamic component={Icons[settingsPageOf(item.Page)?.Icon ?? "Settings2"]} />
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-sm font-medium text-sidebar-foreground">
+                        {item.Title}
+                      </span>
+                      <span class="block truncate text-2xs text-sidebar-muted-foreground/75">
+                        {settingsPageOf(item.Page)?.Label}
+                      </span>
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               )}
             </For>
-          </div>
+          </SidebarMenu>
         </Show>
       </Show>
       <Show when={!searching()}>
         <For each={SETTINGS_NAV}>
           {(group) => (
-            <div class={navGroup}>
+            <div class="flex flex-col gap-0.5">
               <Show when={group.Group}>
                 {(title) => (
                   <span class="px-2 py-1 text-[12px] font-medium text-muted-foreground max-md:hidden">
@@ -306,20 +309,23 @@ function SettingsNav(props: { page: string }) {
                   </span>
                 )}
               </Show>
-              <For each={group.Pages}>
-                {(entry) => (
-                  <button
-                    class={`${navItem} h-8 items-center py-0`}
-                    aria-current={props.page === entry.Id ? "page" : undefined}
-                    disabled={!entry.Built}
-                    data-tip={entry.Built ? undefined : "Not in this client yet"}
-                    onClick={() => environment.openView({ Kind: "settings", Page: entry.Id })}
-                  >
-                    <Dynamic component={Icons[entry.Icon]} />
-                    <span class="max-md:hidden">{entry.Label}</span>
-                  </button>
-                )}
-              </For>
+              <SidebarMenu>
+                <For each={group.Pages}>
+                  {(entry) => (
+                    <SidebarMenuItem data-tip={entry.Built ? undefined : "Not in this client yet"}>
+                      <SidebarMenuButton
+                        aria-current={props.page === entry.Id ? "page" : undefined}
+                        isActive={props.page === entry.Id}
+                        disabled={!entry.Built}
+                        onClick={() => environment.openView({ Kind: "settings", Page: entry.Id })}
+                      >
+                        <Dynamic component={Icons[entry.Icon]} />
+                        <span class="truncate max-md:sr-only">{entry.Label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </For>
+              </SidebarMenu>
             </div>
           )}
         </For>
@@ -535,7 +541,6 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
   );
 }
 
-// Follows SettingResetButton in apps/web/src/components/settings/settingsLayout.tsx.
 function ResetButton(props: { label: string; onClick: () => void }) {
   return (
     <Button
@@ -563,7 +568,6 @@ const SCHEME_PREVIEW: Record<IAppearanceMode, string> = {
 };
 const schemeLine = "h-1.5 rounded-sm bg-[#8a8a8a] opacity-35";
 
-// Follows the color scheme tiles in apps/web/src/components/settings/ThemeSettings.tsx.
 function ColorSchemeSection() {
   const environment = Environment.use();
   return (
@@ -1184,7 +1188,6 @@ function KeybindingsPage() {
 
 type IArchivedThread = IWireArchivedShell["threads"][number];
 
-// Follows ArchivedThreadsPanel.tsx.
 const ArchivedPage = ArchivedThreads.provider(() => {
   const environment = Environment.use();
   const page = useArchivedThreads(environment.state.EnvironmentId, environment.threadCommand);
@@ -1327,15 +1330,18 @@ function AboutPage() {
               Version
               <Show when={version()}>
                 {(text) => (
-                  <button
-                    class="cursor-pointer rounded-md border bg-muted px-1.5 py-0 text-[12px]"
-                    data-tip={copied() ? "Copied" : "Copy version"}
-                    onClick={() => {
-                      void navigator.clipboard.writeText(text()).then(() => setCopied(true));
-                    }}
-                  >
-                    <code>{text()}</code>
-                  </button>
+                  <code class="text-2xs font-medium">
+                    <InlineButton
+                      tone="muted"
+                      aria-label={`Copy version ${text()}`}
+                      data-tip={copied() ? "Copied" : "Copy version"}
+                      onClick={() => {
+                        void navigator.clipboard.writeText(text()).then(() => setCopied(true));
+                      }}
+                    >
+                      {text()}
+                    </InlineButton>
+                  </code>
                 )}
               </Show>
             </span>

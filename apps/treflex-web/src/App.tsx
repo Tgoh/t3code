@@ -140,8 +140,6 @@ const EnvironmentView = Environment.provider(() => {
     );
     return true;
   };
-  // Follows the window keydown handlers of Sidebar.tsx and AppSidebarLayout.tsx and the chat route
-  // commands in apps/web/src/shortcuts/chatRouteCommands.ts.
   const runCommand = (command: KeybindingCommand): boolean => {
     switch (command) {
       case "commandPalette.toggle":
@@ -206,7 +204,6 @@ const EnvironmentView = Environment.provider(() => {
     )
       pasteAsTextUntil = event.timeStamp + 1_000;
   };
-  // Follows usePasteToFocusComposer in apps/web/src/components/chat.
   const onPaste = (event: ClipboardEvent) => {
     if (composerCovered()) return;
     const text = pasteTextToFocusComposer(event);
@@ -233,8 +230,7 @@ const EnvironmentView = Environment.provider(() => {
         },
         platform,
       );
-      // Follows isSidebarToggleShortcut in apps/web/src/keybindings.ts: a focused terminal owns
-      // Ctrl chords, such as tmux's Ctrl+B prefix.
+      // A focused terminal owns Ctrl chords, such as tmux's Ctrl+B prefix.
       return command === "sidebar.toggle" && event.ctrlKey && terminalFocus ? null : command;
     },
     run: runCommand,
@@ -303,17 +299,19 @@ const EnvironmentView = Environment.provider(() => {
               )}
             </Presence>
             <Sidebar state={environment.state.Replica.Shell} />
-            <SidebarRail
-              width={sidebarWidth()}
-              onResize={setDragWidth}
-              onDone={(width) => {
-                if (width === null) return setDragWidth(null);
-                void environment
-                  .setPreferences({ SidebarWidth: width })
-                  .finally(() => setDragWidth(null));
-              }}
-              onReset={() => void environment.setPreferences({ SidebarWidth: null })}
-            />
+            <Show when={!sidebar.sheet() && !sidebar.collapsed()}>
+              <SidebarRail
+                width={sidebarWidth()}
+                onResize={setDragWidth}
+                onDone={(width) => {
+                  if (width === null) return setDragWidth(null);
+                  void environment
+                    .setPreferences({ SidebarWidth: width })
+                    .finally(() => setDragWidth(null));
+                }}
+                onReset={() => void environment.setPreferences({ SidebarWidth: null })}
+              />
+            </Show>
             <EnvironmentMain state={environment.state.Local.Dictation} />
             <For each={paletteSessions()}>
               {(session) => (

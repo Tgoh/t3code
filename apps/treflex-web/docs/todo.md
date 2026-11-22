@@ -6,7 +6,12 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 Nothing hand-rolled that stock already has. Before parity and the missing features, so new work uses the shared components.
 
-- **Shared components, one to one with stock's `components/ui`.** **In progress:** `treflex/style-components`; the tokens are in, and the components are being ported in batches: buttons, fields, tooltip, menus and popovers, dialogs, spinners, switches and checkboxes, select, alerts and empty states, then the palette, sheet, sidebar rows and scroll areas. Toasts are left for their own item. For each stock `apps/web/src/components/ui` component the client uses, a treflex counterpart in `src/ui/` with the same variants and class strings, listed in a README table like "Logic copied from stock". Replace hand-rolled markup that has a stock component. The most important of the four.
+- **Shared components, the gaps left.** **In progress:** `treflex/style-components`, ported and waiting on Tam's go to merge. What remains once it merges:
+  - Stock's overlay scrollbars, which need JavaScript scrollbars; treflex keeps native ones.
+  - Press-and-drag to pick a menu item, and Select's popup growing as it scrolls in aligned mode.
+  - `MiddleTruncate`, for branch and path names.
+  - The timeline sender label, which stock replaces with an "Open thread" button in the message actions, and the sidebar's "Show more", which stock draws as a full row with a chevron.
+  - Ports for components no treflex view uses yet: `NumberField`, `RadioGroup`, `Calendar`, `ColorPicker`, `Group`, `PreviewCard`, `QrCode`, `DiscoveryList`, `PanelTabCloseButton`, `Table`.
 - **Styles in the sync.** Each `/syncupstream` diffs stock's `index.css` and the `components/ui` files that treflex mirrors, and ports their class changes, as it ports logic. Update the skill.
 - **A visual drift check.** A script that screenshots key views (sidebar, thread, composer, settings, dialogs) in stock and treflex on the same server and data, and flags differences above a threshold.
 

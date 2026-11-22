@@ -21,7 +21,6 @@ const PILL =
 const PILL_IDLE = `${PILL} bg-muted/48 ring-border`;
 const PILL_ERROR = `${PILL} bg-destructive/6 text-destructive ring-destructive/24`;
 
-// Follows VOICE_ERROR_LABELS in apps/web/src/components/chat/VoiceInputErrorPill.tsx.
 const ERROR_LABELS: Record<string, string> = {
   [MICROPHONE_PERMISSION_ERROR]: "Mic blocked",
   "Microphone access is required for voice input.": "Mic blocked",
@@ -308,13 +307,14 @@ export function DictationIndicator() {
     <Show when={offScreen()}>
       <div class="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+12px)] z-100 flex justify-center px-4">
         <div class="pointer-events-auto flex max-w-full items-center gap-1 rounded-full bg-popover p-0.5 shadow-lg/5 ring-1 ring-border">
-          <button
-            type="button"
-            class="h-8 min-w-0 shrink cursor-pointer truncate rounded-full border-0 bg-transparent px-3 text-[14px] font-medium hover:bg-accent"
+          <Button
+            size="sm-pill"
+            variant="ghost"
+            class="min-w-0 shrink"
             onClick={() => void environment.selectThread(threadId()!)}
           >
-            {title()}
-          </button>
+            <span class="truncate">{title()}</span>
+          </Button>
           <DictationPill dictation={held()} onRetry={retry} />
         </div>
       </div>

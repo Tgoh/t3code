@@ -86,7 +86,7 @@ import {
   ComboboxPopup,
   ComboboxSearchInput,
   ComboboxStatus,
-  openComboboxFromKeys,
+  ComboboxTrigger,
 } from "./ui/Combobox";
 import { MenuItem, MenuItemLabel, MenuPopup, MenuSeparator, openMenuFromKeys } from "./ui/Menu";
 import {
@@ -139,7 +139,6 @@ interface IMenuAnchor {
   Trigger: HTMLElement;
 }
 
-// Follows GitQuickActionIcon and GitActionItemIcon in apps/web/src/components/GitActionsControl.tsx.
 function QuickActionIcon(props: { action: IGitQuickAction; status: VcsStatusResult | null }) {
   const kind = () => {
     const action = props.action;
@@ -588,7 +587,6 @@ function LineageGroups(props: { lineage: ILineage }) {
   );
 }
 
-// Follows ThreadRelationshipsPanel in apps/web/src/components/chat/ThreadRelationshipsControl.tsx.
 function LineageSection(props: { threadId: string }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
@@ -904,26 +902,19 @@ const Body = (props: IDetailsProps) => {
           class={`${SECTION} border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]`}
           aria-label="Version Control"
         >
-          <button
+          <ComboboxTrigger
             class={ROW}
             aria-label={`Branch: ${branchName() ?? "detached HEAD"}`}
             disabled={props.running || switchingBranch()}
             data-tip={props.running ? "Wait for the turn to finish to switch branches." : undefined}
-            aria-haspopup="listbox"
-            aria-expanded="false"
-            data-slot="combobox-trigger"
-            onClick={(event) => openBranches(event.currentTarget)}
-            onKeyDown={(event) => {
-              const trigger = event.currentTarget;
-              openComboboxFromKeys(event, () => openBranches(trigger));
-            }}
+            onOpen={openBranches}
           >
             <GitBranch />
             <span class={LABEL}>
               {switchingBranch() ? "Switching…" : (branchName() ?? "Detached HEAD")}
             </span>
             <ChevronDown class="ml-auto" />
-          </button>
+          </ComboboxTrigger>
           <Show when={details.state.BranchError ?? work.state.BranchError}>
             {(error) => <p class={ERROR}>{error()}</p>}
           </Show>

@@ -3,13 +3,14 @@ import { type JSX, splitProps } from "solid-js";
 import { overrides } from "./merge";
 
 const BASE =
-  "[&_svg]:-mx-0.5 inline-flex shrink-0 cursor-pointer items-center justify-center border font-medium outline-none transition-[box-shadow,scale] [&:not([aria-haspopup]):not(:disabled):not([aria-disabled=true])]:will-change-[scale] [&:active:not([aria-haspopup])]:scale-[0.97] before:pointer-events-none before:absolute before:inset-0 pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-64 aria-disabled:cursor-not-allowed aria-disabled:opacity-64 [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)] [&_svg]:pointer-events-none [&_svg]:shrink-0";
+  "[&_svg]:-mx-0.5 inline-flex cursor-pointer items-center justify-center border font-medium outline-none transition-[box-shadow,scale] [&:not([aria-haspopup]):not(:disabled):not([aria-disabled=true])]:will-change-[scale] [&:active:not([aria-haspopup])]:scale-[0.97] before:pointer-events-none before:absolute before:inset-0 pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-64 aria-disabled:cursor-not-allowed aria-disabled:opacity-64 [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)] [&_svg]:pointer-events-none [&_svg]:shrink-0";
 
 // Stands in for tailwind-merge: a size or variant replaces these base classes by name, since two
 // utilities for one property resolve by Tailwind's order, not the class order.
 const PARTS = {
   iconColor: "[--control-icon-color:currentColor]",
   position: "relative",
+  shrink: "shrink-0",
   gap: "gap-2",
   whitespace: "whitespace-nowrap",
   radius: "rounded-[var(--control-radius)]",
@@ -192,6 +193,7 @@ export function buttonVariants(
   ];
   const parts: IParts = { ...PARTS, ...sizeParts, ...variantParts };
   if (overrides(options.class, "position")) delete parts.position;
+  if (overrides(options.class, "shrink")) delete parts.shrink;
   return [BASE, ...Object.values(parts), sizeClass, variantClass, options.class]
     .filter(Boolean)
     .join(" ");
@@ -221,7 +223,7 @@ const INLINE_TONES = {
   picker: "gap-1 text-foreground decoration-from-font underline-offset-4 data-popup-open:underline",
 };
 
-export function inlineButtonVariants(
+function inlineButtonVariants(
   options: {
     tone?: keyof typeof INLINE_TONES | undefined;
     touchTarget?: "padded" | undefined;

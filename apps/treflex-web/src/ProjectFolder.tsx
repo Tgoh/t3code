@@ -21,7 +21,7 @@ import {
 import type { IProjectCommand } from "./Infrastructure/commandEffects";
 import type { IWireProject } from "./Infrastructure/wire";
 import Shell, { type IProjectFolder, isBusy, sidebarStatus } from "./Shell";
-import { CARD_ACTION, RenameInput } from "./ThreadCard";
+import { RenameInput } from "./ThreadCard";
 import { Button } from "./ui/Button";
 import { MenuItem, MenuPopup, MenuSeparator } from "./ui/Menu";
 import {
@@ -98,8 +98,6 @@ export function ProjectMenu(props: {
   );
 }
 
-// Follows removeMembers in apps/web/src/components/settings/ProjectSettingsPanel.tsx and the
-// title and description split in apps/web/src/components/ConfirmDialogHost.tsx.
 export function RemoveProjectDialog(props: { project: IWireProject; onClose: () => void }) {
   const environment = Environment.use();
   const removing = useInFlight(removeProject, () => environment.state);
@@ -227,9 +225,9 @@ export function FolderHeader(props: {
           </span>
           <Show when={props.folder.Project !== undefined}>
             <span class="inline-flex w-0 items-center gap-0.5 overflow-hidden group-hover/folder:-mr-1 group-hover/folder:w-auto group-focus-within/folder:-mr-1 group-focus-within/folder:w-auto pointer-coarse:-mr-1 pointer-coarse:w-auto">
-              <button
-                type="button"
-                class={CARD_ACTION}
+              <Button
+                size="icon-xs"
+                variant="ghost-muted"
                 aria-label={`New thread in ${title()}`}
                 data-tip="New thread"
                 onClick={(event) => {
@@ -238,10 +236,10 @@ export function FolderHeader(props: {
                 }}
               >
                 <SquarePen />
-              </button>
-              <button
-                type="button"
-                class={CARD_ACTION}
+              </Button>
+              <Button
+                size="icon-xs"
+                variant="ghost-muted"
                 aria-label="Project actions"
                 data-tip="Project actions"
                 onClick={(event) => {
@@ -250,7 +248,7 @@ export function FolderHeader(props: {
                 }}
               >
                 <Ellipsis />
-              </button>
+              </Button>
             </span>
           </Show>
         </span>
