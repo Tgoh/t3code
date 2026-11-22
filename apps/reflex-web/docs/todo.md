@@ -48,7 +48,16 @@ After stage 3, which also changes `ThreadView`.
 
 ## Waiting on treflex
 
-- **Checks that keep agents off React habits.** Proposed to treflex's Main thread: a development diag in treflex-solid for a dispatch into main state from inside a component or effect, and type-free lint rules in `treflex-eslint` (no main-state work in lifecycle callbacks, a reason on every lifecycle callback, no view timers writing state, no JSON comparisons in memos). When treflex ships them, turn them on here and fix what they find.
+- **Checks that keep agents off React habits.** treflex's verdicts are in `docs/wip/13-external/views-start-work-from-their-lifecycle.md` in the reflex repo. When each one ships, turn it on here and fix what it finds.
+  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. Building it waits for Tam's go.
+  2. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
+  3. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
+
+  Screen-caused work, such as loading the next page when a list's end scrolls into view, gets a named opt-in at the call site instead of being banned.
+
+## Lint
+
+- **A reason on every lifecycle callback.** treflex left this rule to the app. Add `reflex/require-lifecycle-reason` beside `t3code/no-unreasoned-state-sync` in `oxlint-plugin-t3code/`, scoped to `apps/reflex-web`. It should require a disable comment with a reason on every `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`, then annotate the existing sites.
 
 ## Housekeeping
 
