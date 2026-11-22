@@ -12,6 +12,7 @@ import {
   admitFiles,
   attachmentDetail,
   foldPastedText,
+  isImageOnlyClipboardHtml,
   shouldHandleAttachmentPaste,
   splitTransferredFiles,
 } from "./attachmentIntake";
@@ -557,7 +558,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     const plainText = data.getData("text/plain");
     if (
       folders.length > 0 ||
-      (pasted.length > 0 && shouldHandleAttachmentPaste({ files: pasted, plainText }))
+      (pasted.length > 0 &&
+        shouldHandleAttachmentPaste({
+          files: pasted,
+          plainText,
+          bypassAutoAttachment: bypass,
+          htmlIsOnlyImage:
+            plainText.length > 0 && isImageOnlyClipboardHtml(data.getData("text/html")),
+        }))
     ) {
       event.preventDefault();
       intake.addFolders(folders);

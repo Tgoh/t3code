@@ -105,26 +105,52 @@ export function fileAttachmentLimit(capabilities: ExecutionEnvironmentCapabiliti
   return advertised === undefined ? null : clampFileAttachmentUploadBytes(advertised);
 }
 
+const isOnlyFileNames = (text: string, files: ReadonlyArray<File>) => {
+  const names = new Set(files.map((file) => file.name));
+  return text
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0)
+    .every((line) => names.has(line));
+};
+
+/**
+ * A browser's Copy Image puts only an <img> in text/html; rich text sources put the text there.
+ * Follows isImageOnlyClipboardHtml in apps/web/src/components/chat/composerAttachmentFiles.ts.
+ */
+export function isImageOnlyClipboardHtml(html: string): boolean {
+  if (html.length === 0) return false;
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  return body.querySelector("img") !== null && (body.textContent ?? "").trim().length === 0;
+}
+
 /** Files win over the clipboard's text only when the text can't stand in for them. */
 export function shouldHandleAttachmentPaste(input: {
   readonly files: ReadonlyArray<File>;
   readonly plainText: string;
+  readonly bypassAutoAttachment?: boolean;
+  readonly htmlIsOnlyImage?: boolean;
 }): boolean {
+  // Paste as Text keeps the text even when the source also put an image of it on the clipboard.
+  if (input.bypassAutoAttachment && input.plainText.length > 0) return false;
   if (
-    input.files.some((file) => {
-      if (isDngFile(file)) return true;
-      const kind = classifyAttachmentFile(file);
-      return (
-        kind === "image" ||
-        kind === "unsupported-image" ||
-        isSvgAttachment({ name: file.name, mimeType: file.type })
-      );
-    })
+    input.files.some(
+      (file) => isDngFile(file) || isSvgAttachment({ name: file.name, mimeType: file.type }),
+    )
   ) {
     return true;
   }
-  if (input.plainText.length > 0) return false;
-  return input.files.some((file) => classifyAttachmentFile(file) === "file");
+  const hasImage = input.files.some((file) => {
+    const kind = classifyAttachmentFile(file);
+    return kind === "image" || kind === "unsupported-image";
+  });
+  if (input.plainText.length === 0) {
+    return hasImage || input.files.some((file) => classifyAttachmentFile(file) === "file");
+  }
+  // Rich text sources (Word, Pages) add a picture of the text. Copy Image adds the image URL as
+  // text beside an <img>, and a Finder copy adds the file names.
+  return (
+    hasImage && (input.htmlIsOnlyImage === true || isOnlyFileNames(input.plainText, input.files))
+  );
 }
 
 export function admitFiles(

@@ -101,8 +101,30 @@ describe("pasting", () => {
     const markdown = [file("notes.md", "text/markdown")];
     expect(shouldHandleAttachmentPaste({ files: markdown, plainText: "notes.md" })).toBe(false);
     expect(shouldHandleAttachmentPaste({ files: markdown, plainText: "" })).toBe(true);
+  });
+
+  it("attaches an image beside text only for Copy Image or a copied file, never for rich text", () => {
+    const shot = [file("shot.png", "image/png")];
+    expect(shouldHandleAttachmentPaste({ files: shot, plainText: "" })).toBe(true);
+    // Word and Pages put a picture of the copied text beside it.
+    expect(shouldHandleAttachmentPaste({ files: shot, plainText: "Quarterly notes" })).toBe(false);
     expect(
-      shouldHandleAttachmentPaste({ files: [file("shot.png", "image/png")], plainText: "shot" }),
+      shouldHandleAttachmentPaste({
+        files: shot,
+        plainText: "https://example.com/shot.png",
+        htmlIsOnlyImage: true,
+      }),
+    ).toBe(true);
+    expect(shouldHandleAttachmentPaste({ files: shot, plainText: "shot.png" })).toBe(true);
+    expect(
+      shouldHandleAttachmentPaste({
+        files: shot,
+        plainText: "shot.png",
+        bypassAutoAttachment: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldHandleAttachmentPaste({ files: [file("logo.svg", "image/svg+xml")], plainText: "x" }),
     ).toBe(true);
   });
 
