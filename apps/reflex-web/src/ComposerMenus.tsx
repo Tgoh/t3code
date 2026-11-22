@@ -205,7 +205,7 @@ function PermissionsPopup(props: {
       anchor={props.anchor}
       align={props.align}
       label="Permissions"
-      class="p-1"
+      class={`p-1 ${POPOVER_MOTION}`}
       onClose={props.onClose}
     >
       <PermissionsSection
@@ -270,7 +270,7 @@ export function PermissionsChip(props: { context?: boolean }) {
         <Dynamic component={mode().Icon} />
         <span class={LABEL}>{mode().Label}</span>
       </button>
-      <Show when={open() && trigger()}>
+      <Presence when={open() && trigger()}>
         {(anchor) => (
           <PermissionsPopup
             anchor={anchor()}
@@ -278,7 +278,7 @@ export function PermissionsChip(props: { context?: boolean }) {
             onClose={() => setOpen(false)}
           />
         )}
-      </Show>
+      </Presence>
     </>
   );
 }
@@ -951,7 +951,7 @@ function PickerFooter(props: { traits: ITraits | null }) {
         {mode().Label}
         <ChevronUp />
       </button>
-      <Show when={permissionsOpen() && permissions()}>
+      <Presence when={permissionsOpen() && permissions()}>
         {(anchor) => (
           <PermissionsPopup
             anchor={anchor()}
@@ -959,7 +959,7 @@ function PickerFooter(props: { traits: ITraits | null }) {
             onClose={() => setPermissionsOpen(false)}
           />
         )}
-      </Show>
+      </Presence>
     </div>
   );
 }

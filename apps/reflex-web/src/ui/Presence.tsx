@@ -45,19 +45,25 @@ export function Presence<T>(props: {
           return;
         }
         if (held() === undefined) return;
-        // A microtask, so the surfaces have their data-closing styles when their transitions are read.
-        queueMicrotask(() => {
-          const finished = [...elements].flatMap((element) =>
-            element.isConnected
-              ? element.getAnimations({ subtree: true }).map((animation) => animation.finished)
-              : [],
-          );
-          void Promise.allSettled(finished).then(() => {
-            if (run !== generation) return;
-            elements.clear();
-            setHeld(undefined);
-          });
-        });
+        // Closing mid-entrance cancels the entrance, whose promise settles before the exit has
+        // run, so the wait reads the transitions again until none is left.
+        const settle = async () => {
+          for (;;) {
+            const running = [...elements].flatMap((element) =>
+              element.isConnected ? element.getAnimations({ subtree: true }) : [],
+            );
+            if (running.length === 0 || run !== generation) return;
+            await Promise.allSettled(running.map((animation) => animation.finished));
+          }
+        };
+        queueMicrotask(
+          () =>
+            void settle().then(() => {
+              if (run !== generation) return;
+              elements.clear();
+              setHeld(undefined);
+            }),
+        );
       },
     ),
   );

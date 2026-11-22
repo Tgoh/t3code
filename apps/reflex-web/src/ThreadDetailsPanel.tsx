@@ -892,7 +892,7 @@ const Body = (props: IDetailsProps) => {
 
       <LineageSection threadId={session.state.ThreadId} />
 
-      <Show when={menu()}>
+      <Presence when={menu()}>
         {(open) => (
           <Portal>
             <Popup
@@ -1051,7 +1051,7 @@ const Body = (props: IDetailsProps) => {
             </Popup>
           </Portal>
         )}
-      </Show>
+      </Presence>
 
       <Presence when={committing() && git()}>
         {(held) => (

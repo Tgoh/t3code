@@ -64,14 +64,14 @@ export function MenuHeading(props: { children: JSX.Element }) {
 }
 
 /**
- * A popover's entrance and exit, for a `Popup` that replaces the surface's look with its own
- * `class`. Menus have none, as in stock. Follows PopoverPopup in apps/web/src/components/ui/popover.tsx.
+ * A popup's entrance and exit, for a `Popup` that replaces the surface's look with its own
+ * `class`. Menus use it too, where stock's have none. Follows PopoverPopup in
+ * apps/web/src/components/ui/popover.tsx.
  */
 export const POPOVER_MOTION =
   "transition-[scale,opacity] starting:scale-98 starting:opacity-0 data-closing:pointer-events-none data-closing:scale-98 data-closing:opacity-0";
 
-const SURFACE =
-  "fixed z-[120] flex max-h-[calc(100vh-16px)] min-w-52 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]";
+const SURFACE = `fixed z-[120] flex max-h-[calc(100vh-16px)] min-w-52 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPOVER_MOTION}`;
 
 const MARGIN = 8;
 

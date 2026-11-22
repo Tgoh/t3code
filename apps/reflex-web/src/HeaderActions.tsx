@@ -173,7 +173,7 @@ export function ThreadMenu(props: {
       >
         <Ellipsis />
       </IconButton>
-      <Show when={open() && button()}>
+      <Presence when={open() && button()}>
         {(anchor) => (
           <Popup
             portal
@@ -202,7 +202,7 @@ export function ThreadMenu(props: {
             </For>
           </Popup>
         )}
-      </Show>
+      </Presence>
     </>
   );
 }

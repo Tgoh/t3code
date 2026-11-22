@@ -461,7 +461,7 @@ export const Sidebar = Shell.provider(() => {
           <Ellipsis />
         </IconButton>
       </div>
-      <Show when={scopeMenu()}>
+      <Presence when={scopeMenu()}>
         {(at) => (
           <Popup x={at().X} y={at().Y} label="Filter projects" onClose={() => setScopeMenu(null)}>
             <MenuItem
@@ -485,8 +485,8 @@ export const Sidebar = Shell.provider(() => {
             </For>
           </Popup>
         )}
-      </Show>
-      <Show when={moreMenu()}>
+      </Presence>
+      <Presence when={moreMenu()}>
         {(at) => (
           <Popup
             x={at().X}
@@ -535,7 +535,7 @@ export const Sidebar = Shell.provider(() => {
             </Show>
           </Popup>
         )}
-      </Show>
+      </Presence>
       <Show when={endedReason()}>
         {(reason) => <p class={SIDEBAR_ERROR}>The shell stream ended: {reason()}</p>}
       </Show>
@@ -724,31 +724,37 @@ export const Sidebar = Shell.provider(() => {
           </Show>
         </ul>
       </Show>
-      <Show when={menuThread()} keyed>
-        {(thread) => (
-          <ThreadMenu
-            thread={thread}
-            x={menu()?.X ?? 0}
-            y={menu()?.Y ?? 0}
-            now={now()}
-            onRename={() => setRenaming(thread.id)}
-            onClose={() => setMenu(null)}
-          />
-        )}
-      </Show>
-      <Show when={menuProject()} keyed>
-        {(project) => (
-          <ProjectMenu
-            project={project}
-            x={projectMenu()?.X ?? 0}
-            y={projectMenu()?.Y ?? 0}
-            onRename={() => setRenamingProject(project.id)}
-            onRemove={() => setRemovingProject(project.id)}
-            onHide={() => void environment.setProjectHidden(project.id, true)}
-            onClose={() => setProjectMenu(null)}
-          />
-        )}
-      </Show>
+      <Presence when={menuThread()} keyed>
+        {(held) => {
+          const thread = held();
+          return (
+            <ThreadMenu
+              thread={thread}
+              x={menu()?.X ?? 0}
+              y={menu()?.Y ?? 0}
+              now={now()}
+              onRename={() => setRenaming(thread.id)}
+              onClose={() => setMenu(null)}
+            />
+          );
+        }}
+      </Presence>
+      <Presence when={menuProject()} keyed>
+        {(held) => {
+          const project = held();
+          return (
+            <ProjectMenu
+              project={project}
+              x={projectMenu()?.X ?? 0}
+              y={projectMenu()?.Y ?? 0}
+              onRename={() => setRenamingProject(project.id)}
+              onRemove={() => setRemovingProject(project.id)}
+              onHide={() => void environment.setProjectHidden(project.id, true)}
+              onClose={() => setProjectMenu(null)}
+            />
+          );
+        }}
+      </Presence>
       <Presence when={shell.state.Projects[removingProject() ?? ""]} keyed>
         {(project) => (
           <RemoveProjectDialog project={project()} onClose={() => setRemovingProject(null)} />
