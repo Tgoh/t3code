@@ -1,35 +1,34 @@
 # Todo
 
-Work Tam has queued for later, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead.
+Everything in the pipeline for the reflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead.
 
-## 1. Correctness
+## 1. Parity and polish
 
-Each item fixes data or work that's wrong today.
-
-- **Put state on the right side of the line, and start work from events.** The line is in `CLAUDE.md`: what causes the work, and whether a restore would bring that back. Two moves to main state are left, each waiting for its stage 4 item:
-  - **Git status** (`ThreadDetails.ts` `attach`), with the checkout selector. The details card mounts for every thread with a checkout, even while hidden, so the subscription already lasts as long as the thread is open. Open it from `selectThread` or a checkout change, on `ThreadSession` or a child entity. The branch list is per project and can go with it. The card's `createEffect` that refreshes status when it's shown goes with it.
-  - **Usage page**, with "Split `Environment`". `UsageView.tsx` starts `loadUsage` and `autoRefreshLimits` on mount; that item turns the page into a component feature opened by `openView`.
-
-## 2. Daily friction
-
-Nothing queued.
-
-## 3. Parity and polish
-
-- **Secret and link requests can't be answered in reflex.** Port stock's `SecretRequestCard` and the link-request card. Until then, answer them in stock web on 5733. Also listed in `issues.md` under "Skipped for the prototype".
-- **The "Working for" group doesn't look like stock.** In `TimelineResponse.tsx`, the work rows set no font size, so "Ran 6 commands" inherits the message text size. Stock's rows are `text-sm leading-relaxed` (`TimelineWorkGroupRows.tsx`). Reflex's row icons sit in a `size-6` box (`WORK_ICON` in `TimelineRows.tsx`), where stock's are `size-4`. The fold header shows a blue box after a click, where stock rings only on `focus-visible` (`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70`). Compare the whole group with stock in both states, collapsed and expanded, beside the same thread on 5733: sizes, colours, spacing, the summary text and the expanded command list.
-- **Dialog animations.** The Add project dialog has no open or close animation. Go through reflex's dialogs, popovers and menus, and compare each with stock's transitions.
+- **Secret and link requests can't be answered in reflex.** **In progress:** `reflex/secret-link-cards`. Port stock's `SecretRequestCard` and the link-request card. Until then, answer them in stock web on 5733. Also listed in `issues.md` under "Skipped for the prototype".
+- **The "Working for" group doesn't look like stock.** **In progress:** `reflex/workgroup-dialogs`. In `TimelineResponse.tsx`, the work rows set no font size, so "Ran 6 commands" inherits the message text size. Stock's rows are `text-sm leading-relaxed` (`TimelineWorkGroupRows.tsx`). Reflex's row icons sit in a `size-6` box (`WORK_ICON` in `TimelineRows.tsx`), where stock's are `size-4`. The fold header shows a blue box after a click, where stock rings only on `focus-visible` (`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70`). Compare the whole group with stock in both states, collapsed and expanded, beside the same thread on 5733: sizes, colours, spacing, the summary text and the expanded command list.
+- **Dialog animations.** **In progress:** `reflex/workgroup-dialogs`. Copy stock's dialog and popover motion. Menus keep a transition, which Tam asked for: stock's popover fade and scale, where stock's menus have none.
 - **Settings reflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
 
-## 4. Restructuring
+## 2. Treflex 0.2.0
+
+After stage 1's threads merge, since it touches tests and wiring across the client. Before stage 3, so the restructuring is built on 0.2.0.
+
+- **Upgrade to treflex 0.2.0.** All four packages were published to npm on 17 November. Depend on the published `treflex`, `treflex-solid` and `treflex-eslint` instead of the tarballs in `vendor/`, and delete the folder. That also ends `check:changed`'s "unused patches" failure. Read `docs/wip/done/release-0.2.0-breaking-changes.md` in the reflex repo first.
+  - `REPLICA_WRITERS` switches from `Name` to `Label`, and `testing/watchRuntime.ts` gives way to the strict test preset, which fails a test on any diag or failure it didn't expect.
+  - Move the minute clock to `provideExternal`/`external`. Then make the header's usage ring recompute on it, so a weekly window that resets shows straight away. Today the ring only redraws when the server pushes new provider data, about every five minutes.
+  - Add `treflex-eslint` to the `jsPlugins` in `vite.config.ts`, with only its type-free rules on: `treflex/named`, `treflex/no-yield-in-finally` and `treflex/no-global-open`. The typed rules throw under oxlint for lack of type information. See `docs/wip/13-external/lint-under-oxlint.md`.
+  - Prepare for the release after 0.2.0. There, rejections reach actions as copies with a native error type, so `instanceof ServerError` in `serverError()` stops matching and every server failure takes the bug route, silently in production. A development build reports the diag `effect/class-rejection` for each rejection with a class instance, and `createTestRuntime` fails on it. Run both once and fix every site. See `docs/wip/13-external/breaking-changes-since-0.2.0.md` in the reflex repo.
+
+## 3. Restructuring
 
 From an audit of how the port uses treflex 0.1.0. Most of the code already follows the treflex docs. What doesn't is two entities that each do several jobs, and parent views that work out data and pass it down. The first three items touch `ThreadSession` and `ThreadView`, so run them in one thread, in this order. The rest can run beside it.
 
 - **Split `ThreadSession`.** It owns the composer, queue, rewind, fork, diff panel, terminal, git and more. Make the diff panel a child entity that is minted on open and replaced or removed on close. That drops the re-checks after each wait in `openDiff` and `openBranchDiff`, the manual resets in `closeDiff`, and the reliance on `latest` to cancel stale loads. Make the terminal a child entity with its state in plain fields instead of the `Terminal/Attachment` transient. `GitWork` already has this shape. See "move long work onto a child entity" in the reflex repo's `docs/patterns.md`.
-- **Checkout and panel selectors.** `ThreadView`'s `ThreadBody` builds the checkout in a memo that compares with JSON, passes it down as a prop and into `ThreadDetails` component state, and passes it to every `GitWork` action. Add one `checkout` selector on `ThreadSession` and let `GitWork` read the checkout itself. Panel availability is worked out in both `Environment.panelShortcuts` and `ThreadBody`'s menu and launcher, so make it one selector too. `terminalLaunch`, `searchRoot` and `Dictation.recordingOptions` resolve the working directory separately, and should use the same selector. Move the git status subscription into main state here (stage 1's state item).
+- **Checkout and panel selectors.** `ThreadView`'s `ThreadBody` builds the checkout in a memo that compares with JSON, passes it down as a prop and into `ThreadDetails` component state, and passes it to every `GitWork` action. Add one `checkout` selector on `ThreadSession` and let `GitWork` read the checkout itself. Panel availability is worked out in both `Environment.panelShortcuts` and `ThreadBody`'s menu and launcher, so make it one selector too. `terminalLaunch`, `searchRoot` and `Dictation.recordingOptions` resolve the working directory separately, and should use the same selector.
+  - Move git status into main state here (`ThreadDetails.ts` `attach`). The details card mounts for every thread with a checkout, even while hidden, so the subscription already lasts as long as the thread is open. Open it from `selectThread` or a checkout change, on `ThreadSession` or a child entity. The branch list is per project and can go with it, and so does the card's `createEffect` that refreshes status when it's shown.
 - **Git's default-branch confirmation as an `ask`.** Replace `PendingDefaultBranch`, `continueDefaultBranch`, `cancelDefaultBranch` and the `confirmed` flag with one `ask` inside `runGitAction`, as `Rewind/Confirm` already works. The git buttons would show busy while the dialog is open.
-- **Split `Environment`.** Give dictation its own entity under `Local` that owns the `Voice/Dictation` resource and receiver. Move the voice model list (`VoiceModels.ts`, a settings-page component feature today) onto it: dictation's missing-model check and the settings page both care which models are installed, so keep one list. Load it when server dictation is in use, and keep it fresh with the existing receiver and poll, so a download's progress survives leaving the page. Make the archived and usage settings pages component features (`createComponentFeature`) whose data lives only while the page is open. That removes `Replica.Archived`, `Replica.Usage`, four `REPLICA_WRITERS` entries, and the two different ways the loads are triggered (`openView` and `onMount`).
-- **Thinner sidebar rows.** After stage 2's sidebar thread, which changes the same rows. `Sidebar.tsx`'s `card()` passes `ThreadCard` 14 props, most of them worked out per row. Let the card read from its thread, as timeline rows do, and keep only cross-row values in the parent, such as `mixedProviders` and the search highlight.
+- **Split `Environment`.** Give dictation its own entity under `Local` that owns the `Voice/Dictation` resource and receiver. Move the voice model list (`VoiceModels.ts`, a settings-page component feature today) onto it: dictation's missing-model check and the settings page both care which models are installed, so keep one list. Load it when server dictation is in use, and keep it fresh with the existing receiver and poll, so a download's progress survives leaving the page. Make the archived and usage settings pages component features (`createComponentFeature`) whose data lives only while the page is open. That removes `Replica.Archived`, `Replica.Usage`, four `REPLICA_WRITERS` entries, and the two different ways the loads are triggered (`openView` and `onMount`), including `UsageView.tsx`'s `loadUsage` and `autoRefreshLimits` on mount.
+- **Thinner sidebar rows.** `Sidebar.tsx`'s `card()` passes `ThreadCard` 14 props, most of them worked out per row. Let the card read from its thread, as timeline rows do, and keep only cross-row values in the parent, such as `mixedProviders` and the search highlight.
 - **Drop the duplicate keybindings stream.** `Server/Keybindings` (`Infrastructure/serverKeybindings.ts`) opens a second subscription for keybindings that `Server/Config` already writes to `Replica.Config.keybindings`. Delete the resource and have `App.tsx` read the config.
 - **Add project's settings come from the config.** `addProjectSettingsImpl` fetches the server config again to read four values that `Replica.Config` already holds (`addProjectBaseDirectory`, `ghqCloneLayout`, `newProjectsRoot`, the platform). Make them a selector over the config and delete the effect, as was done for editors. Add project's folder browsing stays in its component state.
 - **Smaller items.**
@@ -41,15 +40,15 @@ From an audit of how the port uses treflex 0.1.0. Most of the code already follo
   - Move `runScript`'s open-the-terminal decision from the view into the action.
   - Give features hand-picked ids instead of `import.meta.url`.
 
-## 5. Performance
+## 4. Performance
 
-After stage 4, which also changes `ThreadView`.
+After stage 3, which also changes `ThreadView`.
 
 - **Virtualize the timeline.** The timeline window only grows as you scroll up, so a long thread scrolled back through keeps every row mounted: 162 MB of heap against stock's 60 MB in `docs/benchmarks.md`. When the next turn starts, the window collapses to the tail in one long task, 184 ms unthrottled and about 860 ms at 4× CPU. Prototype on [virtua](https://github.com/inokawa/virtua)'s Solid list first. Then rerun the benchmark's long-thread case and check by hand that reflex still matches stock in four cases: staying pinned to the bottom while streaming, Load earlier without a jump, jump-to-row, and a streaming row that grows. If virtua can't match stock in one of those, port `@legendapp/list` (MIT): its `src/core` is framework-free, and only its React container layer needs a Solid rewrite. Carry over T3 Code's `patches/@legendapp__list@3.7.2.patch` too.
 
-## Whenever it ships
+## Waiting on treflex
 
-- **Treflex 0.2.0.** Once it ships, re-vendor it. Read `docs/wip/done/release-0.2.0-breaking-changes.md` in the reflex repo first. `REPLICA_WRITERS` has to switch from `Name` to `Label`, and `testing/watchRuntime.ts` gives way to the strict test preset. Then move the minute clock to `provideExternal`/`external`. Past 0.2.0, rejections reach actions as copies with a native error type, so `instanceof ServerError` in `serverError()` stops matching and every server failure takes the bug route. In production that's silent. A development build reports the diag `effect/class-rejection` for each rejection with a class instance, and `createTestRuntime` fails on it. So run the tests on `createTestRuntime` and the dev build once to find every site before upgrading. See `docs/wip/13-external/breaking-changes-since-0.2.0.md` in the reflex repo. Also vendor `treflex-eslint` and add it to the `jsPlugins` in `vite.config.ts`, with only its type-free rules on: `treflex/named`, `treflex/no-yield-in-finally` and `treflex/no-global-open`. The typed rules throw under oxlint for lack of type information. See `docs/wip/13-external/lint-under-oxlint.md`.
+- **Checks that keep agents off React habits.** Proposed to treflex's Main thread: a development diag in treflex-solid for a dispatch into main state from inside a component or effect, and type-free lint rules in `treflex-eslint` (no main-state work in lifecycle callbacks, a reason on every lifecycle callback, no view timers writing state, no JSON comparisons in memos). When treflex ships them, turn them on here and fix what they find.
 
 ## Housekeeping
 
