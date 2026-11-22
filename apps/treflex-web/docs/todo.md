@@ -83,6 +83,12 @@ After stage 2, which also changes `ThreadView`.
 
 Any time; none of it touches the client.
 
+- **Make `vp run check:changed` pass for this app.** Every thread reports the same two failures, which hide real ones.
+  - Its test step runs this app's tests in the root vitest project, which lacks the app's `solid` and `browser` resolve conditions, so about 140 tests fail there that pass from `apps/treflex-web`. Give the app its own vitest project in the root config, or exclude it from the root run and have `check:changed` run it from its folder.
+  - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.2.0.tgz`.
+
+  Both mean editing upstream's root config, so keep the change small. See "Setup: `vp run check:changed` fails this app's tests" in `issues.md`.
+
 - **Record the verdicts.** Add treflex's verdicts to the "Feedback for treflex" section of `issues.md`. The friction write-up is at `G:\Sorted\Code\t3code-dev-home\notes\treflex-friction-from-t3code-port.md`, and the treflex side's verdicts are in the reflex repo's `docs/wip` (commit 2b37348).
 - **Server start time.** On a server restart, check whether the roughly 50 seconds between launch and the first log line comes back. See `G:\Sorted\Code\t3code-dev-home\dev-stack\server.log`.
 - **Empty worktree folders.** Delete the leftovers under `G:\Sorted\Code\t3code-dev-home\worktrees\t3code`: `reflex-landscape-header-*`, `reflex-inline-media-*` and `reflex-idle-compaction--c2d629098b4fd778`.
