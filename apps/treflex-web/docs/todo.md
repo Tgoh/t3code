@@ -6,8 +6,8 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 Nothing hand-rolled that stock already has. Before parity and the missing features, so new work uses the shared components.
 
-- **Shared components, one to one with stock's `components/ui`.** For each stock `apps/web/src/components/ui` component the client uses, a treflex counterpart in `src/ui/` with the same variants and class strings, listed in a README table like "Logic copied from stock". Replace hand-rolled markup that has a stock component. The most important of the four.
-- **All of stock's tokens.** Copy every custom property from `apps/web/src/index.css`, and its `--color-*` theme lines, into `styles.css` and `index.css`, so a copied class always resolves. Stock has about 275 and treflex about 148; the missing ones include `icon-muted`, `placeholder`, `message-foreground`, `sidebar-row-selected` and `warning-surface`.
+- **Shared components, one to one with stock's `components/ui`.** **In progress:** `treflex/style-components`, after the tokens. For each stock `apps/web/src/components/ui` component the client uses, a treflex counterpart in `src/ui/` with the same variants and class strings, listed in a README table like "Logic copied from stock". Replace hand-rolled markup that has a stock component. The most important of the four.
+- **All of stock's tokens.** **In progress:** `treflex/style-components`, first. Copy every custom property from `apps/web/src/index.css`, and its `--color-*` theme lines, into `styles.css` and `index.css`, so a copied class always resolves. Stock has about 275 and treflex about 148; the missing ones include `icon-muted`, `placeholder`, `message-foreground`, `sidebar-row-selected` and `warning-surface`.
 - **Styles in the sync.** Each `/syncupstream` diffs stock's `index.css` and the `components/ui` files that treflex mirrors, and ports their class changes, as it ports logic. Update the skill.
 - **A visual drift check.** A script that screenshots key views (sidebar, thread, composer, settings, dialogs) in stock and treflex on the same server and data, and flags differences above a threshold.
 
