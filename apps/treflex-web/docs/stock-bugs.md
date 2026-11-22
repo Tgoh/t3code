@@ -2,6 +2,13 @@
 
 Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) while porting or comparing. Some may be worth reporting or fixing upstream. Each entry says where the bug is, what goes wrong, whether it was reproduced, and whether treflex has the same bug.
 
+## Server: a restart drops pending idle compactions
+
+- **Where:** `apps/server/src/orchestration-v2/IdleCompactionService.ts`. Timers live in memory, as its doc comment says.
+- **What goes wrong:** a server restart within the hour after a turn completes drops that thread's compaction, so its next turn rereads the whole context uncached.
+- **Status:** reproduced on 2026-11-22: the Notes Main thread's turn finished at 18:35, and the 18:40 and 18:43 restarts lost its 19:30 compaction. Upstream has an open fix by a maintainer, pingdotgg/t3code#27926 (issue #27915). Its commits apply to current main with test-file conflicts only, but its ProjectionStore candidate test asserts a row order the query doesn't guarantee, and failed until switched to `sameDeepMembers`.
+- **Treflex:** the server is stock's, so affected until #27926 lands and a sync brings it in.
+
 ## Connection: a replaced session's config stream never ends
 
 - **Where:** `packages/client-runtime/src/rpc/session.ts`, `serverConfigEvents` behind `RpcSession.subscribeServerConfig`.
