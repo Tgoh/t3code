@@ -43,6 +43,13 @@ describe("the overlay stack", () => {
       expect(closed).toEqual(["menu:outside"]);
       stack.press(node());
       expect(closed).toEqual(["menu:outside", "menu:outside", "popover:outside"]);
+      const backdrop = node();
+      stack.push({
+        ...overlay([], closed, "modal menu"),
+        backdrop: (target) => target === backdrop,
+      });
+      stack.press(backdrop);
+      expect(closed.slice(3)).toEqual(["modal menu:outside"]);
       dispose();
     });
   });

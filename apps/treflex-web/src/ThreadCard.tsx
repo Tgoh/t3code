@@ -40,7 +40,16 @@ import Shell, {
 } from "./Shell";
 import { modelDisplay } from "./ThreadSession";
 import { relativeTime, timeUntil } from "./timestamps";
-import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
+import {
+  MenuItem,
+  MenuItemDetail,
+  MenuPopup,
+  MenuSeparator,
+  MenuShortcut,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+} from "./ui/Menu";
 import { hoverCard } from "./ui/Tooltip";
 import { longPress, useSidebarSheet } from "./viewport";
 
@@ -524,91 +533,102 @@ export function ThreadMenu(props: {
       ? []
       : resolveSnoozePresets(new Date(now())),
   );
-  const choose = (command: IThreadCommand) => {
-    environment.threadCommand(props.thread.id, command);
-    props.onClose();
-  };
+  const run = (command: IThreadCommand) => environment.threadCommand(props.thread.id, command);
   return (
-    <Popup x={props.x} y={props.y} label="Thread actions" onClose={props.onClose}>
-      <For each={presets()}>
-        {(preset) => (
-          <MenuItem
-            icon={<Clock />}
-            label={preset.label}
-            detail={preset.whenLabel}
-            onSelect={() => choose({ Kind: "snooze", Until: preset.snoozedUntil })}
-          />
-        )}
-      </For>
+    <MenuPopup
+      anchor={{ X: props.x, Y: props.y }}
+      side="bottom"
+      align="start"
+      sideOffset={0}
+      label="Thread actions"
+      onClose={props.onClose}
+    >
+      <Show when={presets().length > 0}>
+        <MenuSub>
+          <MenuSubTrigger>
+            <Clock />
+            Snooze
+          </MenuSubTrigger>
+          <MenuSubPopup>
+            <For each={presets()}>
+              {(preset) => (
+                <MenuItem onClick={() => run({ Kind: "snooze", Until: preset.snoozedUntil })}>
+                  {preset.label}
+                  <MenuItemDetail>{preset.whenLabel}</MenuItemDetail>
+                </MenuItem>
+              )}
+            </For>
+          </MenuSubPopup>
+        </MenuSub>
+      </Show>
       <Show when={snoozed()}>
-        <MenuItem
-          icon={<AlarmClockOff />}
-          label="Wake now"
-          onSelect={() => choose({ Kind: "unsnooze" })}
-        />
+        <MenuItem onClick={() => run({ Kind: "unsnooze" })}>
+          <AlarmClockOff />
+          Wake now
+        </MenuItem>
       </Show>
       <Show when={presets().length > 0 || snoozed()}>
         <MenuSeparator />
       </Show>
       <Switch>
         <Match when={settled()}>
-          <MenuItem
-            icon={<Undo2 />}
-            label="Un-settle"
-            onSelect={() => choose({ Kind: "unsettle" })}
-          />
+          <MenuItem onClick={() => run({ Kind: "unsettle" })}>
+            <Undo2 />
+            Un-settle
+          </MenuItem>
         </Match>
         <Match when={environment.state.Local.SelectedThreadId === props.thread.id}>
-          <MenuItem
-            icon={<Check />}
-            label="Settle"
-            onSelect={() => {
-              environment.settleThread(props.thread.id);
-              props.onClose();
-            }}
-          />
+          <MenuItem onClick={() => environment.settleThread(props.thread.id)}>
+            <Check />
+            Settle
+          </MenuItem>
         </Match>
       </Switch>
       <Show
         when={pinned()}
-        fallback={<MenuItem icon={<Pin />} label="Pin" onSelect={() => choose({ Kind: "pin" })} />}
+        fallback={
+          <MenuItem onClick={() => run({ Kind: "pin" })}>
+            <Pin />
+            Pin
+          </MenuItem>
+        }
       >
-        <MenuItem icon={<PinOff />} label="Unpin" onSelect={() => choose({ Kind: "unpin" })} />
+        <MenuItem onClick={() => run({ Kind: "unpin" })}>
+          <PinOff />
+          Unpin
+        </MenuItem>
       </Show>
-      <MenuItem
-        icon={<PenLine />}
-        label="Rename"
-        detail={navigation.shortcut("thread.rename") ?? undefined}
-        onSelect={() => {
-          props.onRename();
-          props.onClose();
-        }}
-      />
-      <MenuItem
-        icon={<Mail />}
-        label="Mark unread"
-        onSelect={() => choose({ Kind: "markUnread" })}
-      />
+      <MenuItem onClick={props.onRename}>
+        <PenLine />
+        Rename
+        <Show when={navigation.shortcut("thread.rename")}>
+          {(shortcut) => <MenuShortcut>{shortcut()}</MenuShortcut>}
+        </Show>
+      </MenuItem>
+      <MenuItem onClick={() => run({ Kind: "markUnread" })}>
+        <Mail />
+        Mark unread
+      </MenuItem>
       <MenuSeparator />
       <Show
         when={confirmingDelete()}
         fallback={
           <MenuItem
-            icon={<Trash2 />}
-            label="Delete"
-            danger
-            onSelect={() => setConfirmingDelete(true)}
-          />
+            variant="destructive"
+            closeOnClick={false}
+            onClick={() => setConfirmingDelete(true)}
+          >
+            <Trash2 />
+            Delete
+          </MenuItem>
         }
       >
-        <MenuItem
-          icon={<Trash2 />}
-          label="Delete this thread?"
-          detail="Can't be undone"
-          danger
-          onSelect={() => choose({ Kind: "delete" })}
-        />
+        <MenuItem variant="destructive" onClick={() => run({ Kind: "delete" })}>
+          <Trash2 />
+          Delete this thread?
+          <MenuItemDetail>Can't be undone</MenuItemDetail>
+        </MenuItem>
       </Show>
-    </Popup>
+    </MenuPopup>
   );
 }

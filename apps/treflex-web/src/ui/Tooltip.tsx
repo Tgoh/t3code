@@ -1,16 +1,5 @@
 // @effect-diagnostics globalTimers:off -- View-only hover delays, outside any Effect runtime.
 import {
-  autoUpdate,
-  computePosition,
-  flip,
-  limitShift,
-  type Middleware,
-  offset,
-  type Placement,
-  shift,
-  size,
-} from "@floating-ui/dom";
-import {
   type Component,
   createComponent,
   createRoot,
@@ -22,13 +11,11 @@ import {
   type Owner,
 } from "solid-js";
 
+import { follow, type IAlign, type IPlacement, type ISide } from "./floating";
 import { Presence, usePresence } from "./Presence";
 
-type ISide = "top" | "bottom" | "left" | "right";
-type IAlign = "start" | "center" | "end";
 type IVariant = "default" | "glass" | "code";
 
-const COLLISION_PADDING = 5;
 const SIDE_OFFSET = 4;
 const OPEN_DELAY_MS = 600;
 const REOPEN_WINDOW_MS = 400;
@@ -89,74 +76,11 @@ function describe(trigger: HTMLElement, present: boolean): void {
   else trigger.removeAttribute("aria-describedby");
 }
 
-function middleware(side: ISide, align: IAlign, sideOffset: number): Middleware[] {
-  // Base UI's one-pixel bias towards the requested side, on flip() alone.
-  const pad = COLLISION_PADDING + 1;
-  const flipper = flip({
-    padding: {
-      top: pad + (side === "bottom" ? 1 : 0),
-      right: pad + (side === "left" ? 1 : 0),
-      bottom: pad + (side === "top" ? 1 : 0),
-      left: pad + (side === "right" ? 1 : 0),
-    },
-    mainAxis: true,
-    crossAxis: "alignment",
-    fallbackAxisSideDirection: "end",
-  });
-  const shifter = shift({
-    padding: COLLISION_PADDING,
-    mainAxis: true,
-    crossAxis: false,
-    limiter: limitShift(),
-  });
-  return [
-    offset({ mainAxis: sideOffset }),
-    ...(align === "center" ? [shifter, flipper] : [flipper, shifter]),
-    size({
-      padding: COLLISION_PADDING,
-      apply({ elements, availableWidth, availableHeight }) {
-        elements.floating.style.setProperty("--available-width", `${availableWidth}px`);
-        elements.floating.style.setProperty("--available-height", `${availableHeight}px`);
-      },
-    }),
-  ];
-}
-
-async function place(positioner: HTMLElement, trigger: HTMLElement): Promise<void> {
-  const side = (trigger.dataset.tipSide as ISide | undefined) ?? "top";
-  const align = (trigger.dataset.tipAlign as IAlign | undefined) ?? "center";
-  const sideOffset = Number(trigger.dataset.tipOffset ?? SIDE_OFFSET);
-  const placement: Placement = align === "center" ? side : `${side}-${align}`;
-  const result = await computePosition(trigger, positioner, {
-    strategy: "fixed",
-    placement,
-    middleware: middleware(side, align, sideOffset),
-  });
-  const [placedSide, placedAlign] = result.placement.split("-") as [ISide, IAlign | undefined];
-  const vertical = placedSide === "top" || placedSide === "bottom";
-  const shifted =
-    Math.abs((vertical ? result.middlewareData.shift?.x : result.middlewareData.shift?.y) ?? 0) > 1;
-  let cross: string;
-  if (placedAlign !== undefined && !shifted) cross = placedAlign === "start" ? "0%" : "100%";
-  else {
-    const anchor = trigger.getBoundingClientRect();
-    cross = vertical
-      ? `${Math.max(0, Math.min(anchor.x + anchor.width / 2 - result.x, positioner.offsetWidth))}px`
-      : `${Math.max(0, Math.min(anchor.y + anchor.height / 2 - result.y, positioner.offsetHeight))}px`;
-  }
-  const along =
-    placedSide === "top" || placedSide === "left"
-      ? `calc(100% + ${sideOffset}px)`
-      : `${-sideOffset}px`;
-  positioner.style.left = `${result.x}px`;
-  positioner.style.top = `${result.y}px`;
-  positioner.style.setProperty(
-    "--transform-origin",
-    vertical ? `${cross} ${along}` : `${along} ${cross}`,
-  );
-  positioner.dataset.side = placedSide;
-  positioner.dataset.align = placedAlign ?? "center";
-}
+const tipPlacement = (trigger: HTMLElement): IPlacement => ({
+  side: (trigger.dataset.tipSide as ISide | undefined) ?? "top",
+  align: (trigger.dataset.tipAlign as IAlign | undefined) ?? "center",
+  sideOffset: Number(trigger.dataset.tipOffset ?? SIDE_OFFSET),
+});
 
 function watchText(trigger: HTMLElement, onText: (text: string | undefined) => void): () => void {
   const observer = new MutationObserver(() => onText(trigger.dataset.tip));
@@ -164,22 +88,22 @@ function watchText(trigger: HTMLElement, onText: (text: string | undefined) => v
   return () => observer.disconnect();
 }
 
-function follow(positioner: HTMLElement, trigger: HTMLElement, onLost: () => void): () => void {
+function followTip(positioner: HTMLElement, trigger: HTMLElement, onLost: () => void): () => void {
   let placed = false;
-  return autoUpdate(trigger, positioner, () => {
-    if (!trigger.isConnected) {
-      onLost();
-      return;
-    }
-    void place(positioner, trigger).then(() => {
+  return follow(
+    positioner,
+    trigger,
+    () => tipPlacement(trigger),
+    onLost,
+    () => {
       if (placed) return;
       placed = true;
       // The first position lands before the first frame; reading layout here commits it, so the
       // top/left transition only plays on later moves instead of sliding in from the corner.
       positioner.getBoundingClientRect();
       positioner.style.removeProperty("transition");
-    });
-  });
+    },
+  );
 }
 
 function renderCard(card: ICard): JSX.Element {
@@ -207,7 +131,7 @@ function TipPopup(props: { tip: IOpenTip; onLost: () => void }) {
   const [text, setText] = createSignal(trigger.dataset.tip);
   onMount(() => {
     const element = positioner();
-    if (element !== undefined) onCleanup(follow(element, trigger, () => props.onLost()));
+    if (element !== undefined) onCleanup(followTip(element, trigger, () => props.onLost()));
     if (card !== undefined) return;
     onCleanup(
       watchText(trigger, (next) => {

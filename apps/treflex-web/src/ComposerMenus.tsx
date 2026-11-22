@@ -1,5 +1,5 @@
 import { selectableProviderOptionChoices } from "@t3tools/client-runtime/model-traits";
-import { type Component, createMemo, createSignal, For, type JSX, onMount, Show } from "solid-js";
+import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import { hasProviderIcon, ProviderIcon } from "./brand";
@@ -21,7 +21,8 @@ import {
 } from "./icons";
 import type { IWireRuntimeMode } from "./Infrastructure/commandEffects";
 import { arrowStep, focusStep } from "./listNavigation";
-import { Popup, POPOVER_MOTION } from "./ui/Menu";
+import { MenuPopup, MenuRadioGroup, MenuRadioItem, openMenuFromKeys } from "./ui/Menu";
+import { PopoverPopup } from "./ui/Popover";
 import { Presence } from "./ui/Presence";
 import { Segment, Segmented } from "./ui/Segmented";
 import { MenuSwitch } from "./ui/Switch";
@@ -48,7 +49,7 @@ import ThreadSession from "./ThreadSession";
 // Labels, descriptions and icons copy apps/web/src/components/chat/runtimeModeConfig.ts.
 export const RUNTIME_MODE_CONFIG: Record<
   IWireRuntimeMode,
-  { Label: string; Description: string; Icon: Component }
+  { Label: string; Description: string; Icon: Component<{ class?: string }> }
 > = {
   "approval-required": {
     Label: "Supervised",
@@ -72,8 +73,8 @@ export const RUNTIME_MODE_CONFIG: Record<
   },
 };
 
-const MARGIN = 8;
-const GAP = 4;
+const PERMISSION_ITEM =
+  "flex h-6 flex-1 cursor-pointer items-center justify-center text-muted-foreground outline-none first:rounded-l-md last:rounded-r-md data-disabled:cursor-not-allowed data-disabled:opacity-40 data-checked:bg-input/72 data-checked:text-foreground data-highlighted:text-foreground not-data-checked:data-highlighted:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 const OPEN_HOVER =
   "hover:bg-foreground/9 hover:text-foreground aria-expanded:bg-foreground/9 aria-expanded:text-foreground";
@@ -96,43 +97,6 @@ const PICKER_GRID =
 const boltClass = (ultra: boolean) =>
   ultra ? "fill-current text-primary" : "fill-current text-warning";
 
-/** A popup that opens above its anchor, portalled so the composer's glass can't clip it. */
-function Anchored(props: {
-  anchor: HTMLElement;
-  align: "start" | "end";
-  label: string;
-  class: string;
-  onClose: () => void;
-  children: JSX.Element;
-}) {
-  const place = (popup: HTMLElement) => {
-    const rect = props.anchor.getBoundingClientRect();
-    const width = popup.offsetWidth;
-    const left = props.align === "start" ? rect.left : rect.right - width;
-    popup.style.left = `${Math.max(MARGIN, Math.min(left, window.innerWidth - width - MARGIN))}px`;
-    popup.style.bottom = `${window.innerHeight - rect.top + GAP}px`;
-    popup.style.maxHeight = `${rect.top - GAP - MARGIN}px`;
-  };
-  return (
-    <Popup
-      portal
-      role="dialog"
-      class={`fixed z-[120] flex flex-col overflow-hidden rounded-xl border border-border bg-popover/(--glass-opacity) text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) ${props.class}`}
-      label={props.label}
-      anchor={props.anchor}
-      place={place}
-      onClose={(reason) => {
-        // Closing unmounts the <Show> the anchor comes from, so it's read first.
-        const anchor = props.anchor;
-        props.onClose();
-        if (reason === "escape") anchor.focus();
-      }}
-    >
-      {props.children}
-    </Popup>
-  );
-}
-
 function PermissionsSection(props: {
   mode: IWireRuntimeMode;
   modes: ReadonlyArray<IWireRuntimeMode>;
@@ -140,47 +104,55 @@ function PermissionsSection(props: {
 }) {
   const [preview, setPreview] = createSignal<IWireRuntimeMode | null>(null);
   const shown = () => RUNTIME_MODE_CONFIG[preview() ?? props.mode];
-  const [group, setGroup] = createSignal<HTMLDivElement>();
+  const [section, setSection] = createSignal<HTMLDivElement>();
   onMount(() =>
-    group()?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus({ preventScroll: true }),
+    section()
+      ?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')
+      ?.focus({ preventScroll: true }),
   );
   return (
-    <div class="grid w-72 gap-1.5 px-2 py-1.5">
+    <div class="grid w-72 gap-1.5 px-2 py-1.5" ref={setSection}>
       <div class={`${SMALL_MUTED} font-medium`}>Permissions</div>
-      <Segmented
-        role="radiogroup"
+      <MenuRadioGroup
         aria-label="Permissions"
-        ref={setGroup}
+        value={props.mode}
+        onValueChange={(value) => {
+          const picked = props.modes.find((mode) => mode === value);
+          if (picked !== undefined) props.onPick(picked);
+        }}
+        class="flex rounded-lg bg-input/40 p-0.5"
+        // Menus navigate with Up/Down only; the row reads horizontally, so Left/Right move too.
         onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
           const items = Array.from(
-            event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'),
+            event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
           );
           const index = items.findIndex((item) => item === document.activeElement);
           const next = items[index + (event.key === "ArrowRight" ? 1 : -1)];
           if (index < 0 || next === undefined) return;
           event.preventDefault();
+          event.stopPropagation();
           next.focus();
         }}
       >
         <For each={props.modes}>
           {(mode) => (
-            <Segment
-              role="radio"
-              aria-checked={mode === props.mode}
+            <MenuRadioItem
+              value={mode}
+              closeOnClick
+              label={RUNTIME_MODE_CONFIG[mode].Label}
               aria-label={RUNTIME_MODE_CONFIG[mode].Label}
-              tabIndex={mode === props.mode ? 0 : -1}
+              class={PERMISSION_ITEM}
               onPointerEnter={() => setPreview(mode)}
               onPointerLeave={() => setPreview(null)}
               onFocus={() => setPreview(mode)}
               onBlur={() => setPreview(null)}
-              onClick={() => props.onPick(mode)}
             >
-              <Dynamic component={RUNTIME_MODE_CONFIG[mode].Icon} />
-            </Segment>
+              <Dynamic component={RUNTIME_MODE_CONFIG[mode].Icon} class="size-3.5" />
+            </MenuRadioItem>
           )}
         </For>
-      </Segmented>
+      </MenuRadioGroup>
       <div class="grid gap-0.5" aria-hidden="true">
         <span
           class="text-[14px] text-muted-foreground data-current:text-foreground"
@@ -201,24 +173,13 @@ function PermissionsPopup(props: {
 }) {
   const session = ThreadSession.use();
   return (
-    <Anchored
-      anchor={props.anchor}
-      align={props.align}
-      label="Permissions"
-      class={`p-1 ${POPOVER_MOTION}`}
-      onClose={props.onClose}
-    >
+    <MenuPopup anchor={props.anchor} side="top" align={props.align} onClose={props.onClose}>
       <PermissionsSection
         mode={session.effectiveRuntimeMode()}
         modes={session.runtimeModes()}
-        onPick={(picked) => {
-          session.setRuntimeMode(picked);
-          const anchor = props.anchor;
-          props.onClose();
-          anchor.focus();
-        }}
+        onPick={(picked) => session.setRuntimeMode(picked)}
       />
-    </Anchored>
+    </MenuPopup>
   );
 }
 
@@ -263,9 +224,11 @@ export function PermissionsChip(props: { context?: boolean }) {
         }
         ref={setTrigger}
         aria-label={`Permissions: ${mode().Label}`}
+        aria-haspopup="menu"
         aria-expanded={open()}
         data-tip={`Permissions: ${mode().Label}. ${mode().Description}`}
         onClick={() => setOpen(!open())}
+        onKeyDown={(event) => openMenuFromKeys(event, () => setOpen(true))}
       >
         <Dynamic component={mode().Icon} />
         <span class={LABEL}>{mode().Label}</span>
@@ -308,6 +271,7 @@ export function ModelPicker() {
         class={`model-trigger group/trigger ${COMPOSER_CONTROL}`}
         ref={setTrigger}
         aria-label={`Model: ${name()}${suffix()?.Detail ? `, ${suffix()!.Detail}` : ""}`}
+        aria-haspopup="dialog"
         aria-expanded={open()}
         data-tip={suffix()?.Detail ?? undefined}
         onClick={() => setOpen(!open())}
@@ -333,15 +297,26 @@ export function ModelPicker() {
       </button>
       <Presence when={open() && trigger()}>
         {(anchor) => (
-          <Anchored
+          <PopoverPopup
             anchor={anchor()}
+            side="top"
             align="end"
+            collisionAvoidance={{ side: "shift", align: "shift" }}
+            padding="none"
+            touchBackdrop
+            initialFocus={(popup) =>
+              window.matchMedia("(pointer: coarse)").matches
+                ? null
+                : popup.querySelector<HTMLElement>("input")
+            }
             label="Model"
-            class={`h-96 w-[min(34rem,calc(100vw-16px))] max-sm:h-128 ${POPOVER_MOTION}`}
+            class="before:hidden"
             onClose={() => setOpen(false)}
           >
-            <PickerContent traits={traits()} />
-          </Anchored>
+            <div class="flex h-96 max-h-(--available-height) w-[min(34rem,calc(100vw-16px))] flex-col max-sm:h-128">
+              <PickerContent traits={traits()} />
+            </div>
+          </PopoverPopup>
         )}
       </Presence>
     </>
@@ -951,8 +926,10 @@ function PickerFooter(props: { traits: ITraits | null }) {
         class={`ml-auto flex h-7 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-0 text-[12px] text-muted-foreground ${OPEN_HOVER} [&_svg]:size-3.5 [&_svg:last-child]:size-3`}
         ref={setPermissions}
         aria-label={`Permissions: ${mode().Label}`}
+        aria-haspopup="menu"
         aria-expanded={permissionsOpen()}
         onClick={() => setPermissionsOpen(!permissionsOpen())}
+        onKeyDown={(event) => openMenuFromKeys(event, () => setPermissionsOpen(true))}
       >
         <Dynamic component={mode().Icon} />
         {mode().Label}

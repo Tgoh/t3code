@@ -8,6 +8,8 @@ export interface IOverlay {
   contains: (node: Node) => boolean;
   /** A dialog: it holds back app shortcuts, and a press outside it closes nothing. */
   modal?: boolean;
+  /** Its backdrop: a press there closes it and nothing under it. */
+  backdrop?: (node: Node) => boolean;
 }
 
 /** What's open on top of the screen, newest last: menus, popovers and dialogs. */
@@ -42,6 +44,7 @@ export function createOverlayStack(): IOverlayStack {
       for (const overlay of [...stack()].reverse()) {
         if (overlay.contains(target) || overlay.modal === true) return;
         overlay.close("outside");
+        if (overlay.backdrop?.(target) === true) return;
       }
     },
   };

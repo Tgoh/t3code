@@ -216,6 +216,10 @@ Dictation transcribes on this client's own server with a local model, as stock's
 - No dictating into a question's custom answer, the timeline's comment editors or the preview annotator.
 - Tested in desktop Chromium with `getUserMedia` stubbed to play a recorded WAV through Web Audio, on the dev server and on the production build with its service worker in control, both streaming and buffered, and a send after dictation on Haiku. A real iPhone isn't tested. iOS needs the HTTPS (Tailscale) address, may ask for the microphone again in each home-screen app session, and ends the capture when the app goes to the background, which shows as "Mic disconnected" with Record again.
 
+## Unmatched: menus
+
+Base UI's press-and-drag selection isn't built: pressing a menu trigger, dragging onto an item and releasing doesn't choose it. Click the trigger, then the item.
+
 ## Open: reading `packages/` restarts the dev server on Windows
 
 `vp run dev` runs the server under `node --watch` over `src`, `packages` and `package.json`. On this machine a recursive `fs.watch` reports `change` on a directory that is only listed, with nothing written, so any tool that lists a directory under those paths restarts the server and interrupts a running turn. A probe watching `packages/` while the app's gates ran saw one `change` for every package during `tsc --noEmit`, directly or through `vp run typecheck`, and the server's process id changed, sometimes twice. `vp test run`, `vp lint` and `vp fmt` raised no events. A separate directory showed the same event from a plain `ls`, and none from reading a file. Avoid typechecking during a turn. Daily use needs a server run without `--watch`.

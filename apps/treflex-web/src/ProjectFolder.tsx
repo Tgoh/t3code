@@ -23,7 +23,7 @@ import type { IWireProject } from "./Infrastructure/wire";
 import Shell, { type IProjectFolder, isBusy, sidebarStatus } from "./Shell";
 import { CARD_ACTION, RenameInput } from "./ThreadCard";
 import { Button } from "./ui/Button";
-import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
+import { MenuItem, MenuPopup, MenuSeparator } from "./ui/Menu";
 import {
   Dialog,
   DialogDescription,
@@ -45,53 +45,55 @@ export function ProjectMenu(props: {
   const environment = Environment.use();
   const command = (command: IProjectCommand) =>
     environment.projectCommand(props.project.id, command);
-  const choose = (act: () => void) => {
-    act();
-    props.onClose();
-  };
   return (
-    <Popup x={props.x} y={props.y} label="Project actions" onClose={props.onClose}>
-      <MenuItem
-        icon={<SquarePen />}
-        label="New thread"
-        onSelect={() => choose(() => environment.newThread(props.project.id))}
-      />
-      <MenuItem
-        icon={<Copy />}
-        label="Copy path"
-        onSelect={() => choose(() => void copyText(props.project.workspaceRoot))}
-      />
+    <MenuPopup
+      anchor={{ X: props.x, Y: props.y }}
+      side="bottom"
+      align="start"
+      sideOffset={0}
+      label="Project actions"
+      onClose={props.onClose}
+    >
+      <MenuItem onClick={() => environment.newThread(props.project.id)}>
+        <SquarePen />
+        New thread
+      </MenuItem>
+      <MenuItem onClick={() => void copyText(props.project.workspaceRoot)}>
+        <Copy />
+        Copy path
+      </MenuItem>
       <Show
         when={props.project.pinnedAt != null}
         fallback={
-          <MenuItem
-            icon={<Pin />}
-            label="Pin project"
-            onSelect={() => choose(() => command({ Kind: "pin" }))}
-          />
+          <MenuItem onClick={() => command({ Kind: "pin" })}>
+            <Pin />
+            Pin project
+          </MenuItem>
         }
       >
-        <MenuItem
-          icon={<PinOff />}
-          label="Unpin project"
-          onSelect={() => choose(() => command({ Kind: "unpin" }))}
-        />
+        <MenuItem onClick={() => command({ Kind: "unpin" })}>
+          <PinOff />
+          Unpin project
+        </MenuItem>
       </Show>
-      <MenuItem icon={<PenLine />} label="Rename" onSelect={() => choose(props.onRename)} />
-      <MenuItem
-        icon={<FolderOpen />}
-        label="Open in file manager"
-        onSelect={() => choose(() => environment.openInFileManager(props.project.workspaceRoot))}
-      />
-      <MenuItem icon={<EyeOff />} label="Hide project" onSelect={() => choose(props.onHide)} />
+      <MenuItem onClick={props.onRename}>
+        <PenLine />
+        Rename
+      </MenuItem>
+      <MenuItem onClick={() => environment.openInFileManager(props.project.workspaceRoot)}>
+        <FolderOpen />
+        Open in file manager
+      </MenuItem>
+      <MenuItem onClick={props.onHide}>
+        <EyeOff />
+        Hide project
+      </MenuItem>
       <MenuSeparator />
-      <MenuItem
-        icon={<Trash2 />}
-        label="Remove project"
-        danger
-        onSelect={() => choose(props.onRemove)}
-      />
-    </Popup>
+      <MenuItem variant="destructive" onClick={props.onRemove}>
+        <Trash2 />
+        Remove project
+      </MenuItem>
+    </MenuPopup>
   );
 }
 

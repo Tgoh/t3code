@@ -6,6 +6,7 @@ import {
   type JSX,
   on,
   Show,
+  untrack,
   useContext,
 } from "solid-js";
 
@@ -18,9 +19,11 @@ interface IPresence {
    * `data-starting-style` for its first frame and `data-ending-style` while it's held for the exit.
    */
   track: (element: HTMLElement) => void;
+  /** Whether the children are only held for the exit, after `when` stopped. */
+  exiting: Accessor<boolean>;
 }
 
-const PresenceContext = createContext<IPresence>({ track: () => {} });
+const PresenceContext = createContext<IPresence>({ track: () => {}, exiting: () => false });
 
 /** The surface's side of `Presence`: pass `track` as a ref. */
 export const usePresence = () => useContext(PresenceContext);
@@ -36,7 +39,7 @@ export function Presence<T>(props: {
 }) {
   const [held, setHeld] = createSignal<NonNullable<T>>();
   const elements = new Set<HTMLElement>();
-  let ending = false;
+  const [ending, setEnding] = createSignal(false);
   let generation = 0;
   createRenderEffect(
     on(
@@ -46,14 +49,14 @@ export function Presence<T>(props: {
         if (when) {
           for (const element of elements) {
             if (!element.isConnected) elements.delete(element);
-            else if (ending) element.removeAttribute(ENDING);
+            else if (ending()) element.removeAttribute(ENDING);
           }
-          ending = false;
+          setEnding(false);
           setHeld(() => when as NonNullable<T>);
           return;
         }
         if (held() === undefined) return;
-        ending = true;
+        setEnding(true);
         for (const element of elements) {
           element.removeAttribute(STARTING);
           element.setAttribute(ENDING, "");
@@ -81,8 +84,9 @@ export function Presence<T>(props: {
             void settle().then(() => {
               if (run !== generation) return;
               elements.clear();
-              ending = false;
+              // Unmount first, so the children never see `exiting` turn false as a reopen.
               setHeld(undefined);
+              setEnding(false);
             }),
         );
       },
@@ -91,13 +95,14 @@ export function Presence<T>(props: {
   const presence: IPresence = {
     track: (element) => {
       elements.add(element);
-      if (ending) {
+      if (untrack(ending)) {
         element.setAttribute(ENDING, "");
         return;
       }
       element.setAttribute(STARTING, "");
       requestAnimationFrame(() => element.removeAttribute(STARTING));
     },
+    exiting: ending,
   };
   return (
     <PresenceContext.Provider value={presence}>

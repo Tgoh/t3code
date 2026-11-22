@@ -12,19 +12,10 @@ import {
 import { useSidebarSheet } from "./viewport";
 import { clockNow } from "./timestamps";
 import { Button } from "./ui/Button";
-import { MenuCheck, MenuItem, Popup, POPOVER_MOTION } from "./ui/Menu";
+import { MenuCheckboxItem, MenuPopup, MenuShortcut, openMenuFromKeys } from "./ui/Menu";
+import { PopoverPopup } from "./ui/Popover";
 import { Presence } from "./ui/Presence";
 import { LimitsSummary } from "./UsageView";
-
-const MARGIN = 8;
-
-/** Opens under its anchor, right edges aligned, kept inside the window. */
-const placeBelow = (anchor: HTMLElement) => (popup: HTMLElement) => {
-  const rect = anchor.getBoundingClientRect();
-  const width = popup.offsetWidth;
-  popup.style.top = `${rect.bottom + 4}px`;
-  popup.style.left = `${Math.max(MARGIN, Math.min(rect.right - width, window.innerWidth - width - MARGIN))}px`;
-};
 
 const TONE: Record<ILimitTone, string> = {
   normal: "text-foreground",
@@ -74,8 +65,7 @@ export function UsageRing() {
         ref={setButton}
         aria-label={label()}
         aria-haspopup="dialog"
-        aria-expanded={open() !== null}
-        data-pressed={open() !== null ? "" : undefined}
+        aria-expanded="false"
         data-tip={label()}
         on:pointerover={freshTip}
         on:focusin={freshTip}
@@ -117,33 +107,31 @@ export function UsageRing() {
           // Read once, so the popover keeps its figures while it fades out.
           const now = open() ?? 0;
           return (
-            <Popup
-              portal
-              role="dialog"
+            <PopoverPopup
               label="Usage limits"
               anchor={anchor()}
-              place={placeBelow(anchor())}
-              class={`fixed z-[120] flex max-h-[calc(100dvh-16px)] w-64 flex-col gap-3 overflow-y-auto rounded-lg border border-border bg-popover p-3 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPOVER_MOTION}`}
-              onClose={(reason) => {
-                setOpen(null);
-                if (reason === "escape") anchor().focus();
-              }}
+              align="end"
+              width="sm"
+              padding="compact"
+              onClose={() => setOpen(null)}
             >
-              <LimitsSummary pools={limitPools(presentations(), now)} now={now} />
-              <Button
-                variant="outline"
-                size="sm"
-                class="w-full"
-                onClick={() => {
-                  setOpen(null);
-                  sidebar.setOpen(false);
-                  void environment.openView({ Kind: "usage" });
-                }}
-              >
-                <ChartNoAxesColumn />
-                Open usage
-              </Button>
-            </Popup>
+              <div class="flex flex-col gap-3">
+                <LimitsSummary pools={limitPools(presentations(), now)} now={now} />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="w-full"
+                  onClick={() => {
+                    setOpen(null);
+                    sidebar.setOpen(false);
+                    void environment.openView({ Kind: "usage" });
+                  }}
+                >
+                  <ChartNoAxesColumn />
+                  Open usage
+                </Button>
+              </div>
+            </PopoverPopup>
           );
         }}
       </Presence>
@@ -176,41 +164,29 @@ export function ThreadMenu(props: {
         }}
         aria-label="Thread actions"
         aria-haspopup="menu"
-        aria-expanded={open()}
-        data-pressed={open() ? "" : undefined}
+        aria-expanded="false"
         data-tip="Thread actions"
         onClick={() => setOpen((held) => !held)}
+        onKeyDown={(event) => openMenuFromKeys(event, () => setOpen(true))}
       >
         <Ellipsis />
       </Button>
       <Presence when={open() && button()}>
         {(anchor) => (
-          <Popup
-            portal
-            label="Thread actions"
-            anchor={anchor()}
-            place={placeBelow(anchor())}
-            onClose={(reason) => {
-              setOpen(false);
-              if (reason === "escape") anchor().focus();
-            }}
-          >
+          <MenuPopup anchor={anchor()} align="end" onClose={() => setOpen(false)}>
             <For each={props.items}>
               {(item) => (
-                <MenuItem
-                  icon={<MenuCheck on={item.On} />}
-                  label={item.Label}
-                  detail={item.Shortcut ?? undefined}
-                  aria-checked={item.On}
-                  role="menuitemcheckbox"
-                  onSelect={() => {
-                    setOpen(false);
-                    item.Run();
-                  }}
-                />
+                <MenuCheckboxItem checked={item.On} closeOnClick onClick={() => item.Run()}>
+                  <span class="flex items-center gap-2">
+                    {item.Label}
+                    <Show when={item.Shortcut}>
+                      {(shortcut) => <MenuShortcut>{shortcut()}</MenuShortcut>}
+                    </Show>
+                  </span>
+                </MenuCheckboxItem>
               )}
             </For>
-          </Popup>
+          </MenuPopup>
         )}
       </Presence>
     </>

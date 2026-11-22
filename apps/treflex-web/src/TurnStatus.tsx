@@ -2,7 +2,16 @@
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { useInFlight } from "treflex-solid";
-import { type Accessor, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
+import {
+  type Accessor,
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  type JSX,
+  onCleanup,
+  Show,
+} from "solid-js";
 
 import { SECOND, useTick } from "./AgentElapsed";
 import {
@@ -22,7 +31,7 @@ import { workingStartedAt } from "./Shell";
 import ThreadSession, { queueAction } from "./ThreadSession";
 import { QueuedMessage } from "./TimelineRows";
 import { Button } from "./ui/Button";
-import { Popup, POPOVER_MOTION } from "./ui/Menu";
+import { PopoverPopup } from "./ui/Popover";
 import { Presence } from "./ui/Presence";
 import { BANNER_TITLE } from "./ui/notice";
 import { Textarea } from "./ui/Textarea";
@@ -34,7 +43,7 @@ import {
   workLogEntry,
 } from "./workLog";
 
-const POPOVER = `absolute right-0 bottom-[calc(100%+4px)] left-0 z-40 max-h-[min(24rem,50dvh)] overflow-y-auto rounded-xl border border-border bg-popover px-3.5 pt-2.5 pb-3 text-[14px] text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPOVER_MOTION}`;
+const STATUS_SELECTOR = "[data-turn-status]";
 
 const STEPS = "m-0 min-w-0 flex-1 list-none p-0";
 
@@ -172,6 +181,30 @@ function ChecklistSteps(props: {
   );
 }
 
+function StatusPopover(props: {
+  label: string;
+  toggle: HTMLButtonElement;
+  onClose: () => void;
+  children: JSX.Element;
+}) {
+  return (
+    <PopoverPopup
+      anchor={props.toggle.closest<HTMLElement>(STATUS_SELECTOR) ?? props.toggle}
+      trigger={props.toggle}
+      side="top"
+      align="end"
+      padding="compact"
+      class="w-(--anchor-width)"
+      label={props.label}
+      onClose={props.onClose}
+    >
+      <div class="max-h-[min(24rem,50dvh)] overflow-y-auto text-[14px] text-foreground">
+        {props.children}
+      </div>
+    </PopoverPopup>
+  );
+}
+
 function ChecklistPopover(props: {
   checklist: IChecklist;
   toggle: HTMLButtonElement;
@@ -180,20 +213,14 @@ function ChecklistPopover(props: {
   // An emptied list unmounts the popover, and the next one shouldn't reopen it.
   onCleanup(props.onClose);
   return (
-    <Popup
-      class={POPOVER}
-      role="dialog"
-      label="To-do list"
-      anchor={props.toggle}
-      onClose={props.onClose}
-    >
+    <StatusPopover label="To-do list" toggle={props.toggle} onClose={props.onClose}>
       <ChecklistSteps
         checklist={props.checklist}
         start={0}
         end={props.checklist.Steps.length}
         class={`${STEPS} text-muted-foreground`}
       />
-    </Popup>
+    </StatusPopover>
   );
 }
 
@@ -223,6 +250,7 @@ function Checklist(props: { checklist: IChecklist }) {
         <button
           ref={setToggle}
           class={`${QUEUED_TOGGLE} h-(--checklist-row-height)`}
+          aria-haspopup="dialog"
           aria-expanded={open()}
           aria-label={`${count()} done, show all steps`}
           onClick={() => setOpen((held) => !held)}
@@ -349,13 +377,7 @@ function QueuedPopover(props: {
   const queueing = useInFlight(queueAction, () => session.state);
   onCleanup(props.onClose);
   return (
-    <Popup
-      class={POPOVER}
-      role="dialog"
-      label="Queued messages"
-      anchor={props.toggle}
-      onClose={props.onClose}
-    >
+    <StatusPopover label="Queued messages" toggle={props.toggle} onClose={props.onClose}>
       <div class={BANNER_TITLE}>
         <strong>Queued</strong>
         <Show when={!props.working}>
@@ -370,7 +392,7 @@ function QueuedPopover(props: {
         </Show>
       </div>
       <For each={thread.queuedRunIds()}>{(runId) => <QueuedRow runId={runId} />}</For>
-    </Popup>
+    </StatusPopover>
   );
 }
 
@@ -390,6 +412,7 @@ export function TurnStatus(props: {
   return (
     <div
       class="group/status absolute right-(--gutter) bottom-full left-(--gutter) flex h-(--turn-status-height) items-center gap-1 rounded-lg bg-[color-mix(in_srgb,var(--background)_var(--glass-opacity),transparent)] px-3.5 text-[13px] text-muted-foreground tabular-nums backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) data-checklist:items-start data-checklist:py-1 data-idle:invisible"
+      data-turn-status
       data-idle={props.state === null && queued() === 0 ? "" : undefined}
       data-checklist={props.checklist !== null ? "" : undefined}
     >
@@ -407,6 +430,7 @@ export function TurnStatus(props: {
         <button
           ref={setToggle}
           class={`${QUEUED_TOGGLE} group-data-checklist/status:h-(--checklist-row-height)`}
+          aria-haspopup="dialog"
           aria-expanded={open()}
           onClick={() => setOpen((held) => !held)}
         >

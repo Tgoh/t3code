@@ -7,15 +7,11 @@ import { T3Mark } from "./brand";
 import Environment from "./Environment";
 import { ProjectBadge } from "./brand";
 import {
-  ArrowUpDown,
-  Check,
   ChevronDown,
   ChevronRight,
   Ellipsis,
   Eye,
-  EyeOff,
   FolderPlus,
-  Folders,
   ListFilter,
   PanelLeft,
   Search,
@@ -38,7 +34,19 @@ import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
 import { Button } from "./ui/Button";
-import { MenuCheck, MenuHeading, MenuItem, Popup } from "./ui/Menu";
+import {
+  MenuCheckboxItem,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuItemDetail,
+  MenuItemLabel,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  openMenuFromKeys,
+} from "./ui/Menu";
 import { EMPTY_NOTE } from "./ui/notes";
 import { Presence } from "./ui/Presence";
 import { SidebarInput, SidebarMenuButton, sidebarMenuButtonVariants } from "./ui/Sidebar";
@@ -162,11 +170,11 @@ export const Sidebar = Shell.provider(() => {
     Object.values(shell.state.Projects)
       .filter((project) => hiddenProjects().has(project.id))
       .sort((left, right) => left.title.localeCompare(right.title));
-  const [moreMenu, setMoreMenu] = createSignal<{ X: number; Y: number } | null>(null);
+  const [moreMenu, setMoreMenu] = createSignal<HTMLElement | null>(null);
   const projects = () =>
     environment.activeProjects().filter((project) => !hiddenProjects().has(project.id));
   const scope = createMemo(() => new Set(layout().Scope));
-  const [scopeMenu, setScopeMenu] = createSignal<{ X: number; Y: number } | null>(null);
+  const [scopeMenu, setScopeMenu] = createSignal<HTMLElement | null>(null);
   const scopeLabel = () => {
     const held = [...scope()];
     if (held.length === 0) return "All projects";
@@ -417,10 +425,15 @@ export const Sidebar = Shell.provider(() => {
           isActive={scope().size > 0}
           aria-label="Filter projects"
           data-tip={`Projects: ${scopeLabel()}`}
-          aria-expanded={scopeMenu() !== null}
+          aria-haspopup="menu"
+          aria-expanded="false"
           onClick={(event) => {
-            const box = event.currentTarget.getBoundingClientRect();
-            setScopeMenu({ X: box.left, Y: box.bottom + 4 });
+            const trigger = event.currentTarget;
+            setScopeMenu((held) => (held === null ? trigger : null));
+          }}
+          onKeyDown={(event) => {
+            const trigger = event.currentTarget;
+            openMenuFromKeys(event, () => setScopeMenu(trigger));
           }}
         >
           <ListFilter />
@@ -477,88 +490,92 @@ export const Sidebar = Shell.provider(() => {
           size="icon-sm-narrow"
           aria-label="More sidebar options"
           data-tip="More options"
-          aria-expanded={moreMenu() !== null}
+          aria-haspopup="menu"
+          aria-expanded="false"
           onClick={(event) => {
-            const box = event.currentTarget.getBoundingClientRect();
-            setMoreMenu({ X: box.left, Y: box.bottom + 4 });
+            const trigger = event.currentTarget;
+            setMoreMenu((held) => (held === null ? trigger : null));
+          }}
+          onKeyDown={(event) => {
+            const trigger = event.currentTarget;
+            openMenuFromKeys(event, () => setMoreMenu(trigger));
           }}
         >
           <Ellipsis />
         </SidebarHeaderButton>
       </div>
       <Presence when={scopeMenu()}>
-        {(at) => (
-          <Popup x={at().X} y={at().Y} label="Filter projects" onClose={() => setScopeMenu(null)}>
-            <MenuItem
-              icon={<MenuCheck on={scope().size === 0} />}
-              label="All projects"
-              onSelect={() => {
-                void environment.toggleProjectScope(null);
-                setScopeMenu(null);
-              }}
-            />
+        {(anchor) => (
+          <MenuPopup anchor={anchor()} align="start" onClose={() => setScopeMenu(null)}>
+            <MenuCheckboxItem
+              checked={scope().size === 0}
+              closeOnClick
+              onClick={() => void environment.toggleProjectScope(null)}
+            >
+              All projects
+            </MenuCheckboxItem>
             <For
               each={[...projects()].sort((left, right) => left.title.localeCompare(right.title))}
             >
               {(project) => (
-                <MenuItem
-                  icon={<MenuCheck on={scope().has(project.id)} />}
-                  label={project.title}
-                  onSelect={() => void environment.toggleProjectScope(project.id)}
-                />
+                <MenuCheckboxItem
+                  checked={scope().has(project.id)}
+                  onClick={() => void environment.toggleProjectScope(project.id)}
+                >
+                  {project.title}
+                </MenuCheckboxItem>
               )}
             </For>
-          </Popup>
+          </MenuPopup>
         )}
       </Presence>
       <Presence when={moreMenu()}>
-        {(at) => (
-          <Popup
-            x={at().X}
-            y={at().Y}
-            label="More sidebar options"
-            onClose={() => setMoreMenu(null)}
-          >
-            <MenuItem
-              icon={grouped() ? <Check /> : <Folders />}
-              label="Group by project"
-              onSelect={() => void environment.setPreferences({ GroupByProject: !grouped() })}
-            />
+        {(anchor) => (
+          <MenuPopup anchor={anchor()} align="start" onClose={() => setMoreMenu(null)}>
+            <MenuCheckboxItem
+              checked={grouped()}
+              onCheckedChange={(checked) =>
+                void environment.setPreferences({ GroupByProject: checked })
+              }
+            >
+              Group by project
+            </MenuCheckboxItem>
             <Show when={grouped()}>
-              <MenuHeading>
-                <ArrowUpDown />
-                Sort projects
-              </MenuHeading>
-              <For each={Object.entries(PROJECT_SORT_LABELS)}>
-                {([value, label]) => (
-                  <MenuItem
-                    icon={<MenuCheck on={projectSort() === value} />}
-                    label={label}
-                    onSelect={() => {
-                      if (isProjectSort(value))
-                        void environment.setPreferences({ ProjectSort: value });
-                    }}
-                  />
-                )}
-              </For>
+              <MenuSeparator />
+              <MenuGroup>
+                <MenuGroupLabel>Sort projects</MenuGroupLabel>
+                <MenuRadioGroup
+                  value={projectSort()}
+                  onValueChange={(value) => {
+                    if (isProjectSort(value))
+                      void environment.setPreferences({ ProjectSort: value });
+                  }}
+                >
+                  <For each={Object.entries(PROJECT_SORT_LABELS)}>
+                    {([value, label]) => <MenuRadioItem value={value}>{label}</MenuRadioItem>}
+                  </For>
+                </MenuRadioGroup>
+              </MenuGroup>
             </Show>
             <Show when={hiddenList().length > 0}>
-              <MenuHeading>
-                <EyeOff />
-                Hidden projects
-              </MenuHeading>
-              <For each={hiddenList()}>
-                {(project) => (
-                  <MenuItem
-                    icon={<Eye />}
-                    label={project.title}
-                    detail="Show"
-                    onSelect={() => void environment.setProjectHidden(project.id, false)}
-                  />
-                )}
-              </For>
+              <MenuSeparator />
+              <MenuGroup>
+                <MenuGroupLabel>Hidden projects</MenuGroupLabel>
+                <For each={hiddenList()}>
+                  {(project) => (
+                    <MenuItem
+                      closeOnClick={false}
+                      onClick={() => void environment.setProjectHidden(project.id, false)}
+                    >
+                      <Eye />
+                      <MenuItemLabel>{project.title}</MenuItemLabel>
+                      <MenuItemDetail>Show</MenuItemDetail>
+                    </MenuItem>
+                  )}
+                </For>
+              </MenuGroup>
             </Show>
-          </Popup>
+          </MenuPopup>
         )}
       </Presence>
       <Show when={endedReason()}>
@@ -762,28 +779,30 @@ export const Sidebar = Shell.provider(() => {
           </Show>
         </ul>
       </Show>
-      <Presence when={menuThread()} keyed>
+      <Presence when={menuThread() === undefined ? undefined : menu()} keyed>
         {(held) => {
-          const thread = held();
+          const at = held();
+          const thread = shell.state.Threads[at.Id]!;
           return (
             <ThreadMenu
               thread={thread}
-              x={menu()?.X ?? 0}
-              y={menu()?.Y ?? 0}
+              x={at.X}
+              y={at.Y}
               onRename={() => setRenaming(thread.id)}
               onClose={() => setMenu(null)}
             />
           );
         }}
       </Presence>
-      <Presence when={menuProject()} keyed>
+      <Presence when={menuProject() === undefined ? undefined : projectMenu()} keyed>
         {(held) => {
-          const project = held();
+          const at = held();
+          const project = shell.state.Projects[at.Id]!;
           return (
             <ProjectMenu
               project={project}
-              x={projectMenu()?.X ?? 0}
-              y={projectMenu()?.Y ?? 0}
+              x={at.X}
+              y={at.Y}
               onRename={() => setRenamingProject(project.id)}
               onRemove={() => setRemovingProject(project.id)}
               onHide={() => void environment.setProjectHidden(project.id, true)}

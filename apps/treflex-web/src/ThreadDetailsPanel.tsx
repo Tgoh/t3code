@@ -2,7 +2,7 @@ import { changeRequestTerminologyFor } from "@t3tools/client-runtime/state/vcs";
 import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
 import type { IAskId } from "treflex";
 import { useInFlight, useResource } from "treflex-solid";
-import { Dynamic, Portal } from "solid-js/web";
+import { Dynamic } from "solid-js/web";
 import {
   type Component,
   createEffect,
@@ -74,7 +74,15 @@ import { AgentElapsed } from "./AgentElapsed";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { Label } from "./ui/Label";
-import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
+import {
+  MenuItem,
+  MenuItemDetail,
+  MenuItemLabel,
+  MenuPopup,
+  MenuSearchInput,
+  MenuSeparator,
+  openMenuFromKeys,
+} from "./ui/Menu";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 import { Presence } from "./ui/Presence";
 import { Textarea } from "./ui/Textarea";
@@ -107,15 +115,10 @@ const actionContext = (status: VcsStatusResult | null): IActionContext => ({
 const formatCount = (count: number) =>
   count >= 10_000 ? `${Math.round(count / 1000)}k` : String(count);
 
-function menuAt(element: HTMLElement) {
-  const rect = element.getBoundingClientRect();
-  return { X: rect.left, Y: rect.bottom + 4, Width: rect.width };
-}
-
 interface IMenuAnchor {
-  X: number;
-  Y: number;
-  Width: number;
+  /** The row the menu opens under, as wide as it. */
+  Row: HTMLElement;
+  Trigger: HTMLElement;
 }
 
 // Follows GitQuickActionIcon and GitActionItemIcon in apps/web/src/components/GitActionsControl.tsx.
@@ -207,14 +210,20 @@ function SplitRow(props: {
         <span class={LABEL}>{props.label}</span>
       </button>
       <span
-        class="h-4 w-px flex-none bg-transparent group-hover/split:bg-[color-mix(in_srgb,var(--border)_65%,transparent)]"
+        class="h-4 w-px flex-none bg-transparent group-hover/split:bg-[color-mix(in_srgb,var(--border)_65%,transparent)] group-has-[[data-popup-open]]/split:bg-[color-mix(in_srgb,var(--border)_65%,transparent)]"
         aria-hidden="true"
       />
       <button
         class={`${ROW_BASE} ${ACTION} w-8 justify-center rounded-[0_8px_8px_0] p-0`}
         aria-label={props.menuLabel}
+        aria-haspopup="menu"
+        aria-expanded="false"
         disabled={props.menuDisabled === true}
-        onClick={() => props.onMenu(menuAt(group))}
+        onClick={(event) => props.onMenu({ Row: group, Trigger: event.currentTarget })}
+        onKeyDown={(event) => {
+          const trigger = event.currentTarget;
+          openMenuFromKeys(event, () => props.onMenu({ Row: group, Trigger: trigger }));
+        }}
       >
         <ChevronDown />
       </button>
@@ -670,6 +679,10 @@ const Body = (props: IDetailsProps) => {
     return preferred === undefined ? "Open in editor" : `Open in ${preferred.Label}`;
   };
   const closeMenu = () => setMenu(null);
+  const toggleMenu = (kind: "editor" | "git" | "scripts" | "branch", anchor: IMenuAnchor) => {
+    if (menu()?.Anchor.Trigger === anchor.Trigger) closeMenu();
+    else setMenu({ Kind: kind, Anchor: anchor });
+  };
   const openEditor = (editor: string | null) => {
     const target = editor ?? environment.editors().Preferred;
     if (target !== null) void environment.preferEditor(target);
@@ -705,6 +718,7 @@ const Body = (props: IDetailsProps) => {
     void session.runScript(script);
   };
   const openBranches = (anchor: IMenuAnchor) => {
+    if (menu()?.Anchor.Trigger === anchor.Trigger) return closeMenu();
     setBranchQuery("");
     setMenu({ Kind: "branch", Anchor: anchor });
     void details.loadBranches("");
@@ -760,7 +774,7 @@ const Body = (props: IDetailsProps) => {
             icon={<EditorIcon editor={environment.editors().Preferred ?? ""} />}
             menuLabel="Choose editor"
             onRun={() => openEditor(null)}
-            onMenu={(anchor) => setMenu({ Kind: "editor", Anchor: anchor })}
+            onMenu={(anchor) => toggleMenu("editor", anchor)}
           />
         </Show>
         <Show
@@ -779,7 +793,7 @@ const Body = (props: IDetailsProps) => {
               tip={first().command}
               menuLabel="Project scripts"
               onRun={() => runScript(first())}
-              onMenu={(anchor) => setMenu({ Kind: "scripts", Anchor: anchor })}
+              onMenu={(anchor) => toggleMenu("scripts", anchor)}
             />
           )}
         </Show>
@@ -796,7 +810,15 @@ const Body = (props: IDetailsProps) => {
             aria-label={`Branch: ${branchName() ?? "detached HEAD"}`}
             disabled={props.running || switchingBranch()}
             data-tip={props.running ? "Wait for the turn to finish to switch branches." : undefined}
-            onClick={(event) => openBranches(menuAt(event.currentTarget))}
+            aria-haspopup="menu"
+            aria-expanded="false"
+            onClick={(event) =>
+              openBranches({ Row: event.currentTarget, Trigger: event.currentTarget })
+            }
+            onKeyDown={(event) => {
+              const trigger = event.currentTarget;
+              openMenuFromKeys(event, () => openBranches({ Row: trigger, Trigger: trigger }));
+            }}
           >
             <GitBranch />
             <span class={LABEL}>
@@ -844,8 +866,8 @@ const Body = (props: IDetailsProps) => {
               menuDisabled={busy()}
               onRun={runQuick}
               onMenu={(anchor) => {
-                void details.refreshStatus();
-                setMenu({ Kind: "git", Anchor: anchor });
+                if (menu() === null) void details.refreshStatus();
+                toggleMenu("git", anchor);
               }}
             />
           </Show>
@@ -890,165 +912,152 @@ const Body = (props: IDetailsProps) => {
 
       <LineageSection threadId={session.state.ThreadId} />
 
-      <Presence when={menu()}>
-        {(open) => (
-          <Portal>
-            <Popup
-              x={open().Anchor.X}
-              y={open().Anchor.Y}
-              label={
-                open().Kind === "editor"
-                  ? "Choose editor"
-                  : open().Kind === "scripts"
-                    ? "Project scripts"
-                    : open().Kind === "branch"
-                      ? "Branches"
-                      : "Git actions"
-              }
+      <Presence when={menu()} keyed>
+        {(held) => {
+          const open = held();
+          return (
+            <MenuPopup
+              anchor={open.Anchor.Row}
+              trigger={open.Anchor.Trigger}
+              align={open.Kind === "branch" ? "start" : "end"}
+              class="w-(--anchor-width)"
               onClose={closeMenu}
             >
-              <div
-                class="flex max-w-[calc(100vw-16px)] flex-col"
-                style={{ width: `${Math.max(open().Anchor.Width, 220)}px` }}
-              >
-                <Show when={open().Kind === "editor"}>
-                  <For each={environment.editors().Available}>
-                    {(editor) => (
-                      <MenuItem
-                        truncate
-                        icon={<EditorIcon editor={editor.Id} />}
-                        label={editor.Label}
-                        onSelect={() => {
-                          closeMenu();
-                          openEditor(editor.Id);
-                        }}
-                      />
-                    )}
-                  </For>
+              <Show when={open.Kind === "editor"}>
+                <For each={environment.editors().Available}>
+                  {(editor) => (
+                    <MenuItem onClick={() => openEditor(editor.Id)}>
+                      <EditorIcon editor={editor.Id} />
+                      <MenuItemLabel>{editor.Label}</MenuItemLabel>
+                    </MenuItem>
+                  )}
+                </For>
+              </Show>
+              <Show when={open.Kind === "scripts"}>
+                <For each={props.scripts}>
+                  {(script) => (
+                    <MenuItem data-tip={script.command} onClick={() => runScript(script)}>
+                      <Play />
+                      <MenuItemLabel>{script.name}</MenuItemLabel>
+                    </MenuItem>
+                  )}
+                </For>
+                <MenuSeparator />
+                <MenuItem onClick={() => setAddingScript(true)}>
+                  <Plus />
+                  <MenuItemLabel>Add project script</MenuItemLabel>
+                </MenuItem>
+              </Show>
+              <Show when={open.Kind === "git"}>
+                <For each={menuItems()}>
+                  {(item) => {
+                    const reason = () =>
+                      menuItemDisabledReason({
+                        item,
+                        gitStatus: git(),
+                        isBusy: busy(),
+                        hasPrimaryRemote: git()?.hasPrimaryRemote ?? false,
+                      });
+                    const row = () => (
+                      <MenuItem disabled={item.disabled} onClick={() => runMenuItem(item)}>
+                        <MenuIcon item={item} status={git()} />
+                        <MenuItemLabel>{item.label}</MenuItemLabel>
+                      </MenuItem>
+                    );
+                    return (
+                      <Show when={item.disabled && reason()} fallback={row()}>
+                        {(text) => (
+                          <span
+                            class="block w-full cursor-not-allowed"
+                            data-tip={text()}
+                            data-tip-side="left"
+                          >
+                            {row()}
+                          </span>
+                        )}
+                      </Show>
+                    );
+                  }}
+                </For>
+                <Show when={git()?.refName === null}>
+                  <p class={`${NOTE} text-warning-foreground`}>
+                    Detached HEAD: create and check out a branch to enable push and{" "}
+                    {terminology().singular} actions.
+                  </p>
                 </Show>
-                <Show when={open().Kind === "scripts"}>
-                  <For each={props.scripts}>
-                    {(script) => (
-                      <MenuItem
-                        truncate
-                        icon={<Play />}
-                        label={script.name}
-                        data-tip={script.command}
-                        onSelect={() => runScript(script)}
-                      />
-                    )}
-                  </For>
-                  <MenuSeparator />
-                  <MenuItem
-                    truncate
-                    icon={<Plus />}
-                    label="Add project script"
-                    onSelect={() => {
-                      closeMenu();
-                      setAddingScript(true);
-                    }}
-                  />
-                </Show>
-                <Show when={open().Kind === "git"}>
-                  <For each={menuItems()}>
-                    {(item) => {
-                      const reason = () =>
-                        menuItemDisabledReason({
-                          item,
-                          gitStatus: git(),
-                          isBusy: busy(),
-                          hasPrimaryRemote: git()?.hasPrimaryRemote ?? false,
-                        });
-                      return (
-                        <MenuItem
-                          truncate
-                          icon={<MenuIcon item={item} status={git()} />}
-                          label={item.label}
-                          aria-disabled={item.disabled ? "true" : undefined}
-                          data-tip={reason() ?? undefined}
-                          data-tip-side="right"
-                          onSelect={() => runMenuItem(item)}
-                        />
-                      );
-                    }}
-                  </For>
-                  <Show when={git()?.refName === null}>
-                    <p class={`${NOTE} text-warning-foreground`}>
-                      Detached HEAD: create and check out a branch to enable push and{" "}
-                      {terminology().singular} actions.
-                    </p>
+              </Show>
+              <Show when={open.Kind === "branch"}>
+                <MenuSearchInput
+                  placeholder="Search branches…"
+                  autofocus
+                  value={branchQuery()}
+                  onInput={(event) => {
+                    setBranchQuery(event.currentTarget.value);
+                    void details.loadBranches(event.currentTarget.value);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    const exact = details.state.Branches?.find(
+                      (ref) => ref.Name === branchQuery().trim(),
+                    );
+                    closeMenu();
+                    if (exact !== undefined) void details.selectBranch(exact);
+                    else void details.createBranch(branchQuery());
+                  }}
+                />
+                <div class="flex max-h-72 flex-col overflow-y-auto">
+                  <Show when={loadingBranches() && details.state.Branches === null}>
+                    <p class={`${NOTE} text-warning-foreground`}>Loading branches…</p>
                   </Show>
-                </Show>
-                <Show when={open().Kind === "branch"}>
-                  <input
-                    class="-mx-1 -mt-1 mb-1 border-x-0 border-t-0 border-b border-border bg-transparent px-3 py-2 text-[13px] text-foreground outline-none"
-                    placeholder="Search branches…"
-                    autofocus
-                    value={branchQuery()}
-                    onInput={(event) => {
-                      setBranchQuery(event.currentTarget.value);
-                      void details.loadBranches(event.currentTarget.value);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      const exact = details.state.Branches?.find(
-                        (ref) => ref.Name === branchQuery().trim(),
+                  <For each={details.state.Branches ?? []}>
+                    {(ref) => {
+                      const blocked = () => blockedByWorktree(ref, cwd());
+                      const row = () => (
+                        <MenuItem
+                          disabled={blocked()}
+                          onClick={() => void details.selectBranch(ref)}
+                        >
+                          <GitBranch />
+                          <MenuItemLabel>{ref.Name}</MenuItemLabel>
+                          <Show when={ref.Current ? "current" : ref.IsDefault ? "default" : null}>
+                            {(detail) => <MenuItemDetail>{detail()}</MenuItemDetail>}
+                          </Show>
+                        </MenuItem>
                       );
-                      closeMenu();
-                      if (exact !== undefined) void details.selectBranch(exact);
-                      else void details.createBranch(branchQuery());
+                      return (
+                        <Show when={blocked()} fallback={row()}>
+                          <span
+                            class="block w-full cursor-not-allowed"
+                            data-tip={`Checked out in ${ref.WorktreePath}`}
+                            data-tip-side="left"
+                          >
+                            {row()}
+                          </span>
+                        </Show>
+                      );
                     }}
-                  />
-                  <div class="flex max-h-72 flex-col overflow-y-auto">
-                    <Show when={loadingBranches() && details.state.Branches === null}>
-                      <p class={`${NOTE} text-warning-foreground`}>Loading branches…</p>
-                    </Show>
-                    <For each={details.state.Branches ?? []}>
-                      {(ref) => {
-                        const blocked = () => blockedByWorktree(ref, cwd());
-                        return (
-                          <MenuItem
-                            truncate
-                            icon={<GitBranch />}
-                            label={ref.Name}
-                            detail={ref.Current ? "current" : ref.IsDefault ? "default" : undefined}
-                            aria-disabled={blocked() ? "true" : undefined}
-                            data-tip={blocked() ? `Checked out in ${ref.WorktreePath}` : undefined}
-                            onSelect={() => {
-                              closeMenu();
-                              void details.selectBranch(ref);
-                            }}
-                          />
-                        );
-                      }}
-                    </For>
-                    <Show
-                      when={
-                        branchQuery().trim() !== "" &&
-                        !(details.state.Branches ?? []).some(
-                          (ref) => ref.Name === branchQuery().trim(),
-                        )
-                      }
-                    >
-                      <MenuItem
-                        truncate
-                        icon={<GitBranchPlus />}
-                        label={`Create branch "${branchQuery().trim()}"`}
-                        onSelect={() => {
-                          closeMenu();
-                          void details.createBranch(branchQuery());
-                        }}
-                      />
-                    </Show>
-                    <Show when={details.state.BranchError}>
-                      {(error) => <p class={`${NOTE} text-error-foreground`}>{error()}</p>}
-                    </Show>
-                  </div>
-                </Show>
-              </div>
-            </Popup>
-          </Portal>
-        )}
+                  </For>
+                  <Show
+                    when={
+                      branchQuery().trim() !== "" &&
+                      !(details.state.Branches ?? []).some(
+                        (ref) => ref.Name === branchQuery().trim(),
+                      )
+                    }
+                  >
+                    <MenuItem onClick={() => void details.createBranch(branchQuery())}>
+                      <GitBranchPlus />
+                      <MenuItemLabel>Create branch "{branchQuery().trim()}"</MenuItemLabel>
+                    </MenuItem>
+                  </Show>
+                  <Show when={details.state.BranchError}>
+                    {(error) => <p class={`${NOTE} text-error-foreground`}>{error()}</p>}
+                  </Show>
+                </div>
+              </Show>
+            </MenuPopup>
+          );
+        }}
       </Presence>
 
       <Presence when={committing() && git()}>
