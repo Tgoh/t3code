@@ -45,7 +45,6 @@ import {
 } from "./timelineWindow";
 
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
-import { Button } from "./ui/Button";
 import { EMPTY_NOTE } from "./ui/notes";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { createMediaQuery, enterPanel, PANEL_SHEET_QUERY } from "./viewport";
@@ -83,13 +82,16 @@ const LoadEarlier = HistoryWindow.provider(() => {
   return (
     <>
       <Show when={history.state.HasMore}>
-        <Button
-          class="mx-auto mb-4 block"
+        <button
+          type="button"
+          class="mb-4 flex w-full cursor-pointer items-center gap-3 py-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default"
           disabled={loading()}
           onClick={() => history.loadEarlier()}
         >
-          {loading() ? "Loading…" : "Load earlier"}
-        </Button>
+          <span aria-hidden="true" class="h-px flex-1 bg-border/70" />
+          <span class="shrink-0">{loading() ? "Loading…" : "Load earlier"}</span>
+          <span aria-hidden="true" class="h-px flex-1 bg-border/70" />
+        </button>
       </Show>
       <Show when={history.state.Error}>
         <p class={NOTICE}>{history.state.Error}</p>

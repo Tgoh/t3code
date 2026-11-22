@@ -35,9 +35,9 @@ import { limitPools, limitPresentations } from "./limits";
 import UsagePage, { getDefaultUsagePage, RefreshingUsage, useUsagePage } from "./UsagePage";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
-import { IconButton } from "./ui/IconButton";
+import { Button } from "./ui/Button";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
-import { Segment, Segmented } from "./ui/Segmented";
+import { Toggle, ToggleGroup } from "./ui/ToggleGroup";
 import {
   costTypeSegments,
   type IShareSegment,
@@ -162,32 +162,34 @@ export const UsageView = UsagePage.provider(() => {
         </div>
         <div class="flex items-center gap-2">
           <Show when={metric() !== "limits"}>
-            <Segmented variant="card" role="group" aria-label="Period">
+            <ToggleGroup aria-label="Period">
               <For each={WINDOWS}>
                 {(entry) => (
-                  <Segment
-                    aria-pressed={days() === entry.Days}
+                  <Toggle
+                    pressed={days() === entry.Days}
                     onClick={() => choose(metric(), entry.Days)}
                   >
                     {entry.Label}
-                  </Segment>
+                  </Toggle>
                 )}
               </For>
-            </Segmented>
+            </ToggleGroup>
           </Show>
-          <Segmented variant="card" role="group" aria-label="Metric">
+          <ToggleGroup aria-label="Metric">
             <For each={METRICS}>
               {(entry) => (
-                <Segment
-                  aria-pressed={metric() === entry.Value}
+                <Toggle
+                  pressed={metric() === entry.Value}
                   onClick={() => choose(entry.Value, days())}
                 >
                   {entry.Label}
-                </Segment>
+                </Toggle>
               )}
             </For>
-          </Segmented>
-          <IconButton
+          </ToggleGroup>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             aria-label={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             data-tip={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             disabled={refreshing()}
@@ -199,14 +201,16 @@ export const UsageView = UsagePage.provider(() => {
             }
           >
             <RefreshCw classList={{ "animate-spin": refreshing() }} />
-          </IconButton>
-          <IconButton
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             aria-label="Close usage"
             data-tip="Close"
             onClick={() => environment.openView(null)}
           >
             <X />
-          </IconButton>
+          </Button>
         </div>
       </PageHeader>
       <div class="min-w-0 flex-1 overflow-y-auto">
@@ -386,14 +390,14 @@ function UsageOverview(props: {
       <section class="flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <h2 class={HEADING}>Breakdown</h2>
-          <Segmented variant="card" role="group" aria-label="Usage breakdown">
-            <Segment aria-pressed={breakdown() === "model"} onClick={() => setBreakdown("model")}>
+          <ToggleGroup aria-label="Usage breakdown">
+            <Toggle pressed={breakdown() === "model"} onClick={() => setBreakdown("model")}>
               Model
-            </Segment>
-            <Segment aria-pressed={breakdown() === "time"} onClick={() => setBreakdown("time")}>
+            </Toggle>
+            <Toggle pressed={breakdown() === "time"} onClick={() => setBreakdown("time")}>
               {hourly() ? "Hour" : "Day"}
-            </Segment>
-          </Segmented>
+            </Toggle>
+          </ToggleGroup>
         </div>
         <Show when={breakdown() === "time"}>
           <div

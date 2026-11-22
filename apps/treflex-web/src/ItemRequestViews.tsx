@@ -28,7 +28,7 @@ import ItemRequest, {
   type ISecretReply,
 } from "./ItemRequest";
 import OpenThread from "./OpenThread";
-import { Button, button, buttonLink } from "./ui/Button";
+import { Button, buttonVariants } from "./ui/Button";
 import { Input, Select } from "./ui/Field";
 import {
   Dialog,
@@ -200,7 +200,7 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
     );
   };
   const saveButton = () => (
-    <Button type="submit" variant="primary" disabled={busy() || !complete()}>
+    <Button type="submit" disabled={busy() || !complete()}>
       Save securely
     </Button>
   );
@@ -243,7 +243,7 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
         {(held) => (
           <div class="flex min-w-0 flex-col items-start gap-1.5">
             <a
-              class={`${button()} ${buttonLink} gap-1.5 [&>svg]:size-3.5`}
+              class={buttonVariants({ variant: "outline", size: "sm" })}
               href={held().href}
               target="_blank"
               rel="noopener noreferrer"
@@ -285,7 +285,12 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
           {secretRequestPrivacyNote(props.item)}
         </p>
         <div class="ms-auto flex flex-none items-center gap-2">
-          <Button variant="ghost" disabled={busy()} onClick={() => void send({ type: "decline" })}>
+          <Button
+            size="xs"
+            variant="ghost-muted"
+            disabled={busy()}
+            onClick={() => void send({ type: "decline" })}
+          >
             Decline
           </Button>
           <Show when={multiple()}>{saveButton()}</Show>
@@ -358,7 +363,8 @@ const PendingLink = ItemRequest.provider<{ item: LinkRequestItem }>((props) => {
       </Show>
       <div class="flex min-w-0 items-center justify-end gap-2">
         <Button
-          variant="ghost"
+          size="xs"
+          variant="ghost-muted"
           disabled={busy()}
           onClick={() =>
             void request.answerLink(thread.state.EnvironmentId, thread.state.ThreadId, {
@@ -368,7 +374,7 @@ const PendingLink = ItemRequest.provider<{ item: LinkRequestItem }>((props) => {
         >
           Decline
         </Button>
-        <Button variant="primary" disabled={busy()} onClick={() => setOpened((opens += 1))}>
+        <Button size="xs" disabled={busy()} onClick={() => setOpened((opens += 1))}>
           {picksMachine(props.item) ? "Choose machine…" : "Review link…"}
         </Button>
       </div>
@@ -388,7 +394,6 @@ const PendingLink = ItemRequest.provider<{ item: LinkRequestItem }>((props) => {
 
 type ILinkStep = "machine" | "access";
 
-// This client knows no other machines, so every link goes to an address with a pasted code.
 function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
   const thread = OpenThread.use();
   const request = ItemRequest.use();
@@ -507,20 +512,16 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
           <Show
             when={step() === "access" && steps.length > 1}
             fallback={
-              <Button disabled={busy()} onClick={props.onClose}>
+              <Button variant="outline" disabled={busy()} onClick={props.onClose}>
                 Cancel
               </Button>
             }
           >
-            <Button disabled={busy()} onClick={() => setStep("machine")}>
+            <Button variant="outline" disabled={busy()} onClick={() => setStep("machine")}>
               Back
             </Button>
           </Show>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={busy() || (finishesHere() ? !ready() : !machineReady())}
-          >
+          <Button type="submit" disabled={busy() || (finishesHere() ? !ready() : !machineReady())}>
             {busy() ? "Linking…" : finishesHere() ? "Link" : "Continue"}
           </Button>
         </DialogFooter>

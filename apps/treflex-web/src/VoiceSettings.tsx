@@ -132,15 +132,31 @@ function ModelRow() {
                     when={model().state === "downloading"}
                     fallback={
                       <Show when={model().state === "installed" && !model().active}>
-                        <Button onClick={() => void voice.selectModel(model().id)}>Use</Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void voice.selectModel(model().id)}
+                        >
+                          Use
+                        </Button>
                       </Show>
                     }
                   >
-                    <Button onClick={() => void voice.cancelDownload(model().id)}>Cancel</Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void voice.cancelDownload(model().id)}
+                    >
+                      Cancel
+                    </Button>
                   </Show>
                 }
               >
-                <Button variant="primary" onClick={() => void voice.downloadModel(model().id)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void voice.downloadModel(model().id)}
+                >
                   Download
                 </Button>
               </Show>

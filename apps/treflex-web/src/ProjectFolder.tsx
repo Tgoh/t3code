@@ -140,7 +140,7 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
         <Show when={failure()}>{(text) => <DialogError>{text()}</DialogError>}</Show>
       </DialogHeader>
       <DialogFooter>
-        <Button autofocus onClick={props.onClose}>
+        <Button variant="outline" autofocus onClick={props.onClose}>
           Cancel
         </Button>
         <Button variant="destructive" disabled={removing()} onClick={() => void confirm()}>

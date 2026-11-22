@@ -304,11 +304,18 @@ function CommitDialog(props: {
         />
       </DialogHeader>
       <DialogFooter>
-        <Button onClick={props.onClose}>Cancel</Button>
-        <Button disabled={selected().length === 0} onClick={() => submit(true)}>
+        <Button variant="outline" size="sm" onClick={props.onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={selected().length === 0}
+          onClick={() => submit(true)}
+        >
           Commit on new branch
         </Button>
-        <Button variant="primary" disabled={selected().length === 0} onClick={() => submit(false)}>
+        <Button size="sm" disabled={selected().length === 0} onClick={() => submit(false)}>
           Commit
         </Button>
       </DialogFooter>
@@ -360,8 +367,10 @@ function AddScriptDialog(props: {
           />
         </DialogHeader>
         <DialogFooter>
-          <Button onClick={props.onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={!ready()}>
+          <Button variant="outline" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={!ready()}>
             Add script
           </Button>
         </DialogFooter>
@@ -1102,15 +1111,25 @@ const Body = (props: IDetailsProps) => {
               </Show>
             </DialogHeader>
             <DialogFooter class="flex-wrap">
-              <Button class="mr-auto whitespace-nowrap" onClick={() => chooseDefaultBranch()}>
+              <Button
+                variant="outline"
+                size="sm"
+                class="w-full sm:mr-auto sm:w-auto"
+                onClick={() => chooseDefaultBranch()}
+              >
                 Abort
               </Button>
-              <Button class="whitespace-nowrap" onClick={() => chooseDefaultBranch("continue")}>
+              <Button
+                variant="outline"
+                size="sm-multiline"
+                class="w-full max-w-full sm:w-auto"
+                onClick={() => chooseDefaultBranch("continue")}
+              >
                 {copy().continueLabel}
               </Button>
               <Button
-                variant="primary"
-                class="whitespace-nowrap"
+                size="sm-multiline"
+                class="w-full max-w-full sm:w-auto"
                 disabled={featureBranchBlock() !== null}
                 onClick={() => chooseDefaultBranch("featureBranch")}
               >

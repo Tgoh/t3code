@@ -9,17 +9,16 @@ import Environment from "./Environment";
 import { canCaptureVoice } from "./Infrastructure/dictation";
 import { Check, CircleAlert, LoaderCircle, Mic, X } from "./icons";
 import { clockNow } from "./timestamps";
-import { IconButton } from "./ui/IconButton";
+import { Button } from "./ui/Button";
 import { createMediaQuery } from "./viewport";
 
 // iOS can fire mousedown after a prevented pointerdown, and its default blurs the prompt.
 const keepFocus = (event: MouseEvent) => event.preventDefault();
 
 const PILL =
-  "flex h-8 min-w-0 max-w-fit flex-[1.5_1_0] items-center gap-1.5 rounded-full p-0.5 ring-1 ring-inset";
+  "flex min-w-0 items-center gap-1.5 ring-1 ring-inset h-9 max-w-fit grow-[1.5] basis-0 rounded-full p-0.5 sm:h-8";
 const PILL_IDLE = `${PILL} bg-muted/48 ring-border`;
-const PILL_ERROR = `${PILL} bg-destructive/6 text-error-foreground ring-destructive/24`;
-const PILL_BUTTON = "rounded-full";
+const PILL_ERROR = `${PILL} bg-destructive/6 text-destructive ring-destructive/24`;
 
 // Follows VOICE_ERROR_LABELS in apps/web/src/components/chat/VoiceInputErrorPill.tsx.
 const ERROR_LABELS: Record<string, string> = {
@@ -64,7 +63,9 @@ export function MicButton(props: {
 }) {
   const label = () => `Start voice input${props.shortcut ? ` (${props.shortcut})` : ""}`;
   return (
-    <IconButton
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label="Start voice input"
       data-tip={label()}
       disabled={props.disabled}
@@ -73,7 +74,7 @@ export function MicButton(props: {
       onClick={() => props.onStart()}
     >
       <Mic />
-    </IconButton>
+    </Button>
   );
 }
 
@@ -148,8 +149,9 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
       when={phase() !== "error"}
       fallback={
         <div class={PILL_ERROR}>
-          <IconButton
-            class={PILL_BUTTON}
+          <Button
+            variant="ghost"
+            size="icon-sm-pill"
             aria-label="Dismiss voice input error"
             data-tip="Dismiss"
             onPointerDown={keepFocus}
@@ -157,7 +159,7 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
             onClick={cancel}
           >
             <X />
-          </IconButton>
+          </Button>
           <span
             role="status"
             aria-label={props.dictation.Error ?? "Voice input failed"}
@@ -170,9 +172,10 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
             </span>
           </span>
           <Show when={props.dictation.ErrorAction} fallback={<span class="w-1.5 shrink-0" />}>
-            <button
-              type="button"
-              class="ms-auto h-7 shrink-0 cursor-pointer rounded-full border border-input bg-popover px-2.5 text-[13px] font-medium text-foreground hover:bg-accent"
+            <Button
+              variant="outline"
+              size="sm-pill"
+              class="ms-auto"
               onPointerDown={keepFocus}
               onMouseDown={keepFocus}
               onClick={() => {
@@ -187,14 +190,15 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
                 : RETRYABLE_TRANSCRIPTIONS.has(props.dictation.Error ?? "")
                   ? "Retry"
                   : "Record again"}
-            </button>
+            </Button>
           </Show>
         </div>
       }
     >
       <div class={PILL_IDLE}>
-        <IconButton
-          class={PILL_BUTTON}
+        <Button
+          variant="ghost"
+          size="icon-sm-pill"
           aria-label="Cancel voice input"
           data-tip="Cancel voice input (Esc)"
           onPointerDown={keepFocus}
@@ -202,7 +206,7 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
           onClick={cancel}
         >
           <X />
-        </IconButton>
+        </Button>
         <div
           class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden data-[trailing=false]:pe-2.5"
           data-trailing={phase() === "recording" ? "true" : "false"}
@@ -235,9 +239,8 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
           </Show>
         </div>
         <Show when={phase() === "recording"}>
-          <button
-            type="button"
-            class="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-primary p-0 text-primary-foreground hover:bg-[color-mix(in_srgb,var(--primary)_90%,var(--background))] [&_svg]:size-4"
+          <Button
+            size="icon-sm-pill"
             aria-label="Finish voice input"
             data-tip="Finish voice input"
             onPointerDown={keepFocus}
@@ -245,7 +248,7 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
             onClick={() => void voice.stopDictation()}
           >
             <Check />
-          </button>
+          </Button>
         </Show>
       </div>
     </Show>

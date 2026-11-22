@@ -44,7 +44,9 @@ function Patch(props: { patch: string }) {
         </For>
       </pre>
       <Show when={!all() && rows().length > LINE_CAP}>
-        <Button onClick={() => setAll(true)}>Show all {rows().length} lines</Button>
+        <Button variant="outline" size="sm" onClick={() => setAll(true)}>
+          Show all {rows().length} lines
+        </Button>
       </Show>
     </>
   );

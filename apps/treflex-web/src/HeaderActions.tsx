@@ -12,7 +12,6 @@ import {
 import { useSidebarSheet } from "./viewport";
 import { clockNow } from "./timestamps";
 import { Button } from "./ui/Button";
-import { IconButton } from "./ui/IconButton";
 import { MenuCheck, MenuItem, Popup, POPOVER_MOTION } from "./ui/Menu";
 import { Presence } from "./ui/Presence";
 import { LimitsSummary } from "./UsageView";
@@ -69,12 +68,14 @@ export function UsageRing() {
   const [open, setOpen] = createSignal<number | null>(null);
   return (
     <>
-      <IconButton
+      <Button
+        variant="ghost"
+        size="icon-titlebar"
         ref={setButton}
         aria-label={label()}
         aria-haspopup="dialog"
         aria-expanded={open() !== null}
-        pressed={open() !== null}
+        data-pressed={open() !== null ? "" : undefined}
         data-tip={label()}
         on:pointerover={freshTip}
         on:focusin={freshTip}
@@ -110,7 +111,7 @@ export function UsageRing() {
             )}
           </Show>
         </svg>
-      </IconButton>
+      </Button>
       <Presence when={open() !== null && button()}>
         {(anchor) => {
           // Read once, so the popover keeps its figures while it fades out.
@@ -130,7 +131,9 @@ export function UsageRing() {
             >
               <LimitsSummary pools={limitPools(presentations(), now)} now={now} />
               <Button
-                class="flex w-full items-center justify-center gap-1.5 [&_svg]:size-3.5"
+                variant="outline"
+                size="sm"
+                class="w-full"
                 onClick={() => {
                   setOpen(null);
                   sidebar.setOpen(false);
@@ -164,7 +167,9 @@ export function ThreadMenu(props: {
   const [open, setOpen] = createSignal(false);
   return (
     <>
-      <IconButton
+      <Button
+        variant="ghost"
+        size="icon-titlebar"
         ref={(element) => {
           setButton(element);
           props.ref(element);
@@ -172,12 +177,12 @@ export function ThreadMenu(props: {
         aria-label="Thread actions"
         aria-haspopup="menu"
         aria-expanded={open()}
-        pressed={open()}
+        data-pressed={open() ? "" : undefined}
         data-tip="Thread actions"
         onClick={() => setOpen((held) => !held)}
       >
         <Ellipsis />
-      </IconButton>
+      </Button>
       <Presence when={open() && button()}>
         {(anchor) => (
           <Popup

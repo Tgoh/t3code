@@ -212,6 +212,17 @@ A row moves to this list when its presentation is deliberately changed. Logic a 
 
 A running turn deliberately doesn't follow stock, so the text on screen stays still while the agent works. Its response folds under "Working for …" from the start, as it will once settled, and shows only its latest reply; each steer's segment also keeps its last reply, which stock folds. What the agent is doing and the queued messages sit in `TurnStatus`, one fixed-height line above the composer that keeps its space when empty, in place of stock's live, working and thinking rows and its Queued banner. Once the running turn has a to-do list, that line becomes the list, which stock doesn't show outside the timeline: at most six rows, so it grows only when the list appears, changes length or goes, never when a step changes status. A sync doesn't port those back.
 
+## Components copied from stock
+
+These mirror `apps/web/src/components/ui`, with stock's variants, sizes and class strings; an upstream sync ports their class changes. Some sizes and variants are stock `className` overrides made into names: Button's `icon-titlebar` is `SidebarTrigger`'s own, `media-navigation-inline` is the one `SidebarChrome` passes to `SidebarTrigger`, and the sidebar button's `icon-sm` is `SidebarHeaderIconButton`'s.
+
+| Here                 | Stock source                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `ui/Button.tsx`      | `apps/web/src/components/ui/button.tsx`                                                         |
+| `ui/Toggle.tsx`      | `apps/web/src/components/ui/toggle.tsx`                                                         |
+| `ui/ToggleGroup.tsx` | `apps/web/src/components/ui/toggle-group.tsx`                                                   |
+| `ui/Sidebar.tsx`     | `SidebarMenuButton` and `sidebarMenuButtonVariants` in `apps/web/src/components/ui/sidebar.tsx` |
+
 ## Running it
 
 Run everything from the repo root with `./dev-stack.ps1`. It starts the server on 13773 without its file watcher, because a watcher restart interrupts running turns, plus this client on 5734 and the stock UI on 5733, as hidden processes that outlive the terminal. `-Status` shows what's up and `-Stop` stops what it started. State and logs are in `G:\Sorted\Code\t3code-dev-home`.
@@ -263,7 +274,7 @@ Tailwind v4 with preflight, like stock. `src/index.css` is the entry: it carries
 
 ### Shared controls
 
-`src/ui/` holds the controls every area uses, each owning its look the way stock's `components/ui` do: `IconButton`, `Button`, `Input`, `Select`, `WrapSelect` (for labels too long for a phone row), `Textarea`, `Switch`, `MenuSwitch`, `Segmented` and `Segment`, `Popup`, `MenuItem`, `MenuHeading`, `MenuCheck`, `MenuSeparator`, the `Dialog` parts, `Modal`, and the tooltip host. Pick a `variant` or `size`, and pass `class` only for layout (margin, width, position) or a property the variant doesn't set. If no variant fits, add one there rather than restyling at the call site. `iconButton()` and `button()` return the class string for an element that can't be a `<button>`, such as a link or a label. An icon button's on state is its `pressed` prop, which is only the look: a toggle also sets `aria-pressed`.
+`src/ui/` holds the controls every area uses, each owning its look the way stock's `components/ui` do: `Button`, `InlineButton`, `Toggle`, `ToggleGroup`, `SidebarMenuButton`, `Input`, `Select`, `WrapSelect` (for labels too long for a phone row), `Textarea`, `Switch`, `MenuSwitch`, `Segmented` and `Segment`, `Popup`, `MenuItem`, `MenuHeading`, `MenuCheck`, `MenuSeparator`, the `Dialog` parts, `Modal`, and the tooltip host. Pick a `variant` or `size`, and pass `class` only for layout (margin, width, position) or a property the variant doesn't set. If no variant fits, add one there rather than restyling at the call site. `buttonVariants()` and `sidebarMenuButtonVariants()` return the class string for an element that can't be a `<button>`, such as a link or a label. A `Toggle`'s `pressed` prop sets both `aria-pressed` and `data-pressed`; a popup trigger built on `Button` sets `data-pressed` itself while its popup is open.
 
 ## Setting up a machine
 

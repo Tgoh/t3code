@@ -51,8 +51,7 @@ import ThreadSession, {
   send as sendAction,
   stopRun,
 } from "./ThreadSession";
-import { Button } from "./ui/Button";
-import { iconButton } from "./ui/IconButton";
+import { Button, buttonVariants } from "./ui/Button";
 import {
   COARSE_POINTER_QUERY,
   composerCollapses,
@@ -321,8 +320,9 @@ function AnswerActions(props: { question: IAnswering }) {
     <>
       <Show when={progress().QuestionIndex > 0}>
         <Button
-          size="icon"
-          class="ml-[5px] [&_svg]:size-3.5"
+          variant="outline"
+          size="icon-sm"
+          class="ml-[5px]"
           aria-label="Previous question"
           data-tip="Previous question"
           disabled={responding()}
@@ -330,7 +330,7 @@ function AnswerActions(props: { question: IAnswering }) {
           onMouseDown={keepFocus}
           onClick={() => props.question.previous()}
         >
-          <ChevronLeft />
+          <ChevronLeft class="size-3.5" />
         </Button>
       </Show>
       <button
@@ -790,8 +790,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           onMouseDown={keepPromptFocus}
         >
           <Show when={!answering() && !(phone() && ownsVoice())}>
-            <label class={`${iconButton()} overflow-hidden`} data-tip="Attach files">
-              <Paperclip />
+            <label
+              class={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+              data-tip="Attach files"
+            >
+              <Paperclip class="translate-y-px" />
               <input
                 type="file"
                 class="hidden"

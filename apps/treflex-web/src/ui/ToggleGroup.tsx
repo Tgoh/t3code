@@ -1,0 +1,85 @@
+import { createContext, type JSX, splitProps, useContext } from "solid-js";
+
+import { Toggle as ToggleComponent, type ToggleSize, type ToggleVariant } from "./Toggle";
+
+const Group = createContext<{ variant: ToggleVariant; size: ToggleSize }>({
+  variant: "default",
+  size: "default",
+});
+
+const BASE =
+  "flex w-fit *:focus-visible:z-10 dark:*:[[data-slot=separator]:has(+[data-slot=toggle]:hover)]:before:bg-input/64 dark:*:[[data-slot=separator]:has(+[data-slot=toggle][data-pressed])]:before:bg-input dark:*:[[data-slot=toggle]:hover+[data-slot=separator]]:before:bg-input/64 dark:*:[[data-slot=toggle][data-pressed]+[data-slot=separator]]:before:bg-input";
+
+const JOINED = {
+  horizontal:
+    "*:not-first:not-data-[slot=separator]:before:-start-[0.5px] *:not-last:not-data-[slot=separator]:before:-end-[0.5px] *:not-first:rounded-s-none *:not-last:rounded-e-none *:not-first:border-s-0 *:not-last:border-e-0 *:not-first:before:rounded-s-none *:not-last:before:rounded-e-none",
+  vertical:
+    "*:not-first:not-data-[slot=separator]:before:-top-[0.5px] *:not-last:not-data-[slot=separator]:before:-bottom-[0.5px] flex-col *:not-first:rounded-t-none *:not-last:rounded-b-none *:not-first:border-t-0 *:not-last:border-b-0 *:not-first:before:rounded-t-none *:not-last:before:rounded-b-none *:data-[slot=toggle]:not-last:before:hidden dark:*:last:before:hidden dark:*:first:before:block",
+};
+
+/** Each `Toggle` inside carries its own `pressed` and click; the group gives them its look. */
+export function ToggleGroup(
+  props: JSX.HTMLAttributes<HTMLDivElement> & {
+    variant?: ToggleVariant;
+    size?: ToggleSize;
+    orientation?: "horizontal" | "vertical";
+  },
+) {
+  const [local, rest] = splitProps(props, ["variant", "size", "orientation", "class", "children"]);
+  const variant = () => local.variant ?? "segmented";
+  const size = () => local.size ?? (variant() === "segmented" ? "segmented" : "default");
+  const orientation = () => local.orientation ?? "horizontal";
+  const shape = () =>
+    variant() === "segmented"
+      ? "gap-0.5 rounded-lg bg-input/40 p-0.5"
+      : variant() === "default"
+        ? "gap-0.5"
+        : JOINED[orientation()];
+  return (
+    <div
+      role="group"
+      data-slot="toggle-group"
+      data-variant={variant()}
+      data-size={size()}
+      data-orientation={orientation()}
+      {...rest}
+      class={[
+        BASE,
+        orientation() === "horizontal"
+          ? "*:pointer-coarse:after:min-w-auto"
+          : "*:pointer-coarse:after:min-h-auto",
+        shape(),
+        local.class,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <Group.Provider
+        value={{
+          get variant() {
+            return variant();
+          },
+          get size() {
+            return size();
+          },
+        }}
+      >
+        {local.children}
+      </Group.Provider>
+    </div>
+  );
+}
+
+export function Toggle(props: Parameters<typeof ToggleComponent>[0]) {
+  const group = useContext(Group);
+  const [local, rest] = splitProps(props, ["variant", "size"]);
+  return (
+    <ToggleComponent
+      data-variant={local.variant ?? group.variant}
+      data-size={local.size ?? group.size}
+      variant={local.variant ?? group.variant}
+      size={local.size ?? group.size}
+      {...rest}
+    />
+  );
+}

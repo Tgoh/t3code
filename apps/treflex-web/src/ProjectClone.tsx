@@ -54,10 +54,16 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
               {cancelled() ? "Retry to bring in the repository." : props.clone.error}
             </pre>
             <div class={BANNER_ACTIONS}>
-              <Button onClick={() => environment.projectCommand(projectId(), { Kind: "delete" })}>
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => environment.projectCommand(projectId(), { Kind: "delete" })}
+              >
                 Remove project
               </Button>
               <Button
+                size="xs"
+                variant="ghost"
                 disabled={controlling()}
                 onClick={() => environment.cloneControl(projectId(), "retry")}
               >
@@ -71,6 +77,8 @@ export function ProjectCloneBanner(props: { clone: ProjectCloneSnapshot }) {
           <Download />
           <strong>Cloning {name()}</strong>
           <Button
+            size="xs"
+            variant="ghost"
             disabled={controlling()}
             onClick={() => environment.cloneControl(projectId(), "cancel")}
           >

@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for working timers, outside any Effect runtime.
 import type { ShownOrder } from "@t3tools/client-runtime/state/thread-search";
 import { useResource } from "treflex-solid";
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, splitProps } from "solid-js";
 
 import { T3Mark } from "./brand";
 import Environment from "./Environment";
@@ -37,10 +37,11 @@ import { SidebarFooter } from "./SidebarFooter";
 import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
-import { IconButton, iconButton } from "./ui/IconButton";
+import { Button } from "./ui/Button";
 import { MenuCheck, MenuHeading, MenuItem, Popup } from "./ui/Menu";
 import { EMPTY_NOTE } from "./ui/notes";
 import { Presence } from "./ui/Presence";
+import { SidebarMenuButton, sidebarMenuButtonVariants } from "./ui/Sidebar";
 import { useSidebarSheet } from "./viewport";
 
 const CONNECTION_LABEL: Record<string, string> = {
@@ -94,6 +95,19 @@ function SectionHeader(props: {
   );
 }
 
+function SidebarHeaderButton(props: Parameters<typeof SidebarMenuButton>[0]) {
+  const [local, rest] = splitProps(props, ["children", "size"]);
+  return (
+    <SidebarMenuButton size={local.size ?? "icon-sm"} class="relative shrink-0" {...rest}>
+      {local.children}
+      <span
+        aria-hidden
+        class="pointer-events-none absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+      />
+    </SidebarMenuButton>
+  );
+}
+
 /**
  * In the sidebar it closes the sheet or collapses the column; in a page header it brings the
  * sidebar back, so it shows there only while the sidebar is away.
@@ -104,16 +118,17 @@ export function SidebarToggle(props: { inSidebar?: boolean }) {
   const shown = () => (props.inSidebar === true ? true : sidebar.sheet() || sidebar.collapsed());
   return (
     <Show when={shown()}>
-      <IconButton
-        variant={props.inSidebar === true ? "brand" : "ghost"}
-        class={props.inSidebar === true ? "relative mr-2 -ml-1" : undefined}
+      <Button
+        variant={props.inSidebar === true ? "media-navigation-inline" : "ghost"}
+        size="icon-titlebar"
+        class={props.inSidebar === true ? "mr-2 -ml-1" : undefined}
         aria-label="Toggle main sidebar"
         data-tip={withShortcut("Toggle sidebar", navigation.shortcut("sidebar.toggle"))}
         aria-expanded={sidebar.sheet() ? sidebar.open() : !sidebar.collapsed()}
         onClick={() => sidebar.toggle()}
       >
-        <PanelLeft />
-      </IconButton>
+        <PanelLeft class="size-4" />
+      </Button>
     </Show>
   );
 }
@@ -385,21 +400,20 @@ export const Sidebar = Shell.provider(() => {
             onKeyDown={onSearchKey}
           />
           <Show when={searching()}>
-            <IconButton
-              variant="sidebar-field"
-              size="sm"
+            <Button
+              variant="ghost-muted"
+              size="icon-micro"
               aria-label="Clear thread search"
               data-tip="Clear search"
               onMouseDown={(event) => event.preventDefault()}
               onClick={clearSearch}
             >
-              <X />
-            </IconButton>
+              <X class="size-3" />
+            </Button>
           </Show>
         </div>
-        <IconButton
-          variant="sidebar"
-          pressed={scope().size > 0}
+        <SidebarHeaderButton
+          isActive={scope().size > 0}
           aria-label="Filter projects"
           data-tip={`Projects: ${scopeLabel()}`}
           aria-expanded={scopeMenu() !== null}
@@ -409,35 +423,37 @@ export const Sidebar = Shell.provider(() => {
           }}
         >
           <ListFilter />
-        </IconButton>
-        <IconButton
-          variant="sidebar"
+        </SidebarHeaderButton>
+        <SidebarHeaderButton
           aria-label="Add project"
           data-tip="Add project"
           aria-pressed={navigation.palette() === "add-project"}
           onClick={() => navigation.setPalette("add-project")}
         >
           <FolderPlus />
-        </IconButton>
+        </SidebarHeaderButton>
         <Show when={targetProject()}>
           {(projectId) => (
-            <IconButton
-              variant="sidebar"
+            <SidebarHeaderButton
               aria-label="New thread"
               data-tip={withShortcut("New thread", navigation.shortcut("chat.new"))}
               onClick={() => environment.newThread(projectId())}
             >
               <SquarePen />
-            </IconButton>
+            </SidebarHeaderButton>
           )}
         </Show>
         <Show when={projects().length > 1}>
           {/* A native select stretched invisibly over the icon, which keeps the native popup. */}
           <label
-            class={`${iconButton("sidebar", "narrow")} relative has-[select:focus-visible]:outline-2 has-[select:focus-visible]:-outline-offset-2 has-[select:focus-visible]:outline-ring [&_svg]:size-3.5`}
+            class={sidebarMenuButtonVariants({
+              size: "icon-sm-narrow",
+              class:
+                "relative shrink-0 has-[select:focus-visible]:ring-2 has-[select:focus-visible]:ring-inset",
+            })}
             data-tip="New thread in project"
           >
-            <ChevronDown />
+            <ChevronDown class="size-3.5" />
             <select
               class="absolute inset-0 w-full cursor-pointer opacity-0"
               aria-label="New thread in project"
@@ -456,9 +472,8 @@ export const Sidebar = Shell.provider(() => {
             </select>
           </label>
         </Show>
-        <IconButton
-          variant="sidebar"
-          size="narrow"
+        <SidebarHeaderButton
+          size="icon-sm-narrow"
           aria-label="More sidebar options"
           data-tip="More options"
           aria-expanded={moreMenu() !== null}
@@ -468,7 +483,7 @@ export const Sidebar = Shell.provider(() => {
           }}
         >
           <Ellipsis />
-        </IconButton>
+        </SidebarHeaderButton>
       </div>
       <Presence when={scopeMenu()}>
         {(at) => (
@@ -552,14 +567,15 @@ export const Sidebar = Shell.provider(() => {
         {(failure) => (
           <p class={SIDEBAR_ERROR}>
             That didn't work: {failure()}
-            <IconButton
-              size="sm"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label="Dismiss"
               data-tip="Dismiss"
               onClick={() => root.dismissFailure()}
             >
               <X />
-            </IconButton>
+            </Button>
           </p>
         )}
       </Show>

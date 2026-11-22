@@ -59,8 +59,7 @@ import { focusComposerAtEnd } from "./composerFocus";
 import { canForkItem } from "./rewind";
 import ThreadSession, { editFromHere, forkFromRun, type IRewindChoice } from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
-import { Button } from "./ui/Button";
-import { IconButton, iconButton } from "./ui/IconButton";
+import { Button, buttonVariants } from "./ui/Button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 import { Presence } from "./ui/Presence";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
@@ -275,7 +274,7 @@ function AttachmentFile(props: { file: IWireAttachment; url: string | null }) {
               {identity()}
             </a>
             <a
-              class={iconButton()}
+              class={buttonVariants({ variant: "ghost-muted", size: "icon-xs" })}
               href={url()}
               download={props.file.name}
               aria-label={`Download ${label()}`}
@@ -627,9 +626,9 @@ function EditFromHere(props: IRowProps) {
   const rewinding = useInFlight(editFromHere, () => session.state);
   return (
     <Show when={turn() !== undefined}>
-      <IconButton
-        variant="muted"
-        size="sm"
+      <Button
+        variant="ghost"
+        size="xs"
         aria-label="Edit from here"
         data-tip="Edit from here"
         disabled={rewinding() || session.threadWorking()}
@@ -641,8 +640,8 @@ function EditFromHere(props: IRowProps) {
           });
         }}
       >
-        <Pencil />
-      </IconButton>
+        <Pencil class="size-3" />
+      </Button>
     </Show>
   );
 }
@@ -661,9 +660,9 @@ function ForkFromHere(props: IRowProps) {
   return (
     <Show when={runId()}>
       {(run) => (
-        <IconButton
-          variant="muted"
-          size="sm"
+        <Button
+          variant="ghost"
+          size="xs"
           aria-label="Fork from this response"
           data-tip="Fork from this response"
           disabled={forking()}
@@ -674,8 +673,8 @@ function ForkFromHere(props: IRowProps) {
             )
           }
         >
-          <GitFork />
-        </IconButton>
+          <GitFork class="size-3" />
+        </Button>
       )}
     </Show>
   );
@@ -699,7 +698,7 @@ export function RewindDialog() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter class="flex-wrap">
-              <Button autofocus onClick={() => choose()}>
+              <Button variant="outline" autofocus onClick={() => choose()}>
                 Cancel
               </Button>
               <Button
@@ -709,9 +708,7 @@ export function RewindDialog() {
               >
                 Revert files too
               </Button>
-              <Button variant="primary" onClick={() => choose("keepChanges")}>
-                Revert and keep changes
-              </Button>
+              <Button onClick={() => choose("keepChanges")}>Revert and keep changes</Button>
             </DialogFooter>
           </Dialog>
         );
@@ -918,12 +915,14 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
       </Show>
       <Show when={diffTurn()}>
         {(turn) => (
-          <button
-            class="absolute top-0.5 right-0.5 cursor-pointer border-0 bg-transparent p-0 text-[14px] leading-6 text-primary hover:underline"
+          <Button
+            variant="ghost-muted"
+            size="xs"
+            class="absolute top-0.5 right-0.5"
             onClick={() => session.openDiff("turn", turn())}
           >
             View diff
-          </button>
+          </Button>
         )}
       </Show>
     </article>

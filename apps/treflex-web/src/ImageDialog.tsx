@@ -1,7 +1,7 @@
 import type { JSX } from "solid-js";
 
 import { X } from "./icons";
-import { IconButton } from "./ui/IconButton";
+import { Button } from "./ui/Button";
 import { Modal } from "./ui/Modal";
 
 /** A full-screen viewer that a click outside an interactive child closes. */
@@ -13,9 +13,14 @@ export function MediaDialog(props: { onClose: () => void; children: JSX.Element 
       onClick={() => props.onClose()}
     >
       {props.children}
-      <IconButton variant="media" class="absolute top-4 right-4" aria-label="Close preview">
+      <Button
+        variant="media-close"
+        size="icon-sm"
+        class="absolute top-4 right-4"
+        aria-label="Close preview"
+      >
         <X />
-      </IconButton>
+      </Button>
     </Modal>
   );
 }

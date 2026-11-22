@@ -1,6 +1,15 @@
 // @effect-diagnostics globalDate:off -- View-only relative times, outside any Effect runtime.
 import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
-import { createMemo, createSignal, For, type JSX, Match, onCleanup, Show, Switch } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  Match,
+  onCleanup,
+  Show,
+  Switch as SolidSwitch,
+} from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import ArchivedThreads, { getDefaultArchivedThreads, useArchivedThreads } from "./ArchivedThreads";
@@ -46,13 +55,12 @@ import {
 import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow, relativeTime } from "./timestamps";
-import { Button, button, buttonLink } from "./ui/Button";
+import { Button, buttonVariants } from "./ui/Button";
 import { Input, Select, Textarea, WrapSelect } from "./ui/Field";
-import { IconButton } from "./ui/IconButton";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
 import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
-import { Switch as Toggle } from "./ui/Switch";
+import { Switch } from "./ui/Switch";
 import { VoiceSetup } from "./VoiceSettings";
 
 const PRIVACY_POLICY_URL = "https://t3.codes/privacy-policy";
@@ -80,19 +88,21 @@ export function SettingsView(props: { page: string }) {
           <span class={CRUMB_SEPARATOR}>/</span>
           <h1 class={CRUMB_TITLE}>{label()}</h1>
         </div>
-        <IconButton
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label="Close settings"
           data-tip="Close"
           onClick={() => environment.openView(null)}
         >
           <Icons.X />
-        </IconButton>
+        </Button>
       </PageHeader>
       <div class="flex min-h-0 flex-1">
         <SettingsNav page={page()} />
         <div class="min-w-0 flex-1 overflow-y-auto">
           <div class="mx-auto flex max-w-4xl flex-col gap-8 px-6 pt-6 pb-12">
-            <Switch>
+            <SolidSwitch>
               <Match when={page() === "appearance"}>
                 <ColorSchemeSection />
                 <Sections sections={SETTINGS_SECTIONS.appearance} />
@@ -125,7 +135,7 @@ export function SettingsView(props: { page: string }) {
               <Match when={page() === "about"}>
                 <AboutPage />
               </Match>
-            </Switch>
+            </SolidSwitch>
           </div>
         </div>
       </div>
@@ -209,16 +219,17 @@ function SettingsNav(props: { page: string }) {
           when={searching()}
           fallback={<kbd class="rounded-sm border bg-muted px-[5px] font-sans text-[11px]">/</kbd>}
         >
-          <IconButton
-            size="sm"
+          <Button
+            variant="ghost-muted"
+            size="icon-micro"
             aria-label="Clear settings search"
             onClick={() => {
               setQuery("");
               searchBox()?.focus();
             }}
           >
-            <Icons.X />
-          </IconButton>
+            <Icons.X class="size-3" />
+          </Button>
         </Show>
       </div>
       <Show when={searching()}>
@@ -381,7 +392,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
     if (current === null) return <span class={mutedValue}>Unavailable</span>;
     switch (control.Kind) {
       case "switch":
-        return <Toggle checked={current === true} label={props.row.Title} onChange={write} />;
+        return <Switch checked={current === true} label={props.row.Title} onChange={write} />;
       case "select": {
         const options = (
           <For each={control.Options}>
@@ -489,15 +500,15 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
 // Follows SettingResetButton in apps/web/src/components/settings/settingsLayout.tsx.
 function ResetButton(props: { label: string; onClick: () => void }) {
   return (
-    <IconButton
-      variant="muted"
-      size="xs"
+    <Button
+      variant="ghost-muted"
+      size="icon-micro"
       aria-label={`Reset ${props.label} to default`}
       data-tip="Reset to default"
       onClick={props.onClick}
     >
-      <Icons.Undo2 />
-    </IconButton>
+      <Icons.Undo2 class="size-3" />
+    </Button>
   );
 }
 
@@ -604,7 +615,7 @@ function ProvidersPage() {
                           </span>
                         </span>
                       </button>
-                      <Toggle
+                      <Switch
                         checked={row.Enabled}
                         label={`Enable ${row.Name}`}
                         onChange={(enabled) => {
@@ -689,7 +700,8 @@ function ProvidersPage() {
                         </Show>
                         <Show when={row.Models.some((model) => !model.Custom)}>
                           <Button
-                            variant="ghost"
+                            size="xs"
+                            variant="ghost-muted"
                             onClick={() => {
                               const patch = bulkHiddenPatch(row);
                               if (patch !== null) void environment.updateServerSettings(patch);
@@ -703,9 +715,9 @@ function ProvidersPage() {
                       <For each={filterModels(row.Models, modelFilter())}>
                         {(model) => (
                           <div class="flex items-center gap-1 py-1.5 pr-4 pl-2.5 max-md:flex-wrap">
-                            <IconButton
-                              size="sm"
-                              pressed={model.Favorite}
+                            <Button
+                              variant="ghost-muted"
+                              size="icon-micro"
                               aria-label={model.Favorite ? "Remove favorite" : "Add favorite"}
                               aria-pressed={model.Favorite}
                               data-tip={model.Favorite ? "Remove favorite" : "Add favorite"}
@@ -716,9 +728,11 @@ function ProvidersPage() {
                               }
                             >
                               <Icons.Star
-                                class={model.Favorite ? "fill-warning stroke-warning" : ""}
+                                class={
+                                  model.Favorite ? "size-3 fill-current text-warning" : "size-3"
+                                }
                               />
-                            </IconButton>
+                            </Button>
                             <span
                               class={`flex min-w-0 flex-1 items-center gap-2 pl-1 text-[14px] max-md:flex-col max-md:items-start max-md:gap-0 ${model.Hidden ? "text-muted-foreground" : ""}`}
                             >
@@ -739,8 +753,9 @@ function ProvidersPage() {
                                 )}
                               </For>
                             </span>
-                            <IconButton
-                              size="sm"
+                            <Button
+                              variant="ghost-muted"
+                              size="icon-micro"
                               aria-label="Move up"
                               data-tip="Move up"
                               disabled={row.Models.indexOf(model) === 0}
@@ -749,10 +764,11 @@ function ProvidersPage() {
                                 if (patch !== null) void environment.updateServerSettings(patch);
                               }}
                             >
-                              <Icons.ArrowUp />
-                            </IconButton>
-                            <IconButton
-                              size="sm"
+                              <Icons.ArrowUp class="size-3" />
+                            </Button>
+                            <Button
+                              variant="ghost-muted"
+                              size="icon-micro"
                               aria-label="Move down"
                               data-tip="Move down"
                               disabled={row.Models.indexOf(model) === row.Models.length - 1}
@@ -761,9 +777,9 @@ function ProvidersPage() {
                                 if (patch !== null) void environment.updateServerSettings(patch);
                               }}
                             >
-                              <Icons.ArrowDown />
-                            </IconButton>
-                            <Toggle
+                              <Icons.ArrowDown class="size-3" />
+                            </Button>
+                            <Switch
                               class="ml-2"
                               checked={!model.Hidden}
                               label={`Show ${model.Name} in the model picker`}
@@ -881,7 +897,7 @@ const ProjectsPage = Shell.provider(() => {
                 title="Pin"
                 description="Pinned projects come first in project pickers."
                 control={
-                  <Toggle
+                  <Switch
                     checked={current.pinnedAt != null}
                     label="Pin"
                     onChange={(pinned) =>
@@ -901,6 +917,8 @@ const ProjectsPage = Shell.provider(() => {
                 }
                 control={
                   <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() =>
                       void environment.projectCommand(current.id, {
                         Kind: current.archivedAt != null ? "unarchive" : "archive",
@@ -917,7 +935,11 @@ const ProjectsPage = Shell.provider(() => {
                 title="Remove project"
                 description="Removes this project and its threads from this environment."
                 control={
-                  <Button variant="destructive" onClick={() => setRemoving(current)}>
+                  <Button
+                    size="sm"
+                    variant="destructive-outline"
+                    onClick={() => setRemoving(current)}
+                  >
                     Remove
                   </Button>
                 }
@@ -1087,22 +1109,24 @@ const ArchivedPage = ArchivedThreads.provider(() => {
                       description={`Archived ${relativeTime(thread.archivedAt ?? thread.createdAt, now())} ago · Created ${relativeTime(thread.createdAt, now())} ago`}
                       control={
                         <span class="inline-flex gap-1.5">
-                          <IconButton
+                          <Button
                             variant="outline"
+                            size="icon-sm"
                             aria-label="Unarchive"
                             data-tip="Unarchive"
                             onClick={() => command(thread.id, "unarchive")}
                           >
-                            <Icons.ArchiveX />
-                          </IconButton>
-                          <IconButton
-                            variant="outline-destructive"
+                            <Icons.ArchiveX class="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="destructive-outline"
+                            size="icon-sm"
                             aria-label="Delete"
                             data-tip="Delete"
                             onClick={() => setDeleting(thread)}
                           >
-                            <Icons.Trash2 />
-                          </IconButton>
+                            <Icons.Trash2 class="size-3.5" />
+                          </Button>
                         </span>
                       }
                     />
@@ -1125,7 +1149,7 @@ const ArchivedPage = ArchivedThreads.provider(() => {
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
-                    <Button autofocus onClick={() => setDeleting(null)}>
+                    <Button variant="outline" autofocus onClick={() => setDeleting(null)}>
                       Cancel
                     </Button>
                     <Button
@@ -1183,7 +1207,7 @@ function AboutPage() {
           description="How we handle your data, including the anonymous usage data T3 Code collects."
           control={
             <a
-              class={`${button()} ${buttonLink}`}
+              class={buttonVariants({ variant: "outline", size: "sm" })}
               href={PRIVACY_POLICY_URL}
               target="_blank"
               rel="noreferrer"

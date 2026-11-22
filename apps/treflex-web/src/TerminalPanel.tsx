@@ -3,7 +3,7 @@ import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 
 import { Trash2, X } from "./icons";
 import Terminal, { endTerminal } from "./Terminal";
-import { IconButton } from "./ui/IconButton";
+import { Button } from "./ui/Button";
 import { ERROR_TEXT } from "./ui/notice";
 import { enterPanel } from "./viewport";
 
@@ -48,23 +48,25 @@ export const TerminalPanel = Terminal.provider(() => {
         <Show when={state() !== "running"}>
           <span class="mr-1.5 text-[12px] text-muted-foreground">{state()}</span>
         </Show>
-        <IconButton
-          size="sm"
+        <Button
+          variant="ghost"
+          size="icon-xs"
           aria-label="End shell"
           data-tip="End shell"
           disabled={ending()}
           onClick={() => terminal.endTerminal()}
         >
           <Trash2 />
-        </IconButton>
-        <IconButton
-          size="sm"
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
           aria-label="Hide terminal"
           data-tip="Hide terminal"
           onClick={() => terminal.closeTerminal()}
         >
           <X />
-        </IconButton>
+        </Button>
       </div>
       <Show when={error()}>
         <p class={`${ERROR_TEXT} flex-none py-1`}>{error()}</p>

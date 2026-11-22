@@ -59,7 +59,6 @@ import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } from "./sanitize";
 import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
-import { IconButton } from "./ui/IconButton";
 import { Presence } from "./ui/Presence";
 import {
   contextThreadTarget,
@@ -441,7 +440,8 @@ function ShownVideo(props: {
           >
             <ImageUnavailable alt={props.alt} kind="video" />
             <Button
-              class="inline-flex items-center gap-1.5 [&_svg]:size-3.5"
+              size="sm"
+              variant="secondary"
               onClick={() => {
                 setErroredSrc(null);
                 props.onRetry();
@@ -1002,18 +1002,17 @@ function CodeToken(props: ITokenProps) {
       <div class="flex items-center justify-between gap-2 pt-1.5 pr-1.5 pl-3 text-[color-mix(in_srgb,var(--foreground)_72%,transparent)] select-none">
         <CodeTitle fence={fence()} />
         <span class="flex items-center gap-0.5" role="toolbar" aria-label="Code block actions">
-          <IconButton
-            variant="muted"
-            size="xs"
-            pressed={wrapped()}
+          <Button
+            variant={wrapped() ? "secondary" : "ghost-muted"}
+            size="icon-xs"
             aria-pressed={wrapped()}
             aria-label={wrapLabel()}
             data-tip={wrapLabel()}
             onClick={toggleWrap}
           >
-            <WrapText />
-          </IconButton>
-          <CopyButton size="xs" text={code().text} label="Copy code" />
+            <WrapText class="size-3" />
+          </Button>
+          <CopyButton size="icon-xs" text={code().text} label="Copy code" />
         </span>
       </div>
       <Show
