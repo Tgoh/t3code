@@ -4,11 +4,17 @@ import {
 } from "@t3tools/client-runtime/state/vcs";
 import type { GitStackedAction } from "@t3tools/contracts";
 import {
+  answer,
+  ask,
   generateGuid,
   type IActionGenerator,
+  type IAskEntry,
+  type IAskId,
   type IOpenGenerator,
+  type ISelectorGenerator,
   leading,
   open,
+  pendingAsks,
   receiver,
   select,
   startTimer,
@@ -42,13 +48,14 @@ export interface IGitNotice {
   Url: string | null;
 }
 
-export interface IPendingDefaultBranch {
+export interface IDefaultBranchConfirm {
+  Path: "Git/DefaultBranch";
   Action: DefaultBranchConfirmableAction;
   Branch: string;
   IncludesCommit: boolean;
-  CommitMessage: string | null;
-  FilePaths: string[] | null;
 }
+
+export type IDefaultBranchChoice = "continue" | "featureBranch";
 
 export interface IActionContext {
   RefName: string | null;
@@ -65,23 +72,16 @@ export interface IGitActionAsk {
 
 export interface IGitWork extends IThreadPart {
   Notice: IGitNotice | null;
-  PendingDefaultBranch: IPendingDefaultBranch | null;
   BranchError: string | null;
 }
 
 export function getDefaultGitWork(environmentId: string, threadId: string): Omit<IGitWork, "$Id"> {
-  return {
-    EnvironmentId: environmentId,
-    ThreadId: threadId,
-    Notice: null,
-    PendingDefaultBranch: null,
-    BranchError: null,
-  };
+  return { EnvironmentId: environmentId, ThreadId: threadId, Notice: null, BranchError: null };
 }
 
-const includesCommit = (ask: IGitActionAsk, context: IActionContext) =>
-  (ask.Action === "commit" || ask.Action === "commit_push" || ask.Action === "commit_push_pr") &&
-  (ask.Action === "commit" || context.HasWorkingTreeChanges || ask.FeatureBranch);
+const includesCommit = ({ Action, FeatureBranch }: IGitActionAsk, context: IActionContext) =>
+  (Action === "commit" || Action === "commit_push" || Action === "commit_push_pr") &&
+  (Action === "commit" || context.HasWorkingTreeChanges || FeatureBranch);
 
 /** Moves the thread to `branch`; throws the server's refusal. */
 export function* sendThreadBranch(
@@ -149,26 +149,26 @@ export function* openEditor(draft: IGitWork, editor: string | null): IOpenGenera
  */
 export function* runGitAction(
   draft: IGitWork,
-  ask: IGitActionAsk,
+  request: IGitActionAsk,
   context: IActionContext,
-  confirmed: boolean,
 ): IOpenGenerator {
-  const action = ask.Action;
+  const action = request.Action;
+  let featureBranch = request.FeatureBranch;
   if (
-    !confirmed &&
-    !ask.FeatureBranch &&
+    !featureBranch &&
     context.RefName !== null &&
     requiresDefaultBranchConfirmation(action, context.IsDefaultRef) &&
     action !== "commit"
   ) {
-    draft.PendingDefaultBranch = {
+    const confirm: IDefaultBranchConfirm = {
+      Path: "Git/DefaultBranch",
       Action: action,
       Branch: context.RefName,
-      IncludesCommit: includesCommit(ask, context),
-      CommitMessage: ask.CommitMessage,
-      FilePaths: ask.FilePaths,
+      IncludesCommit: includesCommit(request, context),
     };
-    return;
+    const choice = yield* open(ask<IDefaultBranchChoice>(draft, confirm));
+    if (choice === undefined) return;
+    featureBranch = choice === "featureBranch";
   }
   const checkout = yield* select(threadCheckout);
   if (checkout === null) return;
@@ -183,9 +183,9 @@ export function* runGitAction(
         Cwd: checkout.Cwd,
         ActionId: actionId,
         Action: action,
-        CommitMessage: ask.CommitMessage,
-        FeatureBranch: ask.FeatureBranch,
-        FilePaths: ask.FilePaths,
+        CommitMessage: request.CommitMessage,
+        FeatureBranch: featureBranch,
+        FilePaths: request.FilePaths,
         ThreadId: checkout.ThreadId,
       }),
     );
@@ -214,29 +214,22 @@ export function* runGitAction(
 }
 leading(runGitAction);
 
-export function* continueDefaultBranch(
+export function* defaultBranchConfirm(
   draft: IGitWork,
-  featureBranch: boolean,
-  context: IActionContext,
-): IOpenGenerator {
-  const pending = draft.PendingDefaultBranch;
-  if (pending === null) return;
-  draft.PendingDefaultBranch = null;
-  yield* runGitAction(
-    draft,
-    {
-      Action: pending.Action,
-      CommitMessage: pending.CommitMessage,
-      FilePaths: pending.FilePaths,
-      FeatureBranch: featureBranch,
-    },
-    context,
-    true,
+): ISelectorGenerator<(IAskEntry & { Request: IDefaultBranchConfirm }) | null> {
+  const entry = (yield* pendingAsks(draft)).find(
+    (held) => (held.Request as { Path?: string }).Path === "Git/DefaultBranch",
   );
+  return (entry as (IAskEntry & { Request: IDefaultBranchConfirm }) | undefined) ?? null;
 }
 
-export function* cancelDefaultBranch(draft: IGitWork): IActionGenerator {
-  draft.PendingDefaultBranch = null;
+/** The confirm dialog's answer; no choice cancels. */
+export function* chooseDefaultBranch(
+  _draft: IGitWork,
+  askId: IAskId<IDefaultBranchChoice>,
+  choice?: IDefaultBranchChoice,
+): IActionGenerator {
+  yield* answer(askId, choice);
 }
 
 export function* pull(draft: IGitWork): IOpenGenerator {
@@ -278,9 +271,8 @@ export default createEntityFeature<IGitWork>(import.meta.url)(
     dismissNotice,
     openEditor,
     runGitAction,
-    continueDefaultBranch,
-    cancelDefaultBranch,
+    chooseDefaultBranch,
     pull,
   },
-  {},
+  { defaultBranchConfirm },
 );

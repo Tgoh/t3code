@@ -1,5 +1,6 @@
 import { changeRequestTerminologyFor } from "@t3tools/client-runtime/state/vcs";
 import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
+import type { IAskId } from "treflex";
 import { useInFlight, useResource } from "treflex-solid";
 import { Dynamic, Portal } from "solid-js/web";
 import {
@@ -50,7 +51,12 @@ import {
   Server,
   X,
 } from "./icons";
-import GitWork, { continueDefaultBranch, type IActionContext, pull, runGitAction } from "./GitWork";
+import GitWork, {
+  type IActionContext,
+  type IDefaultBranchChoice,
+  pull,
+  runGitAction,
+} from "./GitWork";
 import {
   type ILineage,
   type ILineageRelation,
@@ -626,7 +632,7 @@ const Body = (props: IDetailsProps) => {
   const status = useResource(() => details.state, "Details/Status");
   const switchingBranch = useInFlight([selectBranch, createBranch], () => details.state);
   const loadingBranches = useInFlight(loadBranches, () => details.state);
-  const busy = useInFlight([runGitAction, continueDefaultBranch, pull], () => work.state);
+  const busy = useInFlight([runGitAction, pull], () => work.state);
   const git = () => status.value()?.Status ?? null;
   const cwd = () => details.state.Cwd;
   const [menu, setMenu] = createSignal<
@@ -683,7 +689,6 @@ const Body = (props: IDetailsProps) => {
       void work.runGitAction(
         { Action: action.action, CommitMessage: null, FilePaths: null, FeatureBranch: false },
         actionContext(git()),
-        false,
       );
     }
   };
@@ -699,7 +704,6 @@ const Body = (props: IDetailsProps) => {
         FeatureBranch: false,
       },
       actionContext(git()),
-      false,
     );
   };
   const runScript = (script: ProjectScript) => {
@@ -712,8 +716,8 @@ const Body = (props: IDetailsProps) => {
     void details.loadBranches("");
   };
   const pendingCopy = () => {
-    const pending = work.state.PendingDefaultBranch;
-    if (pending === null) return null;
+    const pending = work.defaultBranchConfirm()?.Request;
+    if (pending === undefined) return null;
     return defaultBranchDialogCopy({
       action: pending.Action,
       branchName: pending.Branch,
@@ -722,14 +726,19 @@ const Body = (props: IDetailsProps) => {
     });
   };
   const featureBranchBlock = () => {
-    const pending = work.state.PendingDefaultBranch;
-    return pending === null
+    const pending = work.defaultBranchConfirm()?.Request;
+    return pending === undefined
       ? null
       : featureBranchUnavailableReason({
           action: pending.Action,
           branchName: pending.Branch,
           hasWorkingTreeChanges: git()?.hasWorkingTreeChanges ?? true,
         });
+  };
+  const chooseDefaultBranch = (choice?: IDefaultBranchChoice) => {
+    const entry = work.defaultBranchConfirm();
+    if (entry !== null)
+      void work.chooseDefaultBranch(entry.Id as IAskId<IDefaultBranchChoice>, choice);
   };
   const noticeLabel = () => {
     const notice = work.state.Notice;
@@ -1062,7 +1071,6 @@ const Body = (props: IDetailsProps) => {
                   FeatureBranch: featureBranch,
                 },
                 actionContext(git()),
-                false,
               )
             }
           />
@@ -1091,10 +1099,7 @@ const Body = (props: IDetailsProps) => {
 
       <Presence when={pendingCopy()}>
         {(copy) => (
-          <Dialog
-            aria-labelledby="default-branch-title"
-            onClose={() => void work.cancelDefaultBranch()}
-          >
+          <Dialog aria-labelledby="default-branch-title" onClose={() => chooseDefaultBranch()}>
             <DialogHeader>
               <DialogTitle id="default-branch-title">{copy().title}</DialogTitle>
               <DialogDescription>{copy().description}</DialogDescription>
@@ -1103,23 +1108,17 @@ const Body = (props: IDetailsProps) => {
               </Show>
             </DialogHeader>
             <DialogFooter class="flex-wrap">
-              <Button
-                class="mr-auto whitespace-nowrap"
-                onClick={() => void work.cancelDefaultBranch()}
-              >
+              <Button class="mr-auto whitespace-nowrap" onClick={() => chooseDefaultBranch()}>
                 Abort
               </Button>
-              <Button
-                class="whitespace-nowrap"
-                onClick={() => void work.continueDefaultBranch(false, actionContext(git()))}
-              >
+              <Button class="whitespace-nowrap" onClick={() => chooseDefaultBranch("continue")}>
                 {copy().continueLabel}
               </Button>
               <Button
                 variant="primary"
                 class="whitespace-nowrap"
                 disabled={featureBranchBlock() !== null}
-                onClick={() => void work.continueDefaultBranch(true, actionContext(git()))}
+                onClick={() => chooseDefaultBranch("featureBranch")}
               >
                 Check out feature branch & continue
               </Button>

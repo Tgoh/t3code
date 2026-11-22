@@ -3,16 +3,21 @@ import {
   createTestRuntime,
   guids,
   type IActionGenerator,
+  type IAskId,
   type IEntity,
+  inFlight,
+  type ISelectorGenerator,
   registerDataSource,
+  settled,
 } from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  cancelDefaultBranch,
-  continueDefaultBranch,
+  chooseDefaultBranch,
+  defaultBranchConfirm,
   getDefaultGitWork,
   type IActionContext,
+  type IDefaultBranchChoice,
   type IGitWork,
   runGitAction,
 } from "./GitWork";
@@ -107,19 +112,42 @@ const ask = (action: "push" | "commit" | "commit_push", featureBranch = false) =
 });
 
 describe("runGitAction", () => {
-  it("holds a push from the default branch until it's confirmed", async () => {
+  const confirm = (runtime: Awaited<ReturnType<typeof details>>["runtime"]) =>
+    runtime.processSelector(defaultBranchConfirm, () => runtime.state.Git);
+  const busy = (runtime: Awaited<ReturnType<typeof details>>["runtime"]) =>
+    runtime.processSelector(
+      function* (draft: IGitWork): ISelectorGenerator<boolean> {
+        return yield* inFlight(runGitAction, draft);
+      },
+      () => runtime.state.Git,
+    );
+  const choose = (
+    runtime: Awaited<ReturnType<typeof details>>["runtime"],
+    choice?: IDefaultBranchChoice,
+  ) =>
+    runtime.dispatch(
+      chooseDefaultBranch,
+      "Git",
+      confirm(runtime)!.Id as IAskId<IDefaultBranchChoice>,
+      choice,
+    );
+
+  it("asks before a push from the default branch, busy until the answer", async () => {
     const { runtime, actions } = await details();
-    await runtime.dispatch(runGitAction, "Git", ask("commit_push"), ON_MAIN, false);
+    const running = runtime.dispatch(runGitAction, "Git", ask("commit_push"), ON_MAIN);
+    await settled();
     expect(actions).toEqual([]);
-    expect(runtime.state.Git.PendingDefaultBranch).toEqual({
+    expect(confirm(runtime)?.Request).toEqual({
+      Path: "Git/DefaultBranch",
       Action: "commit_push",
       Branch: "main",
       IncludesCommit: true,
-      CommitMessage: null,
-      FilePaths: null,
     });
-    await runtime.dispatch(continueDefaultBranch, "Git", false, ON_MAIN);
-    expect(runtime.state.Git.PendingDefaultBranch).toBeNull();
+    expect(busy(runtime)).toBe(true);
+    await choose(runtime, "continue");
+    await running;
+    expect(confirm(runtime)).toBeNull();
+    expect(busy(runtime)).toBe(false);
     expect(actions.map((held) => [held.Action, held.FeatureBranch])).toEqual([
       ["commit_push", false],
     ]);
@@ -127,20 +155,25 @@ describe("runGitAction", () => {
 
   it("moves a confirmed action to a feature branch, or drops it on abort", async () => {
     const { runtime, actions } = await details();
-    await runtime.dispatch(runGitAction, "Git", ask("push"), ON_MAIN, false);
-    await runtime.dispatch(cancelDefaultBranch, "Git");
-    expect(runtime.state.Git.PendingDefaultBranch).toBeNull();
+    const aborted = runtime.dispatch(runGitAction, "Git", ask("push"), ON_MAIN);
+    await settled();
+    await choose(runtime);
+    await aborted;
+    expect(confirm(runtime)).toBeNull();
+    expect(busy(runtime)).toBe(false);
     expect(actions).toEqual([]);
-    await runtime.dispatch(runGitAction, "Git", ask("push"), ON_MAIN, false);
-    await runtime.dispatch(continueDefaultBranch, "Git", true, ON_MAIN);
+    const moved = runtime.dispatch(runGitAction, "Git", ask("push"), ON_MAIN);
+    await settled();
+    await choose(runtime, "featureBranch");
+    await moved;
     expect(actions.map((held) => [held.Action, held.FeatureBranch])).toEqual([["push", true]]);
   });
 
   it("runs a commit, and anything off the default branch, at once", async () => {
     const { runtime, actions } = await details();
-    await runtime.dispatch(runGitAction, "Git", ask("commit"), ON_MAIN, false);
-    await runtime.dispatch(runGitAction, "Git", ask("push"), ON_FEATURE, false);
-    expect(runtime.state.Git.PendingDefaultBranch).toBeNull();
+    await runtime.dispatch(runGitAction, "Git", ask("commit"), ON_MAIN);
+    await runtime.dispatch(runGitAction, "Git", ask("push"), ON_FEATURE);
+    expect(confirm(runtime)).toBeNull();
     expect(actions.map((held) => [held.Action, held.ThreadId, held.Cwd])).toEqual([
       ["commit", "thread-1", CHECKOUT.Cwd],
       ["push", "thread-1", CHECKOUT.Cwd],
@@ -155,7 +188,7 @@ describe("runGitAction", () => {
       PrCreated: true,
       PrUrl: "https://example.invalid/pr/1",
     }));
-    await runtime.dispatch(runGitAction, "Git", ask("commit", true), ON_MAIN, false);
+    await runtime.dispatch(runGitAction, "Git", ask("commit", true), ON_MAIN);
     expect(commands).toEqual([{ Kind: "branch", Branch: "t3/feature" }]);
     expect(runtime.state.Git.Notice).toMatchObject({
       Title: "Created PR",
@@ -168,7 +201,7 @@ describe("runGitAction", () => {
     const { runtime } = await details(() => {
       throw serverFailure("nothing to commit");
     });
-    await runtime.dispatch(runGitAction, "Git", ask("commit"), ON_FEATURE, false);
+    await runtime.dispatch(runGitAction, "Git", ask("commit"), ON_FEATURE);
     expect(runtime.state.Git.Notice).toEqual({
       Tone: "error",
       Title: "Action failed",

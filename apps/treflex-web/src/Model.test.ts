@@ -62,7 +62,7 @@ import {
   STALE_DRAFT,
   startDictation,
 } from "./Dictation";
-import { continueDefaultBranch, pull, runGitAction } from "./GitWork";
+import { pull, runGitAction } from "./GitWork";
 import { loadEarlier } from "./HistoryWindow";
 import {
   archivedThreadCommand,
@@ -2523,16 +2523,9 @@ describe("writing to the server", () => {
       server.session().Git.$Id,
       { Action: "push", CommitMessage: null, FilePaths: null, FeatureBranch: true },
       { RefName: "feature", IsDefaultRef: false, HasWorkingTreeChanges: false },
-      false,
     );
     await settled();
-    expect(
-      inFlightOf(
-        server.runtime,
-        [runGitAction, continueDefaultBranch, pull],
-        () => server.session().Git,
-      ),
-    ).toBe(true);
+    expect(inFlightOf(server.runtime, [runGitAction, pull], () => server.session().Git)).toBe(true);
     finish();
     await running;
     expect(server.session().Git.Notice).toMatchObject({ Tone: "success", Title: "Pushed" });
