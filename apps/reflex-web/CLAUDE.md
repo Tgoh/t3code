@@ -3,6 +3,11 @@
 Read [README.md](./README.md) first. It covers the state model, the logic copied from stock, and how to run a test client beside the daily driver.
 
 - **Never edit the main checkout** (`G:\Sorted\Code\t3code`): the daily driver runs from it. Work in your own worktree. If it has no `.t3/setup-done`, run `node scripts/setup-worktree.ts` from its root with `T3CODE_PROJECT_ROOT=G:/Sorted/Code/t3code`, which installs.
+- **Keep [docs/todo.md](./docs/todo.md) true on `reflex-main` at all times.** It lists everything in the pipeline, in order.
+  - When you queue new work or Tam asks for something, add it in the same turn.
+  - When you start a thread on an item, mark the item **In progress** with the thread's branch, on `reflex-main` before the thread starts. This is a docs-only commit from a temporary worktree, fast-forwarded and pushed.
+  - When the work merges, its own branch removes the item, or trims it to what's left.
+  - When a plan changes or a dependency ships, fix the item.
 - **Record stock bugs.** Add each bug you find in stock (`apps/web`, `packages/client-runtime` or the server) to [docs/stock-bugs.md](./docs/stock-bugs.md), even when it's off your task. Say where it is, what goes wrong, whether you reproduced it, and whether reflex shares it.
 - **Components don't start main-state work.** Never dispatch into main state from `onMount`, `createEffect` or `onCleanup`. Start the action from the event behind it, through a handler or a receiver. A component may start work on state it owns, in `useComponentState` or `createComponentFeature`. Work a component kicks off is usually work main state shouldn't hold.
 - **Main state or component state:** would a restore from a snapshot bring it back? Judge by what causes the work, not where it's stored now. An open thread, an expanded row, a selected view or a draft would be restored, so whatever they fetch or subscribe to belongs in main state, started by the action that sets them. An open palette, a rendered row or a menu at the caret wouldn't, so their data belongs in component state, even when several components share it. Signed media URLs are an example.
