@@ -137,7 +137,8 @@ import {
   timelineEntries,
   timelineIds,
 } from "./OpenThread";
-import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
+import { registerReceivers } from "./receivers";
+import { dismissFailure, getDefaultRoot, type IRoot, load } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
 import { answerRequest, canAnswer, dismissRequest, type IRuntimeRequest } from "./RuntimeRequest";
 import { answerLink, answerSecret, itemAnswerError } from "./ItemRequest";
@@ -164,7 +165,6 @@ import {
   type IRewindChoice,
   mergeBack,
   revertTargets,
-  RewindReceiver,
   rewindConfirm,
   threadWorking,
   diffLoading,
@@ -385,15 +385,7 @@ async function connect(
   onTestFinished(() => expect([...strayWriters], "actions that wrote the replica").toEqual([]));
   const failures: IFailureEvent[] = [];
   runtime.on("failure", (failure) => failures.push(failure));
-  runtime.registerReceiver(RootReceiver);
-  runtime.registerReceiver(EnvironmentReceiver);
-  runtime.registerReceiver(ShellReceiver);
-  runtime.registerReceiver(ThreadReceiver);
-  runtime.registerReceiver(TerminalReceiver);
-  runtime.registerReceiver(RewindReceiver);
-  runtime.registerReceiver(PreferencesReceiver);
-  runtime.registerReceiver(ActivityReceiver);
-  runtime.registerReceiver(DictationReceiver);
+  registerReceivers(runtime);
   await runtime.dispatch(load, "Root");
   await settled();
   const environment = () => runtime.state.Environments[0] as IEnvironment;

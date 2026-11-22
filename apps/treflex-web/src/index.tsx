@@ -6,9 +6,6 @@ import "@fontsource-variable/inter";
 import "./index.css";
 
 import { App } from "./App";
-import { DictationReceiver } from "./Dictation";
-import { VoiceModelsReceiver } from "./VoiceModels";
-import { EnvironmentReceiver } from "./Environment";
 import { openExternalLinksInSafari } from "./externalLinks";
 import {
   addressThreadImpl,
@@ -85,7 +82,6 @@ import { threadHistoryPageImpl } from "./Infrastructure/threadHistory";
 import { threadStream } from "./Infrastructure/threadStream";
 import { appearance } from "./Infrastructure/appearance";
 import { deviceActivity, reportActivityImpl } from "./Infrastructure/clientActivityImpl";
-import { ActivityReceiver } from "./Activity";
 import {
   clockNowImpl,
   storedAppearanceMode,
@@ -95,12 +91,8 @@ import {
   storePreferencesImpl,
 } from "./Infrastructure/preferences";
 import { resolveScheme, SYSTEM_DARK_QUERY } from "./colorScheme";
-import { PreferencesReceiver } from "./Preferences";
-import { ThreadReceiver } from "./OpenThread";
-import { getDefaultRoot, load, RootReceiver } from "./Root";
-import { ShellReceiver } from "./Shell";
-import { GitReceiver } from "./GitWork";
-import { RewindReceiver, TerminalReceiver } from "./ThreadSession";
+import { registerReceivers } from "./receivers";
+import { getDefaultRoot, load } from "./Root";
 
 await pairFromUrl();
 
@@ -186,17 +178,7 @@ runtime.registerResourceType("deviceActivity", deviceActivity);
 runtime.registerImplementation(reportActivityImpl);
 runtime.registerResourceType("shellStream", shellStream, { endOnReceiverFailure: true });
 runtime.registerResourceType("threadStream", threadStream, { endOnReceiverFailure: true });
-runtime.registerReceiver(RootReceiver);
-runtime.registerReceiver(EnvironmentReceiver);
-runtime.registerReceiver(ShellReceiver);
-runtime.registerReceiver(ThreadReceiver);
-runtime.registerReceiver(TerminalReceiver);
-runtime.registerReceiver(RewindReceiver);
-runtime.registerReceiver(GitReceiver);
-runtime.registerReceiver(PreferencesReceiver);
-runtime.registerReceiver(ActivityReceiver);
-runtime.registerReceiver(DictationReceiver);
-runtime.registerReceiver(VoiceModelsReceiver);
+registerReceivers(runtime);
 // The Environment applies the scheme once it connects; this paints the loading screen in it.
 document.documentElement.dataset.theme = resolveScheme(
   storedAppearanceMode(),
