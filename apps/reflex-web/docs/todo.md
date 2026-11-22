@@ -2,6 +2,10 @@
 
 Everything in the pipeline for the reflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead.
 
+## Now
+
+- **Report client activity, so the server does background work for reflex.** **In progress:** `reflex/background-activity`. Reflex never sends the client-activity leases that stock sends (`apps/web/src/lib/backgroundActivityReporter.ts`: every 25 s, a 45 s lease, visible/focused/recently-interacted, with `provider-status` always in scope plus `vcs-status` per watched checkout). The server's `BackgroundPolicy.shouldRunScopeWork` runs scoped background work only for an active lease. So with only reflex open, the server stops refreshing provider status, and the usage ring sat at 100% after the weekly reset. Git status broadcasting is gated the same way.
+
 ## 1. Parity and polish
 
 - **Settings reflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
