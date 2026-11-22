@@ -1,6 +1,7 @@
 import { linkRequestAnswerInput } from "@t3tools/client-runtime/link-request";
 import {
   secretRequestAnswerInput,
+  type SecretRequestItem,
   type SecretRequestReply,
 } from "@t3tools/client-runtime/secret-request";
 import { ThreadId, TurnItemId } from "@t3tools/contracts";
@@ -24,6 +25,7 @@ export type IItemRequest = IWithId<{ id: string }>;
 export const ANSWERED_ITEM_TYPES: ReadonlySet<string> = new Set(["secret_request", "link_request"]);
 
 export type ISecretReply = Extract<SecretRequestReply, { type: "save" | "decline" }>;
+export type ISecretAsk = Pick<SecretRequestItem, "label" | "placeholder" | "fields">;
 export type ILinkReply = Parameters<typeof linkRequestAnswerInput>[1];
 
 const outcome = (draft: IItemRequest) =>
@@ -50,9 +52,10 @@ export function* answerSecret(
   draft: IItemRequest,
   environmentId: string,
   threadId: string,
+  ask: ISecretAsk,
   reply: ISecretReply,
 ): IOpenGenerator<boolean> {
-  const input = secretRequestAnswerInput(itemOf(draft, threadId), reply);
+  const input = secretRequestAnswerInput({ ...ask, ...itemOf(draft, threadId) }, reply);
   if (input === null) return false;
   return yield* answer(draft, () =>
     answerSecretEffect({ EnvironmentId: environmentId, Input: input }),

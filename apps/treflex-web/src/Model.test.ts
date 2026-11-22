@@ -689,6 +689,25 @@ describe("thread events", () => {
     expect(isRowVisible(server.thread(), "command")).toBe(true);
   });
 
+  it("keeps a run's submitted output through lifecycle updates that don't carry it", async () => {
+    const server = await connect();
+    await server.open();
+    await server.sendThread(
+      snapshotOf({ ...emptyProjection(), runs: [run("run-1", 1)] } as never, 1),
+    );
+    const output = { value: { ok: true }, submittedAt: "2026-01-01T00:00:00.000Z" };
+    const send = (sequence: number, type: string, payload: unknown) =>
+      server.sendThread({
+        kind: "event",
+        sequence,
+        event: event(type as never, payload),
+      } as IWireThreadItem);
+    await send(2, "run.output-submitted", { runId: "run-1", output });
+    expect(server.thread().Runs["run-1"]).toMatchObject({ output });
+    await send(3, "run.updated", run("run-1", 1, "completed"));
+    expect(server.thread().Runs["run-1"]).toMatchObject({ status: "completed", output });
+  });
+
   it("drops a live update to history outside a bounded window", async () => {
     const server = await connect();
     await server.open();
@@ -2838,7 +2857,12 @@ describe("writing to the server", () => {
       snapshotOf(
         {
           ...emptyProjection(),
-          turnItems: [secret, asked("s-2", "secret_request", 2), asked("l-1", "link_request", 3)],
+          turnItems: [
+            secret,
+            asked("s-2", "secret_request", 2),
+            asked("l-1", "link_request", 3),
+            asked("s-3", "secret_request", 5),
+          ],
         } as never,
         1,
       ),
@@ -2846,10 +2870,11 @@ describe("writing to the server", () => {
     const node = (id: string) => server.thread().ItemRequests[id]!;
     const busy = (id: string) =>
       inFlightOf(server.runtime, [answerSecret, answerLink], () => node(id));
+    const single = { label: "API key" };
     const save = (id: string, typed: string) =>
-      server.runtime.dispatch(answerSecret, node(id).$Id, ENV, THREAD_ID, {
+      server.runtime.dispatch(answerSecret, node(id).$Id, ENV, THREAD_ID, single, {
         type: "save",
-        secret: typed,
+        values: { "": typed },
       });
 
     expect(await save("s-1", "   ")).toBe(false);
@@ -2858,7 +2883,7 @@ describe("writing to the server", () => {
     await settled();
     expect([busy("s-1"), busy("s-2")]).toEqual([true, false]);
     expect(
-      await server.runtime.dispatch(answerSecret, node("s-1").$Id, ENV, THREAD_ID, {
+      await server.runtime.dispatch(answerSecret, node("s-1").$Id, ENV, THREAD_ID, single, {
         type: "decline",
       }),
     ).toBeUndefined();
@@ -2871,14 +2896,14 @@ describe("writing to the server", () => {
 
     refusal = "This secret request was already answered.";
     expect(
-      await server.runtime.dispatch(answerSecret, node("s-2").$Id, ENV, THREAD_ID, {
+      await server.runtime.dispatch(answerSecret, node("s-2").$Id, ENV, THREAD_ID, single, {
         type: "decline",
       }),
     ).toBe(false);
     expect(server.runtime.processSelector(itemAnswerError, () => node("s-2"))).toBe(refusal);
     expect(server.runtime.processSelector(itemAnswerError, () => node("s-1"))).toBeNull();
     refusal = null;
-    const retry = server.runtime.dispatch(answerSecret, node("s-2").$Id, ENV, THREAD_ID, {
+    const retry = server.runtime.dispatch(answerSecret, node("s-2").$Id, ENV, THREAD_ID, single, {
       type: "decline",
     });
     await settled();
@@ -2886,6 +2911,28 @@ describe("writing to the server", () => {
     releases.forEach((release) => release());
     await retry;
     expect(secrets.at(-1)?.Input.answer).toEqual({ type: "decline" });
+
+    const login = {
+      label: "Login",
+      fields: [
+        { name: "email", label: "Email", secret: false },
+        { name: "password", label: "Password" },
+      ],
+    };
+    const saveLogin = (values: Record<string, string>) =>
+      server.runtime.dispatch(answerSecret, node("s-3").$Id, ENV, THREAD_ID, login, {
+        type: "save",
+        values,
+      });
+    expect(await saveLogin({ email: "a@b.c", password: " " })).toBe(false);
+    const both = saveLogin({ email: " a@b.c ", password: "hunter3" });
+    await settled();
+    releases.forEach((release) => release());
+    expect(await both).toBe(true);
+    expect(secrets.at(-1)?.Input.answer).toEqual({
+      type: "save",
+      values: { email: "a@b.c", password: "hunter3" },
+    });
 
     expect(
       await server.runtime.dispatch(answerLink, node("l-1").$Id, ENV, THREAD_ID, {
@@ -2925,7 +2972,13 @@ describe("writing to the server", () => {
       sequence: 3,
       event: event("turn-item.updated", asked("l-2", "link_request", 4)),
     } as IWireThreadItem);
-    expect(Object.keys(server.thread().ItemRequests).sort()).toEqual(["l-1", "l-2", "s-1", "s-2"]);
+    expect(Object.keys(server.thread().ItemRequests).sort()).toEqual([
+      "l-1",
+      "l-2",
+      "s-1",
+      "s-2",
+      "s-3",
+    ]);
   });
 
   it("holds a question's answer per request until it's complete, and sends only what the provider can take", async () => {

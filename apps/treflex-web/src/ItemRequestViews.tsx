@@ -7,8 +7,9 @@ import {
   linkRequestTargetName,
 } from "@t3tools/client-runtime/link-request";
 import {
-  SECRET_REQUEST_DEFAULT_PLACEHOLDER,
   secretRequestDisplay,
+  secretRequestInputs,
+  type SecretRequestInput,
   secretRequestLink,
   secretRequestPrivacyNote,
 } from "@t3tools/client-runtime/secret-request";
@@ -131,27 +132,78 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
   const thread = OpenThread.use();
   const request = ItemRequest.use();
   const busy = useInFlight([answerSecret], () => request.state);
-  const inputId = createUniqueId();
+  const formId = createUniqueId();
   const errorId = createUniqueId();
   const privacyId = createUniqueId();
-  // The typed secret stays in the input, outside state; only whether there is one is tracked.
-  const [typed, setTyped] = createSignal(false);
-  let input: HTMLInputElement | undefined;
+  const inputs = () => secretRequestInputs(props.item);
+  const multiple = () => props.item.fields !== undefined;
+  const inputId = (index: number) => `${formId}-${index}`;
+  // Typed values stay in the inputs, outside state; only whether every one is filled is tracked.
+  const elements = new Map<string, HTMLInputElement>();
+  const [complete, setComplete] = createSignal(false);
+  const typedValues = () =>
+    Object.fromEntries(inputs().map((input) => [input.key, elements.get(input.key)?.value ?? ""]));
+  const refreshComplete = () =>
+    setComplete(
+      inputs().every((input) => (elements.get(input.key)?.value.trim() ?? "").length > 0),
+    );
   const link = () => secretRequestLink(props.item);
   const describedBy = () =>
     request.itemAnswerError() === null ? privacyId : `${privacyId} ${errorId}`;
 
   const send = async (reply: ISecretReply) => {
+    // A password field that leaves the page with text in it can prompt to save a login, so the
+    // inputs are emptied before the card closes; a failed answer puts the values back.
+    const typed = typedValues();
+    for (const element of elements.values()) element.value = "";
+    setComplete(false);
     const sent = await request.answerSecret(
       thread.state.EnvironmentId,
       thread.state.ThreadId,
+      props.item,
       reply,
     );
-    if (sent === true && input !== undefined) {
-      input.value = "";
-      setTyped(false);
-    }
+    if (sent === true) return;
+    for (const [key, element] of elements) element.value = typed[key] ?? "";
+    refreshComplete();
   };
+
+  const field = (input: SecretRequestInput, index: number) => {
+    const control = (
+      <Input
+        ref={(element: HTMLInputElement) => elements.set(input.key, element)}
+        id={inputId(index)}
+        class="min-w-0 flex-1"
+        type={input.secret ? "password" : "text"}
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck={false}
+        data-1p-ignore=""
+        data-lpignore="true"
+        data-bwignore=""
+        placeholder={input.placeholder}
+        disabled={busy()}
+        aria-invalid={request.itemAnswerError() !== null || undefined}
+        aria-describedby={describedBy()}
+        onInput={refreshComplete}
+      />
+    );
+    if (!multiple()) return control;
+    return (
+      <div class="flex min-w-0 flex-col gap-1">
+        <label for={inputId(index)} class={FIELD_LABEL}>
+          {input.label}
+        </label>
+        {control}
+      </div>
+    );
+  };
+  const saveButton = () => (
+    <Button type="submit" variant="primary" disabled={busy() || !complete()}>
+      Save securely
+    </Button>
+  );
 
   return (
     <form
@@ -160,7 +212,7 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
       autocomplete="off"
       onSubmit={(event) => {
         event.preventDefault();
-        if (input !== undefined && !busy()) void send({ type: "save", secret: input.value });
+        if (!busy()) void send({ type: "save", values: typedValues() });
       }}
       // On click, not pointerdown, so the click that follows doesn't take focus back; a click
       // that ends a text selection leaves it, so the reason can still be copied.
@@ -168,13 +220,21 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
         if (!(event.target instanceof Element)) return;
         if (event.target.closest("input, button, a")) return;
         if (window.getSelection()?.isCollapsed === false) return;
-        input?.focus();
+        const empty = inputs().findIndex((input) => !elements.get(input.key)?.value.trim());
+        document.getElementById(inputId(Math.max(empty, 0)))?.focus();
       }}
     >
       <div class="flex min-w-0 flex-col gap-1">
-        <label for={inputId} class="text-[14px] font-medium text-foreground">
-          {props.item.label}
-        </label>
+        <Show
+          when={multiple()}
+          fallback={
+            <label for={inputId(0)} class="text-[14px] font-medium text-foreground">
+              {props.item.label}
+            </label>
+          }
+        >
+          <p class="m-0 text-[14px] font-medium text-foreground">{props.item.label}</p>
+        </Show>
         <Show when={props.item.reason.trim()}>
           <p class="m-0 text-[14px] wrap-anywhere text-muted-foreground">{props.item.reason}</p>
         </Show>
@@ -199,29 +259,19 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
           </div>
         )}
       </Show>
-      <div class="flex min-w-0 items-center gap-2">
-        <Input
-          ref={input}
-          id={inputId}
-          class="min-w-0 flex-1"
-          type="password"
-          autocomplete="off"
-          autocorrect="off"
-          autocapitalize="off"
-          spellcheck={false}
-          data-1p-ignore=""
-          data-lpignore="true"
-          data-bwignore=""
-          placeholder={props.item.placeholder ?? SECRET_REQUEST_DEFAULT_PLACEHOLDER}
-          disabled={busy()}
-          aria-invalid={request.itemAnswerError() !== null || undefined}
-          aria-describedby={describedBy()}
-          onInput={(event) => setTyped(event.currentTarget.value.trim().length > 0)}
-        />
-        <Button type="submit" variant="primary" disabled={busy() || !typed()}>
-          Save securely
-        </Button>
-      </div>
+      <Show
+        when={multiple()}
+        fallback={
+          <div class="flex min-w-0 items-center gap-2">
+            {field(inputs()[0]!, 0)}
+            {saveButton()}
+          </div>
+        }
+      >
+        <div class="flex min-w-0 flex-col gap-2.5">
+          <For each={inputs()}>{(input, index) => field(input, index())}</For>
+        </div>
+      </Show>
       <Show when={request.itemAnswerError()}>
         {(error) => (
           <p id={errorId} role="alert" class={ERROR}>
@@ -234,9 +284,12 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
           <ShieldCheck class="size-3.5 flex-none" aria-hidden="true" />
           {secretRequestPrivacyNote(props.item)}
         </p>
-        <Button variant="ghost" disabled={busy()} onClick={() => void send({ type: "decline" })}>
-          Decline
-        </Button>
+        <div class="ms-auto flex flex-none items-center gap-2">
+          <Button variant="ghost" disabled={busy()} onClick={() => void send({ type: "decline" })}>
+            Decline
+          </Button>
+          <Show when={multiple()}>{saveButton()}</Show>
+        </div>
       </div>
     </form>
   );
