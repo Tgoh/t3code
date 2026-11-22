@@ -80,7 +80,11 @@ After stage 2, which also changes `ThreadView`.
 ## Repo
 
 - **Sync upstream.** **In progress** in its own thread, through `/syncupstream`.
-- **Make `Tgoh/t3code` public**, as an example of treflex, with nothing linking to it yet. **In progress:** an audit in its own thread, report only. It checks the full history, every branch and tag on origin, issues and PRs, and Actions for anything that shouldn't be public. Tam flips the visibility after reading the audit.
+- **Cut over to a rewritten public repo**, as an example of treflex, with nothing linking to it yet. The audit found no secrets, but 39 commits carry a work email, and the old `handover.md` and commit e1084c2bcb name the employer's systems. Rewriting in place would leave the old commits fetchable by hash on GitHub, so the rewritten history goes to a new repo. Do it once the upstream sync has merged and no thread is running:
+  1. Mirror-clone, keeping only `main` and `treflex-main`. Run `git filter-repo`: a mailmap from the work email to `gohtam@gmail.com`, `--replace-text` for the employer's names and the tailnet host, a new message for e1084c2bcb, and drop `apps/reflex-web/docs/handover.md`. Re-run the audit's greps on the result.
+  2. Rename the private repo to `Tgoh/t3code-archive`, create a fresh private `Tgoh/t3code`, push the rewritten `main` and `treflex-main`, set `treflex-main` as default, and turn Actions, Issues and Projects off.
+  3. Point the main checkout's `origin` at the new repo, reset `treflex-main` to the rewritten history, and remove or recreate every worktree from it. Set this repo's own `user.email` to `gohtam@gmail.com`.
+  4. Tam makes it public. Delete the archive later.
 
 ## Housekeeping
 
