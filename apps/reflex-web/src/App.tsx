@@ -219,8 +219,7 @@ const EnvironmentView = Environment.provider(() => {
       ),
     run: runCommand,
     typeIntoComposer: (event) =>
-      !composerCovered() &&
-      shouldTypeToFocusComposer(event) &&
+      shouldTypeToFocusComposer(event, composerCovered()) &&
       typeIntoComposer({ Text: event.key, Paste: false, Bypass: false }),
     closeSheet: () => {
       const panels = environment.panelShortcuts();

@@ -1,6 +1,6 @@
-// Follows apps/web/src/components/chat/composerFocusRedirect.ts. Open layers (menus, dialogs,
-// popovers, the palette, the sidebar sheet) and the surface launcher's letters are checked by the
-// key dispatcher in shortcuts.ts, which knows them without querying the DOM.
+// Follows apps/web/src/components/chat/composerFocusRedirect.ts, except that a printable key typed
+// on a button or link goes to the composer, where Space stays with it. Callers say whether a layer
+// (menu, dialog, popover, the palette, a sheet) covers the composer, since they know without the DOM.
 
 const EDITABLE_SELECTOR = [
   "input",
@@ -12,12 +12,11 @@ const EDITABLE_SELECTOR = [
   '[role="textbox"]',
 ].join(",");
 
-const INTERACTIVE_SELECTOR = [
-  "button",
-  "a[href]",
+const BUTTON_OR_LINK_SELECTOR = ["button", "a[href]", '[role="button"]'].join(",");
+
+const CONTROL_SELECTOR = [
   "summary",
   '[role="application"]',
-  '[role="button"]',
   '[role="checkbox"]',
   '[role="menuitem"]',
   '[role="option"]',
@@ -52,19 +51,24 @@ function isKeyClaimedInPath(event: KeyboardEvent): boolean {
   );
 }
 
-/** Whether a key or paste outside any field should go to the composer instead of being lost. */
-export function shouldRedirectInputToComposer(event: Event): boolean {
+function isOutsideFieldsAndControls(event: Event): boolean {
   if (event.defaultPrevented) return false;
   if (pathMatches(event, EDITABLE_SELECTOR)) return false;
-  if (pathMatches(event, INTERACTIVE_SELECTOR)) return false;
-  return true;
+  return !pathMatches(event, CONTROL_SELECTOR);
 }
 
-export function shouldTypeToFocusComposer(event: KeyboardEvent): boolean {
+/** Whether a paste outside any field or control should go to the composer instead of being lost. */
+export function shouldRedirectInputToComposer(event: Event): boolean {
+  return isOutsideFieldsAndControls(event) && !pathMatches(event, BUTTON_OR_LINK_SELECTOR);
+}
+
+export function shouldTypeToFocusComposer(event: KeyboardEvent, composerCovered: boolean): boolean {
+  if (composerCovered) return false;
   if (event.isComposing) return false;
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
   if (event.key.length !== 1) return false;
-  if (!shouldRedirectInputToComposer(event)) return false;
+  if (!isOutsideFieldsAndControls(event)) return false;
+  if (event.key === " " && pathMatches(event, BUTTON_OR_LINK_SELECTOR)) return false;
   if (isKeyClaimedInPath(event)) return false;
   return true;
 }
