@@ -1,13 +1,5 @@
 import { selectableProviderOptionChoices } from "@t3tools/client-runtime/model-traits";
-import {
-  type Component,
-  createMemo,
-  createSignal,
-  createUniqueId,
-  For,
-  onMount,
-  Show,
-} from "solid-js";
+import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import { hasProviderIcon, ProviderIcon } from "./brand";
@@ -28,10 +20,19 @@ import {
 } from "./icons";
 import type { IWireRuntimeMode } from "./Infrastructure/commandEffects";
 import { arrowStep, focusStep } from "./listNavigation";
-import { ComboboxEmpty, ComboboxSearchInput } from "./ui/Combobox";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
+import {
+  Combobox,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxListVirtualized,
+  ComboboxSearchInput,
+} from "./ui/Combobox";
 import { MenuPopup, MenuRadioGroup, MenuRadioItem, openMenuFromKeys } from "./ui/Menu";
 import { PopoverPopup } from "./ui/Popover";
 import { Presence } from "./ui/Presence";
+import { createScrollEnds, getVirtualizedScrollFadeClassName } from "./ui/ScrollArea";
 import { Switch } from "./ui/Switch";
 import {
   FAVORITES_TAB,
@@ -96,8 +97,11 @@ const EMPTY = "px-2 py-1.5 text-[14px] text-muted-foreground";
 const STACK = "flex flex-col gap-0.5";
 const ROW_TEXT = "min-w-0 flex-1 truncate";
 const COLUMN_HEAD = "mx-3 mt-2.5 mb-0 border-b border-border/70 pb-1.5 text-muted-foreground";
-const MODEL_ROW =
-  "group/row flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-[14px] data-highlighted:bg-foreground/9 [&>svg]:size-3.5 [&>svg]:flex-none";
+const MODEL_LIST = "relative min-h-0 overflow-hidden pr-px";
+const MODEL_SCROLLER =
+  "scrollbar-gutter-stable h-full overflow-x-hidden overscroll-y-contain py-1.5 [&::-webkit-scrollbar-track]:my-2";
+const STAR_ON_HOVER =
+  "opacity-0 group-hover:opacity-100 group-data-highlighted:opacity-100 in-focus-visible:opacity-100 pointer-coarse:opacity-100";
 const EFFORT_ROW =
   "flex min-h-8 w-full flex-none cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left text-[14px] text-foreground hover:bg-foreground/9 focus-visible:bg-foreground/9 [&>svg]:size-3.5 [&>svg]:flex-none";
 const PROVIDER_TAB =
@@ -344,6 +348,78 @@ function ProviderGlyph(props: { driver: string | undefined; name: string; size?:
   );
 }
 
+const LEGACY_KEY = "legacy";
+
+const modelKey = (instanceId: string, slug: string) => `${instanceId}\u0000${slug}`;
+
+function ModelListRow(props: {
+  model: IPickerModel;
+  selected: boolean;
+  /** In Favorites every row is starred, so the star shows only on hover. */
+  favoriteStarOnHover: boolean;
+  disabledReason: string | null;
+  onChoose: () => void;
+  onToggleFavorite: () => void;
+}) {
+  const favoriteLabel = () =>
+    props.model.IsFavorite ? "Remove from favorites" : "Add to favorites";
+  const starClass = () =>
+    [
+      "size-3.5 sm:size-3",
+      props.model.IsFavorite && "fill-current text-warning",
+      (!props.model.IsFavorite || props.favoriteStarOnHover) && STAR_ON_HOVER,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  return (
+    <ComboboxItem
+      value={modelKey(props.model.InstanceId, props.model.Slug)}
+      disabled={props.disabledReason !== null}
+      pointerWhenDisabled={props.disabledReason !== null}
+      selectedFill={false}
+      class="group relative w-full !min-w-0 max-w-full cursor-pointer"
+      data-tip={props.disabledReason ?? undefined}
+      data-tip-side="left"
+      onClick={props.onChoose}
+    >
+      <span class="inline-flex size-4 flex-none items-center justify-center">
+        <ProviderGlyph driver={props.model.Driver} name={props.model.ProviderName} size={16} />
+      </span>
+      <div class="flex min-w-0 flex-1 items-center gap-2 text-left">
+        <div class="min-w-0 truncate text-sm font-normal leading-snug">
+          {props.model.Name}
+          <span class="sr-only">, {props.model.ProviderName}</span>
+        </div>
+        <Show when={props.selected}>
+          <Check class="size-3.5 shrink-0" aria-hidden="true" />
+        </Show>
+        <Show when={props.model.IsUnavailable}>
+          <Badge variant="outline" size="sm">
+            Unavailable
+          </Badge>
+        </Show>
+      </div>
+      <div class="flex shrink-0 items-center gap-1.5">
+        <Button
+          size="icon-xs"
+          variant="ghost-muted"
+          aria-label={favoriteLabel()}
+          data-tip={favoriteLabel()}
+          data-tip-side="top"
+          disabled={props.disabledReason !== null}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onToggleFavorite();
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <Star class={starClass()} />
+        </Button>
+      </div>
+    </ComboboxItem>
+  );
+}
+
 function PickerContent(props: { traits: ITraits | null }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
@@ -364,7 +440,7 @@ function PickerContent(props: { traits: ITraits | null }) {
     ),
   );
   const [query, setQuery] = createSignal("");
-  const [highlight, setHighlight] = createSignal(-1);
+  const [highlighted, setHighlighted] = createSignal<string | null>(null);
   const list = createMemo(() =>
     pickerList({
       Providers: providers(),
@@ -391,11 +467,13 @@ function PickerContent(props: { traits: ITraits | null }) {
     selection()?.instanceId === model.InstanceId && selection()?.model === model.Slug;
   const [search, setSearch] = createSignal<HTMLInputElement>();
   const [column, setColumn] = createSignal<HTMLDivElement>();
-  const [listElement, setListElement] = createSignal<HTMLUListElement>();
   const [rail, setRail] = createSignal<HTMLDivElement>();
   const searching = () => query().trim() !== "";
-  const listId = createUniqueId();
-  const rowId = (index: number) => `${listId}-${index}`;
+  const { ends: scrollEnds, track: trackScroll } = createScrollEnds();
+  const activeKey = () => {
+    const held = selection();
+    return held === null ? null : modelKey(held.instanceId, held.model);
+  };
 
   const focusEffort = () => {
     const held = column();
@@ -406,8 +484,6 @@ function PickerContent(props: { traits: ITraits | null }) {
     row?.focus({ preventScroll: true });
     return row != null;
   };
-  const showRow = (index: number) =>
-    listElement()?.children[index]?.scrollIntoView({ block: "nearest" });
   const choose = (model: IPickerModel) => {
     if (blockOf(model.InstanceId) !== null) return;
     void session.chooseModel(model.InstanceId, model.Slug);
@@ -415,30 +491,11 @@ function PickerContent(props: { traits: ITraits | null }) {
       if (!focusEffort()) search()?.focus();
     });
   };
-  const chooseRow = (index: number) => {
-    const model = models()[index];
-    if (model !== undefined) choose(model);
-    else if (index === models().length && list().Legacy !== null) toggleLegacy();
-  };
-  const moveHighlight = (step: number) => {
-    const count = rowCount();
-    if (count === 0) return;
-    const selected = models().findIndex(isSelected);
-    const next =
-      highlight() < 0
-        ? selected >= 0
-          ? selected
-          : step > 0
-            ? 0
-            : count - 1
-        : Math.max(0, Math.min(count - 1, highlight() + step));
-    setHighlight(next);
-    showRow(next);
-  };
+  const highlightedModel = () =>
+    models().find((model) => modelKey(model.InstanceId, model.Slug) === highlighted());
   const pickTab = (next: string) => {
     setTab(next);
     setQuery("");
-    setHighlight(-1);
     search()?.focus();
   };
   const railButtons = () =>
@@ -450,10 +507,7 @@ function PickerContent(props: { traits: ITraits | null }) {
     )?.focus();
   };
 
-  onMount(() => {
-    search()?.focus();
-    showRow(Math.max(0, models().findIndex(isSelected)));
-  });
+  onMount(() => search()?.focus());
 
   return (
     <div
@@ -514,125 +568,93 @@ function PickerContent(props: { traits: ITraits | null }) {
           )}
         </For>
       </div>
-      <div class="flex min-h-0 flex-col border-r border-l border-border/70 bg-muted/40 [grid-area:models] group-data-searching/picker:border-l-0 max-sm:border-r-0">
-        <ComboboxSearchInput
-          data-model-search
-          ref={setSearch}
-          type="text"
-          placeholder="Search models..."
-          aria-label="Search models"
-          aria-controls={rowCount() > 0 ? listId : undefined}
-          aria-activedescendant={
-            highlight() >= 0 && highlight() < rowCount() ? rowId(highlight()) : undefined
-          }
-          value={query()}
-          onInput={(event) => {
-            setQuery(event.currentTarget.value);
-            setHighlight(searching() && rowCount() > 0 ? 0 : -1);
-          }}
-          onKeyDown={(event) => {
-            if (event.isComposing) return;
-            if (
-              !event.altKey &&
-              !event.ctrlKey &&
-              !event.metaKey &&
-              !searching() &&
-              ((event.key === "ArrowLeft" && !event.shiftKey && query() === "") ||
-                (event.key === "Tab" && event.shiftKey))
-            ) {
-              event.preventDefault();
-              focusRail();
-            } else if (arrowStep(event.key) !== null) {
-              event.preventDefault();
-              moveHighlight(arrowStep(event.key)!);
-            } else if (event.key === "Enter") {
-              event.preventDefault();
-              chooseRow(highlight());
-            } else if (
-              event.key === "ArrowRight" &&
-              event.currentTarget.selectionStart === query().length
-            ) {
-              const model = models()[highlight()];
-              if (model !== undefined && !isSelected(model)) choose(model);
-              else if (focusEffort()) event.preventDefault();
-            }
-          }}
-        />
-        <Show when={rowCount() === 0}>
-          <ComboboxEmpty>
-            {tab() === FAVORITES_TAB && query() === "" ? "No favorites yet" : "No models found"}
+      <Combobox value={activeKey()} onItemHighlighted={setHighlighted}>
+        <div class="flex min-h-0 flex-col border-r border-l border-border/70 bg-muted/40 [grid-area:models] group-data-searching/picker:border-l-0 max-sm:border-r-0">
+          <ComboboxSearchInput
+            data-model-search
+            ref={setSearch}
+            type="text"
+            placeholder="Search models..."
+            aria-label="Search models"
+            value={query()}
+            onInput={(event) => setQuery(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+              if (
+                !searching() &&
+                ((event.key === "ArrowLeft" && !event.shiftKey && query() === "") ||
+                  (event.key === "Tab" && event.shiftKey))
+              ) {
+                event.preventDefault();
+                focusRail();
+              } else if (
+                event.key === "ArrowRight" &&
+                !event.shiftKey &&
+                event.currentTarget.selectionStart === query().length
+              ) {
+                const model = highlightedModel();
+                if (model !== undefined && !isSelected(model)) choose(model);
+                else if (focusEffort()) event.preventDefault();
+              }
+            }}
+          />
+          <div class={`${MODEL_LIST} ${rowCount() > 0 ? "flex-1" : "h-0"}`}>
+            <ComboboxListVirtualized inline aria-label="Models">
+              <div
+                ref={trackScroll}
+                class={`${MODEL_SCROLLER} ${getVirtualizedScrollFadeClassName(scrollEnds())}`}
+                style={{ "overflow-y": "auto" }}
+              >
+                <div class="pl-2 pr-px">
+                  <For each={models()}>
+                    {(model, index) => (
+                      <>
+                        <Show when={index() > 0}>
+                          <div class="h-0.5" />
+                        </Show>
+                        <ModelListRow
+                          model={model}
+                          selected={isSelected(model)}
+                          favoriteStarOnHover={tab() === FAVORITES_TAB && !searching()}
+                          disabledReason={blockOf(model.InstanceId)}
+                          onChoose={() => choose(model)}
+                          onToggleFavorite={() =>
+                            void environment.toggleModelFavorite(model.InstanceId, model.Slug)
+                          }
+                        />
+                      </>
+                    )}
+                  </For>
+                  <Show when={list().Legacy}>
+                    {(legacy) => (
+                      <>
+                        <Show when={models().length > 0}>
+                          <div class="h-0.5" />
+                        </Show>
+                        <ComboboxItem
+                          value={LEGACY_KEY}
+                          aria-expanded={legacy().Expanded}
+                          class="group w-full cursor-pointer"
+                          onClick={toggleLegacy}
+                        >
+                          <span class="text-sm leading-snug text-muted-foreground group-hover:text-foreground group-data-highlighted:text-foreground">
+                            {legacy().Expanded ? "Show less" : "Show more"}
+                          </span>
+                        </ComboboxItem>
+                      </>
+                    )}
+                  </Show>
+                </div>
+              </div>
+            </ComboboxListVirtualized>
+          </div>
+          <ComboboxEmpty class="empty:h-0">
+            <Show when={rowCount() === 0}>
+              {tab() === FAVORITES_TAB && query() === "" ? "No favorites yet" : "No models found"}
+            </Show>
           </ComboboxEmpty>
-        </Show>
-        <ul
-          id={listId}
-          class="m-0 min-h-0 flex-1 list-none overflow-y-auto overscroll-contain p-2 empty:hidden"
-          role="listbox"
-          aria-label="Models"
-          ref={setListElement}
-        >
-          <For each={models()}>
-            {(model, index) => (
-              <li
-                id={rowId(index())}
-                role="option"
-                aria-selected={isSelected(model)}
-                aria-disabled={blockOf(model.InstanceId) !== null}
-                class={`${MODEL_ROW} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`}
-                data-highlighted={index() === highlight() ? "" : undefined}
-                data-tip={blockOf(model.InstanceId) ?? undefined}
-                data-tip-side="left"
-                onPointerMove={() => setHighlight(index())}
-                onClick={() => choose(model)}
-              >
-                <span class="inline-flex flex-none">
-                  <ProviderGlyph driver={model.Driver} name={model.ProviderName} size={14} />
-                </span>
-                <span class="min-w-0 flex-initial truncate">
-                  {model.Name}
-                  <span class="sr-only">, {model.ProviderName}</span>
-                </span>
-                <Show when={model.IsUnavailable}>
-                  <span class="flex-none rounded border border-border px-1 text-[10px] leading-4 font-medium text-muted-foreground">
-                    Unavailable
-                  </span>
-                </Show>
-                <Show when={isSelected(model)}>
-                  <Check />
-                </Show>
-                <span class="flex-1" />
-                <button
-                  type="button"
-                  class={`inline-flex size-6 flex-none cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground enabled:hover:bg-foreground/9 enabled:hover:text-foreground [&_svg]:size-3 ${model.IsFavorite ? "[&_svg]:fill-current [&_svg]:text-warning" : ""} ${!model.IsFavorite || tab() === FAVORITES_TAB ? "opacity-0 group-hover/row:opacity-100 group-data-highlighted/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100" : ""}`}
-                  aria-label={model.IsFavorite ? "Remove from favorites" : "Add to favorites"}
-                  data-tip={model.IsFavorite ? "Remove from favorites" : "Add to favorites"}
-                  disabled={blockOf(model.InstanceId) !== null}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void environment.toggleModelFavorite(model.InstanceId, model.Slug);
-                  }}
-                >
-                  <Star />
-                </button>
-              </li>
-            )}
-          </For>
-          <Show when={list().Legacy}>
-            {(legacy) => (
-              <li
-                id={rowId(models().length)}
-                role="option"
-                aria-expanded={legacy().Expanded}
-                class={`${MODEL_ROW} text-muted-foreground data-highlighted:text-foreground`}
-                data-highlighted={highlight() === models().length ? "" : undefined}
-                onPointerMove={() => setHighlight(models().length)}
-                onClick={toggleLegacy}
-              >
-                {legacy().Expanded ? "Show less" : "Show more"}
-              </li>
-            )}
-          </Show>
-        </ul>
-      </div>
+        </div>
+      </Combobox>
       <div
         class="flex min-h-0 flex-col [grid-area:effort] max-sm:max-h-44 max-sm:border-t max-sm:border-l max-sm:border-border/70"
         ref={setColumn}

@@ -16,6 +16,7 @@ import {
 import { File as FileIcon, Folder } from "./icons";
 import { stepHighlight } from "./listNavigation";
 import ThreadSession from "./ThreadSession";
+import { CommandGroup, CommandItem, CommandList } from "./ui/Command";
 
 const ICONS = { file: FileIcon, directory: Folder, command: null, skill: null };
 
@@ -60,6 +61,7 @@ export function useComposerMenu(text: () => string, cursor: () => number) {
     items,
     searching,
     highlight,
+    highlightAt: (index: number) => setHighlight(index),
     move: (direction: 1 | -1) =>
       setHighlight((index) => stepHighlight(index, items().length, direction) ?? 0),
     highlighted: () => items()[Math.min(highlight(), items().length - 1)],
@@ -80,54 +82,78 @@ export function useComposerMenu(text: () => string, cursor: () => number) {
 
 export type IComposerMenu = ReturnType<typeof useComposerMenu>;
 
+const LISTBOX_LABEL: Record<IMenuTrigger["kind"], string> = {
+  path: "Files and folders",
+  "slash-command": "Commands",
+  skill: "Skills",
+};
+
 export function ComposerCommandMenu(props: {
   menu: IComposerMenu;
   trigger: IMenuTrigger;
   onPick: (item: IMenuItem) => void;
 }) {
   return (
-    <div
-      class="absolute inset-x-0 bottom-[calc(100%+4px)] z-40 flex max-h-[min(18rem,40dvh)] flex-col overflow-y-auto rounded-xl border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]"
-      role="listbox"
-      aria-label="Suggestions"
-    >
+    <div class="absolute inset-x-0 bottom-[calc(100%+4px)] z-40 flex max-h-[min(18rem,40dvh)] min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-popover text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] **:data-[slot=command-item]:rounded-lg">
       <Show
         when={props.menu.items().length > 0}
         fallback={
-          <p class="m-0 px-2 py-1.5 text-[13px] text-muted-foreground">
-            {props.menu.searching() ? "Searching…" : MENU_EMPTY[props.trigger.kind]}
-          </p>
+          <div class="px-5 pt-3.5 pb-7">
+            <p class="text-secondary-label text-xs">
+              {props.menu.searching()
+                ? "Searching workspace files..."
+                : MENU_EMPTY[props.trigger.kind]}
+            </p>
+          </div>
         }
       >
-        <For each={props.menu.items()}>
-          {(item, index) => {
-            const Icon = ICONS[item.Kind];
-            return (
-              <button
-                type="button"
-                role="option"
-                class="flex min-h-[30px] flex-none cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1 text-left text-[13px] aria-selected:bg-accent [&_svg]:size-3.5 [&_svg]:flex-none [&_svg]:text-muted-foreground"
-                aria-selected={index() === props.menu.highlight()}
-                ref={(element) =>
-                  createEffect(() => {
-                    if (index() === props.menu.highlight())
-                      element.scrollIntoView({ block: "nearest" });
-                  })
-                }
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={() => props.onPick(item)}
-              >
-                <Show when={Icon}>{(Shown) => <Dynamic component={Shown()} />}</Show>
-                <span class="max-w-[50%] flex-none truncate">{item.Label}</span>
-                <Show when={item.Description}>
-                  <span class="min-w-0 truncate text-[12px] text-muted-foreground">
-                    {item.Description}
-                  </span>
-                </Show>
-              </button>
-            );
-          }}
-        </For>
+        <CommandList
+          aria-label={LISTBOX_LABEL[props.trigger.kind]}
+          class="max-h-72 min-h-0 scroll-pb-6"
+        >
+          <CommandGroup>
+            <For each={props.menu.items()}>
+              {(item, index) => {
+                const Icon = ICONS[item.Kind];
+                const active = () => index() === props.menu.highlight();
+                return (
+                  <CommandItem
+                    active={active()}
+                    aria-selected={active()}
+                    ref={(element) =>
+                      createEffect(() => {
+                        if (active()) element.scrollIntoView({ block: "nearest" });
+                      })
+                    }
+                    onMouseMove={() => {
+                      if (!active()) props.menu.highlightAt(index());
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => props.onPick(item)}
+                  >
+                    <Show when={Icon}>
+                      {(Shown) => (
+                        <Dynamic
+                          component={Shown()}
+                          aria-hidden="true"
+                          class="size-4 shrink-0 text-secondary-label"
+                        />
+                      )}
+                    </Show>
+                    <span class="flex min-w-0 flex-1 items-center gap-2">
+                      <span class="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
+                        {item.Label}
+                      </span>
+                      <span class="min-w-0 flex-1 truncate text-left text-secondary-label text-xs">
+                        {item.Description}
+                      </span>
+                    </span>
+                  </CommandItem>
+                );
+              }}
+            </For>
+          </CommandGroup>
+        </CommandList>
       </Show>
     </div>
   );

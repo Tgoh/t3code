@@ -145,15 +145,17 @@ export function CommandPanel(props: JSX.HTMLAttributes<HTMLDivElement>) {
 export function CommandList(
   props: Omit<JSX.HTMLAttributes<HTMLDivElement>, "class" | "ref" | "role"> & {
     ref?: (element: HTMLDivElement) => void;
+    /** Layout only. */
+    class?: string;
   },
 ) {
-  const [local, rest] = splitProps(props, ["ref"]);
+  const [local, rest] = splitProps(props, ["ref", "class"]);
   return (
     <ScrollArea class="flex flex-col" scrollbarGutter scrollFade>
       <div
         {...rest}
         ref={(element) => local.ref?.(element)}
-        class={LIST}
+        class={withClass(LIST, local.class)}
         role="listbox"
         data-slot="command-list"
       />

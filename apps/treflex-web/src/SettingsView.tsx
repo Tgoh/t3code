@@ -58,6 +58,15 @@ import { SidebarToggle } from "./Sidebar";
 import { clockNow, relativeTime } from "./timestamps";
 import { Badge } from "./ui/Badge";
 import { Button, buttonVariants } from "./ui/Button";
+import {
+  Combobox,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxPopup,
+  ComboboxSearchInput,
+  openComboboxFromKeys,
+} from "./ui/Combobox";
 import { DraftInput } from "./ui/DraftInput";
 import { Input } from "./ui/Input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/InputGroup";
@@ -88,6 +97,8 @@ import { Textarea } from "./ui/Textarea";
 import { VoiceSetup } from "./VoiceSettings";
 
 const PRIVACY_POLICY_URL = "https://t3.codes/privacy-policy";
+
+const SCOPE_SEARCH_THRESHOLD = 6;
 
 const loading = "m-0 px-4 text-[13px] text-muted-foreground";
 const note = "m-0 px-4 text-[13px] text-muted-foreground [&_code]:text-[12px]";
@@ -872,7 +883,19 @@ const ProjectsPage = Shell.provider(() => {
     shell.state.Projects[picked() ?? environment.currentProjectId() ?? ""] ?? null;
   const [removing, setRemoving] = createSignal<IWireProject | null>(null);
   const [scopeMenu, setScopeMenu] = createSignal<HTMLElement | null>(null);
+  const [scopeQuery, setScopeQuery] = createSignal("");
   const scopeLabel = () => project()?.title ?? "Choose a project";
+  const searchable = () => projects().length > SCOPE_SEARCH_THRESHOLD;
+  const scopeMatches = createMemo(() => {
+    const needle = scopeQuery().trim().toLowerCase();
+    return projects().filter((entry) =>
+      `${entry.title} ${entry.id}`.toLowerCase().includes(needle),
+    );
+  });
+  const openScope = (trigger: HTMLElement) => {
+    setScopeQuery("");
+    setScopeMenu(trigger);
+  };
   return (
     <>
       <div class={`${toolbar} text-muted-foreground`}>
@@ -882,15 +905,18 @@ const ProjectsPage = Shell.provider(() => {
           size="sm"
           class="min-w-0 max-w-72"
           aria-label={`Project scope: ${scopeLabel()}`}
-          aria-haspopup="menu"
+          aria-haspopup={searchable() ? "listbox" : "menu"}
           aria-expanded="false"
+          data-slot={searchable() ? "combobox-trigger" : undefined}
           onClick={(event) => {
-            const trigger = event.currentTarget;
-            setScopeMenu((held) => (held === null ? trigger : null));
+            if (scopeMenu() === null) openScope(event.currentTarget);
+            else setScopeMenu(null);
           }}
           onKeyDown={(event) => {
             const trigger = event.currentTarget;
-            openMenuFromKeys(event, () => setScopeMenu(trigger));
+            (searchable() ? openComboboxFromKeys : openMenuFromKeys)(event, () =>
+              openScope(trigger),
+            );
           }}
         >
           <Show when={project()}>{(held) => <ProjectBadge project={held()} size={14} />}</Show>
@@ -904,25 +930,65 @@ const ProjectsPage = Shell.provider(() => {
       </div>
       <Presence when={scopeMenu()}>
         {(anchor) => (
-          <MenuPopup anchor={anchor()} align="start" onClose={() => setScopeMenu(null)}>
-            <div class="w-72 max-w-full">
-              <MenuRadioGroup value={project()?.id ?? ""} onValueChange={setPicked}>
-                <For each={projects()}>
-                  {(entry) => (
-                    <MenuRadioItem value={entry.id} closeOnClick label={entry.title}>
-                      <span class="flex min-w-0 items-center gap-2">
-                        <ProjectBadge project={entry} size={14} />
-                        <span class="min-w-0 flex-1">
-                          <span class="block truncate">{entry.title}</span>
+          <Show
+            when={!searchable()}
+            fallback={
+              <Combobox value={project()?.id ?? null}>
+                <ComboboxPopup anchor={anchor()} class="w-80" onClose={() => setScopeMenu(null)}>
+                  <ComboboxSearchInput
+                    aria-label="Search projects"
+                    placeholder="Search projects"
+                    value={scopeQuery()}
+                    onInput={(event) => setScopeQuery(event.currentTarget.value)}
+                  />
+                  <ComboboxEmpty>
+                    <Show when={scopeMatches().length === 0}>No matches found.</Show>
+                  </ComboboxEmpty>
+                  <ComboboxList>
+                    <For each={scopeMatches()}>
+                      {(entry) => (
+                        <ComboboxItem
+                          value={entry.id}
+                          onClick={() => {
+                            setPicked(entry.id);
+                            setScopeMenu(null);
+                          }}
+                        >
+                          <ProjectBadge project={entry} size={14} />
+                          <span class="min-w-0 flex-1">
+                            <span class="block truncate">{entry.title}</span>
+                          </span>
+                          <Show when={entry.id === project()?.id}>
+                            <Icons.Check aria-hidden="true" class="size-3.5 shrink-0" />
+                          </Show>
+                        </ComboboxItem>
+                      )}
+                    </For>
+                  </ComboboxList>
+                </ComboboxPopup>
+              </Combobox>
+            }
+          >
+            <MenuPopup anchor={anchor()} align="start" onClose={() => setScopeMenu(null)}>
+              <div class="w-72 max-w-full">
+                <MenuRadioGroup value={project()?.id ?? ""} onValueChange={setPicked}>
+                  <For each={projects()}>
+                    {(entry) => (
+                      <MenuRadioItem value={entry.id} closeOnClick label={entry.title}>
+                        <span class="flex min-w-0 items-center gap-2">
+                          <ProjectBadge project={entry} size={14} />
+                          <span class="min-w-0 flex-1">
+                            <span class="block truncate">{entry.title}</span>
+                          </span>
+                          <MenuRadioItemIndicator />
                         </span>
-                        <MenuRadioItemIndicator />
-                      </span>
-                    </MenuRadioItem>
-                  )}
-                </For>
-              </MenuRadioGroup>
-            </div>
-          </MenuPopup>
+                      </MenuRadioItem>
+                    )}
+                  </For>
+                </MenuRadioGroup>
+              </div>
+            </MenuPopup>
+          </Show>
         )}
       </Presence>
       <Show

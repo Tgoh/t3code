@@ -1,4 +1,4 @@
-import { type JSX, onCleanup, splitProps } from "solid-js";
+import { createSignal, type JSX, onCleanup, splitProps } from "solid-js";
 
 import { overrides } from "./merge";
 import { trackScrollOverflow } from "./scrollOverflow";
@@ -15,6 +15,43 @@ const FADE =
 
 const HIDDEN_SCROLLBARS =
   "[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+
+/** Stock's fade for a scroller a virtualizer owns, from whether it can scroll up and down. */
+export function getVirtualizedScrollFadeClassName(ends: { top: boolean; bottom: boolean }) {
+  if (!ends.top && !ends.bottom) return "";
+  const mask =
+    ends.top && ends.bottom
+      ? "[--virtualized-scroll-fade-mask:linear-gradient(to_bottom,transparent,black_var(--fade-size),black_calc(100%-var(--fade-size)),transparent)]"
+      : ends.top
+        ? "[--virtualized-scroll-fade-mask:linear-gradient(to_bottom,transparent,black_var(--fade-size))]"
+        : "[--virtualized-scroll-fade-mask:linear-gradient(to_bottom,black_calc(100%-var(--fade-size)),transparent)]";
+  return `virtualized-scroll-fade [--fade-size:1.5rem] ${mask}`;
+}
+
+/** Whether a scroller can scroll up and down, as stock reads it from its virtualizer. */
+export function createScrollEnds() {
+  const [ends, setEnds] = createSignal({ top: false, bottom: false });
+  return {
+    ends,
+    track: (element: HTMLElement) => {
+      const update = () => {
+        const top = element.scrollTop > 0;
+        const bottom = element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+        if (top !== ends().top || bottom !== ends().bottom) setEnds({ top, bottom });
+      };
+      const resize = new ResizeObserver(update);
+      resize.observe(element);
+      const mutation = new MutationObserver(update);
+      mutation.observe(element, { childList: true, subtree: true });
+      element.addEventListener("scroll", update, { passive: true });
+      onCleanup(() => {
+        resize.disconnect();
+        mutation.disconnect();
+        element.removeEventListener("scroll", update);
+      });
+    },
+  };
+}
 
 interface IScrollAreaOptions {
   scrollFade?: boolean | undefined;

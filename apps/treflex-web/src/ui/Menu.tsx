@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import { Portal } from "solid-js/web";
 
-import { Check, ChevronRight, Search } from "../icons";
+import { Check, ChevronRight } from "../icons";
 import type { ICloseReason } from "../overlays";
 import {
   backdropStyle,
@@ -21,7 +21,6 @@ import {
   type IPlacement,
   type ISide,
 } from "./floating";
-import { Input, type InputProps } from "./Input";
 import { createItemNavigation, MENU_TYPEAHEAD_RESET_MS } from "./itemNavigation";
 import { Presence } from "./Presence";
 
@@ -803,32 +802,5 @@ export function MenuSubPopup(props: {
         );
       }}
     </Presence>
-  );
-}
-
-/** A menu's filter field, drawn like stock's `ComboboxSearchInput`. */
-export function MenuSearchInput(props: Omit<InputProps, "class" | "size" | "unstyled">) {
-  const [local, rest] = splitProps(props, ["onKeyDown"]);
-  return (
-    <label class="block min-w-0 shrink-0 cursor-text px-2 pt-1.5 pb-1">
-      <div class="relative -translate-y-px border-b border-border/70 pb-1.5 transition-colors focus-within:border-ring">
-        <Search
-          aria-hidden="true"
-          class="pointer-events-none absolute top-1.5 left-0 size-4 shrink-0 text-muted-foreground/55"
-        />
-        <Input
-          {...rest}
-          class="rounded-none bg-transparent text-sm [&_input]:h-6.5 [&_input]:ps-5 [&_input]:font-sans [&_input]:leading-6.5"
-          size="sm"
-          unstyled
-          onKeyDown={(event) => {
-            // Typeahead would otherwise take the letters; arrows still reach the items.
-            if (event.key !== "ArrowDown" && event.key !== "Escape") event.stopPropagation();
-            const handler = local.onKeyDown;
-            if (typeof handler === "function") handler(event);
-          }}
-        />
-      </div>
-    </label>
   );
 }

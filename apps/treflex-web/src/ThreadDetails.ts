@@ -1,4 +1,5 @@
 import type { VcsStatusResult } from "@t3tools/contracts";
+import { sanitizeNewRefName } from "@t3tools/shared/git";
 import { type IOpenGenerator, latest, leading, open, openResource, workTag } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -128,6 +129,19 @@ function* switchTo(draft: IThreadDetails, refName: string, create: boolean): IOp
     draft.BranchError = serverError(error).message;
   }
   yield* refreshStatus(draft);
+}
+
+/**
+ * Whether a branch matches the picker's query, as stock's `shouldIncludeBranchPickerItem`: the
+ * listed branches can be the previous search's while a new one is in flight.
+ */
+export function branchMatchesQuery(name: string, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (normalized.length === 0) return true;
+  const lower = name.toLowerCase();
+  if (lower.includes(normalized)) return true;
+  const sanitized = sanitizeNewRefName(normalized);
+  return sanitized.length > 0 && sanitized !== normalized && lower.includes(sanitized);
 }
 
 export function blockedByWorktree(ref: IBranchRef, cwd: string): boolean {

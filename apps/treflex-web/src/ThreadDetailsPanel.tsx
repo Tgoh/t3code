@@ -42,7 +42,6 @@ import {
   FileDiff,
   Folder,
   GitBranch,
-  GitBranchPlus,
   GitCommitHorizontal,
   GitFork,
   GitMerge,
@@ -62,8 +61,10 @@ import {
 } from "./lineage";
 import { lineageTitles } from "./lineageTitles";
 import { useOverlays } from "./overlays";
+import type { IBranchRef } from "./Infrastructure/sourceControlEffects";
 import ThreadDetails, {
   blockedByWorktree,
+  branchMatchesQuery,
   changesTotals,
   type IThreadDetails,
   loadBranches,
@@ -78,14 +79,16 @@ import { SectionHeaderStatus } from "./ui/CollapsibleSectionHeader";
 import { Input } from "./ui/Input";
 import { Label } from "./ui/Label";
 import {
-  MenuItem,
-  MenuItemDetail,
-  MenuItemLabel,
-  MenuPopup,
-  MenuSearchInput,
-  MenuSeparator,
-  openMenuFromKeys,
-} from "./ui/Menu";
+  Combobox,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxListVirtualized,
+  ComboboxPopup,
+  ComboboxSearchInput,
+  ComboboxStatus,
+  openComboboxFromKeys,
+} from "./ui/Combobox";
+import { MenuItem, MenuItemLabel, MenuPopup, MenuSeparator, openMenuFromKeys } from "./ui/Menu";
 import {
   Dialog,
   DialogDescription,
@@ -96,6 +99,7 @@ import {
   DialogTitle,
 } from "./ui/Dialog";
 import { Presence } from "./ui/Presence";
+import { createScrollEnds, getVirtualizedScrollFadeClassName } from "./ui/ScrollArea";
 import { Spinner } from "./ui/Spinner";
 import { Textarea } from "./ui/Textarea";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
@@ -117,6 +121,8 @@ const ICON_ACTION =
 const SECTION = "flex flex-col px-2 pt-2 pb-2.5";
 const ERROR = "mx-2.5 mt-0.5 mb-1 text-[12px] text-error-foreground wrap-anywhere";
 const NOTE = "m-0 px-2 py-1.5 text-[12px]";
+const BRANCH_SCROLLER =
+  "min-h-0 max-h-56 scrollbar-gutter-stable overflow-x-hidden overscroll-y-contain ps-1 pe-0 py-2";
 
 const actionContext = (status: VcsStatusResult | null): IActionContext => ({
   RefName: status?.refName ?? null,
@@ -645,6 +651,53 @@ function LineageSection(props: { threadId: string }) {
   );
 }
 
+function BranchPicker(props: {
+  trigger: HTMLElement;
+  value: string | null;
+  query: string;
+  loading: boolean;
+  empty: boolean;
+  onQuery: (query: string) => void;
+  onClose: () => void;
+  children: JSX.Element;
+}) {
+  const { ends: scrollEnds, track: trackScroll } = createScrollEnds();
+  return (
+    <Combobox value={props.value}>
+      <ComboboxPopup
+        anchor={props.trigger}
+        class="flex flex-col w-(--anchor-width)"
+        onClose={props.onClose}
+      >
+        <ComboboxSearchInput
+          placeholder="Search refs..."
+          value={props.query}
+          onInput={(event) => props.onQuery(event.currentTarget.value)}
+        />
+        <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <ComboboxEmpty>
+            <Show when={props.empty}>No refs found.</Show>
+          </ComboboxEmpty>
+          <div class="relative flex min-h-0 w-full max-h-56 flex-1 flex-col overflow-hidden">
+            <ComboboxListVirtualized class="flex size-full min-h-0 min-w-0 flex-col">
+              <div
+                ref={trackScroll}
+                class={`${BRANCH_SCROLLER} ${getVirtualizedScrollFadeClassName(scrollEnds())}`}
+                style={{ "overflow-y": "auto" }}
+              >
+                {props.children}
+              </div>
+            </ComboboxListVirtualized>
+          </div>
+          <Show when={props.loading}>
+            <ComboboxStatus>Loading refs...</ComboboxStatus>
+          </Show>
+        </div>
+      </ComboboxPopup>
+    </Combobox>
+  );
+}
+
 interface IDetailsProps {
   /** The thread's branch, which stands in for git status until status arrives. */
   branch: string | null;
@@ -665,11 +718,11 @@ const Body = (props: IDetailsProps) => {
   const busy = useInFlight(GitRunning, () => work.state);
   const git = () => status.value()?.Status ?? null;
   const cwd = () => details.state.Cwd;
-  const [menu, setMenu] = createSignal<
-    | { Kind: "editor" | "git" | "scripts"; Anchor: IMenuAnchor }
-    | { Kind: "branch"; Anchor: IMenuAnchor }
-    | null
-  >(null);
+  const [menu, setMenu] = createSignal<{
+    Kind: "editor" | "git" | "scripts";
+    Anchor: IMenuAnchor;
+  } | null>(null);
+  const [branchPicker, setBranchPicker] = createSignal<HTMLElement | null>(null);
   const [committing, setCommitting] = createSignal(false);
   const [addingScript, setAddingScript] = createSignal(false);
   const [branchQuery, setBranchQuery] = createSignal("");
@@ -677,7 +730,9 @@ const Body = (props: IDetailsProps) => {
     on(
       () => props.shown,
       (shown) => {
-        if (!shown) setMenu(null);
+        if (shown) return;
+        setMenu(null);
+        setBranchPicker(null);
       },
       { defer: true },
     ),
@@ -706,7 +761,7 @@ const Body = (props: IDetailsProps) => {
     return preferred === undefined ? "Open in editor" : `Open in ${preferred.Label}`;
   };
   const closeMenu = () => setMenu(null);
-  const toggleMenu = (kind: "editor" | "git" | "scripts" | "branch", anchor: IMenuAnchor) => {
+  const toggleMenu = (kind: "editor" | "git" | "scripts", anchor: IMenuAnchor) => {
     if (menu()?.Anchor.Trigger === anchor.Trigger) closeMenu();
     else setMenu({ Kind: kind, Anchor: anchor });
   };
@@ -744,12 +799,29 @@ const Body = (props: IDetailsProps) => {
     closeMenu();
     void session.runScript(script);
   };
-  const openBranches = (anchor: IMenuAnchor) => {
-    if (menu()?.Anchor.Trigger === anchor.Trigger) return closeMenu();
+  const openBranches = (trigger: HTMLElement) => {
+    if (branchPicker() !== null) return setBranchPicker(null);
     setBranchQuery("");
-    setMenu({ Kind: "branch", Anchor: anchor });
+    setBranchPicker(trigger);
     void details.loadBranches("");
   };
+  const exactBranch = () => {
+    const query = branchQuery().trim();
+    return details.state.Branches?.find((ref) => ref.Name === query);
+  };
+  const matchingBranches = createMemo(() =>
+    (details.state.Branches ?? []).filter((ref) => branchMatchesQuery(ref.Name, branchQuery())),
+  );
+  const branchBadge = (ref: IBranchRef) =>
+    ref.Current
+      ? "current"
+      : blockedByWorktree(ref, cwd())
+        ? "worktree"
+        : ref.IsRemote
+          ? "remote"
+          : ref.IsDefault
+            ? "default"
+            : null;
   const pendingCopy = () => {
     const pending = work.defaultBranchConfirm()?.Request;
     if (pending === undefined) return null;
@@ -837,14 +909,13 @@ const Body = (props: IDetailsProps) => {
             aria-label={`Branch: ${branchName() ?? "detached HEAD"}`}
             disabled={props.running || switchingBranch()}
             data-tip={props.running ? "Wait for the turn to finish to switch branches." : undefined}
-            aria-haspopup="menu"
+            aria-haspopup="listbox"
             aria-expanded="false"
-            onClick={(event) =>
-              openBranches({ Row: event.currentTarget, Trigger: event.currentTarget })
-            }
+            data-slot="combobox-trigger"
+            onClick={(event) => openBranches(event.currentTarget)}
             onKeyDown={(event) => {
               const trigger = event.currentTarget;
-              openMenuFromKeys(event, () => openBranches({ Row: trigger, Trigger: trigger }));
+              openComboboxFromKeys(event, () => openBranches(trigger));
             }}
           >
             <GitBranch />
@@ -948,7 +1019,7 @@ const Body = (props: IDetailsProps) => {
             <MenuPopup
               anchor={open.Anchor.Row}
               trigger={open.Anchor.Trigger}
-              align={open.Kind === "branch" ? "start" : "end"}
+              align="end"
               class="w-(--anchor-width)"
               onClose={closeMenu}
             >
@@ -1015,78 +1086,73 @@ const Body = (props: IDetailsProps) => {
                   </p>
                 </Show>
               </Show>
-              <Show when={open.Kind === "branch"}>
-                <MenuSearchInput
-                  placeholder="Search branches…"
-                  autofocus
-                  value={branchQuery()}
-                  onInput={(event) => {
-                    setBranchQuery(event.currentTarget.value);
-                    void details.loadBranches(event.currentTarget.value);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    const exact = details.state.Branches?.find(
-                      (ref) => ref.Name === branchQuery().trim(),
-                    );
-                    closeMenu();
-                    if (exact !== undefined) void details.selectBranch(exact);
-                    else void details.createBranch(branchQuery());
-                  }}
-                />
-                <div class="flex max-h-72 flex-col overflow-y-auto">
-                  <Show when={loadingBranches() && details.state.Branches === null}>
-                    <p class={`${NOTE} text-warning-foreground`}>Loading branches…</p>
-                  </Show>
-                  <For each={details.state.Branches ?? []}>
-                    {(ref) => {
-                      const blocked = () => blockedByWorktree(ref, cwd());
-                      const row = () => (
-                        <MenuItem
-                          disabled={blocked()}
-                          onClick={() => void details.selectBranch(ref)}
-                        >
-                          <GitBranch />
-                          <MenuItemLabel>{ref.Name}</MenuItemLabel>
-                          <Show when={ref.Current ? "current" : ref.IsDefault ? "default" : null}>
-                            {(detail) => <MenuItemDetail>{detail()}</MenuItemDetail>}
-                          </Show>
-                        </MenuItem>
-                      );
-                      return (
-                        <Show when={blocked()} fallback={row()}>
-                          <span
-                            class="block w-full cursor-not-allowed"
-                            data-tip={`Checked out in ${ref.WorktreePath}`}
-                            data-tip-side="left"
-                          >
-                            {row()}
-                          </span>
-                        </Show>
-                      );
-                    }}
-                  </For>
-                  <Show
-                    when={
-                      branchQuery().trim() !== "" &&
-                      !(details.state.Branches ?? []).some(
-                        (ref) => ref.Name === branchQuery().trim(),
-                      )
-                    }
-                  >
-                    <MenuItem onClick={() => void details.createBranch(branchQuery())}>
-                      <GitBranchPlus />
-                      <MenuItemLabel>Create branch "{branchQuery().trim()}"</MenuItemLabel>
-                    </MenuItem>
-                  </Show>
-                  <Show when={details.state.BranchError}>
-                    {(error) => <p class={`${NOTE} text-error-foreground`}>{error()}</p>}
-                  </Show>
-                </div>
-              </Show>
             </MenuPopup>
           );
         }}
+      </Presence>
+
+      <Presence when={branchPicker()}>
+        {(trigger) => (
+          <BranchPicker
+            trigger={trigger()}
+            value={branchName()}
+            query={branchQuery()}
+            loading={loadingBranches() && details.state.Branches === null}
+            empty={details.state.Branches?.length === 0 && branchQuery().trim() === ""}
+            onQuery={(query) => {
+              setBranchQuery(query);
+              void details.loadBranches(query);
+            }}
+            onClose={() => setBranchPicker(null)}
+          >
+            <For each={matchingBranches()}>
+              {(ref) => {
+                const blocked = () => blockedByWorktree(ref, cwd());
+                const row = () => (
+                  <ComboboxItem
+                    value={ref.Name}
+                    disabled={blocked()}
+                    onClick={() => {
+                      setBranchPicker(null);
+                      void details.selectBranch(ref);
+                    }}
+                  >
+                    <div class="flex w-full min-w-0 items-center justify-between gap-2">
+                      <span class="min-w-0 flex-1 truncate">{ref.Name}</span>
+                      <Show when={branchBadge(ref)}>
+                        {(badge) => (
+                          <span class="shrink-0 text-3xs text-muted-foreground/45">{badge()}</span>
+                        )}
+                      </Show>
+                    </div>
+                  </ComboboxItem>
+                );
+                return (
+                  <Show when={blocked()} fallback={row()}>
+                    <span
+                      class="block w-full cursor-not-allowed"
+                      data-tip={`Checked out in ${ref.WorktreePath}`}
+                      data-tip-side="left"
+                    >
+                      {row()}
+                    </span>
+                  </Show>
+                );
+              }}
+            </For>
+            <Show when={branchQuery().trim() !== "" && exactBranch() === undefined}>
+              <ComboboxItem
+                value={`__create_new_branch__:${branchQuery().trim()}`}
+                onClick={() => {
+                  setBranchPicker(null);
+                  void details.createBranch(branchQuery());
+                }}
+              >
+                <span class="truncate">Create new ref "{branchQuery().trim()}"</span>
+              </ComboboxItem>
+            </Show>
+          </BranchPicker>
+        )}
       </Presence>
 
       <Presence when={committing() && git()}>

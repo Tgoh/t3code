@@ -24,6 +24,7 @@ import {
 import type { IGitActionOutcome, IGitActionRequest } from "./Infrastructure/sourceControlEffects";
 import type { ICheckout } from "./checkout";
 import {
+  branchMatchesQuery,
   changesTotals,
   getDefaultThreadDetails,
   type IThreadDetails,
@@ -208,6 +209,15 @@ describe("runGitAction", () => {
       Description: "nothing to commit",
       Url: null,
     });
+  });
+});
+
+describe("branchMatchesQuery", () => {
+  it("keeps only branches the query names, so a stale search's rows drop out", () => {
+    expect(branchMatchesQuery("treflex-main", "")).toBe(true);
+    expect(branchMatchesQuery("treflex-main", " Main ")).toBe(true);
+    expect(branchMatchesQuery("treflex-main", "new-feature")).toBe(false);
+    expect(branchMatchesQuery("feature/my-branch", "my branch")).toBe(true);
   });
 });
 
