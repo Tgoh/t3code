@@ -131,7 +131,7 @@ import type {
   IWireUsageSummary,
 } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
-import { ServerError, serverError } from "./Infrastructure/serverError";
+import { serverError, serverFailure } from "./Infrastructure/serverError";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -695,7 +695,7 @@ function* uploadAndStart(
   const attachments: IWireAttachment[] = [];
   for (const id of fileIds) {
     const uploaded = yield* files.upload(id);
-    if (uploaded === undefined) throw new ServerError("An attachment couldn't be uploaded.");
+    if (uploaded === undefined) throw serverFailure("An attachment couldn't be uploaded.");
     attachments.push(uploaded);
   }
   if (setRuntimeMode) {
@@ -796,7 +796,7 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
   };
   delete draft.SendError;
   try {
-    if (projectId !== null && model === null) throw new ServerError("No provider is available.");
+    if (projectId !== null && model === null) throw serverFailure("No provider is available.");
     const setsMode = projectId === null && threadMode !== null && threadMode !== runtimeMode;
     yield* open(uploadAndStart(files, fileIds, turn, setsMode, compactFirst));
   } catch (error) {
@@ -989,7 +989,7 @@ function* sendRewind(
 ): IActionGenerator<IPickedFile[]> {
   const recalled = attachments.length === 0 ? [] : yield* files.recall(attachments);
   if (recalled === undefined)
-    throw new ServerError("The composer closed before its files came back.");
+    throw serverFailure("The composer closed before its files came back.");
   try {
     yield* rewindEffect(request);
   } catch (error) {

@@ -14,7 +14,7 @@ import {
   webMediaLinkTarget,
 } from "./markdownImage";
 import { createMarkdownLexer } from "./markdownTokens";
-import { ServerError } from "./Infrastructure/serverError";
+import { serverFailure } from "./Infrastructure/serverError";
 
 const THREAD = "thread-1";
 const ROOT = "G:\\Sorted\\Project";
@@ -153,7 +153,7 @@ describe("loadMediaUrl", () => {
 
   it("marks a file the server refuses as failed", async () => {
     const { state } = await load(() => {
-      throw new ServerError("not found");
+      throw serverFailure("not found");
     });
     expect(state).toMatchObject({ Url: null, Failed: true });
   });

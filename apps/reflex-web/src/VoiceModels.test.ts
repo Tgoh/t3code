@@ -2,7 +2,7 @@ import { createTestRuntime, type IFailureEvent, settled, type ITestRuntimeOption
 import { describe, expect, it } from "vite-plus/test";
 
 import type { IVoiceModel } from "./Infrastructure/dictation";
-import { ServerError } from "./Infrastructure/serverError";
+import { serverFailure } from "./Infrastructure/serverError";
 import {
   downloadModel,
   getDefaultVoiceModels,
@@ -110,7 +110,7 @@ describe("voice models", () => {
   });
 
   it("shows a server's refusal, and sends a bug to the failure route", async () => {
-    let fail: Error = new ServerError("Model not found.");
+    let fail: Error = serverFailure("Model not found.");
     const voice = rig(
       () => [],
       () => {

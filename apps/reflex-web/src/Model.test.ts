@@ -100,7 +100,7 @@ import type {
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
-import { ServerError } from "./Infrastructure/serverError";
+import { serverFailure } from "./Infrastructure/serverError";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import type { IPreferences } from "./Infrastructure/preferences";
 import {
@@ -1270,7 +1270,7 @@ describe("history pages", () => {
     expect(server.thread().Timeline).toEqual(["c-9"]);
     expect(server.thread().History!.Cursor).toBe("fresher");
 
-    fetchPage = () => Promise.reject(new ServerError("socket closed"));
+    fetchPage = () => Promise.reject(serverFailure("socket closed"));
     await server.runtime.dispatch(loadEarlier, historyId(server));
     expect(server.thread().History!.Error).toBe("socket closed");
     await server.sendThread({ ...window(), snapshotSequence: 7, historyCursor: "fresher" });
@@ -1733,7 +1733,7 @@ describe("the sidebar", () => {
       {
         threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
           if (effect.Command.Kind === "visit") return;
-          if (refusal !== null) throw new ServerError(refusal);
+          if (refusal !== null) throw serverFailure(refusal);
           commands.push(effect);
         },
       },
@@ -2139,7 +2139,7 @@ describe("writing to the server", () => {
     const server = await connect(undefined, null, {
       startTurn: () => {
         attempts += 1;
-        throw new ServerError("server said no");
+        throw serverFailure("server said no");
       },
     });
     await server.open();
@@ -2362,7 +2362,7 @@ describe("writing to the server", () => {
   it("a failed new thread stays a draft with no stream", async () => {
     const server = await connect(undefined, null, {
       startTurn: () => {
-        throw new ServerError("no");
+        throw serverFailure("no");
       },
     });
     await server.runtime.dispatch(newThread, server.envId(), "project-1");
@@ -2381,10 +2381,10 @@ describe("writing to the server", () => {
     const server = await connect(undefined, null, {
       stopThread: (effect: IStopThread) => {
         stops.push(effect);
-        if (refuse) throw new ServerError("no run");
+        if (refuse) throw serverFailure("no run");
       },
       queueCommand: () => {
-        if (refuse) throw new ServerError("queue moved on");
+        if (refuse) throw serverFailure("queue moved on");
       },
     });
     await server.open();
@@ -2809,7 +2809,7 @@ describe("writing to the server", () => {
     const server = await connect(undefined, null, {
       answerSecret: (effect: ISecretAnswer) => {
         secrets.push(effect);
-        if (refusal !== null) throw new ServerError(refusal);
+        if (refusal !== null) throw serverFailure(refusal);
         return new Promise<void>((resolve) => {
           releases.push(resolve);
         });
@@ -3111,7 +3111,7 @@ describe("writing to the server", () => {
       null,
       {
         threadCommand: (effect: { ThreadId: string; Command: object }) => {
-          if (refusal !== null) throw new ServerError(refusal);
+          if (refusal !== null) throw serverFailure(refusal);
           commands.push(effect);
         },
       },
@@ -3157,7 +3157,7 @@ describe("writing to the server", () => {
           ...(Opened ? { Opened } : {}),
           ...(SearchQuery ? { SearchQuery } : {}),
         });
-        if (refuse) throw new ServerError("visit refused");
+        if (refuse) throw serverFailure("visit refused");
         if (hold) return new Promise<void>((resolve) => (release = resolve));
       },
     });
@@ -3291,7 +3291,7 @@ describe("writing to the server", () => {
     let refuse = false;
     const server = await connect(undefined, null, {
       projectCommand: (effect: { ProjectId: string; Command: object }) => {
-        if (refuse) throw new ServerError("no such folder");
+        if (refuse) throw serverFailure("no such folder");
         sent.push(effect);
       },
     });
@@ -3395,7 +3395,7 @@ describe("writing to the server", () => {
     let refuse = false;
     const server = await connect(undefined, null, {
       startClone: (effect: IStartClone) => {
-        if (refuse) throw new ServerError("destination exists");
+        if (refuse) throw serverFailure("destination exists");
         clones.push(effect);
       },
     });
@@ -3444,7 +3444,7 @@ describe("writing to the server", () => {
     const server = await connect(undefined, THREAD_ID, {
       projectCommand: (effect: { ProjectId: string; Command: object }) => {
         sent.push(effect);
-        if (failWith !== null) throw new ServerError(failWith);
+        if (failWith !== null) throw serverFailure(failWith);
       },
     });
     await server.sendShell({
@@ -3737,7 +3737,7 @@ describe("diffs", () => {
   it("shows a failed fetch and an empty turn", async () => {
     const server = await connect(undefined, null, {
       threadDiff: () => {
-        throw new ServerError("checkpoint is missing");
+        throw serverFailure("checkpoint is missing");
       },
     });
     await server.open();
@@ -3970,7 +3970,7 @@ describe("the terminal", () => {
     let refuse = true;
     const server = await connect(undefined, null, {
       closeTerminal: (effect: { TerminalId: string }) => {
-        if (refuse) throw new ServerError("server said no");
+        if (refuse) throw serverFailure("server said no");
         closes.push(effect);
       },
     });
@@ -4849,7 +4849,7 @@ describe("rewinding and forking", () => {
     const { server } = await rewindServer(undefined, {
       mergeBack: (effect: IMergeBack) => {
         merges.push(effect);
-        if (fail) throw new ServerError("No checkpoint yet");
+        if (fail) throw serverFailure("No checkpoint yet");
       },
     });
     await server.runtime.dispatch(mergeBack, server.sessionId(), "parent-1");

@@ -19,7 +19,7 @@ import {
   selectBranch,
 } from "./ThreadDetails";
 import { detailsLayout } from "./threadDetailsLayout";
-import { ServerError } from "./Infrastructure/serverError";
+import { serverFailure } from "./Infrastructure/serverError";
 import { shortcutAction, surfaceActions } from "./surfaces";
 
 const CHECKOUT: ICheckout = {
@@ -143,7 +143,7 @@ describe("runGitAction", () => {
 
   it("shows a failure as an error notice", async () => {
     const { runtime } = details(() => {
-      throw new ServerError("nothing to commit");
+      throw serverFailure("nothing to commit");
     });
     await runtime.dispatch(runGitAction, "Git", CHECKOUT, ask("commit"), ON_FEATURE, false);
     expect(runtime.state.Git.Notice).toEqual({

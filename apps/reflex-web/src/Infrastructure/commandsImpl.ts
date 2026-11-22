@@ -81,7 +81,7 @@ import {
 } from "./commandEffects";
 import { preferredEditor } from "../editors";
 import { connectionRuntime } from "./connection";
-import { ServerError, settle } from "./serverError";
+import { serverFailure, settle } from "./serverError";
 import { runCommand, sourceControl } from "./sourceControl";
 
 const runInEnvironment = <A, E>(
@@ -117,7 +117,7 @@ async function answerPrivately<E>(
   message: (failure: unknown) => string,
 ): Promise<void> {
   const exit = await runInEnvironment(environmentId, effect);
-  if (Exit.isFailure(exit)) throw new ServerError(message(Cause.squash(exit.cause)));
+  if (Exit.isFailure(exit)) throw serverFailure(message(Cause.squash(exit.cause)));
 }
 
 export const answerSecretImpl = implementation(answerSecretEffect, (input) =>
@@ -487,7 +487,7 @@ export const openInFileManagerImpl = implementation(openInFileManagerEffect, asy
 export const openInEditorImpl = implementation(openInEditorEffect, async (input) => {
   const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));
   const editor = preferredEditor(config.availableEditors, input.Stored);
-  if (editor === null) throw new ServerError(`No editor on this machine can open ${input.Path}.`);
+  if (editor === null) throw serverFailure(`No editor on this machine can open ${input.Path}.`);
   await inEnvironment(
     input.EnvironmentId,
     request(WS_METHODS.shellOpenInEditor, {
