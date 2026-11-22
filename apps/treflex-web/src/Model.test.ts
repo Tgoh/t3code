@@ -16,6 +16,7 @@ import {
   type IActionGenerator,
   type IEffect,
   type IEntity,
+  type IActionContext,
   type IFailureEvent,
   inFlight,
   type IRuntime,
@@ -23,6 +24,7 @@ import {
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
+import * as Cause from "effect/Cause";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
 
 import {
@@ -102,7 +104,7 @@ import type {
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
-import { serverFailure } from "./Infrastructure/serverError";
+import { serverFailure, thrownOf } from "./Infrastructure/serverError";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import type { IPreferences } from "./Infrastructure/preferences";
 import {
@@ -4557,6 +4559,30 @@ describe("settings and usage", () => {
     fake.stopRefreshing();
     await server.runtime.dispatch(loadUsage, server.envId(), "7", input as never);
     expect(fake.calls.filter((call) => call.Type === "usageSummary")).toHaveLength(3);
+  });
+
+  it("drop a usage read a newer one replaced, silently, though its request ends interrupted", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, {
+      ...fake.commands,
+      usageSummary: (effect: { Input: { sinceDay: string } }, action?: IActionContext) =>
+        effect.Input.sinceDay === "replaced"
+          ? new Promise((_resolve, reject) =>
+              action?.signal.addEventListener("abort", () => reject(thrownOf(Cause.interrupt()))),
+            )
+          : { buckets: [], sources: [], contractVersion: 6 },
+    });
+    const input = { sinceDay: "2026-10-19", untilDay: "2026-11-17", timeZone: "UTC" };
+    const replaced = server.runtime.dispatch(loadUsage, server.envId(), "30", {
+      ...input,
+      sinceDay: "replaced",
+    } as never);
+    await settled();
+    await server.runtime.dispatch(loadUsage, server.envId(), "7", input as never);
+    await replaced;
+    await settled();
+    expect(server.environment().Replica.Usage?.Key).toBe("7");
+    expect(server.runtime.state.Failure).toBeUndefined();
   });
 });
 
