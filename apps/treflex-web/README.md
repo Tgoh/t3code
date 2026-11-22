@@ -287,7 +287,7 @@ To test what the driver will serve, including the service worker, build and prev
 
 Work in the reflex repo doesn't reach this client until it's published. To move to a new release, read its breaking-changes record in the reflex repo's `docs/wip`, set both versions in `package.json`, and run `vp i`.
 
-To bring in upstream changes, use the `/syncupstream` skill: it merges on a worktree, ports the logic and the shared styles copied from stock, tests the client live, and fast-forwards `treflex-main` only when it all holds. `apps/treflex-web/scripts/sync-upstream.ps1` alone fast-forwards `main` and pushes it to `origin` (`-DryRun` previews).
+To bring in upstream changes, use the `/syncupstream` skill: it merges on a worktree, ports the logic and the shared styles copied from stock, tests the client live, and fast-forwards `treflex-main` only when it all holds. `apps/treflex-web/scripts/sync-upstream.ps1` alone fast-forwards `main` and pushes it to `origin` (`-DryRun` previews). After a sync or a style change, `vp run drift` checks the shared components against stock's; see [bench/drift](./bench/drift/README.md).
 
 `upstream` is fetch-only. Actions is disabled on `Tgoh/t3code`, because upstream's workflows include release and deploy jobs. Keep it disabled.
 
