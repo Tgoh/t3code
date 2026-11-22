@@ -1,6 +1,6 @@
 # Todo
 
-Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead.
+Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead. The long-term goal is full parity with stock, so `issues.md`'s gaps move in here a few at a time.
 
 ## 1. Parity and polish
 
@@ -44,6 +44,13 @@ From an audit of how the port uses treflex 0.1.0. Most of the code already follo
   - Give features hand-picked ids instead of `import.meta.url`.
 
 ## 3. Missing features
+
+- **Stock features from the 2026-11-22 sync,** Tam's picks:
+  - **Held send:** Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
+  - **Side chats, subagents and linked threads open beside the thread or in its place,** chosen by a setting, with a modifier-click for the other. `@t3tools/client-runtime/side-thread` is importable.
+  - **A show/hide toggle on secret fields.**
+  - **A thread error banner that can be dismissed and comes back.**
+  - **Copy a chat table as HTML,** and **a copy button on file previews.**
 
 Built on the restructured model, so after stage 2. Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
 
