@@ -13,7 +13,6 @@ import {
   receiver,
   resource,
   start,
-  transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -50,12 +49,13 @@ declare module "treflex" {
 }
 
 export interface IDictation extends IEntity {
+  Recording: IRecording;
   Models: IVoiceModel[] | null;
   ModelsError: string | null;
 }
 
 export function getDefaultDictation(): Omit<IDictation, "$Id"> {
-  return { Models: null, ModelsError: null };
+  return { Recording: { ...IDLE }, Models: null, ModelsError: null };
 }
 
 export interface IRecording {
@@ -81,8 +81,6 @@ const IDLE: IRecording = {
   HoldError: false,
 };
 
-const held = (draft: IDictation) => transient(draft, "Voice/Dictation", { ...IDLE });
-
 export const STALE_DRAFT =
   "The draft changed while voice input was running. The transcript was not added.";
 export const MISSING_MODEL =
@@ -99,13 +97,13 @@ export function* openDictation(draft: IDictation): IActionGenerator {
   yield* openResource(draft, "Voice/Dictation", DictationReceiver, { Type: "dictation" });
 }
 
-function* fail(
+function fail(
   draft: IDictation,
   threadId: string,
   error: string,
   action: VoiceInputState["errorAction"],
-): IActionGenerator {
-  Object.assign(yield* held(draft), {
+): void {
+  Object.assign(draft.Recording, {
     ...IDLE,
     ThreadId: threadId,
     Phase: "error",
@@ -147,7 +145,7 @@ function* recordingOptions(
 // Follows start in apps/web/src/speech/useEnvironmentSpeechInput.ts: the destination's status is
 // read fresh first, and a missing model points to Voice settings instead of recording.
 export function* startDictation(draft: IEnvironment, threadId: string, text: IDictationDraft) {
-  const state = yield* held(draft.Local.Dictation);
+  const state = draft.Local.Dictation.Recording;
   if (state.Phase !== "idle" && state.Phase !== "error") return;
   if (draft.Local.Preferences.VoiceDestination === null) {
     yield* openView(draft, { Kind: "settings", Page: "voice" });
@@ -159,8 +157,7 @@ export function* startDictation(draft: IEnvironment, threadId: string, text: IDi
   const dictation = draft.Local.Dictation;
   if (!read.ok) {
     const { message } = serverError(read.error);
-    if (yield* stillPreparing(dictation, threadId))
-      yield* fail(dictation, threadId, message, "retry");
+    if (stillPreparing(dictation, threadId)) fail(dictation, threadId, message, "retry");
     return;
   }
   const status = read.value;
@@ -168,15 +165,15 @@ export function* startDictation(draft: IEnvironment, threadId: string, text: IDi
   if (listed.ok) models = listed.value;
   else serverError(listed.error);
   if (models !== null) yield* follow(dictation, models);
-  if (!(yield* stillPreparing(dictation, threadId))) return;
+  if (!stillPreparing(dictation, threadId)) return;
   if (!status.supported) {
-    yield* fail(dictation, threadId, status.reason, null);
+    fail(dictation, threadId, status.reason, null);
     return;
   }
   const missing =
     models === null ? status.state === "missing-model" : !models.some((model) => model.active);
   if (missing) {
-    yield* fail(dictation, threadId, MISSING_MODEL, "settings");
+    fail(dictation, threadId, MISSING_MODEL, "settings");
     return;
   }
   const options = yield* recordingOptions(draft, threadId);
@@ -187,17 +184,17 @@ export function* startDictation(draft: IEnvironment, threadId: string, text: IDi
   });
 }
 
-function* stillPreparing(draft: IDictation, threadId: string): IActionGenerator<boolean> {
-  const state = yield* held(draft);
+function stillPreparing(draft: IDictation, threadId: string): boolean {
+  const state = draft.Recording;
   return state.Phase === "preparing" && state.ThreadId === threadId;
 }
 
 export function* stopDictation(draft: IDictation): IActionGenerator {
-  if ((yield* held(draft)).Phase === "recording") yield* resource(draft, "Voice/Dictation").stop();
+  if (draft.Recording.Phase === "recording") yield* resource(draft, "Voice/Dictation").stop();
 }
 
 export function* cancelDictation(draft: IDictation): IActionGenerator {
-  const state = yield* held(draft);
+  const state = draft.Recording;
   if (state.Phase === "idle") return;
   Object.assign(state, IDLE);
   yield* resource(draft, "Voice/Dictation").cancel();
@@ -209,7 +206,7 @@ export function* sendAfterDictation(
   threadId: string,
   mode: IDispatchMode,
 ): IActionGenerator {
-  const state = yield* held(draft);
+  const state = draft.Recording;
   if (state.ThreadId !== threadId || !dictationBusy(state.Phase) || state.Phase === "preparing")
     return;
   if (state.SubmitMode !== null) return;
@@ -229,26 +226,25 @@ export function* setVoiceDestination(
 
 /** A deleted thread's recording has nowhere to go. */
 export function* dropDictation(draft: IDictation, threadId: string): IActionGenerator {
-  if ((yield* held(draft)).ThreadId === threadId) yield* cancelDictation(draft);
+  if (draft.Recording.ThreadId === threadId) yield* cancelDictation(draft);
 }
 
 /** The controller emits idle after a commit; until then, the refusal's error has to outlast it. */
 export function* refuseTranscript(draft: IDictation, threadId: string): IActionGenerator {
-  const { Phase } = yield* held(draft);
+  const { Phase } = draft.Recording;
   if (Phase === "preparing" || Phase === "recording") return;
-  yield* fail(draft, threadId, STALE_DRAFT, "retry");
-  (yield* held(draft)).HoldError = Phase !== "idle" && Phase !== "error";
+  fail(draft, threadId, STALE_DRAFT, "retry");
+  draft.Recording.HoldError = Phase !== "idle" && Phase !== "error";
 }
 
 export function* recording(draft: IDictation): ISelectorGenerator<IRecording> {
-  return yield* held(draft);
+  return draft.Recording;
 }
 
 export const DictationReceiver = receiver<IDictation>("DictationReceiver")({
   *"Voice/Dictation"(draft, message) {
-    const state = yield* held(draft);
     if (isEnded(message)) {
-      Object.assign(state, IDLE);
+      Object.assign(draft.Recording, IDLE);
       return;
     }
     yield* apply(draft, message);
@@ -256,7 +252,7 @@ export const DictationReceiver = receiver<IDictation>("DictationReceiver")({
 });
 
 function* apply(draft: IDictation, message: IDictationMessage): IActionGenerator {
-  const state = yield* held(draft);
+  const state = draft.Recording;
   if (message.Kind === "commit") {
     const mode = state.SubmitMode;
     state.SubmitMode = null;
