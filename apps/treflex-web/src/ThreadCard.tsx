@@ -1,8 +1,8 @@
-// @effect-diagnostics globalDate:off -- View-only snooze presets from the sidebar's tick, outside any Effect runtime.
+// @effect-diagnostics globalDate:off -- View-only timers and snooze presets, outside any Effect runtime.
 import { formatWorkingDurationLabel } from "@t3tools/client-runtime/state/models";
 import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import { findSearchTokenRanges, type SearchRange } from "@t3tools/shared/paletteSearch";
-import { createMemo, createSignal, For, Match, mergeProps, Show, Switch } from "solid-js";
+import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 
 import { ProjectBadge, ProviderIcon } from "./brand";
 import Environment from "./Environment";
@@ -38,6 +38,7 @@ import Shell, {
   sidebarStatus,
   workingStartedAt,
 } from "./Shell";
+import { modelDisplay } from "./ThreadSession";
 import { relativeTime, timeUntil } from "./timestamps";
 import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
 import { hoverCard } from "./ui/tooltip";
@@ -208,18 +209,13 @@ export function RenameInput(props: { title: string; onDone: (title: string | nul
 export function ThreadCard(props: {
   thread: IWireThreadShell;
   section: ICardSection;
-  projectName: string;
-  model: IModelDisplay;
-  previousProviders: string[];
   /** Inside a project folder: one line, without the project. */
   compact: boolean;
   showProvider: boolean;
-  selected: boolean;
   renaming: boolean;
-  now: number;
   second: number;
   onMenu: (x: number, y: number) => void;
-  onRenamed: (title: string | null) => void;
+  onRenameEnd: () => void;
   /** Starts a drag that reorders the row; a touch drag's long-press also stands in for the menu's. */
   onDragStart?: ((event: PointerEvent) => void) | undefined;
   dragging?: boolean;
@@ -239,14 +235,27 @@ export function ThreadCard(props: {
   const environment = Environment.use();
   const shell = Shell.use();
   const sidebar = useSidebarSheet();
+  const selected = () => shell.sidebarRowThreadId() === props.thread.id;
+  const now = () => environment.minute();
+  const providers = () => environment.state.Replica.Providers;
+  const model = () => modelDisplay(providers(), props.thread.modelSelection);
+  const projectName = () =>
+    shell.state.Projects[props.thread.projectId]?.title ?? "Unknown project";
   const select = () => {
     sidebar.choseThread();
     if (props.search) props.search.onSelect();
     else void environment.selectThread(props.thread.id);
   };
+  const renamed = (title: string | null) => {
+    props.onRenameEnd();
+    const trimmed = title?.trim();
+    if (trimmed && trimmed !== props.thread.title) {
+      environment.threadCommand(props.thread.id, { Kind: "rename", Title: trimmed });
+    }
+  };
   const status = () => {
     const held = sidebarStatus(props.thread, shell.subagentRequests()[props.thread.id]);
-    return held === "done" && props.selected ? null : held;
+    return held === "done" && selected() ? null : held;
   };
   const workingFor = () => {
     const started = workingStartedAt(props.thread);
@@ -258,14 +267,31 @@ export function ThreadCard(props: {
     const elapsed = isBusy(held) || held === "waiting" ? workingFor() : null;
     return elapsed === null ? STATUS_LABEL[held] : `${STATUS_LABEL[held]} ${elapsed}`;
   };
-  const hover = mergeProps(props, {
+  const hover = {
+    get thread() {
+      return props.thread;
+    },
+    get projectName() {
+      return projectName();
+    },
+    get model() {
+      return model();
+    },
+    get previousProviders() {
+      return (props.thread.providerInstanceHistory ?? [])
+        .filter((instanceId) => instanceId !== props.thread.modelSelection.instanceId)
+        .map(
+          (instanceId) =>
+            providers().find((provider) => provider.InstanceId === instanceId)?.Name ?? instanceId,
+        );
+    },
     get status() {
       return status();
     },
     get statusText() {
       return statusText();
     },
-  });
+  };
   const act = (event: MouseEvent, command: IThreadCommand) => {
     event.stopPropagation();
     environment.threadCommand(props.thread.id, command);
@@ -284,13 +310,13 @@ export function ThreadCard(props: {
         </span>
       }
     >
-      <RenameInput title={props.thread.title} onDone={props.onRenamed} />
+      <RenameInput title={props.thread.title} onDone={renamed} />
     </Show>
   );
   const provider = () => (
     <Show when={props.showProvider}>
       <span class="flex h-5 flex-none items-center">
-        <ProviderIcon driver={props.model.Driver} size={14} />
+        <ProviderIcon driver={model().Driver} size={14} />
       </span>
     </Show>
   );
@@ -314,10 +340,10 @@ export function ThreadCard(props: {
         ref={hoverCard(ThreadHoverCard, hover)}
         data-compact={props.compact ? "" : undefined}
         data-pinned={props.thread.pinnedAt != null ? "" : undefined}
-        data-selected={props.selected ? "" : undefined}
+        data-selected={selected() ? "" : undefined}
         data-highlighted={props.search?.highlighted === true ? "" : undefined}
         data-receded={
-          !props.selected &&
+          !selected() &&
           (status() === null ||
             isBusy(status()) ||
             status() === "waiting" ||
@@ -325,7 +351,7 @@ export function ThreadCard(props: {
             ? ""
             : undefined
         }
-        data-dimmed={!props.selected && isBusy(status()) ? "" : undefined}
+        data-dimmed={!selected() && isBusy(status()) ? "" : undefined}
         onClick={() => {
           if (!press.swallowsClick()) select();
         }}
@@ -363,7 +389,7 @@ export function ThreadCard(props: {
                   project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
                 />
                 <span class="min-w-0 flex-1 truncate text-[12px] leading-4 text-(--sidebar-secondary-label)">
-                  {props.projectName}
+                  {projectName()}
                 </span>
               </>
             }
@@ -379,8 +405,8 @@ export function ThreadCard(props: {
               fallback={
                 <span class="flex-none text-[12px] leading-4 text-(--sidebar-secondary-label) tabular-nums">
                   {props.section === "snoozed"
-                    ? timeUntil(props.thread.snoozedUntil ?? "", props.now)
-                    : relativeTime(activityAt(props.thread) ?? props.thread.updatedAt, props.now)}
+                    ? timeUntil(props.thread.snoozedUntil ?? "", now())
+                    : relativeTime(activityAt(props.thread) ?? props.thread.updatedAt, now())}
                 </span>
               }
             >
@@ -424,7 +450,7 @@ export function ThreadCard(props: {
                   <AlarmClockOff />
                 </button>
               </Match>
-              <Match when={props.selected}>
+              <Match when={selected()}>
                 <button
                   type="button"
                   class={CARD_ACTION}
@@ -481,7 +507,6 @@ export function ThreadMenu(props: {
   thread: IWireThreadShell;
   x: number;
   y: number;
-  now: number;
   onRename: () => void;
   onClose: () => void;
 }) {
@@ -489,14 +514,15 @@ export function ThreadMenu(props: {
   const shell = Shell.use();
   const navigation = useNavigation();
   const [confirmingDelete, setConfirmingDelete] = createSignal(false);
+  const now = () => environment.minute();
   const subagent = () => shell.subagentRequests()[props.thread.id];
-  const snoozed = () => isSnoozed(props.thread, props.now, subagent());
+  const snoozed = () => isSnoozed(props.thread, now(), subagent());
   const settled = () => props.thread.settledOverride === "settled";
   const pinned = () => props.thread.pinnedAt != null;
   const presets = createMemo(() =>
-    snoozed() || !canSnooze(props.thread, subagent(), props.now)
+    snoozed() || !canSnooze(props.thread, subagent(), now())
       ? []
-      : resolveSnoozePresets(new Date(props.now)),
+      : resolveSnoozePresets(new Date(now())),
   );
   const choose = (command: IThreadCommand) => {
     environment.threadCommand(props.thread.id, command);

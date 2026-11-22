@@ -32,7 +32,7 @@ import Environment from "./Environment";
 import { ChartNoAxesColumn, RefreshCw, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
 import { limitPools, limitPresentations } from "./limits";
-import UsagePage, { getDefaultUsagePage, loadUsage, refreshUsage, useUsagePage } from "./UsagePage";
+import UsagePage, { getDefaultUsagePage, RefreshingUsage, useUsagePage } from "./UsagePage";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
 import { IconButton } from "./ui/IconButton";
@@ -120,7 +120,7 @@ export const UsageView = UsagePage.provider(() => {
     Days: days(),
     Limits: metric() === "limits",
   });
-  const refreshing = useInFlight([refreshUsage, loadUsage], () => page.state);
+  const refreshing = useInFlight(RefreshingUsage, () => page.state);
   const choose = (nextMetric: IMetric, nextDays: number) => {
     const daysChanged = nextDays !== days();
     const limitsShown = nextMetric === "limits" && metric() !== "limits";

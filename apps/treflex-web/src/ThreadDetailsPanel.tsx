@@ -49,7 +49,7 @@ import {
   Server,
   X,
 } from "./icons";
-import GitWork, { continueDefaultBranch, type IActionContext, pull, runGitAction } from "./GitWork";
+import GitWork, { GitRunning, type IActionContext } from "./GitWork";
 import {
   type ILineage,
   type ILineageRelation,
@@ -62,11 +62,10 @@ import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
   changesTotals,
-  createBranch,
   getDefaultThreadDetails,
   type ICheckout,
   loadBranches,
-  selectBranch,
+  SwitchingBranch,
 } from "./ThreadDetails";
 import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession, { mergeBack } from "./ThreadSession";
@@ -625,9 +624,9 @@ const Body = (props: IDetailsProps) => {
   const session = ThreadSession.use();
   const environment = Environment.use();
   const status = useResource(() => details.state, "Details/Status");
-  const switchingBranch = useInFlight([selectBranch, createBranch], () => details.state);
+  const switchingBranch = useInFlight(SwitchingBranch, () => details.state);
   const loadingBranches = useInFlight(loadBranches, () => details.state);
-  const busy = useInFlight([runGitAction, continueDefaultBranch, pull], () => work.state);
+  const busy = useInFlight(GitRunning, () => work.state);
   const git = () => status.value()?.Status ?? null;
   const [menu, setMenu] = createSignal<
     | { Kind: "editor" | "git" | "scripts"; Anchor: IMenuAnchor }

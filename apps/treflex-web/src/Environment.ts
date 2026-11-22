@@ -25,6 +25,7 @@ import {
   start,
   startTimer,
   stopTimer,
+  workTag,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -594,6 +595,8 @@ export function* newProject(
   return created;
 }
 leading(newProject);
+export const AddingProject = workTag("Environment/AddingProject");
+AddingProject.mark(addFolder, cloneProject, newProject);
 
 export function* cloneControl(
   draft: IEnvironment,

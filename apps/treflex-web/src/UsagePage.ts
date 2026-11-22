@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off -- View-only usage windows, outside any Effect runtime.
 import { makeWindow } from "@t3tools/shared/usageFormat";
-import { type IEntity, type IOpenGenerator, latest, open } from "treflex";
+import { type IEntity, type IOpenGenerator, latest, open, workTag } from "treflex";
 import { createComponentFeature } from "treflex-solid";
 import { createSignal, onMount } from "solid-js";
 
@@ -53,6 +53,8 @@ export function* refreshUsage(
   yield* open(refreshUsageRatesEffect({ EnvironmentId: environmentId }));
   yield* loadUsage(draft, environmentId, usage.Key, usage.Input);
 }
+export const RefreshingUsage = workTag("Usage/Refreshing");
+RefreshingUsage.mark(refreshUsage, loadUsage);
 
 // Follows the automatic refresh in apps/web/src/components/usage/UsagePage.tsx, which runs when
 // the limits show and skips an environment refreshed in the last five minutes.

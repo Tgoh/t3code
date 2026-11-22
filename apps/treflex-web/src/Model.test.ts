@@ -135,9 +135,16 @@ import {
   timelineEntries,
   timelineIds,
 } from "./OpenThread";
-import { dismissFailure, getDefaultRoot, type IRoot, load, RootReceiver } from "./Root";
+import { registerReceivers } from "./receivers";
+import { dismissFailure, getDefaultRoot, type IRoot, load } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
-import { answerRequest, canAnswer, dismissRequest, type IRuntimeRequest } from "./RuntimeRequest";
+import {
+  answerRequest,
+  canAnswer,
+  dismissRequest,
+  type IRuntimeRequest,
+  Responding,
+} from "./RuntimeRequest";
 import { answerLink, answerSecret, itemAnswerError } from "./ItemRequest";
 import {
   activityAt,
@@ -162,7 +169,6 @@ import {
   type IRewindChoice,
   mergeBack,
   revertTargets,
-  RewindReceiver,
   rewindConfirm,
   threadWorking,
   diffLoading,
@@ -192,7 +198,6 @@ import {
   toggleDetails,
   toggleRightPanel,
   toggleRowExpanded,
-  unwrappedCodeBlocks,
 } from "./ThreadSession";
 import {
   assistantItem,
@@ -383,16 +388,7 @@ async function connect(
   onTestFinished(() => expect([...strayWriters], "actions that wrote the replica").toEqual([]));
   const failures: IFailureEvent[] = [];
   runtime.on("failure", (failure) => failures.push(failure));
-  runtime.registerReceiver(RootReceiver);
-  runtime.registerReceiver(EnvironmentReceiver);
-  runtime.registerReceiver(ShellReceiver);
-  runtime.registerReceiver(ThreadReceiver);
-  runtime.registerReceiver(TerminalReceiver);
-  runtime.registerReceiver(RewindReceiver);
-  runtime.registerReceiver(PreferencesReceiver);
-  runtime.registerReceiver(ActivityReceiver);
-  runtime.registerReceiver(DictationReceiver);
-  runtime.registerReceiver(VoiceModelsReceiver);
+  registerReceivers(runtime);
   await runtime.dispatch(load, "Root");
   await settled();
   const environment = () => runtime.state.Environments[0] as IEnvironment;
@@ -2792,8 +2788,7 @@ describe("writing to the server", () => {
     );
 
     const node = (id: string) => server.thread().RuntimeRequests[id]!;
-    const busy = (id: string) =>
-      inFlightOf(server.runtime, [answerRequest, dismissRequest], () => node(id));
+    const busy = (id: string) => inFlightOf(server.runtime, Responding, () => node(id));
     const answer = (id: string, decision: "accept" | "decline") =>
       server.runtime.dispatch(answerRequest, node(id).$Id, ENV, THREAD_ID, decision, null);
     const first = answer("r-1", "accept");
@@ -3725,8 +3720,7 @@ describe("drafts", () => {
 describe("code blocks", () => {
   it("keep a wrap choice per thread, and lose it with the thread's session", async () => {
     const server = await connect(undefined, THREAD_ID, { threadCommand: () => undefined });
-    const unwrapped = (threadId: string) =>
-      server.runtime.processSelector(unwrappedCodeBlocks, () => server.session(threadId));
+    const unwrapped = (threadId: string) => server.session(threadId).UnwrappedCode;
     await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0");
     expect(unwrapped(THREAD_ID)).toEqual({ "item-1:0:0": true });
     await server.runtime.dispatch(selectThread, server.envId(), "other");

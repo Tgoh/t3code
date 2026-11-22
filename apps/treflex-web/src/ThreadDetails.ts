@@ -1,5 +1,13 @@
 import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
-import { type IEntity, type IOpenGenerator, latest, leading, open, openResource } from "treflex";
+import {
+  type IEntity,
+  type IOpenGenerator,
+  latest,
+  leading,
+  open,
+  openResource,
+  workTag,
+} from "treflex";
 import { createComponentFeature } from "treflex-solid";
 
 import { serverError } from "./Infrastructure/serverError";
@@ -168,6 +176,8 @@ export function* createBranch(draft: IThreadDetails, name: string): IOpenGenerat
   yield* checkout(draft, trimmed, true);
 }
 leading(createBranch);
+export const SwitchingBranch = workTag("Details/SwitchingBranch");
+SwitchingBranch.mark(selectBranch, createBranch);
 
 export function* runScript(
   draft: IThreadDetails,

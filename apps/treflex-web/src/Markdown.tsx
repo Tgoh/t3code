@@ -955,7 +955,7 @@ function CodeToken(props: ITokenProps) {
   const session = key === null ? null : ThreadSession.use();
   const [unkeyedWrap, setUnkeyedWrap] = createSignal(true);
   const wrapped = () =>
-    key === null || session === null ? unkeyedWrap() : session.unwrappedCodeBlocks()[key] !== true;
+    key === null || session === null ? unkeyedWrap() : session.state.UnwrappedCode[key] !== true;
   const toggleWrap = () => {
     if (key === null || session === null) setUnkeyedWrap((held) => !held);
     else void session.toggleCodeWrap(key);
