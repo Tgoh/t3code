@@ -2,7 +2,7 @@
 import { formatWorkingDurationLabel } from "@t3tools/client-runtime/state/models";
 import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import { findSearchTokenRanges, type SearchRange } from "@t3tools/shared/paletteSearch";
-import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
+import { createMemo, createSignal, For, Match, mergeProps, Show, Switch } from "solid-js";
 
 import { ProjectBadge, ProviderIcon } from "./brand";
 import Environment from "./Environment";
@@ -113,12 +113,22 @@ function ThreadHoverCard(props: {
   projectName: string;
   model: IModelDisplay;
   previousProviders: string[];
+  status: ISidebarStatus;
+  statusText: string;
 }) {
   const environment = Environment.use();
   return (
     <div class="flex min-w-0 flex-col gap-2 px-1 py-2">
       <div class="truncate leading-tight font-medium">{props.thread.title}</div>
       <div class="grid gap-1.5 pl-0.5 text-muted-foreground">
+        <Show when={props.status}>
+          {(held) => (
+            <div class={`${HOVER_LINE} font-medium ${STATUS_TONE[held()]}`}>
+              <StatusIcon status={held()} />
+              <span>{props.statusText}</span>
+            </div>
+          )}
+        </Show>
         <div class={hoverLine}>
           <ProjectBadge
             project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
@@ -240,6 +250,20 @@ export function ThreadCard(props: {
     const started = workingStartedAt(props.thread);
     return started === null ? null : formatWorkingDurationLabel(props.second - Date.parse(started));
   };
+  const statusText = () => {
+    const held = status();
+    if (held === null) return "";
+    const elapsed = isBusy(held) || held === "waiting" ? workingFor() : null;
+    return elapsed === null ? STATUS_LABEL[held] : `${STATUS_LABEL[held]} ${elapsed}`;
+  };
+  const hover = mergeProps(props, {
+    get status() {
+      return status();
+    },
+    get statusText() {
+      return statusText();
+    },
+  });
   const act = (event: MouseEvent, command: IThreadCommand) => {
     event.stopPropagation();
     environment.threadCommand(props.thread.id, command);
@@ -281,7 +305,7 @@ export function ThreadCard(props: {
         data-tip=""
         data-tip-side="right"
         data-tip-delay="150"
-        ref={hoverCard(ThreadHoverCard, props)}
+        ref={hoverCard(ThreadHoverCard, hover)}
         data-compact={props.compact ? "" : undefined}
         data-main={isMainThread(props.thread) ? "" : undefined}
         data-selected={props.selected ? "" : undefined}
@@ -334,6 +358,8 @@ export function ThreadCard(props: {
             {title()}
             {provider()}
           </Show>
+          {/* Outside the slot, which hover and focus hide from the accessibility tree too. */}
+          <span class="sr-only">{statusText()}</span>
           <span class={CARD_SLOT}>
             <Show
               when={status()}
@@ -350,9 +376,12 @@ export function ThreadCard(props: {
                   class={`inline-flex flex-none items-center gap-1 text-[12px] leading-4 font-medium ${STATUS_TONE[held()]}`}
                 >
                   <StatusIcon status={held()} />
-                  {STATUS_LABEL[held()]}
-                  <Show when={(isBusy(held()) || held() === "waiting") && workingFor()}>
-                    {(elapsed) => <span class="tabular-nums">{elapsed()}</span>}
+                  <Show when={isBusy(held()) && workingFor()}>
+                    {(elapsed) => (
+                      <span class="tabular-nums" aria-hidden="true">
+                        {elapsed()}
+                      </span>
+                    )}
                   </Show>
                 </span>
               )}
