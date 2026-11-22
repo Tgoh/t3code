@@ -127,6 +127,22 @@ describe("compactBeforeSendTokens", () => {
     ).toBeNull();
   });
 
+  it("measures from a completed compaction newer than the reported usage", () => {
+    const compacted = (completedAt: string, after: number | null = 210_000) => [
+      userItem(),
+      {
+        ...compactionItem(after ?? 0, PROVIDER_THREAD),
+        status: "completed",
+        completedAt,
+        ...(after === null ? { afterTokenCount: null } : {}),
+      } as unknown as IWireTurnItem,
+    ];
+    const later = "2026-06-20T00:01:00.000Z";
+    expect(compactBeforeSendTokens(input({ Items: () => compacted(later) }))).toBe(210_000);
+    expect(compactBeforeSendTokens(input({ Items: () => compacted(USED_AT) }))).toBe(300_000);
+    expect(compactBeforeSendTokens(input({ Items: () => compacted(later, null) }))).toBeNull();
+  });
+
   it("needs a provider that compacts, with idle compaction left on", () => {
     const noCompact = { providers: [claudeProvider([])], settings: input().Config.settings };
     expect(compactBeforeSendTokens(input({ Config: noCompact as never }))).toBeNull();
@@ -220,6 +236,8 @@ describe("compaction rows", () => {
       compactionLabel(item("completed"), "beforeCacheExpires"),
       compactionLabel(item("completed"), undefined),
       compactionLabel(item("failed"), "onReturn"),
+      compactionLabel(item("cancelled"), "onReturn"),
+      compactionLabel(item("interrupted"), "onReturn"),
     ]).toEqual([
       "Context compacted before sending 64.8K → 14.3K tokens",
       "Context compacted before sending",
@@ -227,6 +245,8 @@ describe("compaction rows", () => {
       "Auto-compacted before cache expiry 64.8K → 14.3K tokens",
       "Context compacted 64.8K → 14.3K tokens",
       "Context compaction failed",
+      "Context compaction stopped",
+      "Context compaction stopped",
     ]);
   });
 });

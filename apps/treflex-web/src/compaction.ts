@@ -60,13 +60,39 @@ const isPrompt = (item: IWireTurnItem) =>
   item.type === "user_message" &&
   (item.text.trim().toLowerCase() !== "/compact" || item.attachments.length > 0);
 
+type IContextUsage = { UsedTokens: number; UpdatedAt: string };
+
+const compactionUsage = (item: ICompactionItem, updatedAt: string): IContextUsage | null => {
+  const used = item.afterTokenCount;
+  return typeof used !== "number" || !Number.isFinite(used) || used < 0
+    ? null
+    : { UsedTokens: used, UpdatedAt: updatedAt };
+};
+
 // Follows deriveLatestContextWindowSnapshot in packages/client-runtime/src/state/contextWindow.ts,
 // keeping only the figure and its time, which it reads from DateTime where this has wire strings.
 function contextUsage(
   live: { usedTokens: number; updatedAt: string } | null,
   providerThread: IOpenThread["ProviderThreads"][string] | undefined,
   items: IWireTurnItem[],
-): { UsedTokens: number; UpdatedAt: string } | null {
+): IContextUsage | null {
+  const retired = (item: ICompactionItem) =>
+    providerThread !== undefined &&
+    item.providerThreadId != null &&
+    item.providerThreadId !== providerThread.id;
+  const completed = items.findLast(
+    (item): item is ICompactionItem =>
+      item.type === "compaction" && item.status === "completed" && !retired(item),
+  );
+  const usageAt =
+    live?.updatedAt ?? (providerThread?.contextUsage != null ? providerThread.updatedAt : null);
+  if (completed !== undefined) {
+    const compactedAt = completed.completedAt ?? completed.updatedAt;
+    // Usage reported before the compaction describes the context it discarded; usage at the same
+    // instant is the provider's own post-compaction report.
+    if (usageAt === null || Date.parse(compactedAt) > Date.parse(usageAt))
+      return compactionUsage(completed, compactedAt);
+  }
   if (live !== null) return { UsedTokens: Math.max(0, live.usedTokens), UpdatedAt: live.updatedAt };
   if (providerThread?.contextUsage != null) {
     return {
@@ -76,16 +102,9 @@ function contextUsage(
   }
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]!;
-    if (item.type !== "compaction") continue;
-    if (
-      providerThread !== undefined &&
-      item.providerThreadId != null &&
-      item.providerThreadId !== providerThread.id
-    )
-      continue;
-    const used = item.afterTokenCount;
-    if (typeof used !== "number" || !Number.isFinite(used) || used < 0) continue;
-    return { UsedTokens: used, UpdatedAt: item.startedAt ?? item.updatedAt };
+    if (item.type !== "compaction" || retired(item)) continue;
+    const usage = compactionUsage(item, item.startedAt ?? item.updatedAt);
+    if (usage !== null) return usage;
   }
   return null;
 }
@@ -183,7 +202,13 @@ export function compactionLabel(
   reason: OrchestrationV2IdleCompaction | undefined,
 ): string {
   const label = contextCompactionLabel(item as never);
-  if (reason === undefined || item.status === "failed") return label;
+  if (
+    reason === undefined ||
+    item.status === "failed" ||
+    item.status === "cancelled" ||
+    item.status === "interrupted"
+  )
+    return label;
   if (isOrchestrationV2WorkActive(item.status)) return IDLE_COMPACTING_LABELS[reason];
   const tokens = contextCompactionTokenCounts(item as never);
   return tokens === null
