@@ -17,6 +17,7 @@ import {
   open,
   openResource,
   receiver,
+  resource,
   start,
   startTimer,
   stopTimer,
@@ -30,6 +31,7 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import { serverError } from "./Infrastructure/serverError";
+import { faviconKey, faviconTarget, type IProjectFaviconTarget } from "./projectIcon";
 import type {
   IWireProject,
   IWireShellItem,
@@ -41,6 +43,7 @@ import { byId, put, reconcile } from "./rows";
 declare module "treflex" {
   interface IResourceRegistry {
     "Shell/Stream": { Type: "shellStream" };
+    "Project/Favicons": { Type: "projectFavicons" };
   }
   interface ITimerRegistry {
     "Shell/Reopen": {};
@@ -246,6 +249,34 @@ function* reopenLater(draft: IShell): IActionGenerator {
   yield* startTimer(draft, "Shell/Reopen", ShellReceiver, REOPEN_MS);
 }
 
+const changesProjects = (item: Exclude<IWireShellItem, { kind: "synchronized" }>) =>
+  (item.kind === "snapshot" && item.resolvedRepositoryIdentityRoots === undefined) ||
+  item.kind === "project.updated";
+
+function faviconKeys(draft: IShell): Record<string, string | null> {
+  const keys: Record<string, string | null> = {};
+  for (const project of Object.values(draft.Projects)) {
+    const target = faviconTarget(draft.EnvironmentId, project);
+    keys[project.id] = target === null ? null : faviconKey(target);
+  }
+  return keys;
+}
+
+/** The favicon of each project that arrived or whose favicon source changed. */
+function newFavicons(draft: IShell, previous: Record<string, string | null>) {
+  return Object.values(draft.Projects).flatMap((project) => {
+    const target = faviconTarget(draft.EnvironmentId, project);
+    return target === null || previous[project.id] === faviconKey(target) ? [] : [target];
+  });
+}
+
+export function* requestFavicons(
+  draft: IShell,
+  targets: IProjectFaviconTarget[],
+): IActionGenerator {
+  for (const target of targets) yield* resource(draft, "Project/Favicons").request(target);
+}
+
 export const ShellReceiver = receiver<IShell>("ShellReceiver")({
   *"Shell/Stream"(draft, message) {
     if (isEnded(message)) {
@@ -260,7 +291,10 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
       if ((yield* lastVisit(draft)).Unconfirmed !== null)
         yield* start(visitShown, draft, { Retry: true });
     } else {
+      const projects = changesProjects(message.Item) ? faviconKeys(draft) : null;
       applyItem(draft, message.Item);
+      const favicons = projects === null ? [] : newFavicons(draft, projects);
+      if (favicons.length > 0) yield* start(requestFavicons, draft, favicons);
       yield* visitIfDue(draft);
     }
   },

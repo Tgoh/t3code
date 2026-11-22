@@ -154,7 +154,13 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     Settings: null,
     SettingsError: null,
   }));
-  onMount(() => palette.dispatch(loadSettings, environment.state.EnvironmentId));
+  // The folder view's target depends on the platform the settings report.
+  onMount(
+    () =>
+      void palette
+        .dispatch(loadSettings, environment.state.EnvironmentId)
+        .then(() => browseDirectory()),
+  );
   const settings = () =>
     palette.state.Settings ?? (palette.state.SettingsError === null ? null : UNKNOWN_SETTINGS);
   const cwd = () => environment.currentProjectRoot();
@@ -186,7 +192,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
   };
   const show = (next: IView[]) => {
     setStack(next);
-    setQuery(initialQuery(next.at(-1)!));
+    changeQuery(initialQuery(next.at(-1)!));
     setHighlight(next.at(-1)!.Kind === "sources" ? 0 : null);
     setError(null);
     setNotice(null);
@@ -224,10 +230,17 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     Error: null,
   }));
   const directory = createMemo(() => (browsing() ? browseTarget(query(), platform(), cwd()) : ""));
-  createEffect(() => {
+  const browsed = { Path: "" };
+  const browseDirectory = () => {
     const path = directory();
-    if (path !== "") picker.dispatch(browse, environment.state.EnvironmentId, path, cwd());
-  });
+    if (path === browsed.Path) return;
+    browsed.Path = path;
+    if (path !== "") void picker.dispatch(browse, environment.state.EnvironmentId, path, cwd());
+  };
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    browseDirectory();
+  };
   const listed = () => picker.state.Path === directory();
   const listing = () => (listed() ? picker.state.Listing : null);
   const listingError = () => (listed() ? picker.state.Error : null);
@@ -266,7 +279,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     });
   const go = (next: string) => {
     setHighlight(null);
-    setQuery(next);
+    changeQuery(next);
     focusInput();
   };
   const open = (name: string) =>
@@ -333,7 +346,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     if (outcome === undefined) return;
     if ("Error" in outcome) return setError(outcome.Error);
     if (outcome.CommitError === null) return props.onClose();
-    setQuery("");
+    changeQuery("");
     setNotice(
       `Created ${created} without a first commit: ${outcome.CommitError} The project is in ${outcome.WorkspaceRoot}.`,
     );
@@ -478,7 +491,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
               value={query()}
               ref={setInput}
               onInput={(event) => {
-                setQuery(event.currentTarget.value);
+                changeQuery(event.currentTarget.value);
                 if (browsing()) setHighlight(null);
                 setError(null);
               }}

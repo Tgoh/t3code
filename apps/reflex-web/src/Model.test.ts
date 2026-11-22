@@ -28,12 +28,14 @@ import {
   addFolder,
   cloneProject,
   closeThread,
+  editors,
   EnvironmentReceiver,
   type IEnvironment,
   newProject,
   newThread,
   openThread,
   panelShortcuts,
+  preferEditor,
   projectCommand,
   removeProject,
   selectThread,
@@ -154,6 +156,7 @@ import {
   threadWorking,
   diffLoading,
   closeTerminal,
+  commandOutputRows,
   compactionOffer,
   effectiveModel,
   effectiveRuntimeMode,
@@ -175,7 +178,9 @@ import {
   toggleCodeWrap,
   toggleKeepFullHistory,
   toggleQuestionOption,
+  toggleDetails,
   toggleRightPanel,
+  toggleRowExpanded,
   unwrappedCodeBlocks,
 } from "./ThreadSession";
 import {
@@ -193,6 +198,7 @@ import {
   THREAD_ID,
 } from "./testing/threadFixture";
 import { watchRuntime } from "./testing/watchRuntime";
+import type { IProjectFaviconTarget } from "./projectIcon";
 import { orderFolders } from "./projectOrder";
 import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
@@ -278,6 +284,7 @@ async function connect(
     Now: 0,
     Applied: [] as IColorScheme[],
     Schemes: [] as IColorScheme[],
+    Favicons: [] as IProjectFaviconTarget[],
   };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
@@ -345,6 +352,10 @@ async function connect(
           },
           "Device/Appearance": {
             apply: (_ctx: unknown, scheme: IColorScheme) => void device.Applied.push(scheme),
+          },
+          "Project/Favicons": {
+            request: (_ctx: unknown, target: IProjectFaviconTarget) =>
+              void device.Favicons.push(target),
           },
           ...resources?.methods,
         },
@@ -3806,6 +3817,154 @@ describe("the terminal", () => {
     await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
     await settled();
     expect(terminal(server).Status).toBeNull();
+  });
+});
+
+describe("work started by events", () => {
+  it("expanding a command row opens its output, which leaving the thread closes and returning reopens", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    const outputs = () =>
+      server.runtime
+        .resources()
+        .filter((row) => row.Key === "Command/Output")
+        .map((row) => row.Params as unknown as { ThreadId: string; ItemId: string });
+    const rows = () => server.runtime.processSelector(commandOutputRows, () => server.session());
+
+    await server.runtime.dispatch(toggleRowExpanded, server.sessionId(), "cmd-1", {
+      ThreadId: "source",
+    });
+    await server.runtime.dispatch(toggleRowExpanded, server.sessionId(), "group-1");
+    expect(outputs()).toMatchObject([{ ThreadId: "source", ItemId: "cmd-1" }]);
+    expect(Object.keys(rows())).toEqual(["cmd-1"]);
+
+    await server.runtime.dispatch(selectThread, server.envId(), "other");
+    await settled();
+    expect(outputs()).toEqual([]);
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await settled();
+    expect(outputs()).toMatchObject([{ ThreadId: "source", ItemId: "cmd-1" }]);
+
+    await server.runtime.dispatch(toggleRowExpanded, server.sessionId(), "cmd-1");
+    expect(outputs()).toEqual([]);
+    expect(rows()).toEqual({});
+  });
+
+  it("leaving the thread or covering it with a page closes the details popover", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    const popover = () => server.session().Panels.Details.Popover;
+    await server.runtime.dispatch(toggleDetails, server.sessionId());
+    expect(popover()).toBe(true);
+    await server.runtime.dispatch(selectThread, server.envId(), "other");
+    await settled();
+    expect(popover()).toBe(false);
+
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.runtime.dispatch(toggleDetails, server.sessionId());
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "general" });
+    await settled();
+    expect(popover()).toBe(false);
+  });
+
+  it("lists the editors from the server config and keeps the one last opened with", async () => {
+    const server = await connect();
+    const listed = () => server.runtime.processSelector(editors, server.environment);
+    expect(listed()).toEqual({ Available: [], Preferred: null });
+    await server.sendConfig({
+      ...configSnapshot([replayProvider()]),
+      config: {
+        ...configSnapshot([replayProvider()]).config,
+        availableEditors: ["zed", "vscode"],
+      },
+    });
+    expect(listed()).toEqual({
+      Available: [
+        { Id: "vscode", Label: "VS Code" },
+        { Id: "zed", Label: "Zed" },
+      ],
+      Preferred: "vscode",
+    });
+    await server.runtime.dispatch(preferEditor, server.envId(), "zed");
+    expect(listed().Preferred).toBe("zed");
+    expect(server.device.Editor).toBe("zed");
+  });
+
+  it("looks up related threads' titles once for each set the thread's lineage needs", async () => {
+    const asked: string[][] = [];
+    const server = await connect(undefined, null, {
+      threadTitles: (effect: { ThreadIds: string[] }) => {
+        asked.push(effect.ThreadIds);
+        return { Titles: Object.fromEntries(effect.ThreadIds.map((id) => [id, `Title ${id}`])) };
+      },
+    });
+    await server.open();
+    const projection = emptyProjection();
+    const forkOf = (parent: string) => ({
+      ...projection.thread,
+      lineage: { rootThreadId: parent, parentThreadId: parent, relationshipToParent: "fork" },
+      forkedFrom: { type: "run", threadId: parent, runId: "run-1" },
+    });
+    await server.sendThread(snapshotOf({ ...projection, thread: forkOf("gone") } as never, 1));
+    await settled();
+    expect(asked).toEqual([["gone"]]);
+    expect(server.thread().LineageTitles).toEqual({ Key: "gone", Titles: { gone: "Title gone" } });
+
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("message.updated", message("m-1", "run-1", "hi")),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 3,
+      event: event("thread.metadata-updated", { ...forkOf("gone"), title: "Renamed" }),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toEqual([["gone"]]);
+
+    await server.sendThread({
+      kind: "event",
+      sequence: 4,
+      event: event("thread.metadata-updated", forkOf("elsewhere")),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toEqual([["gone"], ["elsewhere"]]);
+  });
+
+  it("asks for each project's favicon as its row arrives or its favicon source changes", async () => {
+    const server = await connect();
+    const project = (extra: Record<string, unknown> = {}) => ({
+      id: "p-1",
+      title: "One",
+      workspaceRoot: "/root",
+      ...extra,
+    });
+    const snapshot = (sequence: number, projects: unknown[]) =>
+      ({
+        kind: "snapshot",
+        snapshot: { snapshotSequence: sequence, projects, threads: [], archivedThreads: [] },
+      }) as unknown as IWireShellItem;
+    const asked = () => server.device.Favicons.map((target) => [target.Cwd, target.FaviconPath]);
+
+    await server.sendShell(
+      snapshot(1, [
+        project(),
+        project({ id: "p-2", workspaceRoot: "/emoji", projectIcon: { kind: "emoji", emoji: "x" } }),
+      ]),
+    );
+    expect(asked()).toEqual([["/root", null]]);
+    await server.sendShell(snapshot(2, [project({ title: "Renamed" })]));
+    expect(asked()).toEqual([["/root", null]]);
+    await server.sendShell({
+      kind: "project.updated",
+      sequence: 3,
+      project: project({ faviconPath: "icon.png" }),
+    } as unknown as IWireShellItem);
+    expect(asked()).toEqual([
+      ["/root", null],
+      ["/root", "icon.png"],
+    ]);
   });
 });
 

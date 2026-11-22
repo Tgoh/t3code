@@ -13,18 +13,9 @@ Each item fixes data or work that's wrong today.
 - **Derive each request's turn item instead of indexing it.** Remove `OpenThread.RequestItemIds` and `indexRequestItem`. Have `requestItems` walk `Timeline` from the newest item, for pending requests only, until it finds the item whose `requestId` matches. That's how stock does it (`derivePendingThreadRequests` in `packages/client-runtime/src/state/threadRequests.ts`). The old 60 ms cost came from a selector that read every turn item. This one reads only the tail, and nothing when no request is pending. Before you delete the index:
   - Measure at 20,000 items with a pending request.
   - Check a request whose item is outside the loaded history window.
-- **Put state on the right side of the line, and start work from events.** The line is in `CLAUDE.md`: what causes the work, and whether a restore would bring that back. Git status and the Usage page wait for their stage 4 items; do the rest now.
-  - **Move to main state:**
-    - **Command output** (`CommandOutput.tsx`). Whether a row is expanded is already on `ThreadSession`, so `toggleRowExpanded` should open the output subscription, not the row's mount.
-    - **Editors** (`ThreadDetails.ts`). `editorsEffect` lists the editors installed in the environment and is fetched on every thread open. Load it once on `Environment`.
-    - **Lineage titles** (`lineageTitles.ts`). These are other threads' titles, fetched on every thread open. Fetch them when the thread opens, or keep them as a title cache on the shell.
-    - **Project favicons** (`brand.tsx`). They're requested through `Environment` when a project changes. Request them from the shell receiver as project rows arrive.
-    - **Git status** (`ThreadDetails.ts` `attach`), in stage 4 with the checkout selector. The details card mounts for every thread with a checkout, even while hidden, so the subscription already lasts as long as the thread is open. Open it from `selectThread` or a checkout change, on `ThreadSession` or a child entity. The branch list is per project and can go with it.
-    - **Usage page**, in stage 4 with "Split `Environment`". `UsageView.tsx` starts `loadUsage` and `autoRefreshLimits` on mount; that item turns the page into a component feature opened by `openView`.
-  - **Move to component state:** the composer `@` file search (`ComposerCommandMenu.tsx`, now `ThreadSession.searchFiles`). Put the debounce in the action as a `delay`, as `searchMessages` does, and start it from the composer's input handler, not a `setTimeout` in an effect.
-  - **Keep in component state, but start from the handler:** message search (`messageSearch.ts`) and Add project's folder browsing (`AddProject.tsx`) run from an effect over the query. Dispatch from the input handler instead.
-  - **Keep in component state as is:** media and attachment URLs, which are signed, expire, and are fetched because a row is rendered; Add project's settings; voice models on the settings page, like the Usage page.
-  - **Main-state writes from the view:** `ThreadView.tsx` runs `fitDetails` from an effect over the stage size, so dispatch it from the ResizeObserver callback. It also closes the details popover in `onCleanup`, so close it in the action that leaves or switches the thread.
+- **Put state on the right side of the line, and start work from events.** The line is in `CLAUDE.md`: what causes the work, and whether a restore would bring that back. Two moves to main state are left, each waiting for its stage 4 item:
+  - **Git status** (`ThreadDetails.ts` `attach`), with the checkout selector. The details card mounts for every thread with a checkout, even while hidden, so the subscription already lasts as long as the thread is open. Open it from `selectThread` or a checkout change, on `ThreadSession` or a child entity. The branch list is per project and can go with it. The card's `createEffect` that refreshes status when it's shown goes with it.
+  - **Usage page**, with "Split `Environment`". `UsageView.tsx` starts `loadUsage` and `autoRefreshLimits` on mount; that item turns the page into a component feature opened by `openView`.
 
 ## 2. Daily friction
 

@@ -1,48 +1,61 @@
-import { type IActionGenerator, type IEntity, latest } from "treflex";
-import { useComponentState } from "treflex-solid";
-import { type Accessor, createEffect } from "solid-js";
+import {
+  getData,
+  type IOpenGenerator,
+  type ISelectorGenerator,
+  latest,
+  open,
+  select,
+} from "treflex";
 
-import Environment from "./Environment";
 import { threadTitlesEffect } from "./Infrastructure/commandEffects";
 import { serverError } from "./Infrastructure/serverError";
+import { threadLineage } from "./lineage";
+import type { IOpenThread } from "./OpenThread";
 
-interface ILineageTitles extends IEntity {
+export interface ILineageTitles {
+  /** The related thread ids, joined, that `Titles` was looked up for. */
   Key: string;
   /** Null until the lookup for `Key` settles, and after it fails. */
   Titles: Record<string, string> | null;
 }
 
-export function* lookUpTitles(
-  draft: ILineageTitles,
-  environmentId: string,
-  threadIds: string[],
-): IActionGenerator {
+/** Related threads the shell doesn't carry, whose titles the server has to look up. */
+export function* lineageLookup(draft: IOpenThread): ISelectorGenerator<string[]> {
+  const replica = yield* getData(draft, "Replica");
+  if (draft.Thread === null || replica === undefined) return [];
+  return threadLineage({
+    thread: draft.Thread,
+    subagents: Object.values(draft.Subagents),
+    contextTransfers: Object.values(draft.ContextTransfers),
+    shells: Object.values(replica.Shell.Threads),
+    titles: null,
+  }).Lookup;
+}
+
+/** The server's titles for related threads the shell doesn't carry, as stock's `threadTitles` query finds them. */
+export function* lookUpLineageTitles(draft: IOpenThread): IOpenGenerator {
+  const threadIds = yield* select(lineageLookup);
   const key = threadIds.join(",");
-  if (key === draft.Key) return;
-  draft.Key = key;
-  draft.Titles = null;
+  if (key === draft.LineageTitles.Key) return;
+  draft.LineageTitles = { Key: key, Titles: null };
+  if (threadIds.length === 0) return;
+  let titles: Record<string, string> | null = null;
   try {
-    draft.Titles = (yield* threadTitlesEffect({
-      EnvironmentId: environmentId,
-      ThreadIds: threadIds,
-    })).Titles;
+    titles = (yield* open(
+      threadTitlesEffect({ EnvironmentId: draft.EnvironmentId, ThreadIds: threadIds }),
+    )).Titles;
   } catch (error) {
     serverError(error);
-    draft.Titles = null;
   }
+  draft.LineageTitles.Titles = titles;
 }
-latest(lookUpTitles);
+latest(lookUpLineageTitles);
 
 /**
- * The server's titles for related threads the shell doesn't carry, as stock's `threadTitles` query
- * finds them. Null until a lookup of exactly these ids has settled.
+ * The looked-up titles when the lookup covered every one of `threadIds`, else null: `threadLineage`
+ * hides a looked-up thread that has no title, as deleted.
  */
-export function useLineageTitles(threadIds: Accessor<string[]>) {
-  const environment = Environment.use();
-  const held = useComponentState<ILineageTitles>(() => ({ Key: "", Titles: null }));
-  createEffect(() => {
-    const ids = threadIds();
-    if (ids.length > 0) void held.dispatch(lookUpTitles, environment.state.EnvironmentId, ids);
-  });
-  return () => (held.state.Key === threadIds().join(",") ? held.state.Titles : null);
+export function lineageTitles(thread: IOpenThread, threadIds: readonly string[]) {
+  const covered = new Set(thread.LineageTitles.Key.split(","));
+  return threadIds.every((id) => covered.has(id)) ? thread.LineageTitles.Titles : null;
 }

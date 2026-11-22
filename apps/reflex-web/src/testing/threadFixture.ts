@@ -18,6 +18,7 @@ export const REPLICA_WRITERS: ReadonlySet<string | null> = new Set([
   "ShellReceiver",
   "ThreadReceiver",
   "loadEarlier",
+  "lookUpLineageTitles",
   "toggleModelFavorite",
   "writeSetting",
   "updateServerSettings",

@@ -22,6 +22,7 @@ import { modelFavoritePatch } from "./providerSettings";
 import { reconcile } from "./rows";
 import { visitShown } from "./Shell";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
+import { closeDetailsPopover } from "./ThreadSession";
 
 export function* openView(draft: IEnvironment, view: IAddressView | null): IActionGenerator {
   const covered = draft.Local.View !== null;
@@ -36,6 +37,8 @@ export function* showView(draft: IEnvironment, view: IAddressView | null): IActi
   draft.Local.View = next;
   yield* setAddressView(next);
   if (next === null) return;
+  const covered = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
+  if (covered !== undefined) yield* start(closeDetailsPopover, covered);
   yield* start(loadSettings, draft);
   if (next.Kind === "settings" && next.Page === "archived") yield* start(loadArchived, draft);
 }

@@ -3,18 +3,12 @@ import {
   terminalOutputSpans,
   type TerminalSpanStyle,
 } from "@t3tools/shared/terminalOutput";
-import { type IActionGenerator, type IEntity, openResource } from "treflex";
-import { useComponentState, useResource } from "treflex-solid";
-import { createEffect, createMemo, createSignal, Index, onMount, Show } from "solid-js";
+import { useResource } from "treflex-solid";
+import { createEffect, createMemo, createSignal, Index, Show } from "solid-js";
 
 import Environment from "./Environment";
+import ThreadSession from "./ThreadSession";
 import { ERROR_TEXT } from "./ui/notice";
-
-declare module "treflex" {
-  interface IResourceRegistry {
-    "Command/Output": { Type: "commandOutput" };
-  }
-}
 
 const cssOf = (style: TerminalSpanStyle) => ({
   color: style.color,
@@ -25,31 +19,15 @@ const cssOf = (style: TerminalSpanStyle) => ({
   "text-decoration-line": style.textDecorationLine,
 });
 
-function* openOutput(
-  draft: IEntity,
-  environmentId: string,
-  threadId: string,
-  itemId: string,
-): IActionGenerator {
-  yield* openResource(draft, "Command/Output", {
-    Type: "commandOutput",
-    EnvironmentId: environmentId,
-    ThreadId: threadId,
-    ItemId: itemId,
-  });
-}
-
 export const WORK_PRE =
   "m-0 max-h-64 overflow-auto font-mono text-[11px] leading-[1.625] wrap-anywhere whitespace-pre-wrap text-secondary-label";
 
 const NOTE = "m-0 text-[12px] text-muted-foreground";
 
-// The component entity's removal closes the subscription.
-export function CommandOutput(props: { environmentId: string; threadId: string; itemId: string }) {
+export function CommandOutput(props: { itemId: string }) {
   const environment = Environment.use();
-  const local = useComponentState(() => ({}));
-  const output = useResource(local.state, "Command/Output");
-  onMount(() => local.dispatch(openOutput, props.environmentId, props.threadId, props.itemId));
+  const session = ThreadSession.use();
+  const output = useResource(() => session.commandOutputRows()[props.itemId], "Command/Output");
   const spans = createMemo(() =>
     terminalOutputSpans(output.value()?.Text ?? "", TERMINAL_PALETTES[environment.colorScheme()]),
   );

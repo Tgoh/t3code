@@ -1,23 +1,12 @@
 import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
-import {
-  type IActionGenerator,
-  type IEntity,
-  type IOpenGenerator,
-  latest,
-  leading,
-  open,
-  openResource,
-} from "treflex";
+import { type IEntity, type IOpenGenerator, latest, leading, open, openResource } from "treflex";
 import { createComponentFeature } from "treflex-solid";
 
 import { serverError } from "./Infrastructure/serverError";
 import { sendThreadBranch } from "./GitWork";
 import { projectCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
-import { storedEditorEffect, storeEditorEffect } from "./Infrastructure/preferences";
 import {
-  editorsEffect,
   type IBranchRef,
-  type IEditors,
   listBranchesEffect,
   refreshVcsStatusEffect,
   runScriptEffect,
@@ -41,7 +30,6 @@ export interface ICheckout {
 
 export interface IThreadDetails extends IEntity {
   Checkout: ICheckout | null;
-  Editors: IEditors | null;
   Branches: IBranchRef[] | null;
   BranchError: string | null;
   ScriptError: string | null;
@@ -50,7 +38,6 @@ export interface IThreadDetails extends IEntity {
 export function getDefaultThreadDetails(): Omit<IThreadDetails, "$Id"> {
   return {
     Checkout: null,
-    Editors: null,
     Branches: null,
     BranchError: null,
     ScriptError: null,
@@ -98,17 +85,6 @@ export function* attach(draft: IThreadDetails, checkout: ICheckout): IOpenGenera
     Cwd: checkout.Cwd,
   });
   yield* refreshStatus(draft);
-  const stored = yield* storedEditorEffect();
-  try {
-    draft.Editors = yield* open(
-      editorsEffect({ EnvironmentId: checkout.EnvironmentId, Stored: stored }),
-    );
-  } catch (error) {
-    serverError(error);
-    draft.Editors = { Available: [], Preferred: null };
-  }
-  const preferred = draft.Editors.Preferred;
-  if (preferred !== null && preferred !== stored) yield* storeEditorEffect({ Editor: preferred });
 }
 
 /** Terminal edits and commits made outside a turn publish no status, so a refresh asks for one. */
@@ -125,11 +101,6 @@ export function* refreshStatus(draft: IThreadDetails): IOpenGenerator {
   }
 }
 leading(refreshStatus);
-
-export function* preferEditor(draft: IThreadDetails, editor: string): IActionGenerator {
-  if (draft.Editors !== null) draft.Editors.Preferred = editor;
-  yield* storeEditorEffect({ Editor: editor });
-}
 
 export function* loadBranches(draft: IThreadDetails, query: string): IOpenGenerator {
   const checkout = draft.Checkout;
@@ -249,7 +220,6 @@ export default createComponentFeature<IThreadDetails>(import.meta.url)(
   {
     attach,
     refreshStatus,
-    preferEditor,
     loadBranches,
     selectBranch,
     createBranch,

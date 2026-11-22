@@ -3,16 +3,13 @@ import type { ProjectIconColor } from "@t3tools/contracts";
 import { useResource } from "treflex-solid";
 import {
   type Component,
-  createEffect,
   createMemo,
   createSignal,
   createUniqueId,
   For,
   Match,
-  on,
   Show,
   Switch,
-  untrack,
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
@@ -111,20 +108,11 @@ function LucideIcon(props: { name: string; color: ProjectIconColor }) {
 // fixed box, so swapping the monogram for the image, or back on a load error, never shifts layout.
 export function ProjectBadge(props: { project: IWireProject | undefined; size?: number }) {
   const environment = Environment.use();
-  const favicons = useResource(environment.state, "Project/Favicons");
-  const target = createMemo(() => faviconTarget(environment.state.EnvironmentId, props.project));
+  const favicons = useResource(() => environment.state.Replica.Shell, "Project/Favicons");
   const key = createMemo(() => {
-    const held = target();
+    const held = faviconTarget(environment.state.EnvironmentId, props.project);
     return held === null ? null : faviconKey(held);
   });
-  createEffect(
-    on(key, (held) => {
-      const asked = target();
-      if (held === null || asked === null) return;
-      if (untrack(favicons.value)?.[held] !== undefined) return;
-      environment.requestProjectFavicon(asked);
-    }),
-  );
   const [failedSrc, setFailedSrc] = createSignal<string | null>(null);
   const [loadedSrc, setLoadedSrc] = createSignal<string | null>(null);
   const face = createMemo(() => {

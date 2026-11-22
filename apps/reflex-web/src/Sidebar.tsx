@@ -369,6 +369,7 @@ export const Sidebar = Shell.provider(() => {
             value={query()}
             onInput={(event) => {
               setQuery(event.currentTarget.value);
+              messageSearch.search(event.currentTarget.value);
               setHighlightId(null);
             }}
             onKeyDown={onSearchKey}

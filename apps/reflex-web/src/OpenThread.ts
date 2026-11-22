@@ -21,6 +21,7 @@ import {
   publishToNearest,
   receiver,
   select,
+  start,
   startTimer,
   stopTimer,
   transient,
@@ -37,6 +38,7 @@ import type {
   IWireTurnItem,
 } from "./Infrastructure/wire";
 import { byId, put, putEntity, reconcile, reconcileEntities } from "./rows";
+import { type ILineageTitles, lookUpLineageTitles } from "./lineageTitles";
 import type { IRuntimeRequest } from "./RuntimeRequest";
 
 declare module "treflex" {
@@ -104,6 +106,7 @@ export interface IOpenThread extends IEntity {
   Rows: Record<string, ITimelineRow>;
   History: IHistoryWindow | null;
   LatestLocalTurnOrdinal: number | null;
+  LineageTitles: ILineageTitles;
 }
 
 const streamState = (draft: IOpenThread) =>
@@ -140,6 +143,7 @@ export function getDefaultOpenThread(
     Rows: {},
     History: null,
     LatestLocalTurnOrdinal: null,
+    LineageTitles: { Key: "", Titles: null },
   };
 }
 
@@ -517,6 +521,7 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     applySnapshot(draft, item, history);
     yield* announceSettled(draft);
     yield* announceRewind(draft);
+    yield* start(lookUpLineageTitles, draft);
     return;
   }
   if (item.sequence <= draft.LastSequence) return;
@@ -536,7 +541,17 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
   }
   applyEvent(draft, item.event);
   if (REWIND_EVENTS.has(item.event.type)) yield* announceRewind(draft);
+  if (LINEAGE_EVENTS.has(item.event.type)) yield* start(lookUpLineageTitles, draft);
 }
+
+// What lineageLookup in lineageTitles.ts reads from the thread.
+const LINEAGE_EVENTS = new Set<IWireThreadEvent["type"]>([
+  "thread.created",
+  "thread.metadata-updated",
+  "subagent.updated",
+  "context-transfer.created",
+  "context-transfer.updated",
+]);
 
 // What rewindOutcome in rewind.ts reads.
 const REWIND_EVENTS = new Set<IWireThreadEvent["type"]>([

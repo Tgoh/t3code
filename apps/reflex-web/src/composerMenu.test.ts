@@ -1,4 +1,5 @@
 import type { ServerProviderSkill, ServerProviderSlashCommand } from "@t3tools/contracts";
+import { createTestRuntime, settled } from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -6,9 +7,11 @@ import {
   fileItems,
   type IMenuTrigger,
   menuTrigger,
+  searchFiles,
   skillItems,
   slashItems,
 } from "./composerMenu";
+import { watchRuntime } from "./testing/watchRuntime";
 
 const skill = (name: string, extra: Partial<ServerProviderSkill> = {}) =>
   ({ name, path: `/skills/${name}`, enabled: true, ...extra }) as ServerProviderSkill;
@@ -91,5 +94,44 @@ describe("inserting a pick", () => {
     });
     const slash = menuTrigger("/re", 3) as IMenuTrigger;
     expect(applyMenuItem("/re", slash, "/review ")).toEqual({ Text: "/review ", Cursor: 8 });
+  });
+});
+
+describe("searchFiles", () => {
+  it("sends only the query typed last, and again only when the query or root changes", async () => {
+    const waits: Array<() => void> = [];
+    const sent: Array<[string, string]> = [];
+    const runtime = createTestRuntime(
+      { $Id: "Files", Query: null, Root: null, Entries: [] },
+      {
+        delay: () => new Promise<void>((resolve) => waits.push(resolve)),
+        searchEntries: (effect: { Cwd: string; Query: string }) => {
+          sent.push([effect.Cwd, effect.Query]);
+          return { Entries: [{ path: `${effect.Query}.ts`, kind: "file" }] };
+        },
+      },
+    );
+    watchRuntime(runtime);
+    const search = async (root: string | null, ...queries: string[]) => {
+      for (const query of queries)
+        void runtime.dispatch(searchFiles, "Files", "env-1", root, query);
+      await settled();
+      for (const wake of waits.splice(0)) wake();
+      await settled();
+    };
+    await search("/root", "a", "ab");
+    expect(sent).toEqual([["/root", "ab"]]);
+    expect(runtime.state).toMatchObject({ Query: "ab", Entries: [{ path: "ab.ts" }] });
+
+    await search("/root", "ab");
+    await search("/root/wt", "ab");
+    expect(sent).toEqual([
+      ["/root", "ab"],
+      ["/root/wt", "ab"],
+    ]);
+
+    await search(null, "c");
+    expect(sent).toHaveLength(2);
+    expect(runtime.state).toMatchObject({ Query: "c", Entries: [] });
   });
 });

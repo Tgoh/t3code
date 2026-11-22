@@ -17,7 +17,6 @@ import {
   openResource,
   receiver,
   registerDataSource,
-  resource,
   start,
   startTimer,
   stopTimer,
@@ -44,6 +43,7 @@ import {
   storeDraftFilesEffect,
 } from "./Infrastructure/draftMemory";
 import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
+import { editorChoices, type IEditors } from "./editors";
 import { getDefaultGitWork, type IGitWork } from "./GitWork";
 import {
   clockNowEffect,
@@ -67,7 +67,6 @@ import {
 } from "./Preferences";
 import { type IShelves, SETTLED_PAGE } from "./sidebarLayout";
 import { type IWireClientSettings, storedClientSettingsEffect } from "./Infrastructure/settings";
-import type { IProjectFaviconTarget } from "./projectIcon";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import {
   getDefaultOpenThread,
@@ -106,20 +105,19 @@ import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, openShellStream, visitShown } from "./Shell";
 import {
   checkRewind,
-  detachTerminal,
+  detachThread,
   getDefaultThreadSession,
   type IReplica,
   type ISelection,
   type IThreadSession,
+  reattachThread,
   restoreDraft,
-  restoreTerminal,
   settleQuestions,
 } from "./ThreadSession";
 
 declare module "treflex" {
   interface IResourceRegistry {
     "Project/Clones": { Type: "projectClones" };
-    "Project/Favicons": { Type: "projectFavicons" };
     "Server/Keybindings": { Type: "serverKeybindings" };
     "Server/Config": { Type: "serverConfigStream" };
   }
@@ -142,6 +140,8 @@ export interface IEnvironment extends IEntity {
     Shelves: IShelves;
     SystemDark: boolean;
     ViewportDebug: boolean;
+    /** The editor this device last opened with, as stock stores it. */
+    Editor: string | null;
   };
 }
 
@@ -170,6 +170,7 @@ export function* newEnvironment(
     Now: yield* clockNowEffect(),
     SystemDark: false,
     ViewportDebug: false,
+    Editor: yield* storedEditorEffect(),
   });
   return yield* entity<IEnvironment>({
     EnvironmentId: environmentId,
@@ -212,7 +213,7 @@ export function* init(draft: IEnvironment): IActionGenerator {
     Type: "projectClones",
     EnvironmentId: draft.EnvironmentId,
   });
-  yield* openResource(draft, "Project/Favicons", {
+  yield* openResource(draft.Replica.Shell, "Project/Favicons", {
     Type: "projectFavicons",
     EnvironmentId: draft.EnvironmentId,
   });
@@ -261,20 +262,20 @@ export function* openThread(draft: IEnvironment, threadId: string): IActionGener
     );
     yield* openThreadStream(draft.Replica.OpenThreads[threadId]!);
   }
-  yield* start(restoreTerminal, session.$Id);
+  yield* start(reattachThread, session.$Id);
 }
 
 function* leaveThread(draft: IEnvironment, threadId: string): IActionGenerator {
   const held = draft.Replica.OpenThreads[threadId];
   if (held !== undefined) yield* retainThread(held);
   const session = draft.Local.ThreadSessions[threadId];
-  if (session !== undefined) yield* start(detachTerminal, session);
+  if (session !== undefined) yield* start(detachThread, session);
 }
 
 export function* closeThread(draft: IEnvironment, threadId: string): IActionGenerator {
   delete draft.Replica.OpenThreads[threadId];
   const session = draft.Local.ThreadSessions[threadId];
-  if (session !== undefined) yield* start(detachTerminal, session);
+  if (session !== undefined) yield* start(detachThread, session);
 }
 
 /** `searchQuery` is the palette query that picked the thread, which the server learns for ranking. */
@@ -413,13 +414,6 @@ export function* removeProject(
 }
 leading(removeProject);
 
-export function* requestProjectFavicon(
-  draft: IEnvironment,
-  target: IProjectFaviconTarget,
-): IActionGenerator {
-  yield* resource(draft, "Project/Favicons").request(target);
-}
-
 export function* openInFileManager(draft: IEnvironment, path: string): IOpenGenerator {
   yield* open(openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path }));
 }
@@ -429,7 +423,7 @@ export function* openInEditor(
   path: string,
   projectRoot: string | null,
 ): IOpenGenerator {
-  const stored = yield* storedEditorEffect();
+  const stored = draft.Local.Editor;
   const opened = yield* open(
     openInEditorEffect({
       EnvironmentId: draft.EnvironmentId,
@@ -438,7 +432,21 @@ export function* openInEditor(
       Stored: stored,
     }),
   );
-  if (opened !== stored) yield* storeEditorEffect({ Editor: opened });
+  if (opened !== stored) yield* preferEditor(draft, opened);
+}
+
+export function* preferEditor(draft: IEnvironment, editor: string): IActionGenerator {
+  draft.Local.Editor = editor;
+  yield* storeEditorEffect({ Editor: editor });
+}
+
+/** The editors the server reports installed, which change only with a server restart. */
+export function* editors(draft: IEnvironment): ISelectorGenerator<IEditors> {
+  return editorChoices(
+    draft.Replica.Config?.availableEditors ?? [],
+    draft.Local.Editor,
+    typeof navigator === "undefined" ? "" : navigator.platform,
+  );
 }
 
 // Follows handleAddProjectForEnvironment in apps/web/src/components/CommandPalette.tsx.
@@ -655,7 +663,7 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     removeProject,
     openInFileManager,
     openInEditor,
-    requestProjectFavicon,
+    preferEditor,
     openView,
     writeSetting,
     updateServerSettings,
@@ -686,5 +694,6 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     panelShortcuts,
     currentProjectId,
     currentProjectRoot,
+    editors,
   },
 );

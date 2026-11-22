@@ -885,7 +885,11 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
         <details
           open={expanded()}
           onToggle={(event) => {
-            if (event.currentTarget.open !== expanded()) session.toggleRowExpanded(props.id);
+            if (event.currentTarget.open === expanded()) return;
+            const output = view()?.LiveOutput
+              ? { ThreadId: thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId }
+              : undefined;
+            session.toggleRowExpanded(props.id, output);
           }}
         >
           <summary
@@ -896,11 +900,7 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
           </summary>
           <div class="ml-7 pt-0.5 pb-1.5">
             <Show when={view()?.LiveOutput && expanded()}>
-              <CommandOutput
-                environmentId={thread.state.EnvironmentId}
-                threadId={thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId}
-                itemId={props.id}
-              />
+              <CommandOutput itemId={props.id} />
             </Show>
             {body()}
           </div>

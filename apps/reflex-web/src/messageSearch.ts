@@ -3,7 +3,7 @@ import { THREAD_SEARCH_QUERY_MAX_LENGTH } from "@t3tools/contracts";
 import { messageSearchTokens } from "@t3tools/shared/paletteSearch";
 import { type IActionGenerator, type IEntity, latest } from "treflex";
 import { useComponentState } from "treflex-solid";
-import { type Accessor, createEffect, createMemo } from "solid-js";
+import { type Accessor, createMemo } from "solid-js";
 
 import Environment from "./Environment";
 import { searchThreadsEffect } from "./Infrastructure/commandEffects";
@@ -50,17 +50,19 @@ export const searchesMessages = (query: string) =>
 
 /**
  * Server message matches for `query`, debounced as stock's `useThreadSearch`. While a refined query
- * runs, the previous results stay, so rows don't blink out and back on every keystroke.
+ * runs, the previous results stay, so rows don't blink out and back on every keystroke. The handler
+ * that changes `query` calls `search` with it.
  */
 export function useMessageSearch(query: Accessor<string>) {
   const environment = Environment.use();
   const held = useComponentState<IMessageSearch>(() => ({ Query: "", Matches: [] }));
   const normalized = createMemo(() => normalizeMessageQuery(query()));
   const active = createMemo(() => searchesMessages(normalized()));
-  createEffect(() => {
-    const next = normalized();
-    if (active()) void held.dispatch(searchMessages, environment.state.EnvironmentId, next);
-  });
+  const search = (next: string) => {
+    const normal = normalizeMessageQuery(next);
+    if (searchesMessages(normal))
+      void held.dispatch(searchMessages, environment.state.EnvironmentId, normal);
+  };
   const visible = createMemo(() => {
     if (!active()) return { query: "", matches: [] as readonly IThreadSearchMatch[] };
     const last = { query: held.state.Query, matches: held.state.Matches };
@@ -75,5 +77,6 @@ export function useMessageSearch(query: Accessor<string>) {
     /** The query the shown matches were found for, which lags `query` while a search runs. */
     query: () => visible().query,
     pending: () => active() && held.state.Query !== normalized(),
+    search,
   };
 }

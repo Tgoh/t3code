@@ -17,6 +17,11 @@ import {
   normalizeSearchQuery,
   scoreQueryMatch,
 } from "@t3tools/shared/searchRanking";
+import { type IActionGenerator, type IEntity, latest } from "treflex";
+
+import { searchEntriesEffect } from "./Infrastructure/commandEffects";
+import { delay } from "./Infrastructure/delay";
+import { serverError } from "./Infrastructure/serverError";
 
 export type IMenuTrigger = ComposerTrigger & { kind: "path" | "slash-command" | "skill" };
 
@@ -36,6 +41,42 @@ export interface IProjectEntry {
 export const MENU_PLACEHOLDER = "Ask anything. @ files, $ skills, / commands";
 
 export const FILE_SEARCH_LIMIT = 80;
+const FILE_SEARCH_DEBOUNCE_MS = 120;
+
+export interface IFileSearch extends IEntity {
+  /** What the shown entries were found for, null before the first search settles. */
+  Query: string | null;
+  Root: string | null;
+  Entries: IProjectEntry[];
+}
+
+/** Each keystroke replaces the search waiting before it, so only a settled query is sent. */
+export function* searchFiles(
+  draft: IFileSearch,
+  environmentId: string,
+  root: string | null,
+  query: string,
+): IActionGenerator {
+  if (query === draft.Query && root === draft.Root) return;
+  yield* delay(FILE_SEARCH_DEBOUNCE_MS);
+  let entries: IProjectEntry[] = [];
+  if (root !== null) {
+    try {
+      entries = (yield* searchEntriesEffect({
+        EnvironmentId: environmentId,
+        Cwd: root,
+        Query: query,
+        Limit: FILE_SEARCH_LIMIT,
+      })).Entries;
+    } catch (error) {
+      serverError(error);
+    }
+  }
+  draft.Query = query;
+  draft.Root = root;
+  draft.Entries = entries;
+}
+latest(searchFiles);
 
 /** The menu the caret is in, if any. The client has no pull request menu, so `#` opens none. */
 export function menuTrigger(text: string, cursor: number): IMenuTrigger | null {

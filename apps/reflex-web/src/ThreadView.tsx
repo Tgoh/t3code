@@ -203,11 +203,10 @@ const ThreadBody = ThreadSession.provider(() => {
     }),
   );
   // The session toggles the card by whether it fits, which only this view can measure.
-  createEffect(() => {
-    const fits = layout().Inline;
-    if (untrack(() => details().Fits) !== fits) void session.fitDetails(fits);
-  });
-  onCleanup(() => void session.closeDetailsPopover());
+  const measureStage = (size: { Width: number; Height: number }) => {
+    setStageSize(size);
+    if (layout().Inline !== details().Fits) void session.fitDetails(layout().Inline);
+  };
   const detailsInline = () => layout().Inline && details().Open;
   const detailsShown = () => detailsInline() || details().Popover;
   const navigation = useNavigation();
@@ -414,7 +413,7 @@ const ThreadBody = ThreadSession.provider(() => {
     laneObserver.observe(lane, { box: "border-box" });
     // The stage shrinks under an opening keyboard with no change to the content or the lane.
     const stageObserver = new ResizeObserver(() => {
-      setStageSize({ Width: stage.clientWidth, Height: stage.clientHeight });
+      measureStage({ Width: stage.clientWidth, Height: stage.clientHeight });
       if (stuck()) scrollToEnd();
     });
     stageObserver.observe(stage);

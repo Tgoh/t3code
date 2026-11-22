@@ -246,6 +246,10 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
 
   const searchesThreads = () => submenu() === null && !query().startsWith(">");
   const messageSearch = useMessageSearch(() => (searchesThreads() ? query() : ""));
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    if (searchesThreads()) messageSearch.search(next);
+  };
   let shown: ReturnType<typeof rankMessages> | null = null;
   const messageItems = createMemo(() => {
     const matches = messageSearch.matches();
@@ -315,7 +319,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
     const held = submenu();
     if (held === null) return;
     setStack(stack().slice(0, -1));
-    setQuery(held.ParentQuery);
+    changeQuery(held.ParentQuery);
     setHighlight(0);
   };
   const choose = (item: IPaletteItem | undefined) => {
@@ -388,7 +392,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
               aria-controls="palette-list"
               value={query()}
               ref={setInput}
-              onInput={(event) => setQuery(event.currentTarget.value)}
+              onInput={(event) => changeQuery(event.currentTarget.value)}
               onKeyDown={onKeyDown}
             />
           </div>

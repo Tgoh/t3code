@@ -1,24 +1,16 @@
-import { getInitialServerConfig, request } from "@t3tools/client-runtime/rpc";
+import { request } from "@t3tools/client-runtime/rpc";
 import {
   createVcsActionManager,
   createVcsEnvironmentAtoms,
 } from "@t3tools/client-runtime/state/vcs";
-import { EDITORS, type EditorId, EnvironmentId, ThreadId, WS_METHODS } from "@t3tools/contracts";
-import { isMacPlatform } from "@t3tools/shared/keybindings";
+import { type EditorId, EnvironmentId, ThreadId, WS_METHODS } from "@t3tools/contracts";
 import { projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
-import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Stream from "effect/Stream";
 import { implementation } from "treflex";
 
-import { inEnvironment, preferredEditor } from "./commandsImpl";
-import { connectionRuntime } from "./connection";
-import { settle } from "./serverError";
+import { inEnvironment } from "./commandsImpl";
 import { atomRuntime, runCommand } from "./sourceControl";
 import {
   branchDiffEffect,
-  editorsEffect,
   gitActionEffect,
   listBranchesEffect,
   openWithEditorEffect,
@@ -32,51 +24,6 @@ const vcs = createVcsEnvironmentAtoms(atomRuntime);
 const vcsActions = createVcsActionManager(atomRuntime);
 
 const BRANCH_LIMIT = 100;
-
-// A thread can open before its environment registers, and followStream waits for that.
-const configOnceReady = (environmentId: string) =>
-  settle(
-    connectionRuntime.runPromiseExit(
-      EnvironmentRegistry.EnvironmentRegistry.pipe(
-        Effect.flatMap((registry) =>
-          registry
-            .followStream(
-              EnvironmentId.make(environmentId),
-              Stream.fromEffect(getInitialServerConfig()),
-            )
-            .pipe(Stream.runHead),
-        ),
-        Effect.map(Option.getOrThrow),
-      ),
-    ),
-  );
-
-// Follows getLocalFileManagerName in apps/web/src/lib/utils.ts.
-function fileManagerName(platform: string): string {
-  if (isMacPlatform(platform)) return "Finder";
-  if (/^win(dows)?/i.test(platform)) return "File Explorer";
-  return "Files";
-}
-
-// The installed editors change only with a server restart, so each card mount needn't ask again.
-const editorsByEnvironment = new Map<string, Promise<ReadonlyArray<EditorId>>>();
-
-export const editorsImpl = implementation(editorsEffect, async (input) => {
-  let editors = editorsByEnvironment.get(input.EnvironmentId);
-  if (editors === undefined) {
-    editors = configOnceReady(input.EnvironmentId).then((config) => config.availableEditors);
-    editorsByEnvironment.set(input.EnvironmentId, editors);
-    editors.catch(() => editorsByEnvironment.delete(input.EnvironmentId));
-  }
-  const ids = await editors;
-  return {
-    Available: EDITORS.filter((editor) => ids.includes(editor.id)).map((editor) => ({
-      Id: editor.id,
-      Label: editor.id === "file-manager" ? fileManagerName(navigator.platform) : editor.label,
-    })),
-    Preferred: preferredEditor(ids, input.Stored),
-  };
-});
 
 export const openWithEditorImpl = implementation(openWithEditorEffect, async (input) => {
   await inEnvironment(
@@ -193,7 +140,6 @@ export const runScriptImpl = implementation(runScriptEffect, async (input) => {
 });
 
 export const sourceControlImplementations = [
-  editorsImpl,
   openWithEditorImpl,
   refreshVcsStatusImpl,
   listBranchesImpl,

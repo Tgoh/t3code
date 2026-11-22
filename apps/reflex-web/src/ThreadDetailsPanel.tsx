@@ -57,7 +57,7 @@ import {
   lineageStatusLabel,
   threadLineage,
 } from "./lineage";
-import { useLineageTitles } from "./lineageTitles";
+import { lineageTitles } from "./lineageTitles";
 import { useOverlays } from "./overlays";
 import ThreadDetails, {
   blockedByWorktree,
@@ -567,10 +567,11 @@ function LineageSection(props: { threadId: string }) {
     [],
     { equals: (left, right) => left.join(",") === right.join(",") },
   );
-  const titles = useLineageTitles(untitled);
   const lineage = createMemo(() => {
     const held = input();
-    return held === null ? null : threadLineage({ ...held, titles: titles() });
+    const open = environment.state.Replica.OpenThreads[props.threadId];
+    if (held === null || open === undefined) return null;
+    return threadLineage({ ...held, titles: lineageTitles(open, untitled()) });
   });
   const visible = () => {
     const held = lineage();
@@ -665,14 +666,14 @@ const Body = (props: IDetailsProps) => {
     return status === null ? props.branch : status.refName;
   };
   const editorLabel = () => {
-    const editors = details.state.Editors;
-    const preferred = editors?.Available.find((editor) => editor.Id === editors.Preferred);
+    const editors = environment.editors();
+    const preferred = editors.Available.find((editor) => editor.Id === editors.Preferred);
     return preferred === undefined ? "Open in editor" : `Open in ${preferred.Label}`;
   };
   const closeMenu = () => setMenu(null);
   const openEditor = (editor: string | null) => {
-    const target = editor ?? details.state.Editors?.Preferred ?? null;
-    if (target !== null) void details.preferEditor(target);
+    const target = editor ?? environment.editors().Preferred;
+    if (target !== null) void environment.preferEditor(target);
     void work.openEditor(props.checkout, target);
   };
 
@@ -754,13 +755,11 @@ const Body = (props: IDetailsProps) => {
             <Folder />
           </button>
         </div>
-        <Show when={(details.state.Editors?.Available.length ?? 1) > 0}>
+        <Show when={environment.editors().Available.length > 0}>
           <SplitRow
             label={editorLabel()}
-            icon={<EditorIcon editor={details.state.Editors?.Preferred ?? ""} />}
-            disabled={details.state.Editors === null}
+            icon={<EditorIcon editor={environment.editors().Preferred ?? ""} />}
             menuLabel="Choose editor"
-            menuDisabled={details.state.Editors === null}
             onRun={() => openEditor(null)}
             onMenu={(anchor) => setMenu({ Kind: "editor", Anchor: anchor })}
           />
@@ -914,7 +913,7 @@ const Body = (props: IDetailsProps) => {
                 style={{ width: `${Math.max(open().Anchor.Width, 220)}px` }}
               >
                 <Show when={open().Kind === "editor"}>
-                  <For each={details.state.Editors?.Available ?? []}>
+                  <For each={environment.editors().Available}>
                     {(editor) => (
                       <MenuItem
                         truncate

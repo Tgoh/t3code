@@ -1,21 +1,21 @@
-// @effect-diagnostics globalTimers:off -- A view-only debounce for the file search, outside any Effect runtime.
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { useComponentState } from "treflex-solid";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import {
   fileItems,
+  type IFileSearch,
   type IMenuItem,
   type IMenuTrigger,
   MENU_EMPTY,
   menuTrigger,
+  searchFiles,
   skillItems,
   slashItems,
 } from "./composerMenu";
 import { File as FileIcon, Folder } from "./icons";
 import { stepHighlight } from "./listNavigation";
 import ThreadSession from "./ThreadSession";
-
-const FILE_SEARCH_DEBOUNCE_MS = 120;
 
 const ICONS = { file: FileIcon, directory: Folder, command: null, skill: null };
 
@@ -41,21 +41,15 @@ export function useComposerMenu(text: () => string, cursor: () => number) {
       if (held === null || held.rangeStart !== dismissedAt()) setDismissedAt(null);
     }),
   );
-  createEffect(() => {
-    const held = open();
-    if (held?.kind !== "path") return;
-    const query = held.query;
-    const timer = setTimeout(() => session.searchFiles(query), FILE_SEARCH_DEBOUNCE_MS);
-    onCleanup(() => clearTimeout(timer));
-  });
+  const files = useComponentState<IFileSearch>(() => ({ Query: null, Root: null, Entries: [] }));
   const searching = () => {
     const held = open();
-    return held?.kind === "path" && session.fileSearchResult().Query !== held.query;
+    return held?.kind === "path" && files.state.Query !== held.query;
   };
   const items = createMemo((): IMenuItem[] => {
     const held = open();
     if (held === null) return [];
-    if (held.kind === "path") return fileItems(session.fileSearchResult().Entries);
+    if (held.kind === "path") return fileItems(files.state.Entries);
     const catalog = session.menuCatalog();
     return held.kind === "skill"
       ? skillItems(catalog.Skills, held.query)
@@ -70,6 +64,17 @@ export function useComposerMenu(text: () => string, cursor: () => number) {
       setHighlight((index) => stepHighlight(index, items().length, direction) ?? 0),
     highlighted: () => items()[Math.min(highlight(), items().length - 1)],
     dismiss: () => setDismissedAt(trigger()?.rangeStart ?? null),
+    /** Searches for an `@` path at the caret, for the handler that changed the text or caret. */
+    search: (text: string, caret: number) => {
+      const held = menuTrigger(text, caret);
+      if (held?.kind !== "path" || held.rangeStart === dismissedAt()) return;
+      void files.dispatch(
+        searchFiles,
+        session.state.EnvironmentId,
+        session.fileSearchRoot(),
+        held.query,
+      );
+    },
   };
 }
 

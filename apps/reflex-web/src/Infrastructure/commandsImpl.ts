@@ -30,8 +30,6 @@ import {
 import { request } from "@t3tools/client-runtime/rpc";
 import {
   CommandId,
-  EDITORS,
-  type EditorId,
   EnvironmentId,
   MessageId,
   ORCHESTRATION_V2_WS_METHODS,
@@ -74,6 +72,7 @@ import {
   threadDiffEffect,
   threadTitlesEffect,
 } from "./commandEffects";
+import { preferredEditor } from "../editors";
 import { connectionRuntime } from "./connection";
 import { ServerError, settle } from "./serverError";
 import { runCommand, sourceControl } from "./sourceControl";
@@ -446,18 +445,6 @@ export const openInFileManagerImpl = implementation(openInFileManagerEffect, asy
     request(WS_METHODS.shellOpenInEditor, { cwd: input.Path, editor: "file-manager" }),
   );
 });
-
-// Follows resolveAndPersistPreferredEditor in apps/web/src/editorPreferences.ts; the caller persists.
-export function preferredEditor(
-  available: ReadonlyArray<EditorId>,
-  stored: string | null,
-): EditorId | null {
-  return (
-    available.find((editor) => editor === stored) ??
-    EDITORS.find((candidate) => available.includes(candidate.id))?.id ??
-    null
-  );
-}
 
 export const openInEditorImpl = implementation(openInEditorEffect, async (input) => {
   const config = await inEnvironment(input.EnvironmentId, request(WS_METHODS.serverGetConfig, {}));

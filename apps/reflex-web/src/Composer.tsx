@@ -460,12 +460,16 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   );
 
   const [cursor, setCursor] = createSignal(0);
-  const trackCursor = () => setCursor(textarea.selectionStart);
   const menu = useComposerMenu(() => held().Draft, cursor);
+  const moveCaret = (text: string, caret: number) => {
+    setCursor(caret);
+    if (!answering()) menu.search(text, caret);
+  };
+  const trackCursor = () => moveCaret(textarea.value, textarea.selectionStart);
   const replaceDraft = (text: string, caret: number) => {
     textarea.value = text;
     textarea.setSelectionRange(caret, caret);
-    setCursor(caret);
+    moveCaret(text, caret);
     session.setDraft(text);
   };
   const pick = (item: IMenuItem) => {
@@ -712,7 +716,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           disabled={answerLocked()}
           readOnly={dictating()}
           onInput={(event) => {
-            setCursor(event.currentTarget.selectionStart);
+            moveCaret(event.currentTarget.value, event.currentTarget.selectionStart);
             const question = answering();
             if (question === undefined) session.setDraft(event.currentTarget.value);
             else question.setCustomAnswer(event.currentTarget.value);

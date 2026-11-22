@@ -6,24 +6,6 @@ interface IInCheckout extends IEffect {
   Cwd: string;
 }
 
-export interface IEditorChoice {
-  Id: string;
-  Label: string;
-}
-
-export interface IEditors {
-  Available: IEditorChoice[];
-  Preferred: string | null;
-}
-
-interface IEditorsEffect extends IEffect {
-  Type: "editors";
-  EnvironmentId: string;
-  Stored: string | null;
-}
-
-export const editorsEffect = defineEffect<IEditorsEffect, IEditors>("editors");
-
 interface IOpenWithEditorEffect extends IInCheckout {
   Type: "openWithEditor";
   Editor: string;

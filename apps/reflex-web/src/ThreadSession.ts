@@ -17,6 +17,7 @@ import {
   answer,
   ask,
   closeResource,
+  entity,
   generateGuid,
   getData,
   type IActionGenerator,
@@ -59,7 +60,6 @@ import {
   type IWireRuntimeMode,
   queueCommandEffect,
   rewindEffect,
-  searchEntriesEffect,
   startTurnEffect,
   stopThreadEffect,
   threadCommandEffect,
@@ -95,7 +95,6 @@ import {
   pickedSelection,
   providerOf,
 } from "./modelOptions";
-import { FILE_SEARCH_LIMIT, type IProjectEntry } from "./composerMenu";
 import { compactBeforeSendTokens } from "./compaction";
 import {
   type IOpenThread,
@@ -129,6 +128,7 @@ declare module "treflex" {
   interface IResourceRegistry {
     "Composer/Files": { Type: "composerFiles" };
     "Terminal/Session": { Type: "terminalSession" };
+    "Command/Output": { Type: "commandOutput" };
   }
   interface IDataSourceRegistry {
     Replica: IReplica;
@@ -192,14 +192,18 @@ const attachment = (draft: IThreadSession) =>
     FocusOnMount: false,
   });
 
-const fileSearch = (draft: IThreadSession) =>
-  transient(draft, "Composer/FileSearch", {
-    Query: null as string | null,
-    Entries: [] as IProjectEntry[],
-  });
+/** An expanded command row's output, whose subscription is open while its thread is shown. */
+export interface ICommandOutputRow extends IEntity {
+  /** The thread that ran the command, which differs from the session's for an inherited row. */
+  ThreadId: string;
+  ItemId: string;
+}
 
 const expandedRows = (owner: IThreadSession) =>
-  transient(owner, "Timeline/Expanded", { Rows: {} as Record<string, true> });
+  transient(owner, "Timeline/Expanded", {
+    Rows: {} as Record<string, true>,
+    Outputs: {} as Record<string, ICommandOutputRow>,
+  });
 
 const unwrappedCode = (owner: IThreadSession) =>
   transient(owner, "Timeline/Unwrapped", { Blocks: {} as Record<string, true> });
@@ -486,36 +490,9 @@ export function* promptHistory(draft: IThreadSession): ISelectorGenerator<IPromp
   return thread === undefined ? [] : promptHistoryEntries(Object.values(thread.Messages));
 }
 
-/** Files matching an `@` query, from the thread's worktree or project root. */
-export function* searchFiles(draft: IThreadSession, query: string): IOpenGenerator {
-  const root = yield* select(searchRoot);
-  const search = yield* fileSearch(draft);
-  if (root === null) {
-    search.Query = query;
-    search.Entries = [];
-    return;
-  }
-  const request = {
-    EnvironmentId: draft.EnvironmentId,
-    Cwd: root,
-    Query: query,
-    Limit: FILE_SEARCH_LIMIT,
-  };
-  let entries: IProjectEntry[] = [];
-  try {
-    entries = (yield* open(searchEntriesEffect(request))).Entries;
-  } catch (error) {
-    serverError(error);
-    entries = [];
-  }
-  const held = yield* fileSearch(draft);
-  held.Query = query;
-  held.Entries = entries;
-}
-latest(searchFiles);
-
-export function* fileSearchResult(draft: IThreadSession) {
-  return yield* fileSearch(draft);
+/** Where the composer's `@` menu searches for files. */
+export function* fileSearchRoot(draft: IThreadSession): ISelectorGenerator<string | null> {
+  return yield* searchRoot(draft);
 }
 
 function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
@@ -1303,10 +1280,54 @@ export function* settleQuestions(
   if (draft.Draft !== before) yield* storeDraft(draft);
 }
 
-export function* toggleRowExpanded(draft: IThreadSession, rowId: string): IActionGenerator {
+/** `output` names the thread that ran a command row, whose output shows while it's expanded. */
+export function* toggleRowExpanded(
+  draft: IThreadSession,
+  rowId: string,
+  output?: { ThreadId: string },
+): IActionGenerator {
   const expanded = yield* expandedRows(draft);
-  if (expanded.Rows[rowId]) delete expanded.Rows[rowId];
-  else expanded.Rows[rowId] = true;
+  if (expanded.Rows[rowId]) {
+    delete expanded.Rows[rowId];
+    delete expanded.Outputs[rowId];
+    return;
+  }
+  expanded.Rows[rowId] = true;
+  if (output === undefined) return;
+  expanded.Outputs[rowId] = yield* entity<ICommandOutputRow>({
+    ThreadId: output.ThreadId,
+    ItemId: rowId,
+  });
+  yield* openOutput(draft, expanded.Outputs[rowId]!);
+}
+
+function* openOutput(draft: IThreadSession, row: ICommandOutputRow): IActionGenerator {
+  yield* openResource(row, "Command/Output", {
+    Type: "commandOutput",
+    EnvironmentId: draft.EnvironmentId,
+    ThreadId: row.ThreadId,
+    ItemId: row.ItemId,
+  });
+}
+
+/** Closes what only a shown thread needs; `reattachThread` opens it again. */
+export function* detachThread(draft: IThreadSession): IActionGenerator {
+  draft.Panels.Details.Popover = false;
+  for (const row of Object.values((yield* expandedRows(draft)).Outputs)) {
+    yield* closeResource(row, "Command/Output");
+  }
+  yield* detachTerminal(draft);
+}
+
+export function* reattachThread(draft: IThreadSession): IActionGenerator {
+  for (const row of Object.values((yield* expandedRows(draft)).Outputs)) {
+    yield* openOutput(draft, row);
+  }
+  yield* restoreTerminal(draft);
+}
+
+export function* commandOutputRows(draft: IThreadSession) {
+  return (yield* expandedRows(draft)).Outputs;
 }
 
 /** Code blocks wrap their lines until the person turns it off. */
@@ -1534,7 +1555,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     setModelSelection,
     chooseModel,
     setRuntimeMode,
-    searchFiles,
     addAttachments,
     removeAttachment,
     send,
@@ -1577,7 +1597,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     compactionOffer,
     menuCatalog,
     promptHistory,
-    fileSearchResult,
+    fileSearchRoot,
     stopRequested,
     revertTargets,
     threadWorking,
@@ -1586,6 +1606,7 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     diffLoading,
     terminalAttachment,
     expandedTimelineRows,
+    commandOutputRows,
     unwrappedCodeBlocks,
   },
 );
