@@ -20,9 +20,17 @@ import type { IWireServerConfigEvent } from "./Infrastructure/serverConfigStream
 import { modelFavoritesOf, providerOptions } from "./modelOptions";
 import { modelFavoritePatch } from "./providerSettings";
 import { reconcile } from "./rows";
+import { visitShown } from "./Shell";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
 
 export function* openView(draft: IEnvironment, view: IAddressView | null): IActionGenerator {
+  const covered = draft.Local.View !== null;
+  yield* showView(draft, view);
+  if (covered && view === null) yield* start(visitShown, draft.Replica.Shell, { Again: true });
+}
+
+/** Opens or closes a page without the visit closing one makes, for a caller that shows a thread. */
+export function* showView(draft: IEnvironment, view: IAddressView | null): IActionGenerator {
   const next: IAddressView | null =
     view?.Kind === "settings" ? { Kind: "settings", Page: builtSettingsPage(view.Page) } : view;
   draft.Local.View = next;

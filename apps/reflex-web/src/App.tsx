@@ -102,9 +102,9 @@ const EnvironmentView = Environment.provider(() => {
     else if (sidebar.collapsed()) sidebar.toggle();
     nextFrame(() => document.querySelector<HTMLInputElement>(SEARCH_SELECTOR)?.focus());
   };
-  const goToThread = (threadId: string) => {
+  const goToThread = (threadId: string, searchQuery?: string) => {
     sidebar.choseThread();
-    void environment.selectThread(threadId);
+    void environment.selectThread(threadId, searchQuery);
     focusComposer();
   };
   const projectIds = () =>

@@ -17,13 +17,18 @@ import {
   open,
   openResource,
   receiver,
+  start,
   startTimer,
   stopTimer,
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import { threadCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
+import {
+  type IThreadCommand,
+  threadCommandEffect,
+  withCommandId,
+} from "./Infrastructure/commandEffects";
 import { serverError } from "./Infrastructure/serverError";
 import type {
   IWireProject,
@@ -61,7 +66,7 @@ export function getDefaultShell(environmentId: string): Omit<IShell, "$Id"> {
 }
 
 const streamState = (draft: IShell) =>
-  transient(draft, "Shell/StreamState", { Synchronized: false });
+  transient(draft, "Shell/StreamState", { Synchronized: false, EverSynchronized: false });
 
 export function* openShellStream(draft: IShell): IActionGenerator {
   yield* openResource(
@@ -157,22 +162,41 @@ const lastVisit = (draft: IShell) =>
     Completion: null as string | null,
   });
 
+export interface IVisitOptions {
+  /** Skips the once-per-completion dedupe. */
+  Again?: boolean;
+  /** The user opened the thread, which counts toward search ranking even when it's already read. */
+  Opened?: boolean;
+  /** The palette query that picked the thread. */
+  SearchQuery?: string;
+}
+
 /**
- * Marks a finished thread visited, once per completion unless `again`, so a thread marked unread
- * while it's shown stays unread until its next completion. A call with nothing to visit still
- * records the completion, which keeps a later mark-unread sticky.
+ * Marks the shown thread visited: the selected one, when no Settings or Usage page covers it.
+ * Once per completion unless `Again`, so a thread marked unread while it's shown stays unread
+ * until its next completion. A call with nothing to visit still records the completion, which
+ * keeps a later mark-unread sticky.
  */
-export function* visitThread(draft: IShell, threadId: string, again: boolean): IOpenGenerator {
-  const row = draft.Threads[threadId];
-  if (row === undefined) return;
+export function* visitShown(draft: IShell, options: IVisitOptions = {}): IOpenGenerator {
+  const selection = yield* getData(draft, "Selection");
+  if (selection === undefined || selection.View !== null) return;
+  const threadId = selection.SelectedThreadId;
+  const row = threadId === null ? undefined : draft.Threads[threadId];
+  if (threadId === null || row === undefined) return;
   const visit = yield* lastVisit(draft);
   const completion = row.latestRunCompletedAt ?? null;
-  if (!again && visit.ThreadId === threadId && visit.Completion === completion) return;
+  const repeat = visit.ThreadId === threadId && visit.Completion === completion;
+  if (repeat && options.Again !== true && options.Opened !== true) return;
   visit.ThreadId = threadId;
   visit.Completion = completion;
-  if (!needsVisit(row)) return;
+  if (!needsVisit(row) && options.Opened !== true) return;
   const environmentId = draft.EnvironmentId;
-  const visitedAt = row.updatedAt;
+  const command: IThreadCommand = {
+    Kind: "visit",
+    VisitedAt: row.updatedAt,
+    ...(options.Opened === true ? { Opened: true } : {}),
+    ...(options.SearchQuery ? { SearchQuery: options.SearchQuery.slice(0, 200) } : {}),
+  };
   try {
     yield* open(
       withCommandId((commandId) =>
@@ -180,7 +204,7 @@ export function* visitThread(draft: IShell, threadId: string, again: boolean): I
           EnvironmentId: environmentId,
           ThreadId: threadId,
           CommandId: commandId,
-          Command: { Kind: "visit", VisitedAt: visitedAt },
+          Command: command,
         }),
       ),
     );
@@ -188,6 +212,15 @@ export function* visitThread(draft: IShell, threadId: string, again: boolean): I
     // A visit is bookkeeping the user didn't ask for, and the next one covers it.
     serverError(error);
   }
+}
+
+// Starts the visit only when the item left the shown thread due, so streaming updates stay cheap.
+function* visitIfDue(draft: IShell): IActionGenerator {
+  const selected = yield* getData(draft, "Selection");
+  const row =
+    selected?.SelectedThreadId == null ? undefined : draft.Threads[selected.SelectedThreadId];
+  if (selected?.View === null && row !== undefined && needsVisit(row))
+    yield* start(visitShown, draft);
 }
 
 function* reopenLater(draft: IShell): IActionGenerator {
@@ -202,8 +235,16 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
       return;
     }
     if (!("Item" in message)) (yield* streamState(draft)).Synchronized = false;
-    else if (message.Item.kind === "synchronized") (yield* streamState(draft)).Synchronized = true;
-    else applyItem(draft, message.Item);
+    else if (message.Item.kind === "synchronized") {
+      const stream = yield* streamState(draft);
+      stream.Synchronized = true;
+      // A visit sent while the stream was down may never have reached the server.
+      if (stream.EverSynchronized) yield* start(visitShown, draft, { Again: true });
+      stream.EverSynchronized = true;
+    } else {
+      applyItem(draft, message.Item);
+      yield* visitIfDue(draft);
+    }
   },
   *"Shell/Reopen"(draft) {
     yield* stopTimer(draft, "Shell/Reopen");

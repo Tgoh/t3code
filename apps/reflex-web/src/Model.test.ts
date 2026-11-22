@@ -8,15 +8,7 @@ import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
 } from "@t3tools/shared/claudeCompaction";
-import {
-  type Component,
-  createComponent,
-  createEffect,
-  createMemo,
-  createRoot,
-  type JSX,
-  Show,
-} from "solid-js";
+import { createEffect, createMemo, createRoot } from "solid-js";
 import {
   createTestRuntime,
   defineEffect,
@@ -30,7 +22,6 @@ import {
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
-import { TreflexProvider } from "treflex-solid";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
 
 import {
@@ -187,7 +178,6 @@ import {
   toggleRightPanel,
   unwrappedCodeBlocks,
 } from "./ThreadSession";
-import { ThreadVisit } from "./ThreadVisit";
 import {
   assistantItem,
   commandItem,
@@ -309,6 +299,8 @@ async function connect(
       rememberModel: (effect: { Selection: IWireModelSelection }) => {
         models.Last = effect.Selection;
       },
+      // Selecting a thread sends a visit.
+      threadCommand: () => {},
       ...commands,
       threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
       addressThread: () => address.thread,
@@ -2909,19 +2901,30 @@ describe("writing to the server", () => {
     expect(server.runtime.state.Failure).toBeUndefined();
   });
 
-  it("marks a thread visited while its view is mounted, once per completion and again on each mount", async () => {
-    const visits: string[] = [];
+  it("marks the shown thread visited once per completion, and sends an open on each select", async () => {
+    type IVisit = { Thread: string; Opened?: true; SearchQuery?: string };
+    const visits: IVisit[] = [];
     let refuse = false;
     let hold = false;
     let release: (() => void) | undefined;
     const server = await connect(undefined, THREAD_ID, {
-      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
-        if (effect.Command.Kind !== "visit") return;
-        visits.push(effect.ThreadId);
+      threadCommand: (effect: {
+        ThreadId: string;
+        Command: { Kind: string; Opened?: true; SearchQuery?: string };
+      }) => {
+        const { Kind, Opened, SearchQuery } = effect.Command;
+        if (Kind !== "visit") return;
+        visits.push({
+          Thread: effect.ThreadId,
+          ...(Opened ? { Opened } : {}),
+          ...(SearchQuery ? { SearchQuery } : {}),
+        });
         if (refuse) throw new ServerError("visit refused");
         if (hold) return new Promise<void>((resolve) => (release = resolve));
       },
     });
+    const take = () => visits.splice(0);
+    const shown: IVisit = { Thread: THREAD_ID };
     let sequence = 1;
     const row = (id: string, completedAt: string, visitedAt: string | null) =>
       ({
@@ -2942,82 +2945,87 @@ describe("writing to the server", () => {
       } as unknown as IWireShellItem);
     const view = (next: IAddressView | null) =>
       server.runtime.dispatch(openView, server.envId(), next).then(settled);
+    const select = (threadId: string, searchQuery?: string) =>
+      server.runtime.dispatch(selectThread, server.envId(), threadId, searchQuery).then(settled);
+    const reconnect = async () => {
+      await server.runtime.dispatch(
+        ShellReceiver.handle,
+        server.shellId(),
+        { Type: "Shell/Stream", Resubscribing: true },
+        { publisher: { Id: server.shellId() } },
+      );
+      await server.sendShell({ kind: "synchronized" } as IWireShellItem);
+      await settled();
+    };
+    const T1 = "2026-01-01T01:00:00.000Z";
+    const T2 = "2026-01-01T02:00:00.000Z";
+    const T3 = "2026-01-01T03:00:00.000Z";
+
+    // A restored address isn't an open, and the first sync has nothing to retry.
+    await reconnect();
+    expect(take()).toEqual([]);
+
+    // Settings covers the thread, so its completion waits until the page closes.
     await view({ Kind: "settings", Page: "general" });
-    const dispose = createRoot((disposeRoot) => {
-      createComponent(TreflexProvider, {
-        value: server.runtime,
-        get children() {
-          return createComponent(Show as Component<{ when: boolean; children: JSX.Element }>, {
-            get when() {
-              return server.environment().Local.View === null;
-            },
-            get children() {
-              return createComponent(ThreadVisit, {
-                state: server.thread(),
-                shell: server.environment().Replica.Shell,
-              });
-            },
-          });
-        },
-      });
-      return disposeRoot;
-    });
-    onTestFinished(dispose);
-
-    await deliver(THREAD_ID, "2026-01-01T01:00:00.000Z", null);
+    await deliver(THREAD_ID, T1, null);
     await settled();
-    expect(visits).toEqual([]);
+    expect(take()).toEqual([]);
     await view(null);
-    expect(visits).toEqual([THREAD_ID]);
-    await deliver(THREAD_ID, "2026-01-01T01:00:00.000Z", null);
+    expect(take()).toEqual([shown]);
+    await deliver(THREAD_ID, T1, null);
+    await deliver("other", T1, null);
     await settled();
-    expect(visits).toEqual([THREAD_ID]);
-    await deliver("other", "2026-01-01T01:00:00.000Z", null);
-    await settled();
-    expect(visits).toEqual([THREAD_ID]);
+    expect(take()).toEqual([]);
 
+    // A completion landing on the shown thread visits it; a refusal stays quiet and isn't repeated.
     refuse = true;
-    await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", "2026-01-01T01:00:00.000Z");
+    await deliver(THREAD_ID, T2, T1);
     await settled();
-    expect(visits).toEqual([THREAD_ID, THREAD_ID]);
+    expect(take()).toEqual([shown]);
     expect(server.runtime.state.Failure).toBeUndefined();
-    await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", null);
+    await deliver(THREAD_ID, T2, null);
     await settled();
-    expect(visits).toEqual([THREAD_ID, THREAD_ID]);
+    expect(take()).toEqual([]);
 
+    // A reconnect retries a visit that's still due, and only then.
     refuse = false;
+    await reconnect();
+    expect(take()).toEqual([shown]);
+    await deliver(THREAD_ID, T2, T2);
+    await reconnect();
+    expect(take()).toEqual([]);
+
+    // Marked unread while shown, it stays unread.
+    await deliver(THREAD_ID, T2, T1);
+    await settled();
+    expect(take()).toEqual([]);
+
+    // Selecting is an open, even for a thread that's already read, and the palette sends its query.
+    await deliver("other", T1, T1);
+    await select("other");
+    expect(take()).toEqual([{ Thread: "other", Opened: true }]);
+    await select(THREAD_ID, "fix the build");
+    expect(take()).toEqual([{ ...shown, Opened: true, SearchQuery: "fix the build" }]);
+    await select(THREAD_ID);
+    expect(take()).toEqual([]);
+
+    // Opening and closing a page over a read thread sends nothing; selecting from it is an open.
+    await deliver(THREAD_ID, T2, T2);
     await view({ Kind: "usage" });
     await view(null);
-    expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID]);
+    expect(take()).toEqual([]);
+    await view({ Kind: "settings", Page: "general" });
+    await select(THREAD_ID);
+    expect(take()).toEqual([{ ...shown, Opened: true }]);
 
-    await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", "2026-01-01T02:00:00.000Z");
-    await settled();
-    await deliver(THREAD_ID, "2026-01-01T02:00:00.000Z", "2026-01-01T01:00:00.000Z");
-    await settled();
-    expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID]);
-
+    // A visit still in flight doesn't hold back the next thread's.
     hold = true;
-    await deliver(THREAD_ID, "2026-01-01T03:00:00.000Z", "2026-01-01T02:00:00.000Z");
+    await deliver(THREAD_ID, T3, T2);
     await settled();
-    expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID, THREAD_ID]);
+    expect(take()).toEqual([shown]);
     hold = false;
-    await server.runtime.dispatch(openThread, server.envId(), "other");
-    await settled();
-    const disposeOther = createRoot((disposeRoot) => {
-      createComponent(TreflexProvider, {
-        value: server.runtime,
-        get children() {
-          return createComponent(ThreadVisit, {
-            state: server.environment().Replica.OpenThreads["other"]!,
-            shell: server.environment().Replica.Shell,
-          });
-        },
-      });
-      return disposeRoot;
-    });
-    onTestFinished(disposeOther);
-    await settled();
-    expect(visits).toEqual([THREAD_ID, THREAD_ID, THREAD_ID, THREAD_ID, "other"]);
+    await select("other");
+    expect(take()).toEqual([{ Thread: "other", Opened: true }]);
     release?.();
     await settled();
   });

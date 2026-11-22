@@ -283,7 +283,14 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
     case "rename":
       return void (await run(updateThreadMetadata({ ...common, title: command.Title })));
     case "visit":
-      return void (await run(visitThread({ ...common, visitedAt: command.VisitedAt })));
+      return void (await run(
+        visitThread({
+          ...common,
+          visitedAt: command.VisitedAt,
+          ...(command.Opened ? { opened: true } : {}),
+          ...(command.SearchQuery ? { searchQuery: command.SearchQuery } : {}),
+        }),
+      ));
     case "markUnread":
       return void (await run(markThreadUnread(common)));
     case "unarchive":

@@ -24,12 +24,7 @@ import {
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
-import {
-  addressThread,
-  addressView,
-  type IAddressView,
-  setAddressThread,
-} from "./Infrastructure/address";
+import { addressThread, addressView, setAddressThread } from "./Infrastructure/address";
 import {
   cloneControlEffect,
   type INewProject,
@@ -89,6 +84,7 @@ import {
   loadUsage,
   openView,
   refreshUsage,
+  showView,
   toggleModelFavorite,
   updateServerSettings,
   writeSetting,
@@ -107,7 +103,7 @@ import {
 } from "./Dictation";
 import { serverError } from "./Infrastructure/serverError";
 import { toSortableThread } from "./projectOrder";
-import { getDefaultShell, type IShell, openShellStream } from "./Shell";
+import { getDefaultShell, type IShell, openShellStream, visitShown } from "./Shell";
 import {
   checkRewind,
   detachTerminal,
@@ -141,7 +137,6 @@ export interface IEnvironment extends IEntity {
   Replica: IReplica;
   Local: ISelection & {
     ThreadSessions: Record<string, IThreadSession>;
-    View: IAddressView | null;
     ClientSettings: IWireClientSettings | null;
     Preferences: IPreferences;
     Shelves: IShelves;
@@ -227,10 +222,12 @@ export function* init(draft: IEnvironment): IActionGenerator {
   });
   yield* openConfigStream(draft);
   yield* openDictation(draft);
+  // A restored address isn't an open, and its thread's row hasn't arrived yet: the shell
+  // receiver visits a due completion once the row lands and no page covers it.
   const selected = yield* addressThread();
-  if (selected !== null) yield* selectThread(draft, selected);
+  if (selected !== null) yield* showThread(draft, selected);
   const view = yield* addressView();
-  if (view !== null) yield* openView(draft, view);
+  if (view !== null) yield* showView(draft, view);
 }
 
 function* sessionOf(
@@ -280,10 +277,24 @@ export function* closeThread(draft: IEnvironment, threadId: string): IActionGene
   if (session !== undefined) yield* start(detachTerminal, session);
 }
 
-export function* selectThread(draft: IEnvironment, threadId: string): IActionGenerator {
-  if (draft.Local.View !== null) yield* openView(draft, null);
+/** `searchQuery` is the palette query that picked the thread, which the server learns for ranking. */
+export function* selectThread(
+  draft: IEnvironment,
+  threadId: string,
+  searchQuery?: string,
+): IActionGenerator {
+  const covered = draft.Local.View !== null;
+  if (covered) yield* showView(draft, null);
+  const changed = draft.Local.SelectedThreadId !== threadId;
+  if (changed) yield* showThread(draft, threadId);
+  if (changed || covered) {
+    const options = searchQuery ? { Opened: true, SearchQuery: searchQuery } : { Opened: true };
+    yield* start(visitShown, draft.Replica.Shell, options);
+  }
+}
+
+function* showThread(draft: IEnvironment, threadId: string): IActionGenerator {
   const previous = draft.Local.SelectedThreadId;
-  if (previous === threadId) return;
   draft.Local.SelectedThreadId = threadId;
   if (previous !== null) yield* leaveThread(draft, previous);
   if (draft.Local.ThreadSessions[threadId]?.NewThreadProjectId != null) {

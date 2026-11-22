@@ -76,8 +76,8 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 - `inFlight(action, owner)` has no per-argument form, so a per-argument mark has to be composed, and one action can't stop another's run on the same entity. The entities in the limit above follow from that.
 - A transient costs a named helper and a selector for each view that reads it. Nothing here snapshots, so they buy no behaviour in this app.
 - No entity hears its own failures, so `Root`, the parent of `Environment`, is the nearest error boundary for the Environment's own commands. A failure the boundary writes has no clearing rule of its own, so `Root` needed a dismiss action.
-- There's no public way to react to derived state (`watch` is internal to treflex), so marking a thread visited is a view effect: `ThreadVisit`, mounted by `ThreadView`, dispatches `visitThread` when `visitDue` changes. Doing it in the model meant a check at every write that can put a completion on screen, and the list missed closing Settings. If treflex ships `startWatch`, move it back into the model.
-- `leading` goes by entity, which broke `visitThread`: it runs on the Shell for any thread id, so a visit to thread B was dropped while thread A's visit was in flight, a real per-argument `leading` case.
+- There's no public way to react to derived state (`watch` is internal to treflex), so `Shell.visitShown` has to be called from each event that can show a thread or complete one: `selectThread`, `openView(null)`, the shell receiver and its reconnect. A new way to change `SelectedThreadId` or `Local.View` has to join that list; a hand-written one first missed closing Settings. `startWatch` would replace the list.
+- `leading` goes by entity, which broke the visit: it ran on the Shell for any thread id, so a visit to thread B was dropped while thread A's visit was in flight, a real per-argument `leading` case.
 - Rows that belong to one ordered list with the parent's live rows can't be owned by the child. Moving loaded history pages onto the window entity split one sequence across two entities, so placement had to read and write both, and two ordering bugs followed. Lifetime fit the "results live and die with the window" case; order did not.
 - A timer recurs, so every backoff tick starts with `stopTimer`. There's no one-shot timer.
 - Keeping an entity for a while after its view leaves has no mechanism of its own. Retaining a left thread composes one: close its stream, start an expiry timer on it, and on the tick publish to the parent, because an entity can't remove itself inside its own delivery.
@@ -136,8 +136,8 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 ## Unmatched against the stock UI
 
 - Visits:
-  - A visit that fails isn't retried after a reconnect, so Done can stay until the next completion.
-  - The first visit doesn't send `opened: true`, which feeds the server's search ranking.
+  - Reloading on a thread doesn't count as an open, where stock's chat view sends `opened: true` on every mount. Reflex sends it when a thread is selected, or reselected from Settings or Usage.
+  - The palette sends the query that picked a thread as `searchQuery`, which stock never does.
   - The wake watermark (`wokeAt`) is ignored.
   - Stock (`packages/client-runtime/src/state/threadVisits.ts`) also visits on every shell update while the chat view is mounted, throttled to one every 10 s, where reflex visits only on an unseen completion.
 - Questions: an answer can't carry attachments or thread chips, so the attach button hides while a question holds the composer. Text set aside when an option replaces it shows as a line in the card, not a toast, and undo doesn't take it back out of the draft. Question drafts don't survive a reload.

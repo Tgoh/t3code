@@ -67,6 +67,7 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import type { IGitWork } from "./GitWork";
+import type { IAddressView } from "./Infrastructure/address";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import { branchDiffEffect, type IBranchDiff } from "./Infrastructure/sourceControlEffects";
 import {
@@ -159,6 +160,8 @@ export interface IReplica extends IEntity {
 
 export interface ISelection extends IEntity {
   SelectedThreadId: string | null;
+  /** A Settings or Usage page, which covers the selected thread. */
+  View: IAddressView | null;
   Preferences: { AppearanceMode: IAppearanceMode; CompactionDismissed: string[] };
   SystemDark: boolean;
   ClientSettings: { followUpBehavior: ActiveTurnComposerAction } | null;

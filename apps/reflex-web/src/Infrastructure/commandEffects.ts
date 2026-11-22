@@ -183,7 +183,7 @@ export type IThreadCommand =
   | { Kind: "pin" }
   | { Kind: "unpin" }
   | { Kind: "rename"; Title: string }
-  | { Kind: "visit"; VisitedAt: string }
+  | { Kind: "visit"; VisitedAt: string; Opened?: true; SearchQuery?: string }
   | { Kind: "markUnread" }
   | { Kind: "unarchive" }
   | { Kind: "delete" }

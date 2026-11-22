@@ -114,7 +114,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
     const title = projectTitle(thread.projectId);
     const current = thread.id === selected();
     const value = `thread:${thread.id}`;
-    run(value, () => navigation.goToThread(thread.id));
+    run(value, () => navigation.goToThread(thread.id, query().trim() || undefined));
     const activity = activityAt(thread);
     return {
       Value: value,

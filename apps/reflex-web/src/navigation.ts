@@ -12,8 +12,11 @@ export interface INavigation {
   shortcut: (command: KeybindingCommand) => string | null;
   palette: Accessor<IPaletteView | null>;
   setPalette: (view: IPaletteView | null) => void;
-  /** Selects a thread and, outside the sheet layout, puts the caret in its composer. */
-  goToThread: (threadId: string) => void;
+  /**
+   * Selects a thread and, outside the sheet layout, puts the caret in its composer.
+   * `searchQuery` is the palette query that picked it.
+   */
+  goToThread: (threadId: string, searchQuery?: string) => void;
   focusComposer: () => void;
   focusSearch: () => void;
   /** Starts renaming the selected thread in the sidebar, and says whether there was one. */
