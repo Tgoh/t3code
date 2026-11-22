@@ -16,6 +16,13 @@ After stage 1's threads merge, since it touches tests and wiring across the clie
   - `REPLICA_WRITERS` switches from `Name` to `Label`, and `testing/watchRuntime.ts` gives way to the strict test preset, which fails a test on any diag or failure it didn't expect.
   - Move the minute clock to `provideExternal`/`external`. Then make the header's usage ring recompute on it, so a weekly window that resets shows straight away. Today the ring only redraws when the server pushes new provider data, about every five minutes.
   - Add `treflex-eslint` to the `jsPlugins` in `vite.config.ts`, with only its type-free rules on: `treflex/named`, `treflex/no-yield-in-finally` and `treflex/no-global-open`. The typed rules throw under oxlint for lack of type information. See `docs/wip/13-external/lint-under-oxlint.md`.
+  - **Rename the client from reflex to treflex**, the official name. Do it last, as a rename-only commit, so the upgrade's logic changes stay readable. It covers:
+    - `apps/reflex-web` → `apps/treflex-web`, with its package name, `knip.jsonc`, `vite.config.ts`, workspace filters and any CI paths;
+    - `dev-stack.ps1` (`-Only reflex` and the served `dist` path);
+    - the docs, `CLAUDE.md` and README text, and user-visible strings, if any;
+    - the `reflex/` branch prefix for future work.
+
+    The long-lived branch `reflex-main` becomes `treflex-main` on origin. The coordinator does that branch rename after the thread merges, together with the driver restart, the `syncupstream` and `promote` skills, and anything else outside this repo. Leave `G:\Sorted\Code\reflex`, treflex's own repo, alone. Grep for `reflex` case-insensitively and check every hit, since `packages/client-runtime` has unrelated matches.
   - Prepare for the release after 0.2.0. There, rejections reach actions as copies with a native error type, so `instanceof ServerError` in `serverError()` stops matching and every server failure takes the bug route, silently in production. A development build reports the diag `effect/class-rejection` for each rejection with a class instance, and `createTestRuntime` fails on it. Run both once and fix every site. See `docs/wip/13-external/breaking-changes-since-0.2.0.md` in the reflex repo.
 
 ## 3. Restructuring
