@@ -46,6 +46,7 @@ import { notifiedSubagent } from "./subagents";
 import Environment from "./Environment";
 import { assetUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
 import type { IWireTurnItem } from "./Infrastructure/wire";
+import { ItemRequestRow } from "./ItemRequestViews";
 import { Markdown } from "./Markdown";
 import OpenThread, {
   diffTurnOf,
@@ -798,8 +799,6 @@ const EVENT_TYPES = new Set<IWireTurnItem["type"]>([
   "handoff",
   "run_interrupt_request",
   "run_interrupt_result",
-  "secret_request",
-  "link_request",
   "checkpoint",
 ]);
 
@@ -953,7 +952,13 @@ const ROWS: Record<string, Component<IRowProps & { meta: boolean }>> = {
   work: WorkRow,
   subagent: SubagentRow,
   notification: NotificationRow,
+  asked: AskedRow,
 };
+
+function AskedRow(props: IRowProps) {
+  const { item } = useRow(props);
+  return <Show when={item()}>{(held) => <ItemRequestRow id={props.id} item={held()} />}</Show>;
+}
 
 function rowKind(item: IWireTurnItem): string | null {
   switch (item.type) {
@@ -972,6 +977,9 @@ function rowKind(item: IWireTurnItem): string | null {
     case "subagent":
     case "notification":
       return item.type;
+    case "secret_request":
+    case "link_request":
+      return "asked";
     default:
       return "work";
   }

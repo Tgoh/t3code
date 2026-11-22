@@ -46,7 +46,7 @@ import {
 import ThreadSession from "./ThreadSession";
 
 // Labels, descriptions and icons copy apps/web/src/components/chat/runtimeModeConfig.ts.
-const RUNTIME_MODE_CONFIG: Record<
+export const RUNTIME_MODE_CONFIG: Record<
   IWireRuntimeMode,
   { Label: string; Description: string; Icon: Component }
 > = {

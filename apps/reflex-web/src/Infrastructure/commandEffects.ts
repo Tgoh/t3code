@@ -1,7 +1,9 @@
 import type {
   AssetResource,
   ModelCapabilities,
+  PeerLinkRequestAnswerInput,
   ProjectScript,
+  SecretRequestAnswerInput,
   ServerProviderSkill,
   ServerProviderSlashCommand,
 } from "@t3tools/contracts";
@@ -371,6 +373,32 @@ export const queueCommandEffect = defineEffect<IQueueCommandEffect, void>("queue
 export const startTurnEffect = defineEffect<IStartTurnEffect, void>("startTurn");
 export const stopThreadEffect = defineEffect<IStopThreadEffect, void>("stopThread");
 export const respondRequestEffect = defineEffect<IRespondRequestEffect, void>("respondRequest");
+
+export interface ISecretAnswer {
+  EnvironmentId: string;
+  Input: SecretRequestAnswerInput;
+}
+
+interface ISecretAnswerEffect extends IEffect, ISecretAnswer {
+  Type: "answerSecret";
+}
+
+export const answerSecretEffect = defineEffect<ISecretAnswerEffect, void>("answerSecret", {
+  redact: true,
+});
+
+export interface ILinkAnswer {
+  EnvironmentId: string;
+  Input: PeerLinkRequestAnswerInput;
+}
+
+interface ILinkAnswerEffect extends IEffect, ILinkAnswer {
+  Type: "answerLink";
+}
+
+export const answerLinkEffect = defineEffect<ILinkAnswerEffect, void>("answerLink", {
+  redact: true,
+});
 
 export function* withCommandId<R>(
   run: (commandId: string) => IActionGenerator<R>,

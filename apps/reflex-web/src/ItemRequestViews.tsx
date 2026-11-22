@@ -1,0 +1,521 @@
+import {
+  ANOTHER_ADDRESS,
+  linkDestination,
+  linkRequestDefaultAccess,
+  linkRequestDisplay,
+  linkRequestTarget,
+  linkRequestTargetName,
+} from "@t3tools/client-runtime/link-request";
+import {
+  SECRET_REQUEST_DEFAULT_PLACEHOLDER,
+  secretRequestDisplay,
+  secretRequestLink,
+  secretRequestPrivacyNote,
+} from "@t3tools/client-runtime/secret-request";
+import { AuthMcpClientAccess } from "@t3tools/contracts";
+import { useInFlight } from "treflex-solid";
+import { type Component, createSignal, createUniqueId, For, type JSX, Show } from "solid-js";
+import { Dynamic } from "solid-js/web";
+
+import { RUNTIME_MODE_CONFIG } from "./ComposerMenus";
+import { Check, ExternalLink, Link, Lock, Minus, ShieldCheck, X } from "./icons";
+import type { IWireTurnItem } from "./Infrastructure/wire";
+import ItemRequest, {
+  answerLink,
+  answerSecret,
+  type IItemRequest,
+  type ISecretReply,
+} from "./ItemRequest";
+import OpenThread from "./OpenThread";
+import { Button, button, buttonLink } from "./ui/Button";
+import { Input, Select } from "./ui/Field";
+import {
+  Dialog,
+  DialogDescription,
+  DialogError,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/Modal";
+
+type IVisibility = "local" | "inherited" | "synthetic";
+type SecretRequestItem = Extract<IWireTurnItem, { type: "secret_request" }>;
+type LinkRequestItem = Extract<IWireTurnItem, { type: "link_request" }>;
+
+const CARD = "flex min-w-0 flex-col gap-3 rounded-xl border border-border/60 bg-card p-4";
+const ERROR = "m-0 text-[12px] text-destructive";
+const NOTE = "m-0 text-[12px] text-muted-foreground";
+const FIELD_LABEL = "block text-[12px] font-medium text-foreground";
+
+const ACCESS: Record<AuthMcpClientAccess, { Label: string; Description: string }> = {
+  "read-only": {
+    Label: "Read only",
+    Description: "Read projects and threads. Cannot start, message or change anything.",
+  },
+  ...RUNTIME_MODE_CONFIG,
+};
+const accessLabel = (access: AuthMcpClientAccess) => ACCESS[access].Label;
+
+// Follows WorkLogRow in apps/web/src/components/chat/WorkLog.tsx.
+function OutcomeRow(props: { icon: Component; label: string; type: string }) {
+  return (
+    <div
+      class="flex min-h-6 min-w-0 items-center gap-1.5 p-0.5 text-[14px] leading-6 text-secondary-label"
+      data-item-type={props.type}
+    >
+      <span class="inline-flex size-6 flex-none items-center justify-center text-muted-foreground [&_svg]:size-3.5">
+        <Dynamic component={props.icon} />
+      </span>
+      <span class="min-w-0 truncate">{props.label}</span>
+    </div>
+  );
+}
+
+/** A secret or link card in the timeline, by its turn item. */
+export function ItemRequestRow(props: { id: string; item: IWireTurnItem }) {
+  const thread = OpenThread.use();
+  const visibility = (): IVisibility => thread.state.Rows[props.id]?.visibility ?? "local";
+  const entity = () => thread.state.ItemRequests[props.id];
+  return (
+    <Show
+      when={props.item.type === "secret_request" ? props.item : null}
+      fallback={
+        <Show when={props.item.type === "link_request" ? props.item : null}>
+          {(item) => <LinkCard item={item()} visibility={visibility()} entity={entity()} />}
+        </Show>
+      }
+    >
+      {(item) => <SecretCard item={item()} visibility={visibility()} entity={entity()} />}
+    </Show>
+  );
+}
+
+// Follows SecretRequestCard in apps/web/src/components/chat/SecretRequestCard.tsx.
+function SecretCard(props: {
+  item: SecretRequestItem;
+  visibility: IVisibility;
+  entity: IItemRequest | undefined;
+}) {
+  const display = () => secretRequestDisplay(props.item, props.visibility);
+  const pending = () => {
+    const shown = display();
+    return shown.kind === "pending" ? props.entity : undefined;
+  };
+  return (
+    <Show
+      when={pending()}
+      fallback={
+        <OutcomeRow
+          type={props.item.type}
+          icon={(() => {
+            const shown = display();
+            if (shown.kind !== "answered") return Lock;
+            return shown.outcome === "saved" ? Check : Minus;
+          })()}
+          label={(() => {
+            const shown = display();
+            return shown.kind === "pending"
+              ? props.item.label
+              : `${props.item.label} · ${shown.label}`;
+          })()}
+        />
+      }
+    >
+      {(entity) => <SecretForm state={entity()} item={props.item} />}
+    </Show>
+  );
+}
+
+const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => {
+  const thread = OpenThread.use();
+  const request = ItemRequest.use();
+  const busy = useInFlight([answerSecret], () => request.state);
+  const inputId = createUniqueId();
+  const errorId = createUniqueId();
+  const privacyId = createUniqueId();
+  // The typed secret stays in the input, outside state; only whether there is one is tracked.
+  const [typed, setTyped] = createSignal(false);
+  let input: HTMLInputElement | undefined;
+  const link = () => secretRequestLink(props.item);
+  const describedBy = () =>
+    request.itemAnswerError() === null ? privacyId : `${privacyId} ${errorId}`;
+
+  const send = async (reply: ISecretReply) => {
+    const sent = await request.answerSecret(
+      thread.state.EnvironmentId,
+      thread.state.ThreadId,
+      reply,
+    );
+    if (sent === true && input !== undefined) {
+      input.value = "";
+      setTyped(false);
+    }
+  };
+
+  return (
+    <form
+      class={CARD}
+      data-item-type={props.item.type}
+      autocomplete="off"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (input !== undefined && !busy()) void send({ type: "save", secret: input.value });
+      }}
+      // On click, not pointerdown, so the click that follows doesn't take focus back; a click
+      // that ends a text selection leaves it, so the reason can still be copied.
+      onClick={(event) => {
+        if (!(event.target instanceof Element)) return;
+        if (event.target.closest("input, button, a")) return;
+        if (window.getSelection()?.isCollapsed === false) return;
+        input?.focus();
+      }}
+    >
+      <div class="flex min-w-0 flex-col gap-1">
+        <label for={inputId} class="text-[14px] font-medium text-foreground">
+          {props.item.label}
+        </label>
+        <Show when={props.item.reason.trim()}>
+          <p class="m-0 text-[14px] wrap-anywhere text-muted-foreground">{props.item.reason}</p>
+        </Show>
+      </div>
+      <Show when={link()}>
+        {(held) => (
+          <div class="flex min-w-0 flex-col items-start gap-1.5">
+            <a
+              class={`${button()} ${buttonLink} gap-1.5 [&>svg]:size-3.5`}
+              href={held().href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open {held().host}
+              <ExternalLink aria-hidden="true" />
+            </a>
+            <Show when={props.item.url}>
+              {(url) => (
+                <p class="m-0 font-mono text-[12px] wrap-anywhere text-muted-foreground">{url()}</p>
+              )}
+            </Show>
+          </div>
+        )}
+      </Show>
+      <div class="flex min-w-0 items-center gap-2">
+        <Input
+          ref={input}
+          id={inputId}
+          class="min-w-0 flex-1"
+          type="password"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck={false}
+          data-1p-ignore=""
+          data-lpignore="true"
+          data-bwignore=""
+          placeholder={props.item.placeholder ?? SECRET_REQUEST_DEFAULT_PLACEHOLDER}
+          disabled={busy()}
+          aria-invalid={request.itemAnswerError() !== null || undefined}
+          aria-describedby={describedBy()}
+          onInput={(event) => setTyped(event.currentTarget.value.trim().length > 0)}
+        />
+        <Button type="submit" variant="primary" disabled={busy() || !typed()}>
+          Save securely
+        </Button>
+      </div>
+      <Show when={request.itemAnswerError()}>
+        {(error) => (
+          <p id={errorId} role="alert" class={ERROR}>
+            {error()}
+          </p>
+        )}
+      </Show>
+      <div class="flex min-w-0 items-center justify-between gap-2">
+        <p id={privacyId} class={`${NOTE} flex min-w-0 items-center gap-1.5`}>
+          <ShieldCheck class="size-3.5 flex-none" aria-hidden="true" />
+          {secretRequestPrivacyNote(props.item)}
+        </p>
+        <Button variant="ghost" disabled={busy()} onClick={() => void send({ type: "decline" })}>
+          Decline
+        </Button>
+      </div>
+    </form>
+  );
+});
+
+/** Whether the agent left the machine for the user to pick. */
+const picksMachine = (item: LinkRequestItem) =>
+  item.environmentId === undefined && item.url === undefined;
+
+// Follows LinkRequestCard in apps/web/src/components/chat/LinkRequestCard.tsx.
+function LinkCard(props: {
+  item: LinkRequestItem;
+  visibility: IVisibility;
+  entity: IItemRequest | undefined;
+}) {
+  const display = () => linkRequestDisplay(props.item, props.visibility, accessLabel);
+  const pending = () => (display().kind === "pending" ? props.entity : undefined);
+  return (
+    <Show
+      when={pending()}
+      fallback={
+        <OutcomeRow
+          type={props.item.type}
+          icon={(() => {
+            const shown = display();
+            if (shown.kind !== "answered") return Link;
+            return shown.outcome === "linked" ? Check : shown.outcome === "failed" ? X : Minus;
+          })()}
+          label={(() => {
+            const shown = display();
+            return shown.kind === "pending" ? "" : shown.label;
+          })()}
+        />
+      }
+    >
+      {(entity) => <PendingLink state={entity()} item={props.item} />}
+    </Show>
+  );
+}
+
+const PendingLink = ItemRequest.provider<{ item: LinkRequestItem }>((props) => {
+  const thread = OpenThread.use();
+  const request = ItemRequest.use();
+  const busy = useInFlight([answerLink], () => request.state);
+  // Each open is its own; an answer that lands after a close and reopen leaves the new one open.
+  const [opened, setOpened] = createSignal<number | null>(null);
+  let opens = 0;
+  return (
+    <div class={CARD} data-item-type={props.item.type}>
+      <div class="flex min-w-0 flex-col gap-1">
+        <p class="m-0 text-[14px] font-medium text-foreground">
+          {picksMachine(props.item)
+            ? "Link a machine to this environment"
+            : `Link ${linkRequestTargetName(props.item)} to this environment`}
+        </p>
+        <Show when={props.item.reason.trim()}>
+          <p class="m-0 text-[14px] text-muted-foreground">{props.item.reason}</p>
+        </Show>
+      </div>
+      <Show when={opened() === null && request.itemAnswerError()}>
+        {(error) => (
+          <p role="alert" class={ERROR}>
+            {error()}
+          </p>
+        )}
+      </Show>
+      <div class="flex min-w-0 items-center justify-end gap-2">
+        <Button
+          variant="ghost"
+          disabled={busy()}
+          onClick={() =>
+            void request.answerLink(thread.state.EnvironmentId, thread.state.ThreadId, {
+              type: "decline",
+            })
+          }
+        >
+          Decline
+        </Button>
+        <Button variant="primary" disabled={busy()} onClick={() => setOpened((opens += 1))}>
+          {picksMachine(props.item) ? "Choose machine…" : "Review link…"}
+        </Button>
+      </div>
+      <Show when={opened()} keyed>
+        {(open) => (
+          <LinkDialog
+            item={props.item}
+            onClose={() => {
+              if (opened() === open) setOpened(null);
+            }}
+          />
+        )}
+      </Show>
+    </div>
+  );
+});
+
+type ILinkStep = "machine" | "access";
+
+// This client knows no other machines, so every link goes to an address with a pasted code.
+function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
+  const thread = OpenThread.use();
+  const request = ItemRequest.use();
+  const busy = useInFlight([answerLink], () => request.state);
+  const titleId = createUniqueId();
+  const pickMachine = picksMachine(props.item);
+  const target = linkRequestTarget(props.item, [], pickMachine ? ANOTHER_ADDRESS : null);
+  const targetName = target.kind === "machine" ? target.label : linkRequestTargetName(props.item);
+  const asksAddress = props.item.url === undefined;
+  const steps: ILinkStep[] = asksAddress ? ["machine", "access"] : ["access"];
+  const [step, setStep] = createSignal<ILinkStep>(steps[0]!);
+  const [address, setAddress] = createSignal(props.item.url ?? "");
+  const [access, setAccess] = createSignal(linkRequestDefaultAccess(props.item));
+  const [pairingCode, setPairingCode] = createSignal("");
+  const [attempted, setAttempted] = createSignal(false);
+  const machineReady = () => target.kind !== "none" && address().trim().length > 0;
+  const ready = () => machineReady() && pairingCode().trim().length > 0;
+  const finishesHere = () => step() === "access";
+
+  const submit = async () => {
+    if (busy() || !ready()) return;
+    setAttempted(true);
+    const sent = await request.answerLink(thread.state.EnvironmentId, thread.state.ThreadId, {
+      type: "link",
+      target: { url: address() },
+      access: access(),
+      pairingCode: pairingCode(),
+    });
+    if (sent === true) props.onClose();
+  };
+
+  return (
+    <Dialog aria-labelledby={titleId} onClose={props.onClose}>
+      <form
+        autocomplete="off"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (finishesHere()) void submit();
+          else if (machineReady()) setStep("access");
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle id={titleId}>
+            {pickMachine ? "Link a machine" : `Link ${targetName}`}
+          </DialogTitle>
+          <DialogDescription>
+            Agents here can then launch, message and wait on threads there. Revoke it in that
+            machine's Sharing & access.
+          </DialogDescription>
+          <Show when={steps.length > 1}>
+            <ol class="m-0 flex list-none gap-3 p-0 text-[12px] text-muted-foreground">
+              <For each={["Machine", "Access"]}>
+                {(name, index) => (
+                  <li
+                    class="aria-[current=step]:font-medium aria-[current=step]:text-foreground"
+                    aria-current={steps[index()] === step() ? "step" : undefined}
+                  >
+                    {index() + 1}. {name}
+                  </li>
+                )}
+              </For>
+            </ol>
+          </Show>
+          <div class="mt-2 flex flex-col gap-4">
+            <Show
+              when={step() === "machine"}
+              fallback={
+                <>
+                  <AddressWarning address={address()} />
+                  <label class="flex flex-col gap-1.5">
+                    <span class={FIELD_LABEL}>Pairing code</span>
+                    <Input
+                      value={pairingCode()}
+                      onInput={(event) => setPairingCode(event.currentTarget.value)}
+                      placeholder="Paste the code"
+                      disabled={busy()}
+                      autocomplete="one-time-code"
+                      spellcheck={false}
+                    />
+                    <span class={NOTE}>
+                      Create a link on {targetName}: Settings → Sharing & access → Authorized
+                      clients → Create link, then paste its code here.
+                    </span>
+                  </label>
+                  <AccessPicker value={access()} onChange={setAccess} disabled={busy()} />
+                </>
+              }
+            >
+              <label class="flex flex-col gap-1.5">
+                <span class={FIELD_LABEL}>Address</span>
+                <Input
+                  value={address()}
+                  onInput={(event) => setAddress(event.currentTarget.value)}
+                  placeholder="https://machine.tailnet.ts.net"
+                  disabled={busy()}
+                  spellcheck={false}
+                />
+                <Show when={target.kind === "machine"}>
+                  <span class={NOTE}>
+                    This app has no address for {targetName} that another machine can reach. Enter
+                    its https or Tailscale address.
+                  </span>
+                </Show>
+              </label>
+            </Show>
+            <Show when={attempted() && request.itemAnswerError()}>
+              {(error) => (
+                <div role="alert">
+                  <DialogError>{error()}</DialogError>
+                </div>
+              )}
+            </Show>
+          </div>
+        </DialogHeader>
+        <DialogFooter>
+          <Show
+            when={step() === "access" && steps.length > 1}
+            fallback={
+              <Button disabled={busy()} onClick={props.onClose}>
+                Cancel
+              </Button>
+            }
+          >
+            <Button disabled={busy()} onClick={() => setStep("machine")}>
+              Back
+            </Button>
+          </Show>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={busy() || (finishesHere() ? !ready() : !machineReady())}
+          >
+            {busy() ? "Linking…" : finishesHere() ? "Link" : "Continue"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Dialog>
+  );
+}
+
+// Follows LinkAddressWarning in apps/web/src/components/settings/LinkMachineSelect.tsx.
+function AddressWarning(props: { address: string }) {
+  return (
+    <div class="rounded-lg border border-[color-mix(in_srgb,var(--warning)_32%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-3 py-2 text-[13px]">
+      <p class="m-0 font-medium text-warning-foreground">Check this address</p>
+      <p class="m-0 text-muted-foreground">
+        This app cannot confirm it is one of your machines. The pairing code you paste is sent
+        there.
+        <span class="block break-all">{linkDestination(props.address)}</span>
+      </p>
+    </div>
+  );
+}
+
+// Follows LinkAccessPicker in apps/web/src/components/settings/LinkAccessPicker.tsx.
+function AccessPicker(props: {
+  value: AuthMcpClientAccess;
+  onChange: (access: AuthMcpClientAccess) => void;
+  disabled: boolean;
+}): JSX.Element {
+  const labelId = createUniqueId();
+  return (
+    <div class="flex flex-col gap-1.5">
+      <span id={labelId} class={FIELD_LABEL}>
+        What agents here may do there
+      </span>
+      <Select
+        aria-labelledby={labelId}
+        value={props.value}
+        disabled={props.disabled}
+        onChange={(event) => props.onChange(event.currentTarget.value as AuthMcpClientAccess)}
+      >
+        <For each={AuthMcpClientAccess.literals}>
+          {(option) => <option value={option}>{ACCESS[option].Label}</option>}
+        </For>
+      </Select>
+      <p class={NOTE}>
+        {ACCESS[props.value].Description} An agent never gets more access there than its own mode
+        here. Below full access, it can change only threads this link started, not that machine's
+        own threads, projects or settings.
+      </p>
+    </div>
+  );
+}

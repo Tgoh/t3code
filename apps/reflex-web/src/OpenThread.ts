@@ -39,6 +39,7 @@ import type {
 } from "./Infrastructure/wire";
 import { byId, put, putEntity, reconcile, reconcileEntities } from "./rows";
 import { type ILineageTitles, lookUpLineageTitles } from "./lineageTitles";
+import { ANSWERED_ITEM_TYPES, type IItemRequest } from "./ItemRequest";
 import type { IRuntimeRequest } from "./RuntimeRequest";
 
 declare module "treflex" {
@@ -92,6 +93,8 @@ export interface IOpenThread extends IEntity {
   ProviderThreads: Record<string, IWireProjection["providerThreads"][number]>;
   ProviderTurns: Record<string, IWireProjection["providerTurns"][number]>;
   RuntimeRequests: Record<string, IRuntimeRequest>;
+  /** Secret and link cards, by turn item id. */
+  ItemRequests: Record<string, IItemRequest>;
   Messages: Record<string, IWireProjection["messages"][number]>;
   Plans: Record<string, IWireProjection["plans"][number]>;
   CheckpointScopes: Record<string, IWireProjection["checkpointScopes"][number]>;
@@ -130,6 +133,7 @@ export function getDefaultOpenThread(
     ProviderThreads: {},
     ProviderTurns: {},
     RuntimeRequests: {},
+    ItemRequests: {},
     Messages: {},
     Plans: {},
     CheckpointScopes: {},
@@ -482,6 +486,15 @@ function applySnapshot(
   draft.LatestLocalTurnOrdinal = item.latestLocalTurnOrdinal ?? null;
 }
 
+function answeredItemIds(projection: IWireThreadSnapshot["projection"]): { id: string }[] {
+  const ids = new Set<string>();
+  for (const held of projection.turnItems) if (ANSWERED_ITEM_TYPES.has(held.type)) ids.add(held.id);
+  for (const row of projection.visibleTurnItems)
+    if (row.visibility === "local" && ANSWERED_ITEM_TYPES.has(row.item.type))
+      ids.add(row.sourceItemId);
+  return [...ids].map((id) => ({ id }));
+}
+
 // The same window carries on, so a fetch already running in it still lands.
 function* windowOf(
   draft: IOpenThread,
@@ -513,6 +526,7 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     // In this order, so the mints end their steps before any of the snapshot's writes.
     const history = yield* windowOf(draft, item);
     yield* reconcileEntities(draft.RuntimeRequests, item.projection.runtimeRequests);
+    yield* reconcileEntities(draft.ItemRequests, answeredItemIds(item.projection));
     applySnapshot(draft, item, history);
     yield* announceSettled(draft);
     yield* announceRewind(draft);
@@ -535,6 +549,12 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     return;
   }
   applyEvent(draft, item.event);
+  if (
+    item.event.type === "turn-item.updated" &&
+    ANSWERED_ITEM_TYPES.has(item.event.payload.type) &&
+    draft.ItemRequests[item.event.payload.id] === undefined
+  )
+    yield* putEntity<{ id: string }>(draft.ItemRequests, { id: item.event.payload.id });
   if (REWIND_EVENTS.has(item.event.type)) yield* announceRewind(draft);
   if (LINEAGE_EVENTS.has(item.event.type)) yield* start(lookUpLineageTitles, draft);
 }
@@ -781,7 +801,7 @@ export function* pendingQuestionIds(draft: IOpenThread): ISelectorGenerator<stri
   return yield* pendingIdsOfType(draft, (type) => type === "user_input_request");
 }
 
-/** Secret, link and other requests this client can show but not answer. */
+/** Runtime requests this client can show but not answer. */
 export function* pendingOtherIds(draft: IOpenThread): ISelectorGenerator<string[]> {
   return yield* pendingIdsOfType(
     draft,
