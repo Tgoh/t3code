@@ -120,6 +120,31 @@ export function composerCollapses(input: {
   return input.Phone && !input.Focused && !input.Draft.includes("\n") && !input.HasAttachments;
 }
 
+/**
+ * Runs the latest callback it's given on the next frame. The composer's collapse waits a frame, as
+ * stock's `scheduleComposerCollapseCheck` does, so a tap that blurred the prompt still clicks the
+ * control it landed on before the composer collapses under it.
+ */
+export function nextFrame(): (run: () => void) => void {
+  const pending = { frame: 0 };
+  onCleanup(() => cancelAnimationFrame(pending.frame));
+  return (run) => {
+    cancelAnimationFrame(pending.frame);
+    pending.frame = requestAnimationFrame(run);
+  };
+}
+
+export const COARSE_POINTER_QUERY = "(pointer: coarse)";
+
+/** On a touch screen Enter adds a line and only the send button or a modifier sends. */
+export function enterSends(
+  event: Pick<KeyboardEvent, "key" | "shiftKey" | "isComposing" | "metaKey" | "ctrlKey">,
+  coarsePointer: boolean,
+): boolean {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
+  return !coarsePointer || event.metaKey || event.ctrlKey;
+}
+
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_SLOP = 10;
 

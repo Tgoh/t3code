@@ -12,7 +12,8 @@ import { clockNow } from "./timestamps";
 import { IconButton } from "./ui/IconButton";
 import { createMediaQuery } from "./viewport";
 
-const keepFocus = (event: PointerEvent) => event.preventDefault();
+// iOS can fire mousedown after a prevented pointerdown, and its default blurs the prompt.
+const keepFocus = (event: MouseEvent) => event.preventDefault();
 
 const PILL =
   "flex h-8 min-w-0 max-w-fit flex-[1.5_1_0] items-center gap-1.5 rounded-full p-0.5 ring-1 ring-inset";
@@ -68,6 +69,7 @@ export function MicButton(props: {
       data-tip={label()}
       disabled={props.disabled}
       onPointerDown={keepFocus}
+      onMouseDown={keepFocus}
       onClick={() => props.onStart()}
     >
       <Mic />
@@ -150,6 +152,7 @@ export function DictationPill(props: { dictation: IDictation; onRetry: () => voi
             aria-label="Dismiss voice input error"
             data-tip="Dismiss"
             onPointerDown={keepFocus}
+            onMouseDown={keepFocus}
             onClick={cancel}
           >
             <X />
@@ -170,6 +173,7 @@ export function DictationPill(props: { dictation: IDictation; onRetry: () => voi
               type="button"
               class="ms-auto h-7 shrink-0 cursor-pointer rounded-full border border-input bg-popover px-2.5 text-[13px] font-medium text-foreground hover:bg-accent"
               onPointerDown={keepFocus}
+              onMouseDown={keepFocus}
               onClick={() => {
                 if (props.dictation.ErrorAction === "settings") {
                   cancel();
@@ -193,6 +197,7 @@ export function DictationPill(props: { dictation: IDictation; onRetry: () => voi
           aria-label="Cancel voice input"
           data-tip="Cancel voice input (Esc)"
           onPointerDown={keepFocus}
+          onMouseDown={keepFocus}
           onClick={cancel}
         >
           <X />
@@ -235,6 +240,7 @@ export function DictationPill(props: { dictation: IDictation; onRetry: () => voi
             aria-label="Finish voice input"
             data-tip="Finish voice input"
             onPointerDown={keepFocus}
+            onMouseDown={keepFocus}
             onClick={() => void environment.stopDictation()}
           >
             <Check />

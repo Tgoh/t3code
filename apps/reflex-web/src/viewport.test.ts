@@ -1,7 +1,13 @@
 import { createRoot, createSignal } from "solid-js";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { composerCollapses, createMediaQuery, createSidebarSheet, longPress } from "./viewport";
+import {
+  composerCollapses,
+  createMediaQuery,
+  createSidebarSheet,
+  enterSends,
+  longPress,
+} from "./viewport";
 
 function fakeMedia(initial: boolean) {
   let listener: (() => void) | undefined;
@@ -151,5 +157,27 @@ describe("composerCollapses", () => {
     ["with attachments", { ...idle, HasAttachments: true }, false],
   ])("%s", (_label, input, expected) => {
     expect(composerCollapses(input)).toBe(expected);
+  });
+});
+
+describe("enterSends", () => {
+  const enter = {
+    key: "Enter",
+    shiftKey: false,
+    isComposing: false,
+    metaKey: false,
+    ctrlKey: false,
+  };
+  it.each([
+    ["Enter with a fine pointer", enter, false, true],
+    ["Shift+Enter with a fine pointer", { ...enter, shiftKey: true }, false, false],
+    ["Enter while composing", { ...enter, isComposing: true }, false, false],
+    ["another key", { ...enter, key: "a" }, false, false],
+    ["Enter on a touch screen", enter, true, false],
+    ["Cmd+Enter on a touch screen", { ...enter, metaKey: true }, true, true],
+    ["Ctrl+Enter on a touch screen", { ...enter, ctrlKey: true }, true, true],
+    ["Shift+Cmd+Enter on a touch screen", { ...enter, shiftKey: true, metaKey: true }, true, false],
+  ])("%s", (_label, event, coarse, expected) => {
+    expect(enterSends(event, coarse)).toBe(expected);
   });
 });
