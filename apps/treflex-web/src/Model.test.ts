@@ -194,7 +194,6 @@ import {
   toggleDetails,
   toggleRightPanel,
   toggleRowExpanded,
-  unwrappedCodeBlocks,
 } from "./ThreadSession";
 import {
   assistantItem,
@@ -3718,8 +3717,7 @@ describe("drafts", () => {
 describe("code blocks", () => {
   it("keep a wrap choice per thread, and lose it with the thread's session", async () => {
     const server = await connect(undefined, THREAD_ID, { threadCommand: () => undefined });
-    const unwrapped = (threadId: string) =>
-      server.runtime.processSelector(unwrappedCodeBlocks, () => server.session(threadId));
+    const unwrapped = (threadId: string) => server.session(threadId).UnwrappedCode;
     await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0");
     expect(unwrapped(THREAD_ID)).toEqual({ "item-1:0:0": true });
     await server.runtime.dispatch(selectThread, server.envId(), "other");

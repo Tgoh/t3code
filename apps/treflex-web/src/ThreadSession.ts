@@ -206,9 +206,6 @@ export interface ICommandOutputRow extends IEntity {
   ItemId: string;
 }
 
-const unwrappedCode = (owner: IThreadSession) =>
-  transient(owner, "Timeline/Unwrapped", { Blocks: {} as Record<string, true> });
-
 export interface IDetailsPanel {
   /** Shown pinned beside the chat while the card fits there. */
   Open: boolean;
@@ -247,6 +244,8 @@ export interface IThreadSession extends IEntity {
   ExpandedRows: Record<string, true>;
   /** The expanded command rows' outputs, by row id. */
   CommandOutputs: Record<string, ICommandOutputRow>;
+  /** Code blocks the person turned wrapping off for, by block key. */
+  UnwrappedCode: Record<string, true>;
 }
 
 export function getDefaultThreadSession(
@@ -274,6 +273,7 @@ export function getDefaultThreadSession(
     Terminal: { Open: false, TerminalId: DEFAULT_TERMINAL_ID },
     ExpandedRows: {},
     CommandOutputs: {},
+    UnwrappedCode: {},
   };
 }
 
@@ -1392,9 +1392,8 @@ export function* reattachThread(draft: IThreadSession): IActionGenerator {
 
 /** Code blocks wrap their lines until the person turns it off. */
 export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActionGenerator {
-  const unwrapped = yield* unwrappedCode(draft);
-  if (unwrapped.Blocks[blockKey]) delete unwrapped.Blocks[blockKey];
-  else unwrapped.Blocks[blockKey] = true;
+  if (draft.UnwrappedCode[blockKey]) delete draft.UnwrappedCode[blockKey];
+  else draft.UnwrappedCode[blockKey] = true;
 }
 
 export function* openDiff(
@@ -1592,10 +1591,6 @@ export function* terminalAttachment(draft: IThreadSession) {
   return yield* attachment(draft);
 }
 
-export function* unwrappedCodeBlocks(draft: IThreadSession) {
-  return (yield* unwrappedCode(draft)).Blocks;
-}
-
 export const TerminalReceiver = receiver<IThreadSession>("TerminalReceiver")({
   *"Terminal/Session"(draft, message) {
     if (isEnded(message)) return;
@@ -1663,6 +1658,5 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     mergeBackRunId,
     diffLoading,
     terminalAttachment,
-    unwrappedCodeBlocks,
   },
 );
