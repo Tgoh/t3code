@@ -171,6 +171,10 @@ const EnvironmentView = Environment.provider(() => {
       case "thread.rename":
         renameThread();
         return true;
+      case "thread.settle":
+        if (environment.state.Local.SelectedThreadId === null) return false;
+        void environment.toggleSettleOpenThread();
+        return true;
       default:
         return runPanelShortcut(command, environment.panelShortcuts(), dispatch);
     }

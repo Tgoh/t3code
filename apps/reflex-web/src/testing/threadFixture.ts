@@ -31,6 +31,8 @@ export const REPLICA_WRITERS: ReadonlySet<string | null> = new Set([
   "closeThread",
   "selectThread",
   "newThread",
+  "settleThread",
+  "toggleSettleOpenThread",
   "addFolder",
   "cloneProject",
   "newProject",

@@ -12,12 +12,11 @@ Each item fixes data or work that's wrong today.
 
 ## 2. Daily friction
 
-Two threads: the phone composer, and the sidebar.
+One thread: the phone composer.
 
 - **Phone composer.** Both items touch the composer's send path, so do them together.
   - **The send button is unreliable on phone.** A tap often just closes the keyboard instead of sending. The likely cause is the textarea blurring on pointerdown: the keyboard collapses, the layout shifts, and the click misses. Likely fix: `preventDefault` on the send button's pointerdown or mousedown so the composer keeps focus. Verify on a real iPhone home-screen app.
   - **Enter on phone.** The keyboard's Enter should insert a newline, and only the send button should send. Make it the default on coarse pointers, with no setting, unless stock does something else on touch.
-- **Settle only on the open thread.** A row's settle button shows only on the selected thread. The other ways to settle wait for Tam's answer: the thread menu offers Settle on every row, the palette has no settle command, and reflex ignores the `thread.settle` shortcut (mod+shift+S), which stock runs on the open thread only.
 
 ## 3. Parity and polish
 

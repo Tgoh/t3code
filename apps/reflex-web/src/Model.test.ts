@@ -39,8 +39,11 @@ import {
   projectCommand,
   removeProject,
   selectThread,
+  settleThread,
   threadCommand,
+  toggleSettleOpenThread,
 } from "./Environment";
+import { adjacentThread } from "./keybindings";
 import {
   cancelDictation,
   dictation,
@@ -1713,6 +1716,85 @@ describe("the sidebar", () => {
     expect(order({}, "nap")).toEqual(["pin", "main", "a1", "b1", "nap"]);
     expect(order({}, null, { SettledOpen: true })).toEqual(["pin", "main", "a1", "b1", "done"]);
     expect(order({}, null, { SettledOpen: true, SettledShown: 0 })).toEqual(order());
+  });
+
+  it("settles the open thread and moves to the sidebar's next unparked row, and the shortcut toggles", async () => {
+    const commands: { ThreadId: string; Command: { Kind: string } }[] = [];
+    let refusal: string | null = null;
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+        if (effect.Command.Kind === "visit") return;
+        if (refusal !== null) throw new ServerError(refusal);
+        commands.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [
+          { id: "a", title: "Alpha", workspaceRoot: "/a" },
+          { id: "b", title: "Beta", workspaceRoot: "/b" },
+          { id: "lone", title: "Lone", workspaceRoot: "/lone" },
+        ],
+        threads: [
+          row("a1", "a", "2026-01-03T00:00:00.000Z"),
+          row("a2", "a", "2026-01-02T00:00:00.000Z"),
+          row("b1", "b", at),
+          row("nap", "b", at, { snoozedUntil: "2099-01-01T00:00:00.000Z", snoozedAt: at }),
+          row("done", "a", at, { settledOverride: "settled", settledAt: at }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const envId = server.envId();
+    const selected = () => server.environment().Local.SelectedThreadId;
+    const order = () => server.runtime.processSelector(sidebarLayout, server.environment).Order;
+    const take = () => commands.splice(0).map((sent) => [sent.ThreadId, sent.Command.Kind]);
+
+    await server.runtime.dispatch(selectThread, envId, "a1");
+    const next = adjacentThread(order(), "a1", "next");
+    expect(next).toBe("a2");
+    await server.runtime.dispatch(toggleSettleOpenThread, envId);
+    expect(take()).toEqual([["a1", "settle"]]);
+    expect(selected()).toBe(next);
+
+    await server.runtime.dispatch(toggleShelf, envId, "Snoozed");
+    await server.runtime.dispatch(toggleShelf, envId, "Settled");
+    await server.runtime.dispatch(selectThread, envId, "b1");
+    expect(order()).toEqual(["a1", "a2", "b1", "nap", "done"]);
+    await server.runtime.dispatch(settleThread, envId, "b1");
+    expect(take()).toEqual([["b1", "settle"]]);
+    expect(selected()).toBe("a1");
+
+    await server.runtime.dispatch(selectThread, envId, "done");
+    await server.runtime.dispatch(toggleSettleOpenThread, envId);
+    expect(take()).toEqual([["done", "unsettle"]]);
+    expect(selected()).toBe("done");
+
+    await server.runtime.dispatch(settleThread, envId, "a2");
+    expect(take()).toEqual([["a2", "settle"]]);
+    expect(selected()).toBe("done");
+
+    await server.runtime.dispatch(selectThread, envId, "a1");
+    refusal = "The thread received another run before settlement.";
+    await expect(server.runtime.dispatch(toggleSettleOpenThread, envId)).rejects.toThrow(refusal);
+    server.takeFailures();
+    expect(selected()).toBe("a1");
+    refusal = null;
+
+    await server.sendShell({
+      kind: "thread.updated",
+      sequence: 2,
+      location: "active",
+      thread: row("only", "lone", at),
+    } as unknown as IWireShellItem);
+    await server.runtime.dispatch(toggleProjectScope, envId, "lone");
+    await server.runtime.dispatch(selectThread, envId, "only");
+    await server.runtime.dispatch(toggleSettleOpenThread, envId);
+    expect(take()).toEqual([["only", "settle"]]);
+    expect(server.environment().Local.ThreadSessions[selected()!]?.NewThreadProjectId).toBe("lone");
   });
 
   it("keeps this device's choices, restores them in a fresh client, and wakes snoozed rows on the clock", async () => {

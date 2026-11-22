@@ -361,6 +361,43 @@ export function* threadCommand(
   if (command.Kind === "delete") yield* forgetSession(draft, threadId);
 }
 
+// Follows attemptSettle and planForwardNavigation in apps/web/src/components/Sidebar.tsx.
+/** Settles a thread and, when it's the open one, moves on to the next unparked row or a new thread. */
+export function* settleThread(draft: IEnvironment, threadId: string): IOpenGenerator {
+  const advance =
+    draft.Local.SelectedThreadId === threadId ? yield* threadAfterSettling(draft, threadId) : null;
+  yield* threadCommand(draft, threadId, { Kind: "settle" });
+  if (advance === null || draft.Local.SelectedThreadId !== threadId) return;
+  if (advance.ThreadId !== null) yield* selectThread(draft, advance.ThreadId);
+  else yield* newThread(draft, advance.ProjectId);
+}
+
+function* threadAfterSettling(
+  draft: IEnvironment,
+  threadId: string,
+): IActionGenerator<{ ThreadId: string | null; ProjectId: string } | null> {
+  const thread = draft.Replica.Shell.Threads[threadId];
+  if (thread === undefined) return null;
+  const { Order, Sections } = yield* sidebarLayout(draft);
+  const parked = new Set<string>([...Sections.Settled, ...Sections.Snoozed].map((row) => row.id));
+  const index = Order.indexOf(threadId);
+  const next =
+    index === -1
+      ? undefined
+      : [...Order.slice(index + 1), ...Order.slice(0, index)].find((id) => !parked.has(id));
+  return { ThreadId: next ?? null, ProjectId: thread.projectId };
+}
+
+/** The shortcut's toggle: un-settles the open thread when it's settled, else settles and moves on. */
+export function* toggleSettleOpenThread(draft: IEnvironment): IOpenGenerator {
+  const threadId = draft.Local.SelectedThreadId;
+  const thread = threadId === null ? undefined : draft.Replica.Shell.Threads[threadId];
+  if (thread === undefined) return;
+  if (thread.settledOverride === "settled")
+    yield* threadCommand(draft, thread.id, { Kind: "unsettle" });
+  else yield* settleThread(draft, thread.id);
+}
+
 function* sendProjectCommand(
   environmentId: string,
   projectId: string,
@@ -659,6 +696,8 @@ export default createEntityFeature<IEnvironment>(import.meta.url)(
     selectThread,
     newThread,
     threadCommand,
+    settleThread,
+    toggleSettleOpenThread,
     projectCommand,
     addFolder,
     cloneProject,

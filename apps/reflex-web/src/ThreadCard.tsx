@@ -390,7 +390,10 @@ export function ThreadCard(props: {
                     class={CARD_ACTION}
                     aria-label="Settle thread"
                     data-tip="Settle thread"
-                    onClick={(event) => act(event, { Kind: "settle" })}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      environment.settleThread(props.thread.id);
+                    }}
                   >
                     <Check />
                     Settle
@@ -482,18 +485,25 @@ export function ThreadMenu(props: {
       <Show when={presets().length > 0 || snoozed()}>
         <MenuSeparator />
       </Show>
-      <Show
-        when={settled()}
-        fallback={
-          <MenuItem icon={<Check />} label="Settle" onSelect={() => choose({ Kind: "settle" })} />
-        }
-      >
-        <MenuItem
-          icon={<Undo2 />}
-          label="Un-settle"
-          onSelect={() => choose({ Kind: "unsettle" })}
-        />
-      </Show>
+      <Switch>
+        <Match when={settled()}>
+          <MenuItem
+            icon={<Undo2 />}
+            label="Un-settle"
+            onSelect={() => choose({ Kind: "unsettle" })}
+          />
+        </Match>
+        <Match when={environment.state.Local.SelectedThreadId === props.thread.id}>
+          <MenuItem
+            icon={<Check />}
+            label="Settle"
+            onSelect={() => {
+              environment.settleThread(props.thread.id);
+              props.onClose();
+            }}
+          />
+        </Match>
+      </Switch>
       <Show
         when={pinned()}
         fallback={<MenuItem icon={<Pin />} label="Pin" onSelect={() => choose({ Kind: "pin" })} />}
