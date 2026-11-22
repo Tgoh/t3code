@@ -50,6 +50,7 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 - **Terminal.** Tabs and splits, a resizable drawer, links, search and a restart button for an exited shell. See the terminal entries under "Skipped for the prototype".
 - **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables. Tam picks the order.
 - **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.
+- **A pairing token box on the unpaired page.** Stock's unpaired page takes a pasted pairing token; treflex's only says to open a pairing link. Add the box and stock's wording ("Enter a pairing token to start a session with this environment.").
 - **Usage limits from external sources.** Open the config stream with `usageLimitSources` and show the usage-limit hubs, as stock does. See "Usage limits".
 
 ## 4. Performance
@@ -65,6 +66,10 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
   2. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
 
   Screen-caused work, such as loading the next page when a list's end scrolls into view, gets a named opt-in at the call site instead of being banned.
+
+## Server
+
+- **A usage tool for agents.** No MCP tool exposes usage limits, so a thread can't check headroom before large work. Add a read-only tool that returns the snapshot the usage ring shows: per provider, each window's percent used and reset time. Keep the handler thin over the existing usage service, with its type in `packages/contracts`. Upstream's rule that what a user can see an agent can reach makes it a candidate upstream PR; Tam decides whether to raise one.
 
 ## Lint
 
