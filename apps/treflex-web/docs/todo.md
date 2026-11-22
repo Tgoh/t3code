@@ -2,7 +2,34 @@
 
 Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead. The long-term goal is full parity with stock, so `issues.md`'s gaps move in here a few at a time.
 
-## 1. Parity and polish
+## 1. Restructuring
+
+From an audit of how the port uses treflex 0.1.0. Most of the code already follows the treflex docs. What doesn't is two entities that each do several jobs, and parent views that work out data and pass it down. It runs as three threads, grouped so they touch different files; each item says which.
+
+- **Split `ThreadSession`.** **In progress:** `treflex/restructure-session`, with the next two items, in this order. It owns the composer, queue, rewind, fork, diff panel, terminal, git and more. Make the diff panel a child entity that is minted on open and replaced or removed on close. That drops the re-checks after each wait in `openDiff` and `openBranchDiff`, the manual resets in `closeDiff`, and the reliance on `latest` to cancel stale loads. Make the terminal a child entity with its state in plain fields instead of the `Terminal/Attachment` transient. `GitWork` already has this shape. See "move long work onto a child entity" in the reflex repo's `docs/patterns.md`. Also move `runScript`'s open-the-terminal decision from the view into the action.
+- **Checkout and panel selectors.** **In progress:** `treflex/restructure-session`. `ThreadView`'s `ThreadBody` builds the checkout in a memo that compares with JSON, passes it down as a prop and into `ThreadDetails` component state, and passes it to every `GitWork` action. Add one `checkout` selector on `ThreadSession` and let `GitWork` read the checkout itself. Panel availability is worked out in both `Environment.panelShortcuts` and `ThreadBody`'s menu and launcher, so make it one selector too. `terminalLaunch`, `searchRoot` and `Dictation.recordingOptions` resolve the working directory separately, and should use the same selector.
+  - Move git status into main state here (`ThreadDetails.ts` `attach`). The details card mounts for every thread with a checkout, even while hidden, so the subscription already lasts as long as the thread is open. Open it from `selectThread` or a checkout change, on `ThreadSession` or a child entity. The branch list is per project and can go with it, and so does the card's `createEffect` that refreshes status when it's shown. Then derive the `vcs-status` scope in `Activity.ts` `scopes` from that subscription, instead of from the conditions under which `ThreadView` mounts the card, and report straight away when it opens or closes, as stock does.
+- **Git's default-branch confirmation as an `ask`.** **In progress:** `treflex/restructure-session`. Replace `PendingDefaultBranch`, `continueDefaultBranch`, `cancelDefaultBranch` and the `confirmed` flag with one `ask` inside `runGitAction`, as `Rewind/Confirm` already works. The git buttons would show busy while the dialog is open.
+- **Split `Environment`.** **In progress:** `treflex/restructure-environment`, with the next two items. Give dictation its own entity under `Local` that owns the `Voice/Dictation` resource and receiver. Move the voice model list (`VoiceModels.ts`, a settings-page component feature today) onto it: dictation's missing-model check and the settings page both care which models are installed, so keep one list. Load it when server dictation is in use, and keep it fresh with the existing receiver and poll, so a download's progress survives leaving the page. Make the archived and usage settings pages component features (`createComponentFeature`) whose data lives only while the page is open. That removes `Replica.Archived`, `Replica.Usage`, four `REPLICA_WRITERS` entries, and the two different ways the loads are triggered (`openView` and `onMount`), including `UsageView.tsx`'s `loadUsage` and `autoRefreshLimits` on mount. Also: make the non-archived projects list one selector (four views rebuild it now), and give `Environment.currentProjectId` and `ThreadSession.projectId` one source (one reads `Shell.Threads`, the other `OpenThreads`).
+- **Drop the duplicate keybindings stream.** **In progress:** `treflex/restructure-environment`. `Server/Keybindings` (`Infrastructure/serverKeybindings.ts`) opens a second subscription for keybindings that `Server/Config` already writes to `Replica.Config.keybindings`. Delete the resource and have `App.tsx` read the config.
+- **Add project's settings come from the config.** **In progress:** `treflex/restructure-environment`. `addProjectSettingsImpl` fetches the server config again to read four values that `Replica.Config` already holds (`addProjectBaseDirectory`, `ghqCloneLayout`, `newProjectsRoot`, the platform). Make them a selector over the config and delete the effect, as was done for editors. Add project's folder browsing stays in its component state.
+- **Thinner sidebar rows.** **In progress:** `treflex/restructure-small`, with the smaller items. `Sidebar.tsx`'s `card()` passes `ThreadCard` 14 props, most of them worked out per row. Let the card read from its thread, as timeline rows do, and keep only cross-row values in the parent, such as `mixedProviders` and the search highlight.
+- **Smaller items.** **In progress:** `treflex/restructure-small`.
+  - Share one receiver registration between `index.tsx` and `Model.test.ts`. The test copy already lacks `GitReceiver` and `VoiceModelsReceiver`.
+  - Turn the remaining transients on Local entities into plain fields.
+  - Use work tags instead of the five `useInFlight([...])` action lists.
+  - Give features hand-picked ids instead of `import.meta.url`. Last, after the session and environment threads have merged, since it touches every feature file.
+
+## 2. Style parity
+
+Nothing hand-rolled that stock already has. Before parity and the missing features, so new work uses the shared components.
+
+- **Shared components, one to one with stock's `components/ui`.** For each stock `apps/web/src/components/ui` component the client uses, a treflex counterpart in `src/ui/` with the same variants and class strings, listed in a README table like "Logic copied from stock". Replace hand-rolled markup that has a stock component. The most important of the four.
+- **All of stock's tokens.** Copy every custom property from `apps/web/src/index.css`, and its `--color-*` theme lines, into `styles.css` and `index.css`, so a copied class always resolves. Stock has about 275 and treflex about 148; the missing ones include `icon-muted`, `placeholder`, `message-foreground`, `sidebar-row-selected` and `warning-surface`.
+- **Styles in the sync.** Each `/syncupstream` diffs stock's `index.css` and the `components/ui` files that treflex mirrors, and ports their class changes, as it ports logic. Update the skill.
+- **A visual drift check.** A script that screenshots key views (sidebar, thread, composer, settings, dialogs) in stock and treflex on the same server and data, and flags differences above a threshold.
+
+## 3. Parity and polish
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
@@ -18,37 +45,9 @@ From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its
 - **Stop flickers back.** Hold "Stopping" until the shell stream delivers the stopped row. See "Open: Stop flickers back before the run ends".
 - **Settings treflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
 
-## 2. Restructuring
-
-From an audit of how the port uses treflex 0.1.0. Most of the code already follows the treflex docs. What doesn't is two entities that each do several jobs, and parent views that work out data and pass it down. The first three items touch `ThreadSession` and `ThreadView`, so run them in one thread, in this order. The rest can run beside it.
-
-- **Split `ThreadSession`.** It owns the composer, queue, rewind, fork, diff panel, terminal, git and more. Make the diff panel a child entity that is minted on open and replaced or removed on close. That drops the re-checks after each wait in `openDiff` and `openBranchDiff`, the manual resets in `closeDiff`, and the reliance on `latest` to cancel stale loads. Make the terminal a child entity with its state in plain fields instead of the `Terminal/Attachment` transient. `GitWork` already has this shape. See "move long work onto a child entity" in the reflex repo's `docs/patterns.md`.
-- **Checkout and panel selectors.** `ThreadView`'s `ThreadBody` builds the checkout in a memo that compares with JSON, passes it down as a prop and into `ThreadDetails` component state, and passes it to every `GitWork` action. Add one `checkout` selector on `ThreadSession` and let `GitWork` read the checkout itself. Panel availability is worked out in both `Environment.panelShortcuts` and `ThreadBody`'s menu and launcher, so make it one selector too. `terminalLaunch`, `searchRoot` and `Dictation.recordingOptions` resolve the working directory separately, and should use the same selector.
-  - Move git status into main state here (`ThreadDetails.ts` `attach`). The details card mounts for every thread with a checkout, even while hidden, so the subscription already lasts as long as the thread is open. Open it from `selectThread` or a checkout change, on `ThreadSession` or a child entity. The branch list is per project and can go with it, and so does the card's `createEffect` that refreshes status when it's shown. Then derive the `vcs-status` scope in `Activity.ts` `scopes` from that subscription, instead of from the conditions under which `ThreadView` mounts the card, and report straight away when it opens or closes, as stock does.
-- **Git's default-branch confirmation as an `ask`.** Replace `PendingDefaultBranch`, `continueDefaultBranch`, `cancelDefaultBranch` and the `confirmed` flag with one `ask` inside `runGitAction`, as `Rewind/Confirm` already works. The git buttons would show busy while the dialog is open.
-- **Split `Environment`.** Give dictation its own entity under `Local` that owns the `Voice/Dictation` resource and receiver. Move the voice model list (`VoiceModels.ts`, a settings-page component feature today) onto it: dictation's missing-model check and the settings page both care which models are installed, so keep one list. Load it when server dictation is in use, and keep it fresh with the existing receiver and poll, so a download's progress survives leaving the page. Make the archived and usage settings pages component features (`createComponentFeature`) whose data lives only while the page is open. That removes `Replica.Archived`, `Replica.Usage`, four `REPLICA_WRITERS` entries, and the two different ways the loads are triggered (`openView` and `onMount`), including `UsageView.tsx`'s `loadUsage` and `autoRefreshLimits` on mount.
-- **Thinner sidebar rows.** `Sidebar.tsx`'s `card()` passes `ThreadCard` 14 props, most of them worked out per row. Let the card read from its thread, as timeline rows do, and keep only cross-row values in the parent, such as `mixedProviders` and the search highlight.
-- **Drop the duplicate keybindings stream.** `Server/Keybindings` (`Infrastructure/serverKeybindings.ts`) opens a second subscription for keybindings that `Server/Config` already writes to `Replica.Config.keybindings`. Delete the resource and have `App.tsx` read the config.
-- **Add project's settings come from the config.** `addProjectSettingsImpl` fetches the server config again to read four values that `Replica.Config` already holds (`addProjectBaseDirectory`, `ghqCloneLayout`, `newProjectsRoot`, the platform). Make them a selector over the config and delete the effect, as was done for editors. Add project's folder browsing stays in its component state.
-- **Smaller items.**
-  - Share one receiver registration between `index.tsx` and `Model.test.ts`. The test copy already lacks `GitReceiver` and `VoiceModelsReceiver`.
-  - Turn the remaining transients on Local entities into plain fields.
-  - Make the non-archived projects list one selector; four views rebuild it now.
-  - `Environment.currentProjectId` reads `Shell.Threads` but `ThreadSession.projectId` reads `OpenThreads`; pick one source.
-  - Use work tags instead of the five `useInFlight([...])` action lists.
-  - Move `runScript`'s open-the-terminal decision from the view into the action.
-  - Give features hand-picked ids instead of `import.meta.url`.
-
-## 3. Style parity
-
-Nothing hand-rolled that stock already has. Before "Missing features", so new features use the shared components.
-
-- **Shared components, one to one with stock's `components/ui`.** For each stock `apps/web/src/components/ui` component the client uses, a treflex counterpart in `src/ui/` with the same variants and class strings, listed in a README table like "Logic copied from stock". Replace hand-rolled markup that has a stock component. The most important of the four.
-- **All of stock's tokens.** Copy every custom property from `apps/web/src/index.css`, and its `--color-*` theme lines, into `styles.css` and `index.css`, so a copied class always resolves. Stock has about 275 and treflex about 148; the missing ones include `icon-muted`, `placeholder`, `message-foreground`, `sidebar-row-selected` and `warning-surface`.
-- **Styles in the sync.** Each `/syncupstream` diffs stock's `index.css` and the `components/ui` files that treflex mirrors, and ports their class changes, as it ports logic. Update the skill.
-- **A visual drift check.** A script that screenshots key views (sidebar, thread, composer, settings, dialogs) in stock and treflex on the same server and data, and flags differences above a threshold.
-
 ## 4. Missing features
+
+Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
 
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **Held send:** Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
@@ -56,9 +55,6 @@ Nothing hand-rolled that stock already has. Before "Missing features", so new fe
   - **A show/hide toggle on secret fields.**
   - **A thread error banner that can be dismissed and comes back.**
   - **Copy a chat table as HTML,** and **a copy button on file previews.**
-
-Built on the restructured model, so after stage 2. Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
-
 - **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
 - **Timeline rows.** Compaction dividers and `/compact` turns, superseded-attempt folds, the tool-call visibility setting, viewed-image strips, the "Waiting on N subagents" label and stock's per-tool detail in expanded rows. See the "Timeline" entries under "Unmatched against the stock UI".
 - **Sidebar.** Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.
@@ -71,11 +67,8 @@ Built on the restructured model, so after stage 2. Each item groups related gaps
 
 ## 5. Performance
 
-After stage 2, which also changes `ThreadView`.
-
 - **A cold open from HTTP and a cache.** Load the first snapshot over HTTP and seed it from a persisted thread cache, as stock does, so a reload doesn't wait on a socket snapshot. See "Mismatch: a cold open takes a full socket snapshot".
 - **Jump into history.** Support `throughEntryId` history pages, which jump-to-row needs once the timeline is virtualized. See "History pages load older rows only".
-
 - **Virtualize the timeline.** The timeline window only grows as you scroll up, so a long thread scrolled back through keeps every row mounted: 162 MB of heap against stock's 60 MB in `docs/benchmarks.md`. When the next turn starts, the window collapses to the tail in one long task, 184 ms unthrottled and about 860 ms at 4× CPU. Prototype on [virtua](https://github.com/inokawa/virtua)'s Solid list first. Then rerun the benchmark's long-thread case and check by hand that treflex still matches stock in four cases: staying pinned to the bottom while streaming, Load earlier without a jump, jump-to-row, and a streaming row that grows. If virtua can't match stock in one of those, port `@legendapp/list` (MIT): its `src/core` is framework-free, and only its React container layer needs a Solid rewrite. Carry over T3 Code's `patches/@legendapp__list@3.7.2.patch` too.
 
 ## Waiting on treflex
