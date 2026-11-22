@@ -40,6 +40,10 @@ From an audit of how the port uses treflex 0.1.0. Most of the code already follo
 - **Secret and link requests can't be answered in reflex.** Port stock's `SecretRequestCard` and the link-request card. Until then, answer them in stock web on 5733. Also listed in `issues.md` under "Skipped for the prototype".
 - **Settings reflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest.
 
+## Performance
+
+- **Virtualize the timeline.** The timeline window only grows as you scroll up, so a long thread scrolled back through keeps every row mounted: 162 MB of heap against stock's 60 MB in `docs/benchmarks.md`. When the next turn starts, the window collapses to the tail in one long task, 184 ms unthrottled and about 860 ms at 4× CPU. Prototype on [virtua](https://github.com/inokawa/virtua)'s Solid list first. Then rerun the benchmark's long-thread case and check by hand that reflex still matches stock in four cases: staying pinned to the bottom while streaming, Load earlier without a jump, jump-to-row, and a streaming row that grows. If virtua can't match stock in one of those, port `@legendapp/list` (MIT): its `src/core` is framework-free, and only its React container layer needs a Solid rewrite. Carry over T3 Code's `patches/@legendapp__list@3.7.2.patch` too.
+
 ## Typing
 
 - **Type-to-focus from buttons and links.** A key typed while a button or link has focus stays with it, as in stock (`shouldRedirectInputToComposer` in `src/composerFocusRedirect.ts`). That happens after clicking a sidebar thread or a header button. Tam wants any keypress to reach the composer. When focus is on a button or link, send printable keys to the composer, but keep Space and Enter activating the focused element. Keep the other exceptions: fields, open layers, keys with modifiers, and `aria-keyshortcuts`.
