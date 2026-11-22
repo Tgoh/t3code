@@ -1,17 +1,22 @@
 import {
   ORCHESTRATION_PROTOCOL_HEADER,
   ORCHESTRATION_PROTOCOL_VERSION_TEXT,
+  OrchestrationV2ThreadHistoryPage,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { defineEffect, type IEffect, implementation } from "treflex";
 
 import { ServerError, serverFetch } from "./serverError";
-import type { IWireHistoryPage } from "./wire";
+import { type IWireHistoryPage, wireCodec } from "./wire";
 
 interface IThreadHistoryPageEffect extends IEffect {
   Type: "threadHistoryPage";
   ThreadId: string;
   Cursor: string;
 }
+
+const decodePage = Schema.decodeUnknownSync(OrchestrationV2ThreadHistoryPage);
+const encodePage = Schema.encodeSync(wireCodec(OrchestrationV2ThreadHistoryPage));
 
 const declared = defineEffect<IThreadHistoryPageEffect, IWireHistoryPage>("threadHistoryPage");
 
@@ -28,5 +33,5 @@ export const threadHistoryPageImpl = implementation(declared, async (effect, act
     },
   );
   if (!response.ok) throw new ServerError(`History request failed with HTTP ${response.status}.`);
-  return (await response.json()) as IWireHistoryPage;
+  return encodePage(decodePage(await response.json())) as unknown as IWireHistoryPage;
 });

@@ -1,5 +1,4 @@
 import { notificationChildThreadId } from "@t3tools/client-runtime/state/thread-execution";
-import type { OrchestrationV2NotificationSource } from "@t3tools/contracts";
 
 import type { IWireProjection, IWireTurnItem } from "./Infrastructure/wire";
 import type { ILineageAgent } from "./lineage";
@@ -37,25 +36,8 @@ export interface ISubagentEvent {
   At: string;
 }
 
-type IEncodedSource = { kind: string; work?: string; childThreadId?: string };
-
-/**
- * The source as stock's schema decodes it. The tree holds the wire's encoded form, where a
- * subagent's is `background_task` with `work: "subagent"` and a command's is `background_command`.
- */
-export function notificationSource(item: INotificationItem): OrchestrationV2NotificationSource {
-  const source = item.source as unknown as IEncodedSource;
-  if (source.kind === "background_task" && source.work === "subagent")
-    return {
-      kind: "subagent",
-      ...(source.childThreadId === undefined ? {} : { childThreadId: source.childThreadId }),
-    } as OrchestrationV2NotificationSource;
-  if (source.kind === "background_command") return { kind: "command" };
-  return item.source as OrchestrationV2NotificationSource;
-}
-
 export const notifiedChildThreadId = (item: INotificationItem): string | null =>
-  notificationChildThreadId(notificationSource(item)) ?? null;
+  notificationChildThreadId(item.source) ?? null;
 
 // Follows SubagentNotificationLink in apps/web/src/components/chat/V2LifecycleRow.tsx.
 export function notifiedSubagent(

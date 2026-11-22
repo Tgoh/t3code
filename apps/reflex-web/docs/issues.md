@@ -36,8 +36,6 @@ Replay and one provider are verified. A real Claude Haiku turn from this client 
 
 The RPC client decodes each stream item into `DateTime`s and the app encodes it back to hold plain data in the tree. This is negligible per delta (about 0.03 ms each way) but about 80 ms on a 1,000-item snapshot. If that matters, the fix is a protocol client without the decode, which `client-runtime` doesn't offer.
 
-The tree therefore holds the encoded form, but `Wire<T>` in `Infrastructure/wire.ts` types it as the decoded one with strings for dates. They differ wherever a schema transforms more than a date: a subagent's notification source is `background_task` with `work: "subagent"` in the tree, where stock's decoded `kind` is `subagent`. `notificationSource` in `subagents.ts` decodes that one, and it's the only such field the port reads. Typing the tree from the schema's `Encoded` type doesn't work on Effect 4.1.3: it comes out as `unknown` or `Json` for the stream types. The todo has the fix: encode with `toCodecJson(toType(S))`, so the tree holds what `Wire<T>` says.
-
 ## Mismatch: a cold open takes a full socket snapshot
 
 The stock client loads the first snapshot over HTTP and falls back to the socket, and seeds it from a thread cache it persists. This client always uses the socket and persists nothing, so a reload, or opening a thread not viewed in the last five minutes, waits for a snapshot. Reconnects and returns to a retained thread resume from the cursor.
@@ -100,8 +98,7 @@ Every busy mark is an `inFlight` read, which says whether an action runs on an e
 
 - Deferred work isn't opted into (`acceptDeferredWork`), and `deferredWork` isn't preserved across updates, so a fold never loads work on opening as stock's does.
 - History pages load older rows only, with no `throughEntryId` jump.
-- History responses are held unchecked, so a turn item type this client doesn't know reaches the tree.
-- `encodeThreadItem`'s unknown-event pass-through has no test: the app has no `@effect/vitest`, and lint bars running effects by hand in tests.
+- `ServerSettings`' `automaticGitFetchInterval` and `providerHealthRefreshInterval` sit in the tree as `{_tag: "Millis", value}`, which `Wire<T>` doesn't describe. No patch reflex builds carries them; one that does must send that shape, since `decodePatch` rejects a plain number.
 - The timeline window follows its top row when that row moves, so a top row moved far down (`placeRow` on an ordinal change) would collapse the window to the tail until the sentinel grows it back. No known server path moves an old row.
 - The address uses `replaceState`, so selecting threads adds no back-button history.
 - Tool output isn't fetched: the wire omits it, the row says so, and `getTurnItem` would fill it in.

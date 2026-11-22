@@ -5,6 +5,14 @@ import type {
   OrchestrationV2ThreadStreamItem,
 } from "@t3tools/contracts";
 import type * as DateTime from "effect/DateTime";
+import * as Schema from "effect/Schema";
+
+/**
+ * The codec for tree data: the decoded value with dates as strings. Its decode has no defaults or
+ * legacy shapes, so it reads only what its encode wrote.
+ */
+export const wireCodec = <S extends Schema.Top>(schema: S) =>
+  Schema.toCodecJson(Schema.toType(schema));
 
 export type Wire<T> = unknown extends T
   ? T

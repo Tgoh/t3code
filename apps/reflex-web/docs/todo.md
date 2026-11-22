@@ -6,10 +6,6 @@ Work Tam has queued for later, in the order to do it. Within a stage, the items 
 
 Each item fixes data or work that's wrong today.
 
-- **Make the tree hold what `Wire<T>` says.** Typing the tree from `Encoded` doesn't work: on Effect 4.1.3 it's `unknown` or `Json` for the stream types. Instead, encode with `Schema.toCodecJson(Schema.toType(S))`. Dates still become strings, and everything else keeps its decoded shape, so `Wire<T>` becomes true. Do it at the encode sites: `shellStream.ts`, `threadItemCodec.ts`, `serverConfigStream.ts` and the `encode*` helpers in `settingsImpl.ts`. That removes the hand decode in `subagents.ts` `notificationSource` and the unknown-event special case in `threadItemCodec.ts`. Three more changes come with it:
-  - Every decode of tree data has to use the same codec, at least `decodeMutation` and `decodePatch` in `settingsImpl.ts`. The full codec rejects a secret environment variable in the new shape.
-  - Client settings in localStorage use reflex's format, not stock's, so read and write them with the same codec. Stock's localStorage is on another origin anyway. Run both codecs over the current saved value first. If they differ, fall back to the full codec when reading.
-  - Decode the history page (`threadHistory.ts`) and the voice JSON (`dictation.ts`), and re-encode them with the same codec. Both are cast from raw JSON today, so history items keep the legacy notification source and skip the decode's cleanup.
 - **Derive each request's turn item instead of indexing it.** Remove `OpenThread.RequestItemIds` and `indexRequestItem`. Have `requestItems` walk `Timeline` from the newest item, for pending requests only, until it finds the item whose `requestId` matches. That's how stock does it (`derivePendingThreadRequests` in `packages/client-runtime/src/state/threadRequests.ts`). The old 60 ms cost came from a selector that read every turn item. This one reads only the tail, and nothing when no request is pending. Before you delete the index:
   - Measure at 20,000 items with a pending request.
   - Check a request whose item is outside the loaded history window.

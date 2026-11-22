@@ -32,25 +32,26 @@ import {
   updateServerSettingsEffect,
   usageSummaryEffect,
 } from "./settings";
+import { wireCodec } from "./wire";
 
 // Stock's key (CLIENT_SETTINGS_STORAGE_KEY in apps/web/src/clientPersistenceStorage.ts).
 const CLIENT_SETTINGS_KEY = "t3code:client-settings:v1";
 
 // The wire types keep brands that the JSON codecs' encoded types drop, hence the casts.
-const encodeSettingsJson = Schema.encodeSync(Schema.toCodecJson(ServerSettings));
+const encodeSettingsJson = Schema.encodeSync(wireCodec(ServerSettings));
 const encodeSettings = (value: ServerSettings) => encodeSettingsJson(value) as IWireServerSettings;
-const decodePatch = Schema.decodeUnknownSync(Schema.toCodecJson(ClientServerSettingsPatch));
-const decodeMutation = Schema.decodeUnknownSync(Schema.toCodecJson(ProviderInstanceMutation));
-const decodeClient = Schema.decodeUnknownSync(Schema.toCodecJson(ClientSettingsSchema));
-const encodeClientJson = Schema.encodeSync(Schema.toCodecJson(ClientSettingsSchema));
+const decodePatch = Schema.decodeUnknownSync(wireCodec(ClientServerSettingsPatch));
+const decodeMutation = Schema.decodeUnknownSync(wireCodec(ProviderInstanceMutation));
+const decodeClient = Schema.decodeUnknownSync(wireCodec(ClientSettingsSchema));
+// Fills the defaults a stored value lacks, such as a key added since it was saved.
+const decodeStoredClient = Schema.decodeUnknownSync(Schema.toCodecJson(ClientSettingsSchema));
+const encodeClientJson = Schema.encodeSync(wireCodec(ClientSettingsSchema));
 const encodeClient = (value: ClientSettings) => encodeClientJson(value) as IWireClientSettings;
-const encodeArchivedJson = Schema.encodeSync(
-  Schema.toCodecJson(OrchestrationV2ArchivedShellSnapshot),
-);
+const encodeArchivedJson = Schema.encodeSync(wireCodec(OrchestrationV2ArchivedShellSnapshot));
 const encodeArchived = (value: OrchestrationV2ArchivedShellSnapshot) =>
   encodeArchivedJson(value) as IWireArchivedShell;
-const decodeUsageInput = Schema.decodeUnknownSync(Schema.toCodecJson(UsageSummaryInput));
-const encodeUsageJson = Schema.encodeSync(Schema.toCodecJson(UsageSummary));
+const decodeUsageInput = Schema.decodeUnknownSync(wireCodec(UsageSummaryInput));
+const encodeUsageJson = Schema.encodeSync(wireCodec(UsageSummary));
 const encodeUsage = (value: UsageSummary) => encodeUsageJson(value) as IWireUsageSummary;
 
 const allowAll = { authorize: () => Effect.void };
@@ -104,11 +105,19 @@ function readClientSettings(): unknown {
   }
 }
 
+function decodeStored(held: unknown): ClientSettings {
+  try {
+    return decodeClient(held);
+  } catch {
+    return decodeStoredClient(held);
+  }
+}
+
 export const storedClientSettingsImpl = implementation(storedClientSettingsEffect, () => {
   try {
-    return encodeClient(decodeClient(readClientSettings()));
+    return encodeClient(decodeStored(readClientSettings()));
   } catch {
-    return encodeClient(decodeClient(REFLEX_DEFAULTS));
+    return encodeClient(decodeStoredClient(REFLEX_DEFAULTS));
   }
 });
 

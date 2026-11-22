@@ -7,7 +7,7 @@ import * as Stream from "effect/Stream";
 import type { IResourceImplementation } from "treflex";
 
 import { followItems } from "./followItems";
-import type { Wire } from "./wire";
+import { type Wire, wireCodec } from "./wire";
 
 export type IWireServerConfigEvent = Wire<ServerConfigStreamEvent>;
 
@@ -20,7 +20,7 @@ declare module "treflex" {
   }
 }
 
-const encodeEvent = Schema.encodeEffect(Schema.toCodecJson(ServerConfigStreamEvent));
+const encodeEvent = Schema.encodeEffect(wireCodec(ServerConfigStreamEvent));
 
 /** The session's config stream, which opens with a snapshot of the current config. */
 export const serverConfigStream: IResourceImplementation<"serverConfigStream"> = (params, r) =>

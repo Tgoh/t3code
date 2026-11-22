@@ -14,8 +14,8 @@ import {
   type VoiceStreamingSession,
 } from "@t3tools/client-runtime/voice-input";
 import {
-  type EnvironmentSpeechModels,
-  type EnvironmentSpeechStatus,
+  EnvironmentSpeechModels,
+  EnvironmentSpeechStatus,
   SPEECH_STREAM_PATH,
   type SpeechStreamText,
   type SpeechTranscriptionOptions,
@@ -25,7 +25,7 @@ import * as Schema from "effect/Schema";
 import { defineEffect, type IEffect, implementation, type IResourceImplementation } from "treflex";
 
 import { ServerError, serverFetch } from "./serverError";
-import type { Wire } from "./wire";
+import { type Wire, wireCodec } from "./wire";
 import workletUrl from "./speech/pcmWorklet.ts?worker&url";
 
 export interface IDictationDraft {
@@ -82,8 +82,18 @@ export const voiceStatusEffect = defineEffect<IVoiceStatusEffect, EnvironmentSpe
   "voiceStatus",
 );
 
-export const voiceStatusImpl = implementation(voiceStatusEffect, (_effect, action) =>
-  voiceJson<EnvironmentSpeechStatus>("/api/voice/status", { signal: action?.signal ?? null }),
+const decodeStatus = Schema.decodeUnknownSync(Schema.toCodecJson(EnvironmentSpeechStatus));
+const encodeStatus = Schema.encodeSync(wireCodec(EnvironmentSpeechStatus));
+const decodeModels = Schema.decodeUnknownSync(Schema.toCodecJson(EnvironmentSpeechModels));
+const encodeModels = Schema.encodeSync(wireCodec(EnvironmentSpeechModels));
+
+const voiceStatus = async (init: RequestInit) =>
+  decodeStatus(await voiceJson<unknown>("/api/voice/status", init));
+
+export const voiceStatusImpl = implementation(
+  voiceStatusEffect,
+  async (_effect, action) =>
+    encodeStatus(await voiceStatus({ signal: action?.signal ?? null })) as EnvironmentSpeechStatus,
 );
 
 async function voiceJson<T>(path: string, init: RequestInit): Promise<T> {
@@ -110,7 +120,7 @@ export const voiceModelsEffect = defineEffect<IVoiceModelsEffect, IVoiceModel[]>
 
 export const voiceModelsImpl = implementation(voiceModelsEffect, async (_effect, action) =>
   modelList(
-    await voiceJson<EnvironmentSpeechModels>("/api/voice/models", {
+    await voiceJson<unknown>("/api/voice/models", {
       signal: action?.signal ?? null,
     }),
   ),
@@ -129,7 +139,7 @@ export const voiceModelCommandEffect = defineEffect<IVoiceModelCommandEffect, IV
 
 export const voiceModelCommandImpl = implementation(voiceModelCommandEffect, async (effect) =>
   modelList(
-    await voiceJson<EnvironmentSpeechModels>(`/api/voice/models/${effect.Command}`, {
+    await voiceJson<unknown>(`/api/voice/models/${effect.Command}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ modelId: effect.ModelId }),
@@ -137,7 +147,8 @@ export const voiceModelCommandImpl = implementation(voiceModelCommandEffect, asy
   ),
 );
 
-const modelList = (catalog: EnvironmentSpeechModels) => catalog.models as IVoiceModel[];
+const modelList = (catalog: unknown) =>
+  (encodeModels(decodeModels(catalog)) as { models: IVoiceModel[] }).models;
 
 export interface IDictationHooks {
   request(): IDictationRequest | null;
@@ -331,9 +342,7 @@ async function prepareTranscription(
       message: "Voice input has no draft to record into.",
     });
   const recordingOptions = request.Options;
-  const status = await voiceJson<EnvironmentSpeechStatus>("/api/voice/status", {
-    signal: options.signal,
-  }).catch((cause: unknown) => {
+  const status = await voiceStatus({ signal: options.signal }).catch((cause: unknown) => {
     throwIfVoiceTranscriptionAborted(options.signal);
     throw new VoiceTranscriptionError({
       code: "unavailable",

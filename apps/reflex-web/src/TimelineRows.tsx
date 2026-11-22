@@ -42,7 +42,7 @@ import {
 } from "./icons";
 import { T3Mark } from "./brand";
 import { SubagentNotification, SubagentRow } from "./SubagentRows";
-import { notificationSource, notifiedSubagent } from "./subagents";
+import { notifiedSubagent } from "./subagents";
 import Environment from "./Environment";
 import { assetUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
 import type { IWireTurnItem } from "./Infrastructure/wire";
@@ -172,7 +172,7 @@ function NotificationIcon(props: { item: Extract<IWireTurnItem, { type: "notific
         component={
           props.item.outcome === "failed"
             ? CircleAlert
-            : (NOTIFICATION_ICONS[notificationSource(props.item).kind] ?? Zap)
+            : (NOTIFICATION_ICONS[props.item.source.kind] ?? Zap)
         }
       />
     </span>
