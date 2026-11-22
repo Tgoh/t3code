@@ -10,7 +10,7 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Sidebar status as icons.** Drop the words "Working", "Waiting" and "Done": the icon and its colour carry the status, and the word moves to the tooltip and the accessible label. That gives the title the width. Waits for Tam's pick between keeping the elapsed time beside the icon and icon only (mockups in `G:\Sorted\Code\t3code-dev-home\screenshots\mockups\sidebar-status-icons.png`).
+- **Sidebar status as icons.** Drop the words "Working", "Waiting" and "Done": the icon and its colour carry the status, and the word moves to the tooltip and the accessible label. That gives the title the width. Tam picked "icon and time": a working row keeps its elapsed time beside the icon, and waiting and done show the icon alone. The mockup is option 1 in `G:\Sorted\Code\t3code-dev-home\screenshots\mockups\sidebar-status-icons.png`.
 - **html-render and MCP app rows.** Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
 - **Photos from the phone.** Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
 - **Expired image URLs.** Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
