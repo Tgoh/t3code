@@ -339,6 +339,7 @@ function applyEvent(
     case "thread.active-reordered":
     case "thread.metadata-updated":
     case "thread.pull-request-synced":
+    case "thread.issue-synced":
     case "thread.runtime-mode-updated":
     case "thread.interaction-mode-updated":
     case "thread.model-selection-updated":
@@ -360,10 +361,24 @@ function applyEvent(
       return;
     case "run.created":
     case "run.updated": {
-      const wasQueued = draft.Runs[event.payload.id]?.status === "queued";
-      put(draft.Runs, event.payload);
+      const known = draft.Runs[event.payload.id];
+      const wasQueued = known?.status === "queued";
+      // Lifecycle updates carry the run as it was when the turn started; only
+      // `run.output-submitted` sets the output, so an update without it keeps the held one.
+      const output = known?.output;
+      put(
+        draft.Runs,
+        event.payload.output === undefined && output !== undefined
+          ? { ...event.payload, output: JSON.parse(JSON.stringify(output)) }
+          : event.payload,
+      );
       if (wasQueued && event.payload.status !== "queued")
         restoreQueuedUserRows(draft, event.payload.id);
+      return;
+    }
+    case "run.output-submitted": {
+      const run = draft.Runs[event.payload.runId];
+      if (run !== undefined) run.output = event.payload.output;
       return;
     }
     case "run.background-work-cancelled": {
