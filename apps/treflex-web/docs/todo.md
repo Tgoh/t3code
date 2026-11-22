@@ -76,6 +76,11 @@ After stage 2, which also changes `ThreadView`.
 
   4. **`treflex/require-lifecycle-reason`**, opt-in, requires a disable comment with a reason on every `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`. **In progress** in the reflex repo, in the same vendored `treflex-eslint` 0.2.1 build as rule 1. Turn it on with rule 1 and annotate the existing sites.
 
+## Repo
+
+- **Sync upstream.** Run `/syncupstream` once the stage 1 threads that are running now have merged, so it merges into a quiet `treflex-main`.
+- **Make `Tgoh/t3code` public**, as an example of treflex, with nothing linking to it yet. **In progress:** an audit in its own thread, report only. It checks the full history, every branch and tag on origin, issues and PRs, and Actions for anything that shouldn't be public. Tam flips the visibility after reading the audit.
+
 ## Housekeeping
 
 Any time; none of it touches the client.
