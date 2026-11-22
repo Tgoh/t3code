@@ -70,6 +70,10 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 - **Delete `Tgoh/t3code-archive`.** `Tgoh/t3code` is public, with Actions, Issues, Projects and Wiki off. The private archive holds the old history; Tam deletes it once happy. Never push a branch made before the cutover: its history isn't connected and would bring the old commits back.
 
+## Server
+
+- **Idle compaction survives a server restart.** **In progress:** `fix/idle-compaction-restart`, an upstream PR, then cherry-picked onto `treflex-main`. `IdleCompactionService` keeps its timers in memory, so a restart within the hour after a turn drops that thread's compaction; the Notes Main thread lost one to the 2026-11-22 restarts. On startup, re-arm the threads whose latest run completed inside the cache window. Takes effect after Tam's next server restart.
+
 ## Housekeeping
 
 Any time; none of it touches the client.
