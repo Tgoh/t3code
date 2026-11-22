@@ -43,7 +43,16 @@ From an audit of how the port uses treflex 0.1.0. Most of the code already follo
   - Move `runScript`'s open-the-terminal decision from the view into the action.
   - Give features hand-picked ids instead of `import.meta.url`.
 
-## 3. Missing features
+## 3. Style parity
+
+Nothing hand-rolled that stock already has. Before "Missing features", so new features use the shared components.
+
+- **Shared components, one to one with stock's `components/ui`.** For each stock `apps/web/src/components/ui` component the client uses, a treflex counterpart in `src/ui/` with the same variants and class strings, listed in a README table like "Logic copied from stock". Replace hand-rolled markup that has a stock component. The most important of the four.
+- **All of stock's tokens.** Copy every custom property from `apps/web/src/index.css`, and its `--color-*` theme lines, into `styles.css` and `index.css`, so a copied class always resolves. Stock has about 275 and treflex about 148; the missing ones include `icon-muted`, `placeholder`, `message-foreground`, `sidebar-row-selected` and `warning-surface`.
+- **Styles in the sync.** Each `/syncupstream` diffs stock's `index.css` and the `components/ui` files that treflex mirrors, and ports their class changes, as it ports logic. Update the skill.
+- **A visual drift check.** A script that screenshots key views (sidebar, thread, composer, settings, dialogs) in stock and treflex on the same server and data, and flags differences above a threshold.
+
+## 4. Missing features
 
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **Held send:** Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
@@ -64,7 +73,7 @@ Built on the restructured model, so after stage 2. Each item groups related gaps
 - **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.
 - **Usage limits from external sources.** Open the config stream with `usageLimitSources` and show the usage-limit hubs, as stock does. See "Usage limits".
 
-## 4. Performance
+## 5. Performance
 
 After stage 2, which also changes `ThreadView`.
 
@@ -88,11 +97,7 @@ After stage 2, which also changes `ThreadView`.
 
 ## Repo
 
-- **Cut over to a rewritten public repo**, as an example of treflex, with nothing linking to it yet. **In progress:** steps 1 and 2 in their own thread; the coordinator does step 3. The audit found no secrets, but 39 commits carry a work email, and the old `handover.md` and commit e1084c2bcb name the employer's systems. Rewriting in place would leave the old commits fetchable by hash on GitHub, so the rewritten history goes to a new repo. Do it once the upstream sync has merged and no thread is running:
-  1. Mirror-clone, keeping only `main` and `treflex-main`. Run `git filter-repo`: a mailmap from the work email to `gohtam@gmail.com`, `--replace-text` for the employer's names and the tailnet host, a new message for e1084c2bcb, and drop `apps/reflex-web/docs/handover.md`. Re-run the audit's greps on the result.
-  2. Rename the private repo to `Tgoh/t3code-archive`, create a fresh private `Tgoh/t3code`, push the rewritten `main` and `treflex-main`, set `treflex-main` as default, and turn Actions, Issues and Projects off.
-  3. Point the main checkout's `origin` at the new repo, reset `treflex-main` to the rewritten history, and remove or recreate every worktree from it. Set this repo's own `user.email` to `gohtam@gmail.com`.
-  4. Tam makes it public. Delete the archive later.
+- **Make `Tgoh/t3code` public.** The cutover to rewritten history is done; the new repo is private, with Actions, Issues, Projects and Wiki off. Tam makes it public when ready, and deletes the private `Tgoh/t3code-archive` (the old history) once happy. Never push a branch made before the cutover: its history isn't connected and would bring the old commits back.
 
 ## Housekeeping
 
@@ -106,5 +111,3 @@ Any time; none of it touches the client.
 
 - **Record the verdicts.** Add treflex's verdicts to the "Feedback for treflex" section of `issues.md`. The friction write-up is at `G:\Sorted\Code\t3code-dev-home\notes\treflex-friction-from-t3code-port.md`, and the treflex side's verdicts are in the reflex repo's `docs/wip` (commit 2b37348).
 - **Server start time.** On a server restart, check whether the roughly 50 seconds between launch and the first log line comes back. See `G:\Sorted\Code\t3code-dev-home\dev-stack\server.log`.
-- **Empty worktree folders.** Delete the leftovers under `G:\Sorted\Code\t3code-dev-home\worktrees\t3code`: `reflex-landscape-header-*`, `reflex-inline-media-*` and `reflex-idle-compaction--c2d629098b4fd778`.
-- **Stale worktrees.** Clean up about 50 registered `reflex/*` worktrees whose branches are merged.
