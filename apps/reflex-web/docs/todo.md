@@ -12,7 +12,7 @@ Everything in the pipeline for the reflex client, in the order to do it. Within 
 
 After stage 1's threads merge, since it touches tests and wiring across the client. Before stage 3, so the restructuring is built on 0.2.0.
 
-- **Upgrade to treflex 0.2.0.** All four packages were published to npm on 17 November. Depend on the published `treflex`, `treflex-solid` and `treflex-eslint` instead of the tarballs in `vendor/`, and delete the folder. That also ends `check:changed`'s "unused patches" failure. Read `docs/wip/done/release-0.2.0-breaking-changes.md` in the reflex repo first.
+- **Upgrade to treflex 0.2.0.** All four packages were published to npm on 17 November. Depend on the published `treflex` and `treflex-solid` instead of the tarballs in `vendor/`. `treflex-eslint` stays vendored: treflex won't publish again before 0.3.0, so take a tarball of the 0.2.1 build that holds the two lifecycle rules (see "Waiting on treflex"), or 0.2.0 from npm if that build isn't ready. Read `docs/wip/done/release-0.2.0-breaking-changes.md` in the reflex repo first.
   - `REPLICA_WRITERS` switches from `Name` to `Label`, and `testing/watchRuntime.ts` gives way to the strict test preset, which fails a test on any diag or failure it didn't expect.
   - Move the minute clock to `provideExternal`/`external`. Then make the header's usage ring recompute on it, so a weekly window that resets shows straight away. Today the ring only redraws when the server pushes new provider data, about every five minutes.
   - Add `treflex-eslint` to the `jsPlugins` in `vite.config.ts`, with only its type-free rules on: `treflex/named`, `treflex/no-yield-in-finally` and `treflex/no-global-open`. The typed rules throw under oxlint for lack of type information. See `docs/wip/13-external/lint-under-oxlint.md`.
@@ -55,13 +55,13 @@ After stage 3, which also changes `ThreadView`.
 ## Waiting on treflex
 
 - **Checks that keep agents off React habits.** treflex's verdicts are in `docs/wip/13-external/views-start-work-from-their-lifecycle.md` in the reflex repo. When each one ships, turn it on here and fix what it finds.
-  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo on `claude/lifecycle-rule`. It ships as `treflex-eslint` 0.2.1, opt-in, which works with core 0.2.0, once Tam approves the release. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the `jsPlugins` setup, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`, and its action has to be `leading` and check state before it writes.
+  1. **`treflex/no-main-state-in-lifecycle`**, a type-free lint rule, comes first. It also covers timers and microtasks in views. **In progress** in the reflex repo. There will be no npm release: when the build is done, treflex's Main thread sends the branch (`claude/eslint-0.2.1`, `treflex-eslint` 0.2.1, which works with core 0.2.0) and a pack command, and the client vendors the tarball. To turn it on, set `"treflex/no-main-state-in-lifecycle": "error"` in the `jsPlugins` setup, and fix or annotate every site it flags. A site that's really caused by what's on screen gets `// oxlint-disable-next-line treflex/no-main-state-in-lifecycle -- <reason>`, and its action has to be `leading` and check state before it writes.
   2. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
   3. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
 
   Screen-caused work, such as loading the next page when a list's end scrolls into view, gets a named opt-in at the call site instead of being banned.
 
-  4. **`treflex/require-lifecycle-reason`**, opt-in, requires a disable comment with a reason on every `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`. **In progress** in the reflex repo, for the same `treflex-eslint` 0.2.1 as rule 1, or 0.2.2. When it ships, turn it on with rule 1 and annotate the existing sites.
+  4. **`treflex/require-lifecycle-reason`**, opt-in, requires a disable comment with a reason on every `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`. **In progress** in the reflex repo, in the same vendored `treflex-eslint` 0.2.1 build as rule 1. Turn it on with rule 1 and annotate the existing sites.
 
 ## Housekeeping
 
