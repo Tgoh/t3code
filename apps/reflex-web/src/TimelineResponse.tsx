@@ -111,7 +111,7 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
       Latest: latest(),
       LatestRun: latestRun(),
       Working: working(),
-      Expanded: (key) => session.expandedTimelineRows()[key] === true,
+      Expanded: (key) => session.state.ExpandedRows[key] === true,
     }),
   );
   const rows = createMemo(() => new Map(layout().map((row) => [row.Key, row])));

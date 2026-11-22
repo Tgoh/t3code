@@ -16,6 +16,7 @@ import {
   isEnded,
   open,
   openResource,
+  publishToNearest,
   receiver,
   resource,
   start,
@@ -47,6 +48,10 @@ declare module "treflex" {
   }
   interface ITimerRegistry {
     "Shell/Reopen": {};
+  }
+  interface IMessageRegistry {
+    /** Thread rows left the shell, so an open thread's lineage may need their titles looked up. */
+    "Shell/ThreadsDropped": {};
   }
 }
 
@@ -253,6 +258,11 @@ const changesProjects = (item: Exclude<IWireShellItem, { kind: "synchronized" }>
   (item.kind === "snapshot" && item.resolvedRepositoryIdentityRoots === undefined) ||
   item.kind === "project.updated";
 
+const dropsThreads = (item: Exclude<IWireShellItem, { kind: "synchronized" }>) =>
+  (item.kind === "snapshot" && item.resolvedRepositoryIdentityRoots === undefined) ||
+  item.kind === "thread.removed" ||
+  (item.kind === "thread.updated" && item.location !== "active");
+
 function faviconKeys(draft: IShell): Record<string, string | null> {
   const keys: Record<string, string | null> = {};
   for (const project of Object.values(draft.Projects)) {
@@ -292,9 +302,12 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
         yield* start(visitShown, draft, { Retry: true });
     } else {
       const projects = changesProjects(message.Item) ? faviconKeys(draft) : null;
+      const threads = dropsThreads(message.Item) ? Object.keys(draft.Threads) : null;
       applyItem(draft, message.Item);
       const favicons = projects === null ? [] : newFavicons(draft, projects);
       if (favicons.length > 0) yield* start(requestFavicons, draft, favicons);
+      if (threads?.some((id) => draft.Threads[id] === undefined))
+        yield* publishToNearest(draft, "Shell/ThreadsDropped");
       yield* visitIfDue(draft);
     }
   },

@@ -146,19 +146,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
   };
 
   const advance = () => {
-    const current = progress();
-    if (!canRespond() || responding()) return;
-    if (current.IsLastQuestion) {
-      if (current.Answers !== null)
-        request.answerRequest(
-          thread.state.EnvironmentId,
-          thread.state.ThreadId,
-          null,
-          current.Answers,
-        );
-      return;
-    }
-    if (current.CanAdvance) session.setQuestionIndex(requestId, current.QuestionIndex + 1);
+    if (!responding()) void session.advanceQuestion(requestId, questions());
   };
   const answering: IAnswering = {
     progress,
@@ -172,21 +160,9 @@ export const PendingQuestion = RuntimeRequest.provider<{
     previous: () => session.setQuestionIndex(requestId, Math.max(progress().QuestionIndex - 1, 0)),
   };
 
-  let autoAdvance: number | undefined;
-  const clearAutoAdvance = () => {
-    if (autoAdvance !== undefined) window.clearTimeout(autoAdvance);
-    autoAdvance = undefined;
-  };
-  onCleanup(clearAutoAdvance);
   const choose = (question: IQuestion, optionValue: string) => {
-    if (locked()) return;
-    void session.toggleQuestionOption(requestId, questions(), question.id, optionValue);
-    if (question.multiSelect) return;
-    clearAutoAdvance();
-    autoAdvance = window.setTimeout(() => {
-      autoAdvance = undefined;
-      if (progress().Question?.id === question.id) advance();
-    }, 200);
+    if (!locked())
+      void session.chooseQuestionOption(requestId, questions(), question.id, optionValue);
   };
   const selected = (optionValue: string) =>
     progress().CustomAnswer.trim() === "" && progress().SelectedOptionValues.includes(optionValue);

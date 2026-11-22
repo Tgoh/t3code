@@ -115,7 +115,15 @@ import {
   threadStartAvailable,
   unsettledRunId,
 } from "./rewind";
-import { carryIntoPrompt, type IQuestion, type IQuestionDraft, seededDrafts } from "./questions";
+import {
+  carryIntoPrompt,
+  type IQuestion,
+  type IQuestionDraft,
+  questionProgress,
+  seededDrafts,
+} from "./questions";
+import { answerRequest, canAnswer, type IRuntimeRequest } from "./RuntimeRequest";
+import { delay } from "./Infrastructure/delay";
 import type {
   IWireArchivedShell,
   IWireServerConfig,
@@ -199,12 +207,6 @@ export interface ICommandOutputRow extends IEntity {
   ItemId: string;
 }
 
-const expandedRows = (owner: IThreadSession) =>
-  transient(owner, "Timeline/Expanded", {
-    Rows: {} as Record<string, true>,
-    Outputs: {} as Record<string, ICommandOutputRow>,
-  });
-
 const unwrappedCode = (owner: IThreadSession) =>
   transient(owner, "Timeline/Unwrapped", { Blocks: {} as Record<string, true> });
 
@@ -242,6 +244,10 @@ export interface IThreadSession extends IEntity {
   Panels: { Diff: IDiffPanel; Details: IDetailsPanel; Launcher: { Open: boolean } };
   Terminal: ITerminalPanel;
   Git: IGitWork;
+  /** Timeline rows the person expanded, by row id. */
+  ExpandedRows: Record<string, true>;
+  /** The expanded command rows' outputs, by row id. */
+  CommandOutputs: Record<string, ICommandOutputRow>;
 }
 
 export function getDefaultThreadSession(
@@ -267,6 +273,8 @@ export function getDefaultThreadSession(
       Launcher: { Open: false },
     },
     Terminal: { Open: false, TerminalId: DEFAULT_TERMINAL_ID },
+    ExpandedRows: {},
+    CommandOutputs: {},
   };
 }
 
@@ -1245,6 +1253,64 @@ export function* toggleQuestionOption(
   );
 }
 
+const QUESTION_ADVANCE_MS = 200;
+
+function* threadRequests(
+  draft: IThreadSession,
+): ISelectorGenerator<Record<string, IRuntimeRequest>> {
+  const replica = yield* getData(draft, "Replica");
+  return replica?.OpenThreads[draft.ThreadId]?.RuntimeRequests ?? {};
+}
+
+/** Answers on the last question, else moves to the next one once the current one is answered. */
+export function* advanceQuestion(
+  draft: IThreadSession,
+  requestId: string,
+  questions: ReadonlyArray<IQuestion>,
+): IActionGenerator {
+  const request = (yield* select(threadRequests))[requestId];
+  if (request === undefined || !canAnswer(request)) return;
+  const current = questionProgress(
+    questions,
+    draft.QuestionAnswers[requestId],
+    draft.QuestionIndex[requestId] ?? 0,
+  );
+  if (current.IsLastQuestion) {
+    if (current.Answers !== null)
+      yield* start(
+        answerRequest,
+        request.$Id,
+        draft.EnvironmentId,
+        draft.ThreadId,
+        null,
+        current.Answers,
+      );
+    return;
+  }
+  if (current.CanAdvance) draft.QuestionIndex[requestId] = current.QuestionIndex + 1;
+}
+
+/** Follows stock's card: a single-select pick moves on after a beat, unless the person moved first. */
+export function* chooseQuestionOption(
+  draft: IThreadSession,
+  requestId: string,
+  questions: ReadonlyArray<IQuestion>,
+  questionId: string,
+  optionValue: string,
+): IOpenGenerator {
+  yield* toggleQuestionOption(draft, requestId, questions, questionId, optionValue);
+  const question = questions.find((entry) => entry.id === questionId);
+  if (question === undefined || question.multiSelect) return;
+  yield* open(delay(QUESTION_ADVANCE_MS));
+  const current = questionProgress(
+    questions,
+    draft.QuestionAnswers[requestId],
+    draft.QuestionIndex[requestId] ?? 0,
+  );
+  if (current.Question?.id === questionId) yield* advanceQuestion(draft, requestId, questions);
+}
+latest(chooseQuestionOption);
+
 export function* setQuestionIndex(
   draft: IThreadSession,
   requestId: string,
@@ -1286,19 +1352,18 @@ export function* toggleRowExpanded(
   rowId: string,
   output?: { ThreadId: string },
 ): IActionGenerator {
-  const expanded = yield* expandedRows(draft);
-  if (expanded.Rows[rowId]) {
-    delete expanded.Rows[rowId];
-    delete expanded.Outputs[rowId];
+  if (draft.ExpandedRows[rowId]) {
+    delete draft.ExpandedRows[rowId];
+    delete draft.CommandOutputs[rowId];
     return;
   }
-  expanded.Rows[rowId] = true;
+  draft.ExpandedRows[rowId] = true;
   if (output === undefined) return;
-  expanded.Outputs[rowId] = yield* entity<ICommandOutputRow>({
+  draft.CommandOutputs[rowId] = yield* entity<ICommandOutputRow>({
     ThreadId: output.ThreadId,
     ItemId: rowId,
   });
-  yield* openOutput(draft, expanded.Outputs[rowId]!);
+  yield* openOutput(draft, draft.CommandOutputs[rowId]!);
 }
 
 function* openOutput(draft: IThreadSession, row: ICommandOutputRow): IActionGenerator {
@@ -1313,21 +1378,17 @@ function* openOutput(draft: IThreadSession, row: ICommandOutputRow): IActionGene
 /** Closes what only a shown thread needs; `reattachThread` opens it again. */
 export function* detachThread(draft: IThreadSession): IActionGenerator {
   draft.Panels.Details.Popover = false;
-  for (const row of Object.values((yield* expandedRows(draft)).Outputs)) {
+  for (const row of Object.values(draft.CommandOutputs)) {
     yield* closeResource(row, "Command/Output");
   }
   yield* detachTerminal(draft);
 }
 
 export function* reattachThread(draft: IThreadSession): IActionGenerator {
-  for (const row of Object.values((yield* expandedRows(draft)).Outputs)) {
+  for (const row of Object.values(draft.CommandOutputs)) {
     yield* openOutput(draft, row);
   }
   yield* restoreTerminal(draft);
-}
-
-export function* commandOutputRows(draft: IThreadSession) {
-  return (yield* expandedRows(draft)).Outputs;
 }
 
 /** Code blocks wrap their lines until the person turns it off. */
@@ -1532,10 +1593,6 @@ export function* terminalAttachment(draft: IThreadSession) {
   return yield* attachment(draft);
 }
 
-export function* expandedTimelineRows(draft: IThreadSession) {
-  return (yield* expandedRows(draft)).Rows;
-}
-
 export function* unwrappedCodeBlocks(draft: IThreadSession) {
   return (yield* unwrappedCode(draft)).Blocks;
 }
@@ -1567,6 +1624,8 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     mergeBack,
     setQuestionCustomAnswer,
     toggleQuestionOption,
+    chooseQuestionOption,
+    advanceQuestion,
     setQuestionIndex,
     toggleRowExpanded,
     toggleCodeWrap,
@@ -1605,8 +1664,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     mergeBackRunId,
     diffLoading,
     terminalAttachment,
-    expandedTimelineRows,
-    commandOutputRows,
     unwrappedCodeBlocks,
   },
 );

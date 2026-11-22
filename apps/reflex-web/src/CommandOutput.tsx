@@ -27,7 +27,7 @@ const NOTE = "m-0 text-[12px] text-muted-foreground";
 export function CommandOutput(props: { itemId: string }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
-  const output = useResource(() => session.commandOutputRows()[props.itemId], "Command/Output");
+  const output = useResource(() => session.state.CommandOutputs[props.itemId], "Command/Output");
   const spans = createMemo(() =>
     terminalOutputSpans(output.value()?.Text ?? "", TERMINAL_PALETTES[environment.colorScheme()]),
   );

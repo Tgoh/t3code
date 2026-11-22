@@ -101,6 +101,7 @@ import {
   stopDictation,
 } from "./Dictation";
 import { serverError } from "./Infrastructure/serverError";
+import { lookUpLineageTitles } from "./lineageTitles";
 import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, openShellStream, visitShown } from "./Shell";
 import {
@@ -635,6 +636,10 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   },
   *"Thread/MergedBack"(draft, { ThreadId }) {
     yield* selectThread(draft, ThreadId);
+  },
+  *"Shell/ThreadsDropped"(draft) {
+    for (const thread of Object.values(draft.Replica.OpenThreads))
+      yield* start(lookUpLineageTitles, thread);
   },
   *"Thread/Expired"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);

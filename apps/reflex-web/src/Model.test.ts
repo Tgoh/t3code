@@ -156,7 +156,6 @@ import {
   threadWorking,
   diffLoading,
   closeTerminal,
-  commandOutputRows,
   compactionOffer,
   effectiveModel,
   effectiveRuntimeMode,
@@ -170,6 +169,7 @@ import {
   setDraft,
   setModelSelection,
   setQuestionCustomAnswer,
+  chooseQuestionOption,
   setQuestionIndex,
   setRuntimeMode,
   stopRun,
@@ -196,6 +196,7 @@ import {
   snapshotOf,
   tapReplicaWriters,
   THREAD_ID,
+  thread,
 } from "./testing/threadFixture";
 import { watchRuntime } from "./testing/watchRuntime";
 import type { IProjectFaviconTarget } from "./projectIcon";
@@ -3821,6 +3822,65 @@ describe("the terminal", () => {
 });
 
 describe("work started by events", () => {
+  it("a single-select pick moves to the next question after a beat, and answers on the last", async () => {
+    const waits: Array<() => void> = [];
+    const answers: IRespondRequest[] = [];
+    const server = await connect(undefined, null, {
+      delay: () => new Promise<void>((resolve) => waits.push(resolve)),
+      respondRequest: (effect: IRespondRequest) => {
+        answers.push(effect);
+      },
+    });
+    await server.open();
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runtimeRequests: [
+            {
+              id: "r-1",
+              kind: "user_input",
+              status: "pending",
+              responseCapability: { type: "live" },
+            },
+          ],
+        } as never,
+        1,
+      ),
+    );
+    const option = (label: string) => ({ label, description: label });
+    const questions = [
+      { id: "one", header: "One", question: "First?", options: [option("a"), option("b")] },
+      { id: "two", header: "Two", question: "Second?", options: [option("c")] },
+    ] as unknown as IQuestion[];
+    const choose = async (questionId: string, value: string) => {
+      void server.runtime.dispatch(
+        chooseQuestionOption,
+        server.sessionId(),
+        "r-1",
+        questions,
+        questionId,
+        value,
+      );
+      await settled();
+    };
+    const wake = async () => {
+      for (const resolve of waits.splice(0)) resolve();
+      await settled();
+    };
+    const index = () => server.session().QuestionIndex["r-1"] ?? 0;
+
+    await choose("one", "a");
+    await choose("one", "b");
+    expect(index()).toBe(0);
+    await wake();
+    expect(index()).toBe(1);
+
+    await choose("two", "c");
+    await wake();
+    expect(answers.map((answer) => answer.Answers)).toEqual([{ one: "b", two: "c" }]);
+  });
+
   it("expanding a command row opens its output, which leaving the thread closes and returning reopens", async () => {
     const server = await connect();
     await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
@@ -3829,7 +3889,7 @@ describe("work started by events", () => {
         .resources()
         .filter((row) => row.Key === "Command/Output")
         .map((row) => row.Params as unknown as { ThreadId: string; ItemId: string });
-    const rows = () => server.runtime.processSelector(commandOutputRows, () => server.session());
+    const rows = () => server.session().CommandOutputs;
 
     await server.runtime.dispatch(toggleRowExpanded, server.sessionId(), "cmd-1", {
       ThreadId: "source",
@@ -3930,6 +3990,23 @@ describe("work started by events", () => {
     } as IWireThreadItem);
     await settled();
     expect(asked).toEqual([["gone"], ["elsewhere"]]);
+
+    const shellSnapshot = (sequence: number, threads: unknown[]) =>
+      ({
+        kind: "snapshot",
+        snapshot: { snapshotSequence: sequence, projects: [], threads, archivedThreads: [] },
+      }) as unknown as IWireShellItem;
+    await server.sendShell(shellSnapshot(1, [{ ...thread("kept"), title: "Kept" }]));
+    await server.sendThread({
+      kind: "event",
+      sequence: 5,
+      event: event("thread.metadata-updated", forkOf("kept")),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toHaveLength(2);
+    await server.sendShell(shellSnapshot(2, []));
+    await settled();
+    expect(asked).toEqual([["gone"], ["elsewhere"], ["kept"]]);
   });
 
   it("asks for each project's favicon as its row arrives or its favicon source changes", async () => {

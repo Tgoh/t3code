@@ -833,7 +833,7 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
     const held = item();
     return held === undefined ? null : diffTurnOf(thread.state, held);
   });
-  const expanded = () => session.expandedTimelineRows()[props.id] === true;
+  const expanded = () => session.state.ExpandedRows[props.id] === true;
   const notification = () => {
     const held = item();
     return held?.type === "notification" ? held : null;
