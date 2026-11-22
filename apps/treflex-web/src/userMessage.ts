@@ -4,11 +4,8 @@ import {
   parseComposerContextHref,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
-import {
-  parseThreadLinkHref,
-  threadLinkCandidates,
-  unknownThreadLinkLabel,
-} from "@t3tools/shared/threadLinks";
+import { parseThreadLinkHref, threadLinkCandidates } from "@t3tools/shared/threadLinks";
+import { unknownThreadLinkLabel } from "@t3tools/shared/threadLinksCopy";
 
 import type { IWireProjection, IWireTurnItem } from "./Infrastructure/wire";
 

@@ -17,13 +17,8 @@ import {
   makeWindow,
   usageSourceMessages,
 } from "@t3tools/shared/usageFormat";
-import {
-  collectLimitNotices,
-  displayLimitWindows,
-  formatResetsIn,
-  type LimitPace,
-  type LimitPool,
-} from "@t3tools/shared/usageLimits";
+import { displayLimitWindows, type LimitPace, type LimitPool } from "@t3tools/shared/usageLimits";
+import { collectLimitNotices, formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import {
   type DailyTotals,
   type HourlyTotals,

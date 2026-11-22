@@ -2,10 +2,10 @@ import { EnvironmentId, type ServerProvider } from "@t3tools/contracts";
 import {
   collectLimitAccounts,
   collectLimitPools,
-  formatResetsIn,
   type LimitPool,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
+import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 
 export type ILimitTone = "normal" | "warning" | "danger";
 
