@@ -46,6 +46,7 @@ import {
 
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
+import { SheetBackdrop, sheetPopupVariants } from "./ui/Sheet";
 import { createMediaQuery, enterPanel, PANEL_SHEET_QUERY } from "./viewport";
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
@@ -57,17 +58,10 @@ export const CHAT_STAGE =
 const NOTICE =
   "mx-auto my-0 w-full max-w-(--chat-content-max-width) py-1 text-[14px] text-warning-foreground";
 
-// .panel-sheet marks the narrow layout, where panels float over the thread as sheets. .panel-motion
-// arrives two frames after mount, so panels already open on a thread switch don't slide in again.
-const RIGHT_PANEL = [
-  "flex h-full min-w-0 flex-[0_0_min(42rem,53%)] flex-col border-l border-border bg-background",
-  "in-[.panel-sheet]:absolute in-[.panel-sheet]:inset-y-0 in-[.panel-sheet]:right-0 in-[.panel-sheet]:z-60 in-[.panel-sheet]:pr-[env(safe-area-inset-right)] in-[.panel-sheet]:shadow-[0_8px_24px_rgb(0_0_0/12%)]",
-  "not-max-[761px]:in-[.panel-sheet]:w-[min(42vw,28rem)] not-max-[761px]:in-[.panel-sheet]:min-w-80 max-[761px]:in-[.panel-sheet]:w-[min(88vw,24rem)]",
-  "transition-[translate,opacity] duration-200 ease-in-out data-starting-style:in-[.panel-sheet]:translate-x-full data-starting-style:not-in-[.panel-sheet]:translate-x-8 data-starting-style:not-in-[.panel-sheet]:opacity-0",
-].join(" ");
+const RIGHT_PANEL_COLUMN =
+  "flex h-full min-w-0 flex-[0_0_min(42rem,53%)] flex-col border-l border-border bg-background transition-[translate,opacity] duration-200 ease-in-out data-starting-style:translate-x-8 data-starting-style:opacity-0";
 
-const BACKDROP =
-  "absolute inset-0 z-55 bg-(--dialog-backdrop) backdrop-blur-[4px] transition-opacity duration-200 ease-in-out data-starting-style:opacity-0";
+const RIGHT_PANEL_SHEET = `${sheetPopupVariants({ side: "right", surface: "right-panel" })} pr-[env(safe-area-inset-right)]`;
 
 const CRUMB_LINK =
   "group/crumb inline-flex flex-none cursor-pointer items-center gap-1.5 rounded-xs border-0 bg-transparent p-0 text-muted-foreground hover:text-foreground";
@@ -193,6 +187,7 @@ const ThreadBody = ThreadSession.provider(() => {
   const rightPanelOpen = () => diffOpen() || launcherOpen();
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
   const [panelMotion, setPanelMotion] = createSignal(false);
+  // Late, so panels already open on a thread switch don't slide in again.
   onMount(() => requestAnimationFrame(() => requestAnimationFrame(() => setPanelMotion(true))));
   const closeTopSheet = () =>
     rightPanelOpen() ? void session.closeRightPanel() : onTerminal(closeTerminal);
@@ -413,10 +408,10 @@ const ThreadBody = ThreadSession.provider(() => {
     });
   });
   return (
-    <div
-      class="relative flex h-full"
-      classList={{ "panel-sheet": panelSheet(), "panel-motion": panelMotion() }}
-    >
+    <div class="relative flex h-full" classList={{ "panel-motion": panelMotion() }}>
+      <Show when={panelSheet() && (rightPanelOpen() || terminalOpen())}>
+        <SheetBackdrop contained ref={enterPanel} onClick={closeTopSheet} />
+      </Show>
       <FileDropSection>
         <PageHeader>
           <SidebarToggle />
@@ -594,11 +589,8 @@ const ThreadBody = ThreadSession.provider(() => {
           <TerminalPanel state={session.state.Terminal} />
         </Show>
       </FileDropSection>
-      <Show when={panelSheet() && (rightPanelOpen() || terminalOpen())}>
-        <div ref={enterPanel} class={BACKDROP} aria-hidden="true" onClick={closeTopSheet} />
-      </Show>
       <Show when={rightPanelOpen()}>
-        <aside ref={enterPanel} class={RIGHT_PANEL}>
+        <aside ref={enterPanel} class={panelSheet() ? RIGHT_PANEL_SHEET : RIGHT_PANEL_COLUMN}>
           <Show
             when={session.state.Panels.Diff}
             keyed

@@ -38,6 +38,7 @@ import { CHAT_STAGE, ThreadView } from "./ThreadView";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/Empty";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Presence, usePresence } from "./ui/Presence";
+import { SheetBackdrop } from "./ui/Sheet";
 import { StandalonePage, StandalonePageHeader } from "./ui/StandalonePage";
 import { TooltipHost } from "./ui/Tooltip";
 import { UsageView } from "./UsageView";
@@ -296,6 +297,11 @@ const EnvironmentView = Environment.provider(() => {
       <SidebarSheetContext.Provider value={sidebar}>
         <OverlayContext.Provider value={overlays}>
           <NavigationContext.Provider value={navigation}>
+            <Presence when={sidebar.open()}>
+              {() => (
+                <SheetBackdrop ref={usePresence().track} onClick={() => sidebar.setOpen(false)} />
+              )}
+            </Presence>
             <Sidebar state={environment.state.Replica.Shell} />
             <SidebarRail
               width={sidebarWidth()}
@@ -308,9 +314,6 @@ const EnvironmentView = Environment.provider(() => {
               }}
               onReset={() => void environment.setPreferences({ SidebarWidth: null })}
             />
-            <Presence when={sidebar.open()}>
-              {() => <SheetBackdrop onClose={() => sidebar.setOpen(false)} />}
-            </Presence>
             <EnvironmentMain state={environment.state.Local.Dictation} />
             <For each={paletteSessions()}>
               {(session) => (
@@ -331,19 +334,6 @@ const EnvironmentView = Environment.provider(() => {
     </div>
   );
 });
-
-// Follows SheetBackdrop in apps/web/src/components/ui/sheet.tsx.
-function SheetBackdrop(props: { onClose: () => void }) {
-  const presence = usePresence();
-  return (
-    <div
-      class="absolute inset-0 z-49 bg-(--dialog-backdrop) backdrop-blur-[4px] transition-opacity duration-200 data-starting-style:opacity-0 data-ending-style:pointer-events-none data-ending-style:opacity-0"
-      aria-hidden="true"
-      ref={(element) => presence.track(element)}
-      onClick={() => props.onClose()}
-    />
-  );
-}
 
 const EnvironmentMain = Dictation.provider(() => {
   const environment = Environment.use();

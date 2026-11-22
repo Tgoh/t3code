@@ -27,12 +27,10 @@ import {
   dialogViewportClass,
   type IDialogSize,
   type IDialogVariant,
-  SCROLL_AREA_CLASS,
-  scrollAreaViewportClass,
 } from "./DialogStyles";
 import { floatingReturnTarget, tabbables } from "./floating";
 import { usePresence } from "./Presence";
-import { trackScrollOverflow } from "./scrollOverflow";
+import { ScrollArea } from "./ScrollArea";
 
 interface IDialogRoot {
   close: () => void;
@@ -423,18 +421,12 @@ export function DialogDescription(props: Omit<JSX.HTMLAttributes<HTMLParagraphEl
 export function DialogPanel(props: JSX.HTMLAttributes<HTMLDivElement> & { scrollFade?: boolean }) {
   const [local, rest] = splitProps(props, ["class", "scrollFade"]);
   return (
-    <div class={SCROLL_AREA_CLASS}>
+    <ScrollArea scrollFade={local.scrollFade ?? true}>
       <div
-        ref={(element) => onCleanup(trackScrollOverflow(element))}
-        class={scrollAreaViewportClass(local.scrollFade ?? true)}
-        data-slot="scroll-area-viewport"
-      >
-        <div
-          {...rest}
-          class={`${DIALOG_PANEL_CLASS} ${local.class ?? ""}`}
-          data-slot="dialog-panel"
-        />
-      </div>
-    </div>
+        {...rest}
+        class={`${DIALOG_PANEL_CLASS} ${local.class ?? ""}`}
+        data-slot="dialog-panel"
+      />
+    </ScrollArea>
   );
 }

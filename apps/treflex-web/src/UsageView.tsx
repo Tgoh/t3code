@@ -39,6 +39,7 @@ import { Alert, AlertTitle } from "./ui/Alert";
 import { Button } from "./ui/Button";
 import { BREADCRUMB, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { RefreshIcon } from "./ui/RefreshIcon";
+import { ScrollArea } from "./ui/ScrollArea";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
 import { Skeleton } from "./ui/Skeleton";
 import { Toggle, ToggleGroup } from "./ui/ToggleGroup";
@@ -257,7 +258,7 @@ export const UsageView = UsagePage.provider(() => {
           </Button>
         </div>
       </PageHeader>
-      <div class="min-w-0 flex-1 overflow-y-auto">
+      <ScrollArea class="min-h-0 min-w-0 flex-1">
         <div class="mx-auto flex max-w-6xl flex-col gap-8 px-6 pt-6 pb-12">
           <Show
             when={metric() !== "limits"}
@@ -278,7 +279,7 @@ export const UsageView = UsagePage.provider(() => {
             </Show>
           </Show>
         </div>
-      </div>
+      </ScrollArea>
     </div>
   );
 }, getDefaultUsagePage);

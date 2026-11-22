@@ -460,7 +460,8 @@ body {
 .chat-markdown ol,
 .chat-markdown blockquote,
 .chat-markdown pre,
-.chat-markdown table {
+.chat-markdown .chat-markdown-table-container,
+.chat-markdown table:not([data-slot="scroll-area-viewport"] > table) {
   margin: 0.65rem 0;
 }
 
@@ -598,12 +599,15 @@ body {
 
 .chat-markdown table {
   border-collapse: collapse;
-  display: block;
   font-size: 0.875rem;
   overflow-wrap: normal;
-  overflow-x: auto;
   width: 100%;
   word-break: normal;
+}
+
+.chat-markdown table:not([data-slot="scroll-area-viewport"] > table) {
+  display: block;
+  overflow-x: auto;
 }
 
 .chat-markdown th,

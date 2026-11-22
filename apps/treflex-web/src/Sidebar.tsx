@@ -2,6 +2,7 @@
 import type { ShownOrder } from "@t3tools/client-runtime/state/thread-search";
 import { useResource } from "treflex-solid";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, splitProps } from "solid-js";
+import { Portal } from "solid-js/web";
 
 import { T3Mark } from "./brand";
 import Environment from "./Environment";
@@ -48,6 +49,7 @@ import {
   openMenuFromKeys,
 } from "./ui/Menu";
 import { Presence } from "./ui/Presence";
+import { sheetPopupVariants } from "./ui/Sheet";
 import { SidebarInput, SidebarMenuButton } from "./ui/Sidebar";
 import { useSidebarSheet } from "./viewport";
 
@@ -63,9 +65,12 @@ const CONNECTION_LABEL: Record<string, string> = {
 const SECOND = 1_000;
 const searchResultId = (threadId: string) => `sidebar-search-result-${threadId}`;
 
-// The sheet and collapse states are classes App.tsx sets on the layout around the sidebar.
-const SIDEBAR =
-  "flex h-full min-h-0 flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) bg-size-[256px_256px] text-sidebar-foreground in-[.sidebar-collapsed]:hidden in-[.sidebar-sheet]:absolute in-[.sidebar-sheet]:top-[env(safe-area-inset-top)] in-[.sidebar-sheet]:bottom-0 in-[.sidebar-sheet]:left-0 in-[.sidebar-sheet]:z-50 pl-[env(safe-area-inset-left)] in-[.sidebar-sheet]:w-[calc(100vw-12px)] in-[.sidebar-sheet:not(.sidebar-open)]:invisible in-[.sidebar-sheet:not(.sidebar-open)]:[transform:translateX(-100%)] in-[.sidebar-sheet:not(.sidebar-open)]:[transition:transform_0.2s_ease-in-out,visibility_0s_linear_0.2s] in-[.sidebar-open]:shadow-[0_8px_24px_rgb(0_0_0/12%)] in-[.sidebar-open]:[transition:transform_0.2s_ease-in-out]";
+// The collapse state is a class App.tsx sets on the layout around the sidebar.
+const SIDEBAR_COLUMN =
+  "flex h-full min-h-0 flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) bg-size-[256px_256px] text-sidebar-foreground pl-[env(safe-area-inset-left)] in-[.sidebar-collapsed]:hidden";
+// The sheet stays mounted while closed, held at its exit style and hidden once the exit ends, so
+// its shortcuts keep working.
+const SIDEBAR_SHEET = `${sheetPopupVariants({ side: "left", surface: "sidebar" })} pl-[env(safe-area-inset-left)] data-ending-style:pointer-events-none data-closed:invisible`;
 const STAGE_FADE =
   "after:bg-[linear-gradient(to_bottom,transparent_0%,transparent_28%,color-mix(in_srgb,var(--sidebar)_10%,transparent)_40%,color-mix(in_srgb,var(--sidebar)_30%,transparent)_52%,color-mix(in_srgb,var(--sidebar)_58%,transparent)_64%,color-mix(in_srgb,var(--sidebar)_82%,transparent)_75%,color-mix(in_srgb,var(--sidebar)_96%,transparent)_85%,var(--sidebar)_93%)]";
 const THREAD_LIST =
@@ -143,6 +148,12 @@ export const Sidebar = Shell.provider(() => {
   const environment = Environment.use();
   const shell = Shell.use();
   const navigation = useNavigation();
+  const sheet = useSidebarSheet();
+  const closedSheet = () => sheet.sheet() && !sheet.open();
+  const [settled, setSettled] = createSignal(true);
+  const onSheetTransition = (event: TransitionEvent & { currentTarget: HTMLElement }) => {
+    if (event.target === event.currentTarget) setSettled(event.type === "transitionend");
+  };
   const selected = () => shell.sidebarRowThreadId();
   const providers = () => environment.state.Replica.Providers;
   const stream = useResource(() => shell.state, "Shell/Stream");
@@ -361,7 +372,16 @@ export const Sidebar = Shell.provider(() => {
     />
   );
   return (
-    <nav class={SIDEBAR} data-sidebar>
+    <nav
+      class={sheet.sheet() ? SIDEBAR_SHEET : SIDEBAR_COLUMN}
+      data-sidebar
+      data-ending-style={closedSheet() ? "" : undefined}
+      data-closed={closedSheet() && settled() ? "" : undefined}
+      inert={closedSheet()}
+      onTransitionRun={onSheetTransition}
+      onTransitionEnd={onSheetTransition}
+      onTransitionCancel={onSheetTransition}
+    >
       <header class="relative flex h-(--workspace-topbar-height) flex-none items-center px-3">
         <div
           class={`pointer-events-none absolute top-0 right-0 left-[calc(-1*env(safe-area-inset-left))] h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_92%)] after:absolute after:inset-0 after:content-[''] ${STAGE_FADE}`}
@@ -796,17 +816,21 @@ export const Sidebar = Shell.provider(() => {
       </Presence>
       <Show when={folders().get(drag.dragging() ?? "")} keyed>
         {(folder) => (
-          <div class={DRAG_GHOST} ref={drag.setGhost} aria-hidden="true">
-            <ProjectBadge project={folder.Project} size={12} />
-            <span>{folder.Project?.title ?? "Unknown project"}</span>
-          </div>
+          <Portal>
+            <div class={DRAG_GHOST} ref={drag.setGhost} aria-hidden="true">
+              <ProjectBadge project={folder.Project} size={12} />
+              <span>{folder.Project?.title ?? "Unknown project"}</span>
+            </div>
+          </Portal>
         )}
       </Show>
       <Show when={draggedPin()} keyed>
         {(thread) => (
-          <div class={DRAG_GHOST} ref={pinDrag.setGhost} aria-hidden="true">
-            <span class="truncate">{thread.title}</span>
-          </div>
+          <Portal>
+            <div class={DRAG_GHOST} ref={pinDrag.setGhost} aria-hidden="true">
+              <span class="truncate">{thread.title}</span>
+            </div>
+          </Portal>
         )}
       </Show>
       <SidebarFooter />

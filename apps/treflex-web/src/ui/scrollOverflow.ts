@@ -40,10 +40,15 @@ function normalizeOffset(value: number, max: number): number {
 /**
  * Writes what Base UI's ScrollArea viewport does on scroll and resize: the
  * `--scroll-area-overflow-{x,y}-{start,end}` distances, `data-has-overflow-*` and
- * `data-overflow-*-{start,end}`, and a tab stop while it can scroll. Returns the stop.
+ * `data-overflow-*-{start,end}`, and a tab stop while it can scroll unless `tabIndex` fixes it.
+ * Returns the stop.
  */
-export function trackScrollOverflow(viewport: HTMLElement): () => void {
+export function trackScrollOverflow(
+  viewport: HTMLElement,
+  options: { tabIndex?: number | undefined } = {},
+): () => void {
   registerEdgeVars();
+  if (options.tabIndex !== undefined) viewport.tabIndex = options.tabIndex;
   const rtl = getComputedStyle(viewport).direction === "rtl";
   const flag = (name: string, on: boolean) => viewport.toggleAttribute(name, on);
   const measure = () => {
@@ -59,7 +64,7 @@ export function trackScrollOverflow(viewport: HTMLElement): () => void {
     const top = hiddenY ? 0 : normalizeOffset(viewport.scrollTop, maxTop);
     const edges = [left, hiddenX ? 0 : maxLeft - left, top, hiddenY ? 0 : maxTop - top];
     EDGE_VARS.forEach((name, index) => viewport.style.setProperty(name, `${edges[index]}px`));
-    viewport.tabIndex = hiddenX && hiddenY ? -1 : 0;
+    if (options.tabIndex === undefined) viewport.tabIndex = hiddenX && hiddenY ? -1 : 0;
     flag("data-has-overflow-x", !hiddenX);
     flag("data-has-overflow-y", !hiddenY);
     flag("data-overflow-x-start", edges[0]! > 0);

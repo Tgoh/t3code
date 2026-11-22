@@ -106,13 +106,3 @@ export const ALERT_DIALOG_DESCRIPTION_CLASS =
 
 export const DIALOG_PANEL_CLASS =
   "space-y-4 p-6 in-[[data-slot=dialog-popup]:has([data-slot=dialog-header])]:pt-1 in-[[data-slot=dialog-popup]:has([data-slot=dialog-footer]:not(.border-t))]:pb-1";
-
-export const SCROLL_AREA_CLASS = "relative size-full min-h-0 overflow-hidden rounded-[inherit]";
-
-export const scrollAreaViewportClass = (scrollFade: boolean) =>
-  join([
-    "h-full max-h-[inherit] overflow-auto overscroll-contain rounded-[inherit] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background data-has-overflow-x:overscroll-x-contain",
-    scrollFade &&
-      "mask-t-from-[calc(100%-min(var(--fade-size),var(--scroll-area-overflow-y-start)))] mask-b-from-[calc(100%-min(var(--fade-size),var(--scroll-area-overflow-y-end)))] mask-l-from-[calc(100%-min(var(--fade-size),var(--scroll-area-overflow-x-start)))] mask-r-from-[calc(100%-min(var(--fade-size),var(--scroll-area-overflow-x-end)))] focus-visible:mask-none [--fade-size:1.5rem]",
-    scrollFade && "scroll-p-[var(--fade-size)]",
-  ]);

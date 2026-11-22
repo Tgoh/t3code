@@ -1,14 +1,9 @@
-import { children, createUniqueId, type JSX, onCleanup, Show, splitProps } from "solid-js";
+import { children, createUniqueId, type JSX, Show, splitProps } from "solid-js";
 
 import { Search } from "../icons";
 import { DialogRoot, DialogSurface, type IPopupProps } from "./Dialog";
-import {
-  DIALOG_POPUP_CLASS,
-  dialogBackdropClass,
-  SCROLL_AREA_CLASS,
-  scrollAreaViewportClass,
-} from "./DialogStyles";
-import { trackScrollOverflow } from "./scrollOverflow";
+import { DIALOG_POPUP_CLASS, dialogBackdropClass } from "./DialogStyles";
+import { ScrollArea } from "./ScrollArea";
 
 const COMMAND_BACKDROP = `${dialogBackdropClass("default")} data-ending-style:pointer-events-none`;
 
@@ -46,10 +41,6 @@ const END_INSET = {
 };
 
 export type ICommandInputEndInset = keyof typeof END_INSET;
-
-const LIST_ROOT = `${SCROLL_AREA_CLASS} flex flex-col`;
-
-const LIST_VIEWPORT = `${scrollAreaViewportClass(true)} scrollbar-gutter-stable`;
 
 const LIST = "not-empty:scroll-py-2 not-empty:p-2";
 
@@ -158,21 +149,15 @@ export function CommandList(
 ) {
   const [local, rest] = splitProps(props, ["ref"]);
   return (
-    <div class={LIST_ROOT}>
+    <ScrollArea class="flex flex-col" scrollbarGutter scrollFade>
       <div
-        ref={(element) => onCleanup(trackScrollOverflow(element))}
-        class={LIST_VIEWPORT}
-        data-slot="scroll-area-viewport"
-      >
-        <div
-          {...rest}
-          ref={(element) => local.ref?.(element)}
-          class={LIST}
-          role="listbox"
-          data-slot="command-list"
-        />
-      </div>
-    </div>
+        {...rest}
+        ref={(element) => local.ref?.(element)}
+        class={LIST}
+        role="listbox"
+        data-slot="command-list"
+      />
+    </ScrollArea>
   );
 }
 

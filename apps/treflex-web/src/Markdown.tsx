@@ -60,6 +60,7 @@ import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } fro
 import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { Presence } from "./ui/Presence";
+import { ScrollArea } from "./ui/ScrollArea";
 import { Spinner } from "./ui/Spinner";
 import {
   contextThreadTarget,
@@ -891,22 +892,26 @@ function TableCell(props: { cell: Tokens.TableCell; tag: "th" | "td" }) {
 function TableToken(props: ITokenProps) {
   const table = () => of<Tokens.Table>(props);
   return (
-    <table>
-      <thead>
-        <tr>
-          <Index each={table().header}>{(cell) => <TableCell cell={cell()} tag="th" />}</Index>
-        </tr>
-      </thead>
-      <tbody>
-        <Index each={table().rows}>
-          {(row) => (
+    <div class="chat-markdown-table-container">
+      <ScrollArea radius="none" chainVerticalScroll scrollFade class="w-full max-w-full">
+        <table>
+          <thead>
             <tr>
-              <Index each={row()}>{(cell) => <TableCell cell={cell()} tag="td" />}</Index>
+              <Index each={table().header}>{(cell) => <TableCell cell={cell()} tag="th" />}</Index>
             </tr>
-          )}
-        </Index>
-      </tbody>
-    </table>
+          </thead>
+          <tbody>
+            <Index each={table().rows}>
+              {(row) => (
+                <tr>
+                  <Index each={row()}>{(cell) => <TableCell cell={cell()} tag="td" />}</Index>
+                </tr>
+              )}
+            </Index>
+          </tbody>
+        </table>
+      </ScrollArea>
+    </div>
   );
 }
 

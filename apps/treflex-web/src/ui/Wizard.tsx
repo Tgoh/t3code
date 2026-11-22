@@ -20,8 +20,7 @@ import {
   DialogTitle,
   type IPopupProps,
 } from "./Dialog";
-import { SCROLL_AREA_CLASS, scrollAreaViewportClass } from "./DialogStyles";
-import { trackScrollOverflow } from "./scrollOverflow";
+import { ScrollArea } from "./ScrollArea";
 
 export function WizardPopup(
   props: Omit<IPopupProps, "class"> & {
@@ -32,17 +31,9 @@ export function WizardPopup(
   const [local, rest] = splitProps(props, ["size", "children"]);
   return (
     <DialogPopup {...rest} size={local.size === "wide" ? "3xl" : "xl"}>
-      <div
-        class={`${SCROLL_AREA_CLASS} *:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4`}
-      >
-        <div
-          ref={(element) => onCleanup(trackScrollOverflow(element))}
-          class={scrollAreaViewportClass(false)}
-          data-slot="scroll-area-viewport"
-        >
-          <div class="flex min-h-0 flex-col">{local.children}</div>
-        </div>
-      </div>
+      <ScrollArea class="*:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4">
+        <div class="flex min-h-0 flex-col">{local.children}</div>
+      </ScrollArea>
     </DialogPopup>
   );
 }
