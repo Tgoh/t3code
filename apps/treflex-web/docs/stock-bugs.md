@@ -10,6 +10,13 @@ Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) 
 - **Status:** reproduced through reflex. Closing the WebSocket stalled a reflex tab's config stream until reload.
 - **Reflex:** was affected (the stale usage ring), now reads config through `subscribe` in `Infrastructure/serverConfigEvents.ts`.
 
+## Commands: a new thread's first message and a queued send-now or steer are lost to a dropped socket
+
+- **Where:** `packages/client-runtime/src/operations/commands.ts`. `startThreadTurn`'s `bootstrap` branch sent `launchThread` with a plain `request`, and `resumeThreadQueue` and `promoteQueuedRun` with a plain `dispatch`. Only `message.dispatch` went through the resend loop.
+- **What goes wrong:** a socket that drops as one of these is sent fails it with an interrupt or an `RpcClientError`, and nothing resends it. The server would replay a resend from its command receipt, as it does for messages.
+- **Status:** found by reading the code, and shown failing first in `commands.test.ts`. Fixed on `treflex/resend-turns` in a commit that touches only `packages/client-runtime`, ready to offer upstream.
+- **Treflex:** was affected, since it sends through the same functions. It now inherits the fix.
+
 ## History: a snapshot re-enables Load earlier while a fetch is running
 
 - **Where:** `packages/client-runtime/src/state/threads.ts`, `loadEarlier` and the `snapshot` case of `applyItem`.

@@ -3,17 +3,21 @@ import {
   type EnvironmentSupervisor,
 } from "@t3tools/client-runtime/connection";
 import {
+  cancelQueuedRun,
   createProject,
   deleteProject,
   deleteThread,
   dismissThreadUserInput,
+  editQueuedRun,
   forkThreadFromRun,
   interruptThreadTurn,
   markThreadUnread,
   mergeThreadBack,
   pinThread,
+  promoteQueuedRun,
   respondToThreadApproval,
   respondToThreadUserInput,
+  resumeThreadQueue,
   revertThreadCheckpoint,
   settleThread,
   setThreadRuntimeMode,
@@ -257,38 +261,35 @@ export const queueCommandImpl = implementation(queueCommandEffect, async (input)
     threadId: ThreadId.make(input.ThreadId),
   };
   const operation = input.Operation;
-  const command = (() => {
-    switch (operation.Kind) {
-      case "resume":
-        return { type: "queue.resume" as const, ...common };
-      case "cancel":
-        return {
-          type: "queued-run.cancel" as const,
-          ...common,
-          runId: RunId.make(operation.RunId),
-        };
-      case "start":
-        return { type: "queued-run.start" as const, ...common, runId: RunId.make(operation.RunId) };
-      case "steer":
-        return {
-          type: "queued-message.promote-to-steer" as const,
+  const run = <A, E>(
+    effect: Effect.Effect<
+      A,
+      E,
+      EnvironmentSupervisor.EnvironmentSupervisor | SecureRandom.SecureRandom
+    >,
+  ) => inEnvironment(input.EnvironmentId, effect);
+  switch (operation.Kind) {
+    case "resume":
+      return void (await run(resumeThreadQueue(common)));
+    case "start":
+      return void (await run(resumeThreadQueue({ ...common, runId: RunId.make(operation.RunId) })));
+    case "steer":
+      return void (await run(
+        promoteQueuedRun({
           ...common,
           queuedRunId: RunId.make(operation.RunId),
           targetRunId: RunId.make(operation.TargetRunId),
-        };
-      case "edit":
-        return {
-          type: "queued-run.edit" as const,
-          ...common,
-          runId: RunId.make(operation.RunId),
-          text: operation.Text,
-        };
-    }
-  })();
-  await inEnvironment(
-    input.EnvironmentId,
-    request(ORCHESTRATION_V2_WS_METHODS.dispatchCommand, command),
-  );
+        }),
+      ));
+    case "cancel":
+      return void (await run(cancelQueuedRun({ ...common, runId: RunId.make(operation.RunId) })));
+    case "edit":
+      return void (await run(
+        editQueuedRun({ ...common, runId: RunId.make(operation.RunId), text: operation.Text }),
+      ));
+    default:
+      operation satisfies never;
+  }
 });
 
 export const threadCommandImpl = implementation(threadCommandEffect, async (input) => {
