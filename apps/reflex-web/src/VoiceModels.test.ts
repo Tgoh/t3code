@@ -1,9 +1,8 @@
-import { createTestRuntime, settled } from "treflex";
+import { createTestRuntime, type IFailureEvent, settled, type ITestRuntimeOptions } from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { IVoiceModel } from "./Infrastructure/dictation";
 import { ServerError } from "./Infrastructure/serverError";
-import { watchRuntime } from "./testing/watchRuntime";
 import {
   downloadModel,
   getDefaultVoiceModels,
@@ -24,8 +23,13 @@ interface ICommand {
   ModelId: string;
 }
 
-function rig(catalog: () => IVoiceModel[], command: (effect: ICommand) => unknown = () => []) {
+function rig(
+  catalog: () => IVoiceModel[],
+  command: (effect: ICommand) => unknown = () => [],
+  options?: ITestRuntimeOptions,
+) {
   const commands: ICommand[] = [];
+  const failures: IFailureEvent[] = [];
   const runtime = createTestRuntime<IVoiceModels>(
     { $Id: ID, ...getDefaultVoiceModels() },
     {
@@ -35,12 +39,13 @@ function rig(catalog: () => IVoiceModel[], command: (effect: ICommand) => unknow
         return command(effect);
       },
     },
+    options,
   );
   runtime.registerReceiver(VoiceModelsReceiver);
-  const watch = watchRuntime(runtime);
+  runtime.on("failure", (failure) => failures.push(failure));
   return {
     runtime,
-    ...watch,
+    failures,
     commands,
     polling: () => runtime.timers(ID).some((row) => row.Key === "Voice/Poll"),
     tick: () =>
@@ -111,12 +116,13 @@ describe("voice models", () => {
       () => {
         throw fail;
       },
+      { allowFailures: [selectModel] },
     );
     await voice.runtime.dispatch(selectModel, ID, "base");
     expect(voice.runtime.state.Error).toBe("Model not found.");
 
     fail = new TypeError("models is undefined");
     await expect(voice.runtime.dispatch(selectModel, ID, "base")).rejects.toThrow(TypeError);
-    expect(voice.takeFailures()).toMatchObject([{ ActionName: "selectModel" }]);
+    expect(voice.failures).toMatchObject([{ Label: "selectModel" }]);
   });
 });

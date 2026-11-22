@@ -15,7 +15,6 @@ import {
 } from "./markdownImage";
 import { createMarkdownLexer } from "./markdownTokens";
 import { ServerError } from "./Infrastructure/serverError";
-import { watchRuntime } from "./testing/watchRuntime";
 
 const THREAD = "thread-1";
 const ROOT = "G:\\Sorted\\Project";
@@ -135,7 +134,6 @@ describe("loadMediaUrl", () => {
         },
       },
     );
-    watchRuntime(runtime);
     await runtime.dispatch(loadMediaUrl, "Media", "env-1", resource);
     return { state: runtime.state, asked };
   }

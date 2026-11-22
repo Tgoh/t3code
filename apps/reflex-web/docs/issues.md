@@ -8,10 +8,6 @@ The repo pins Node 26.12.1 and the server needs 24.10 or later, but `vp` stays i
 
 Workaround: use Node 26.13.0 through nvm. The pin in `package.json` isn't enforced, and `vp i` and `vp run dev` work on it.
 
-## Setup: `vp run check:changed` fails its unused-patches step
-
-The step installs the workspace in a temp directory that holds the manifests and lockfile but not `apps/reflex-web/vendor/`, so treflex's tarballs aren't there. Its other checks still run. It runs when the lockfile, the workspace file, patches or any `package.json` change, so this comes back whenever dependencies do.
-
 ## Setup: `vp run check:changed` fails this app's tests
 
 Its test step runs `apps/reflex-web`'s tests in the root vitest project, which lacks this app's `solid` and `browser` resolve conditions, so `solid-js` resolves to its server build and every `createTestRuntime` throws treflex's `SolidServerBuildError`. Run them with `vp test run` from `apps/reflex-web`. Fixing it means a change to upstream's root `vite.config.ts`.

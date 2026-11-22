@@ -106,7 +106,7 @@ const runtime = createRuntime(getDefaultRoot("Root"), {
   onError: () => {},
 });
 runtime.on("failure", (failure) =>
-  console.error(`[reflex-web] ${failure.ActionName} failed:`, failure.Error),
+  console.error(`[reflex-web] ${failure.Label} failed:`, failure.Error),
 );
 runtime.registerImplementation(environmentInfoImpl);
 runtime.registerImplementation(threadHistoryPageImpl);

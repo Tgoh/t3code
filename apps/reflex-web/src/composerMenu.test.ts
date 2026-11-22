@@ -11,7 +11,6 @@ import {
   skillItems,
   slashItems,
 } from "./composerMenu";
-import { watchRuntime } from "./testing/watchRuntime";
 
 const skill = (name: string, extra: Partial<ServerProviderSkill> = {}) =>
   ({ name, path: `/skills/${name}`, enabled: true, ...extra }) as ServerProviderSkill;
@@ -111,7 +110,6 @@ describe("searchFiles", () => {
         },
       },
     );
-    watchRuntime(runtime);
     const search = async (root: string | null, ...queries: string[]) => {
       for (const query of queries)
         void runtime.dispatch(searchFiles, "Files", "env-1", root, query);

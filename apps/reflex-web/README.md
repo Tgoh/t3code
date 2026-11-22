@@ -20,7 +20,7 @@ Log gaps and problems in [docs/issues.md](./docs/issues.md).
 | Tests              | Headless, with a scripted server at the effect boundary                                                                                                                                         |
 | Terminal emulator  | `@xterm/xterm` and its fit addon, loaded on first open. Stock's libghostty WASM surface isn't reusable from a non-React app without its build and surface code                                  |
 | Project order      | `localStorage`, like stock's `projectOrder` in `uiStateStore` and its `sidebarProjectSortOrder` client setting. Neither is on the server, so neither is shared with stock or other devices      |
-| Treflex dependency | The 0.1.0 release tarballs of `treflex` and `treflex-solid`, committed in `vendor/` and installed with `file:`, so every checkout has the same treflex with no setup                            |
+| Treflex dependency | `treflex` and `treflex-solid` 0.2.0 from npm, pinned to the exact version                                                                                                                       |
 
 The server holds all the work, and the client receives its data and uses treflex for client state.
 
@@ -75,7 +75,7 @@ Root
 
 ## Reference code
 
-- **Treflex concepts:** in `G:\Sorted\Code\treflex-public` at the pinned commit, `docs\guide` in order, then `docs\patterns.md`, and `docs\reference` for the rules.
+- **Treflex concepts:** in the reflex repo (`G:\Sorted\Code\reflex`), `docs\guide` in order, then `docs\patterns.md`, and `docs\reference` for the rules. Its `main` runs ahead of the release this client uses; `docs\wip\13-external\breaking-changes-since-0.2.0.md` lists what differs.
 - **Conventions at scale:** `G:\Sorted\Code\solidportal\docs\exemplars.md` and `Concepts.md`.
 
 ## Logic copied from stock
@@ -232,7 +232,7 @@ Keep test clients on 5735: `localStorage` is per port, so choices such as groupi
 
 To test what the driver will serve, including the service worker, build and preview on another port: `vp build`, then `vp preview --port 5747 --strictPort`. `localhost` counts as secure, so the worker registers without HTTPS. The worker outlives the server on its port, so unregister it in DevTools before running the dev server there again.
 
-Treflex is pinned to `treflex-public` commit `24aeb08` (treflex 0.1.0) by the tarballs in `vendor/`, so neither work in the reflex repo nor a new export reaches this client. To move it, clone `treflex-public` to a scratch folder, check out the new commit, run `npm ci` and `npm run release:pack`, copy `release/treflex-<version>.tgz` and `release/treflex-solid-<version>.tgz` over the ones in `vendor/`, point `package.json` at them, run `vp i`, and update this line.
+Work in the reflex repo doesn't reach this client until it's published. To move to a new release, read its breaking-changes record in the reflex repo's `docs/wip`, set both versions in `package.json`, and run `vp i`.
 
 To bring in upstream changes, use the `/syncupstream` skill: it merges on a worktree, ports the logic copied from stock, tests the client live, and fast-forwards `reflex-main` only when it all holds. `apps/reflex-web/scripts/sync-upstream.ps1` alone fast-forwards `main` and pushes it to `origin` (`-DryRun` previews).
 

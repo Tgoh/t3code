@@ -44,7 +44,7 @@ export function tapReplicaWriters(
   runtime: IRuntime<IRoot>,
   report: (name: string | null) => void,
 ): void {
-  const actions = new Map<string, { Name: string | null; Path: string[] }>();
+  const actions = new Map<string, { Label: string | null; Path: string[] }>();
   runtime.on("record", (record) => {
     if (record.Kind === "action:start") actions.set(record.ActionId, record);
     if (record.Kind !== "step" || record.Root !== "AppState") return;
@@ -55,7 +55,7 @@ export function tapReplicaWriters(
     const onReplica =
       action?.Path.some((id) => replicas.has(id)) === true ||
       changes.some((change) => change.Path.includes("Replica"));
-    if (onReplica) report(action?.Name ?? null);
+    if (onReplica) report(action?.Label ?? null);
   });
 }
 

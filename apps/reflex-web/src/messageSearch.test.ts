@@ -2,7 +2,6 @@ import { createTestRuntime, settled } from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
 import { searchMessages } from "./messageSearch";
-import { watchRuntime } from "./testing/watchRuntime";
 
 describe("searchMessages", () => {
   it("sends only the query typed last, and nothing for the query it already holds", async () => {
@@ -18,7 +17,6 @@ describe("searchMessages", () => {
         },
       },
     );
-    watchRuntime(runtime);
     void runtime.dispatch(searchMessages, "Search", "env-1", "foo");
     void runtime.dispatch(searchMessages, "Search", "env-1", "foob");
     await settled();

@@ -16,6 +16,7 @@ import {
   type IActionGenerator,
   type IEffect,
   type IEntity,
+  type IFailureEvent,
   inFlight,
   type IRuntime,
   type ISelectorGenerator,
@@ -204,7 +205,6 @@ import {
   THREAD_ID,
   thread,
 } from "./testing/threadFixture";
-import { watchRuntime } from "./testing/watchRuntime";
 import type { IProjectFaviconTarget } from "./projectIcon";
 import { orderFolders } from "./projectOrder";
 import { runPanelShortcut } from "./shortcuts";
@@ -278,6 +278,7 @@ async function connect(
   stored: IStoredDrafts = { Drafts: new Map(), Files: new Map() },
   resources?: ITestRuntimeOptions["resources"],
   preferences: IPreferences = storedPreferences,
+  allowFailures?: ITestRuntimeOptions["allowFailures"],
 ) {
   const address: { thread: string | null; view: IAddressView | null } = {
     thread: initialAddress,
@@ -350,7 +351,7 @@ async function connect(
       },
     },
     {
-      onError: () => {},
+      allowFailures,
       resources: {
         ...resources,
         methods: {
@@ -374,7 +375,8 @@ async function connect(
     if (!REPLICA_WRITERS.has(name)) strayWriters.add(name);
   });
   onTestFinished(() => expect([...strayWriters], "actions that wrote the replica").toEqual([]));
-  const { takeFailures, takeDiags } = watchRuntime(runtime);
+  const failures: IFailureEvent[] = [];
+  runtime.on("failure", (failure) => failures.push(failure));
   runtime.registerReceiver(RootReceiver);
   runtime.registerReceiver(EnvironmentReceiver);
   runtime.registerReceiver(ShellReceiver);
@@ -405,8 +407,7 @@ async function connect(
   const shellId = () => environment().Replica.Shell.$Id;
   return {
     runtime,
-    takeFailures,
-    takeDiags,
+    takeFailures: () => failures.splice(0),
     address,
     terminals,
     models,
@@ -1004,15 +1005,15 @@ describe("markdown", () => {
 
 describe("snapshots and identity", () => {
   it("treflex refuses a fresh node over a live $Id, so a reconnect snapshot merges in place", async () => {
-    const server = await connect();
-    await server.open();
     function* replace(draft: IEnvironment): IActionGenerator {
       draft.Replica.OpenThreads[THREAD_ID] = { ...copy(draft.Replica.OpenThreads[THREAD_ID]!) };
     }
+    const server = await connect(undefined, null, {}, undefined, undefined, undefined, [replace]);
+    await server.open();
     await expect(server.runtime.dispatch(replace, server.envId())).rejects.toThrow(
       EntityReplacedError,
     );
-    expect(server.takeFailures().map((failure) => failure.ActionName)).toEqual(["replace"]);
+    expect(server.takeFailures().map((failure) => failure.Label)).toEqual(["replace"]);
 
     const start = longThread(6);
     await server.sendThread(snapshotOf(copy(start), 1));
@@ -1724,13 +1725,21 @@ describe("the sidebar", () => {
   it("settles the open thread and moves to the sidebar's next unparked row, and the shortcut toggles", async () => {
     const commands: { ThreadId: string; Command: { Kind: string } }[] = [];
     let refusal: string | null = null;
-    const server = await connect(undefined, null, {
-      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
-        if (effect.Command.Kind === "visit") return;
-        if (refusal !== null) throw new ServerError(refusal);
-        commands.push(effect);
+    const server = await connect(
+      undefined,
+      null,
+      {
+        threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+          if (effect.Command.Kind === "visit") return;
+          if (refusal !== null) throw new ServerError(refusal);
+          commands.push(effect);
+        },
       },
-    });
+      undefined,
+      undefined,
+      undefined,
+      [toggleSettleOpenThread],
+    );
     const at = "2026-01-01T00:00:00.000Z";
     await server.sendShell({
       kind: "snapshot",
@@ -2150,17 +2159,25 @@ describe("writing to the server", () => {
   });
 
   it("a bug under a send fails on the route instead of showing as the send's error", async () => {
-    const server = await connect(undefined, null, {
-      startTurn: () => {
-        throw new TypeError("Cannot read properties of undefined");
+    const server = await connect(
+      undefined,
+      null,
+      {
+        startTurn: () => {
+          throw new TypeError("Cannot read properties of undefined");
+        },
       },
-    });
+      undefined,
+      undefined,
+      undefined,
+      [send],
+    );
     await server.open();
     await server.runtime.dispatch(setDraft, server.sessionId(), "keep me");
     await expect(server.runtime.dispatch(send, server.sessionId())).rejects.toThrow(TypeError);
     expect(server.session().SendError).toBeUndefined();
     expect(server.runtime.state.Failure).toBe("Cannot read properties of undefined");
-    expect(server.takeFailures()).toMatchObject([{ ActionName: "send", Taken: true }]);
+    expect(server.takeFailures()).toMatchObject([{ Label: "send", Taken: true }]);
   });
 
   it("a second send during the wait is ignored", async () => {
@@ -3095,19 +3112,27 @@ describe("writing to the server", () => {
   it("sends a thread command and leaves the row to the stream, showing a failure", async () => {
     const commands: { ThreadId: string; Command: object }[] = [];
     let refusal: string | null = null;
-    const server = await connect(undefined, null, {
-      threadCommand: (effect: { ThreadId: string; Command: object }) => {
-        if (refusal !== null) throw new ServerError(refusal);
-        commands.push(effect);
+    const server = await connect(
+      undefined,
+      null,
+      {
+        threadCommand: (effect: { ThreadId: string; Command: object }) => {
+          if (refusal !== null) throw new ServerError(refusal);
+          commands.push(effect);
+        },
       },
-    });
+      undefined,
+      undefined,
+      undefined,
+      [threadCommand],
+    );
     const refused = async (command: IThreadCommand, message: string) => {
       refusal = message;
       await expect(
         server.runtime.dispatch(threadCommand, server.envId(), "t-1", command),
       ).rejects.toThrow(message);
       expect(server.takeFailures()).toMatchObject([
-        { ActionName: "threadCommand", Taken: true, Error: { message } },
+        { Label: "threadCommand", Taken: true, Error: { message } },
       ]);
     };
     await server.runtime.dispatch(threadCommand, server.envId(), "t-1", { Kind: "settle" });
