@@ -155,7 +155,7 @@ export const TerminalReceiver = receiver<ITerminal>("TerminalReceiver")({
   },
 });
 
-export default createEntityFeature<ITerminal>(import.meta.url)(
+export default createEntityFeature<ITerminal>("Terminal")(
   { openTerminal, closeTerminal, toggleTerminal, endTerminal },
   {},
 );

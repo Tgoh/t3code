@@ -749,7 +749,7 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   },
 });
 
-export default createEntityFeature<IEnvironment>(import.meta.url)(
+export default createEntityFeature<IEnvironment>("Environment")(
   {
     selectThread,
     newThread,

@@ -270,7 +270,7 @@ export const GitReceiver = receiver<IGitWork>("GitReceiver")({
   },
 });
 
-export default createEntityFeature<IGitWork>(import.meta.url)(
+export default createEntityFeature<IGitWork>("GitWork")(
   {
     dismissNotice,
     openEditor,

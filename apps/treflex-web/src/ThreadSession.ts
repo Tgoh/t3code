@@ -1542,7 +1542,7 @@ export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean>
   return panel !== null && (yield* inFlight(loadDiff, panel));
 }
 
-export default createEntityFeature<IThreadSession>(import.meta.url)(
+export default createEntityFeature<IThreadSession>("ThreadSession")(
   {
     setDraft,
     setModelSelection,

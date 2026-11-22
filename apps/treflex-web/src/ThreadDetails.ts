@@ -154,7 +154,7 @@ leading(createBranch);
 export const SwitchingBranch = workTag("Details/SwitchingBranch");
 SwitchingBranch.mark(selectBranch, createBranch);
 
-export default createEntityFeature<IThreadDetails>(import.meta.url)(
+export default createEntityFeature<IThreadDetails>("ThreadDetails")(
   { refreshStatus, loadBranches, selectBranch, createBranch },
   {},
 );

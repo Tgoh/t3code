@@ -81,7 +81,7 @@ export function* itemAnswerError(draft: IItemRequest): ISelectorGenerator<string
   return (yield* outcome(draft)).Error;
 }
 
-export default createEntityFeature<IItemRequest>(import.meta.url)(
+export default createEntityFeature<IItemRequest>("ItemRequest")(
   { answerSecret, answerLink },
   { itemAnswerError },
 );

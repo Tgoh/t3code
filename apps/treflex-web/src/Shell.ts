@@ -694,7 +694,7 @@ export function workingStartedAt(thread: IWireThreadShell): string | null {
   return valid(thread.latestRunStartedAt) ?? valid(thread.latestRunRequestedAt);
 }
 
-export default createEntityFeature<IShell>(import.meta.url)(
+export default createEntityFeature<IShell>("Shell")(
   {},
   { sidebarThreads, shellSynchronized, subagentRequests, sidebarRowThreadId },
 );

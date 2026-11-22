@@ -18,7 +18,7 @@ export function* loadArchived(draft: IArchivedThreads, environmentId: string): I
 }
 latest(loadArchived);
 
-const ArchivedThreads = createComponentFeature<IArchivedThreads>(import.meta.url)(
+const ArchivedThreads = createComponentFeature<IArchivedThreads>("Settings/ArchivedThreads")(
   { loadArchived },
   {},
 );

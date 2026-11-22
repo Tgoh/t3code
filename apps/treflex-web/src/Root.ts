@@ -59,4 +59,4 @@ export const RootReceiver = receiver<IRoot>("RootReceiver")({
   },
 });
 
-export default createEntityFeature<IRoot>(import.meta.url)({ load, dismissFailure });
+export default createEntityFeature<IRoot>("Root")({ load, dismissFailure });

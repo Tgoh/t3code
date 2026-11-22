@@ -835,7 +835,7 @@ export function* pendingOtherIds(draft: IOpenThread): ISelectorGenerator<string[
   );
 }
 
-export default createEntityFeature<IOpenThread>(import.meta.url)(
+export default createEntityFeature<IOpenThread>("OpenThread")(
   {},
   {
     latestRun,

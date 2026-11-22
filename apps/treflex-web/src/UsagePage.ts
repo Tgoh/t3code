@@ -62,7 +62,7 @@ export function* autoRefreshLimits(_draft: IEntity, environmentId: string): IOpe
   yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: true }));
 }
 
-const UsagePage = createComponentFeature<IUsagePage>(import.meta.url)(
+const UsagePage = createComponentFeature<IUsagePage>("Settings/UsagePage")(
   { loadUsage, refreshUsage, autoRefreshLimits },
   {},
 );

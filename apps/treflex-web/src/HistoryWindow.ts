@@ -41,4 +41,4 @@ export function* loadEarlier(draft: IHistoryWindow): IActionGenerator {
 }
 leading(loadEarlier);
 
-export default createEntityFeature<IHistoryWindow>(import.meta.url)({ loadEarlier }, {});
+export default createEntityFeature<IHistoryWindow>("HistoryWindow")({ loadEarlier }, {});

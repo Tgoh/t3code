@@ -282,7 +282,7 @@ function* apply(draft: IDictation, message: IDictationMessage): IActionGenerator
   });
 }
 
-export default createEntityFeature<IDictation>(import.meta.url)(
+export default createEntityFeature<IDictation>("Dictation")(
   {
     stopDictation,
     cancelDictation,

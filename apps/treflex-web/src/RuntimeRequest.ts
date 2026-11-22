@@ -83,7 +83,7 @@ export function* answerError(draft: IRuntimeRequest): ISelectorGenerator<string 
   return (yield* outcome(draft)).Error;
 }
 
-export default createEntityFeature<IRuntimeRequest>(import.meta.url)(
+export default createEntityFeature<IRuntimeRequest>("RuntimeRequest")(
   { answerRequest, dismissRequest },
   { answerError },
 );

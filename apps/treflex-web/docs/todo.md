@@ -2,13 +2,7 @@
 
 Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead. The long-term goal is full parity with stock, so `issues.md`'s gaps move in here a few at a time.
 
-## 1. Restructuring
-
-From an audit of how the port uses treflex 0.1.0. Most of the code already follows the treflex docs. What doesn't is two entities that each do several jobs, and parent views that work out data and pass it down. It runs as three threads, grouped so they touch different files; each item says which.
-
-- **Hand-picked feature ids.** **In progress:** `treflex/feature-ids`. Give features hand-picked ids instead of `import.meta.url`.
-
-## 2. Style parity
+## 1. Style parity
 
 Nothing hand-rolled that stock already has. Before parity and the missing features, so new work uses the shared components.
 
@@ -17,7 +11,7 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 - **Styles in the sync.** Each `/syncupstream` diffs stock's `index.css` and the `components/ui` files that treflex mirrors, and ports their class changes, as it ports logic. Update the skill.
 - **A visual drift check.** A script that screenshots key views (sidebar, thread, composer, settings, dialogs) in stock and treflex on the same server and data, and flags differences above a threshold.
 
-## 3. Parity and polish
+## 2. Parity and polish
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
@@ -33,7 +27,7 @@ From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its
 - **Stop flickers back.** Hold "Stopping" until the shell stream delivers the stopped row. See "Open: Stop flickers back before the run ends".
 - **Settings treflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
 
-## 4. Missing features
+## 3. Missing features
 
 Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
 
@@ -53,7 +47,7 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 - **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.
 - **Usage limits from external sources.** Open the config stream with `usageLimitSources` and show the usage-limit hubs, as stock does. See "Usage limits".
 
-## 5. Performance
+## 4. Performance
 
 - **A cold open from HTTP and a cache.** Load the first snapshot over HTTP and seed it from a persisted thread cache, as stock does, so a reload doesn't wait on a socket snapshot. See "Mismatch: a cold open takes a full socket snapshot".
 - **Jump into history.** Support `throughEntryId` history pages, which jump-to-row needs once the timeline is virtualized. See "History pages load older rows only".
