@@ -6,7 +6,6 @@ Everything in the pipeline for the treflex client, in the order to do it. Within
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Sidebar status as icons.** **In progress:** `treflex/sidebar-status-icons`. Drop the words "Working", "Waiting" and "Done": the icon and its colour carry the status, and the word moves to the tooltip and the accessible label. That gives the title the width. Tam picked "icon and time": a working row keeps its elapsed time beside the icon, and waiting and done show the icon alone. The mockup is option 1 in `G:\Sorted\Code\t3code-dev-home\screenshots\mockups\sidebar-status-icons.png`.
 - **html-render and MCP app rows.** Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
 - **Photos from the phone.** Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
 - **Expired image URLs.** Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
@@ -72,6 +71,11 @@ After stage 2, which also changes `ThreadView`.
   Screen-caused work, such as loading the next page when a list's end scrolls into view, gets a named opt-in at the call site instead of being banned.
 
   4. **`treflex/require-lifecycle-reason`**, opt-in, requires a disable comment with a reason on every `onMount`, `createEffect`, `createComputed`, `createRenderEffect` and `onCleanup`. **In progress** in the reflex repo, in the same vendored `treflex-eslint` 0.2.1 build as rule 1. Turn it on with rule 1 and annotate the existing sites.
+
+## Repo
+
+- **Sync upstream.** Run `/syncupstream` once the stage 1 threads that are running now have merged, so it merges into a quiet `treflex-main`.
+- **Make `Tgoh/t3code` public**, as an example of treflex, with nothing linking to it yet. **In progress:** an audit in its own thread, report only. It checks the full history, every branch and tag on origin, issues and PRs, and Actions for anything that shouldn't be public. Tam flips the visibility after reading the audit.
 
 ## Housekeeping
 
