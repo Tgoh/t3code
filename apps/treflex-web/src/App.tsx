@@ -35,9 +35,10 @@ import { SidebarRail } from "./SidebarRail";
 import { shownSidebarWidth } from "./sidebarWidth";
 import ThreadSession, { closeRightPanel } from "./ThreadSession";
 import { CHAT_STAGE, ThreadView } from "./ThreadView";
-import { EMPTY_NOTE } from "./ui/notes";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/Empty";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Presence, usePresence } from "./ui/Presence";
+import { StandalonePage, StandalonePageHeader } from "./ui/StandalonePage";
 import { TooltipHost } from "./ui/Tooltip";
 import { UsageView } from "./UsageView";
 import { ViewportDebug } from "./ViewportDebug";
@@ -334,14 +335,23 @@ const EnvironmentMain = Dictation.provider(() => {
     <main class="h-full min-h-0 min-w-0 bg-background" inert={sidebar.open()}>
       <Switch
         fallback={
-          <>
+          <div class="flex h-full min-h-0 flex-col">
             <Show when={sidebar.sheet() || sidebar.collapsed()}>
               <PageHeader>
                 <SidebarToggle />
               </PageHeader>
             </Show>
-            <p class={EMPTY_NOTE}>Select a thread.</p>
-          </>
+            <Empty>
+              <div class="w-full max-w-lg px-8 py-12">
+                <EmptyHeader wide>
+                  <EmptyTitle>Pick a thread to continue</EmptyTitle>
+                  <EmptyDescription>
+                    Select an existing thread or create a new one to get started.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </div>
+            </Empty>
+          </div>
         }
       >
         <Match
@@ -376,14 +386,24 @@ export const App = Root.provider(() => {
     <>
       <Switch>
         <Match when={root.state.Phase === "loading"}>
-          <p class={EMPTY_NOTE}>Loading…</p>
+          <Empty>
+            <EmptyHeader>
+              <EmptyDescription>Loading…</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </Match>
         <Match when={root.state.Phase === "unpaired"}>
-          <p class={EMPTY_NOTE}>
-            Not paired with {root.state.Label}. Open this page with a pairing token: run{" "}
-            <code>node apps/server/src/bin.ts pair</code> and add <code>#token=…</code> to the
-            address.
-          </p>
+          <StandalonePage>
+            <StandalonePageHeader
+              context={root.state.Label}
+              title="Pair with this environment"
+              description="Open this page with a pairing token to start a session with this environment."
+            />
+            <div class="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
+              Run <code>node apps/server/src/bin.ts pair</code> and add <code>#token=…</code> to the
+              address.
+            </div>
+          </StandalonePage>
         </Match>
         <Match when={root.state.Phase === "connected"}>
           <For each={root.state.Environments}>

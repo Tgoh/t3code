@@ -11,6 +11,7 @@ import ThreadSession from "./ThreadSession";
 import { RowIcon, workLine } from "./TimelineRows";
 import { viewOf } from "./turnItemView";
 import { CheckboxMark } from "./ui/Checkbox";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/Collapsible";
 import { Kbd } from "./ui/Kbd";
 import { BANNER, BANNER_BODY, BANNER_FRAME, BANNER_TITLE, ERROR_TEXT } from "./ui/notice";
 
@@ -202,17 +203,18 @@ export const PendingQuestion = RuntimeRequest.provider<{
     <>
       <Show when={progress().Question}>
         {(question) => (
-          <div class={`${BANNER_FRAME} pb-4`}>
-            <button
-              type="button"
-              class="group/head flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent py-1.5 pr-3 pl-4 text-start [font-family:inherit] text-[length:inherit] leading-6 text-inherit"
-              aria-expanded={!collapsed()}
+          <Collapsible
+            class={`${BANNER_FRAME} pb-4`}
+            open={!collapsed()}
+            onOpenChange={(open) => setCollapsedId(open ? null : question().id)}
+          >
+            <CollapsibleTrigger
+              class="group/head flex w-full items-center gap-2 border-0 bg-transparent py-1.5 pr-3 pl-4 text-start [font-family:inherit] text-[length:inherit] leading-6 text-inherit"
               data-tip={
                 collapsed()
                   ? "Show the question and its options"
                   : "Hide the question and its options"
               }
-              onClick={() => setCollapsedId(collapsed() ? null : question().id)}
             >
               <span class="max-w-[50%] flex-none truncate text-muted-foreground group-aria-expanded/head:max-w-none group-aria-expanded/head:flex-1">
                 {question().header}
@@ -255,8 +257,8 @@ export const PendingQuestion = RuntimeRequest.provider<{
                   </span>
                 </Show>
               </span>
-            </button>
-            <Show when={!collapsed()}>
+            </CollapsibleTrigger>
+            <CollapsiblePanel>
               <div class="max-h-[min(50vh,28rem)] overflow-auto pt-0 pr-4 pb-1 pl-[22px] wrap-anywhere">
                 <div class="pt-0.5 text-[color-mix(in_srgb,var(--foreground)_85%,transparent)]">
                   <Markdown text={question().question} fromUser />
@@ -319,8 +321,8 @@ export const PendingQuestion = RuntimeRequest.provider<{
                   )}
                 </Show>
               </div>
-            </Show>
-          </div>
+            </CollapsiblePanel>
+          </Collapsible>
         )}
       </Show>
       {props.composer(answering)}

@@ -8,7 +8,7 @@ import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { ERROR_TEXT } from "./ui/notice";
 import { Skeleton } from "./ui/Skeleton";
-import { ADDED_TEXT, DIFF_COUNTS, EMPTY_NOTE, REMOVED_TEXT } from "./ui/notes";
+import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 
 const LINE_CAP = 2000;
 
@@ -179,7 +179,9 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
           <p class={ERROR_TEXT}>Couldn't load the diff: {panel().Error}</p>
         </Show>
         <Show when={panel().Text === "" || (panel().Text != null && files().length === 0)}>
-          <p class={EMPTY_NOTE}>No changes.</p>
+          <div class="flex h-full items-center justify-center px-3 py-2 text-xs text-muted-foreground/70">
+            <p>No changes.</p>
+          </div>
         </Show>
         <For each={files()}>
           {(file, index) => <FileDiffRow file={file} openFirst={index() === 0} />}

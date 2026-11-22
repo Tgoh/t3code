@@ -26,6 +26,7 @@ import {
 import ThreadSession from "./ThreadSession";
 import { fullTimestamp, shortTimestamp } from "./timestamps";
 import { AgentElapsed } from "./AgentElapsed";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/Collapsible";
 
 // Follows STATUS_VISUALS in apps/web/src/components/chat/V2LifecycleRow.tsx.
 const STATUS_VISUALS: Record<IStatus, { Dot: string; Label: string }> = {
@@ -208,15 +209,16 @@ export function SubagentGroup(props: { rowKey: string; ids: string[]; expanded: 
   const statuses = createMemo(() => summarizeSubagentStatuses(agents().map((a) => a.status)));
   const label = () => `${members().length} ${members().length === 1 ? "subagent" : "subagents"}`;
   return (
-    <div class="pb-2">
-      <button
-        type="button"
-        class="group/toggle flex w-full min-w-0 cursor-pointer items-center gap-2.5 border-0 bg-transparent py-2 pr-3.25 pl-0 text-left text-muted-foreground opacity-55 transition-opacity hover:opacity-100 aria-expanded:text-foreground aria-expanded:opacity-100 data-active:text-foreground data-active:opacity-100"
+    <Collapsible
+      class="pb-2"
+      open={props.expanded}
+      onOpenChange={() => session.toggleRowExpanded(props.rowKey)}
+    >
+      <CollapsibleTrigger
+        class="group/toggle flex w-full min-w-0 items-center gap-2.5 border-0 bg-transparent py-2 pr-3.25 pl-0 text-left text-muted-foreground opacity-55 transition-opacity hover:opacity-100 aria-expanded:text-foreground aria-expanded:opacity-100 data-active:text-foreground data-active:opacity-100"
         aria-label={label()}
         aria-description={statuses()}
-        aria-expanded={props.expanded}
         data-active={summary().active ? "" : undefined}
-        onClick={() => session.toggleRowExpanded(props.rowKey)}
       >
         <span class="flex shrink-0 items-center -space-x-1.5" aria-hidden="true">
           <For each={members().slice(0, 3)}>
@@ -247,14 +249,14 @@ export function SubagentGroup(props: { rowKey: string; ids: string[]; expanded: 
           <AgentElapsed agent={groupTiming(agents())} full />
         </span>
         <ChevronDown class="size-3.5 shrink-0 text-muted-foreground transition-transform group-aria-expanded/toggle:rotate-180" />
-      </button>
-      <Show when={props.expanded}>
+      </CollapsibleTrigger>
+      <CollapsiblePanel animate={false}>
         <div class="mt-1 mb-1 rounded-lg border border-border/60 bg-card/30 p-1">
           <For each={members()}>
             {(item) => <SubagentCard item={item} childThreadId={item.childThreadId} />}
           </For>
         </div>
-      </Show>
-    </div>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }

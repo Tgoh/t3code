@@ -29,12 +29,13 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
-import { ChartNoAxesColumn, X } from "./icons";
+import { ChartNoAxesColumn, TriangleAlert, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
 import { limitPools, limitPresentations } from "./limits";
 import UsagePage, { getDefaultUsagePage, RefreshingUsage, useUsagePage } from "./UsagePage";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
+import { Alert, AlertTitle } from "./ui/Alert";
 import { Button } from "./ui/Button";
 import { BREADCRUMB, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { RefreshIcon } from "./ui/RefreshIcon";
@@ -53,8 +54,6 @@ import {
 // Follows apps/web/src/components/usage/usageShortcuts.ts and usageProviders.ts.
 type IMetric = "cost" | "tokens" | "limits";
 const loading = "m-0 px-4 text-[13px] text-muted-foreground";
-const MESSAGE =
-  "m-0 rounded-lg border border-warning/40 px-3 py-2 text-[13px] text-warning-foreground";
 const HEADING = "m-0 flex items-center gap-2 text-[14px] font-medium";
 const TOTAL_TERM = "text-[12px] text-muted-foreground";
 const TOTAL_VALUE = "mx-0 mt-0.5 mb-0 text-[18px] font-semibold tabular-nums";
@@ -391,7 +390,9 @@ function UsageOverview(props: {
   );
   return (
     <div class="flex flex-col gap-8 data-stale:opacity-60" data-stale={props.stale || undefined}>
-      <For each={props.messages}>{(message) => <p class={MESSAGE}>{message}</p>}</For>
+      <For each={props.messages}>
+        {(message) => <p class="mb-4 text-sm text-muted-foreground">{message}</p>}
+      </For>
       <section class="grid grid-cols-[minmax(0,18rem)_minmax(0,1fr)] gap-8 max-md:grid-cols-[minmax(0,1fr)]">
         <div class="flex flex-col gap-4">
           <p class="m-0 text-[36px] leading-[1.1] font-semibold tabular-nums">
@@ -843,7 +844,14 @@ function UsageLimits(props: { providers: readonly unknown[] | undefined }) {
           </p>
         </Show>
         <For each={pools()}>{(pool) => <LimitPoolSection pool={pool} now={now} />}</For>
-        <For each={notices()}>{(notice) => <p class={MESSAGE}>{notice}</p>}</For>
+        <Show when={notices().length > 0}>
+          <Alert variant="warning" controlAlignment="first-line">
+            <TriangleAlert />
+            <For each={notices()}>
+              {(notice) => <AlertTitle class="break-words">{notice}</AlertTitle>}
+            </For>
+          </Alert>
+        </Show>
       </div>
     </Show>
   );

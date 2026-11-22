@@ -8,7 +8,6 @@ import Environment from "./Environment";
 import { ProjectBadge } from "./brand";
 import {
   ChevronDown,
-  ChevronRight,
   Ellipsis,
   Eye,
   FolderPlus,
@@ -34,6 +33,7 @@ import { StageArt } from "./StageArt";
 import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
 import { Button } from "./ui/Button";
+import { CollapsibleSectionHeader } from "./ui/CollapsibleSectionHeader";
 import {
   MenuCheckboxItem,
   MenuGroup,
@@ -47,7 +47,6 @@ import {
   MenuSeparator,
   openMenuFromKeys,
 } from "./ui/Menu";
-import { EMPTY_NOTE } from "./ui/notes";
 import { Presence } from "./ui/Presence";
 import { SidebarInput, SidebarMenuButton } from "./ui/Sidebar";
 import { useSidebarSheet } from "./viewport";
@@ -88,17 +87,14 @@ function SectionHeader(props: {
   onToggle: () => void;
 }) {
   return (
-    <li>
-      <button
-        type="button"
-        class="mt-2 flex h-7 w-full cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-0 text-[12px] font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-        aria-expanded={props.open}
-        onClick={props.onToggle}
+    <li class="relative mx-0.5 mt-2 h-8">
+      <CollapsibleSectionHeader
+        expanded={props.open}
+        onClick={() => props.onToggle()}
+        accessory={<span class="font-normal tabular-nums">{props.count}</span>}
       >
-        <ChevronRight class={props.open ? "size-3.5 rotate-90" : "size-3.5"} />
         {props.label}
-        <span class={COUNT}>{props.count}</span>
-      </button>
+      </CollapsibleSectionHeader>
     </li>
   );
 }
@@ -583,7 +579,7 @@ export const Sidebar = Shell.provider(() => {
         <Show
           when={results().length > 0}
           fallback={
-            <p class={EMPTY_NOTE} role="status">
+            <p class="px-2 py-6 text-center text-xs text-sidebar-muted-foreground" role="status">
               {messageSearch.pending()
                 ? "Searching thread messages…"
                 : messageSearch.failed()
@@ -639,12 +635,12 @@ export const Sidebar = Shell.provider(() => {
         when={!searching() && (visibleThreads().length > 0 || folders().size > 0)}
         fallback={
           <Show when={!searching()}>
-            <p class={EMPTY_NOTE}>
+            <p class="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
               {!shell.shellSynchronized()
                 ? "Loading threads…"
                 : scope().size > 0
-                  ? "No threads in these projects."
-                  : "No threads yet."}
+                  ? "No threads in these projects yet"
+                  : "No threads yet"}
             </p>
           </Show>
         }

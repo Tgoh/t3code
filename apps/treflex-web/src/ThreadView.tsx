@@ -45,7 +45,6 @@ import {
 } from "./timelineWindow";
 
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
-import { EMPTY_NOTE } from "./ui/notes";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { createMediaQuery, enterPanel, PANEL_SHEET_QUERY } from "./viewport";
 
@@ -553,7 +552,9 @@ const ThreadBody = ThreadSession.provider(() => {
                 {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
               </For>
               <Show when={thread.state.Thread !== null && thread.state.Timeline.length === 0}>
-                <p class={EMPTY_NOTE}>Nothing here yet.</p>
+                <p class="py-12 text-center text-sm text-muted-foreground">
+                  Send a message to start the conversation.
+                </p>
               </Show>
             </div>
           </div>

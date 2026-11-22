@@ -74,6 +74,7 @@ import ThreadSession, { mergeBack } from "./ThreadSession";
 import { AgentElapsed } from "./AgentElapsed";
 import { Button } from "./ui/Button";
 import { Checkbox } from "./ui/Checkbox";
+import { SectionHeaderStatus } from "./ui/CollapsibleSectionHeader";
 import { Input } from "./ui/Input";
 import { Label } from "./ui/Label";
 import {
@@ -562,9 +563,7 @@ function LineageGroups(props: { lineage: ILineage }) {
           <Bot />
           <span class={LABEL}>Previous agents</span>
           <Show when={previousFailed() > 0}>
-            <span class="flex-none text-[11px] font-normal text-destructive">
-              {previousFailed()} failed
-            </span>
+            <SectionHeaderStatus>{previousFailed()} failed</SectionHeaderStatus>
           </Show>
           <Show when={!previousOpen()}>
             <span class="flex-none text-[11px] font-normal text-muted-foreground tabular-nums">

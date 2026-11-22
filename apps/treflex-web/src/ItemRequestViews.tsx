@@ -28,6 +28,7 @@ import ItemRequest, {
   type ISecretReply,
 } from "./ItemRequest";
 import OpenThread from "./OpenThread";
+import { Alert, AlertDescription, AlertTitle } from "./ui/Alert";
 import { Button, buttonVariants } from "./ui/Button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
 import { Input } from "./ui/Input";
@@ -40,7 +41,7 @@ type SecretRequestItem = Extract<IWireTurnItem, { type: "secret_request" }>;
 type LinkRequestItem = Extract<IWireTurnItem, { type: "link_request" }>;
 
 const CARD = "flex min-w-0 flex-col gap-3 rounded-xl border border-border/60 bg-card p-4";
-const ERROR = "m-0 text-[12px] text-destructive";
+const ERROR = "text-xs text-destructive";
 const NOTE = "m-0 text-[12px] text-muted-foreground";
 const FIELD_LABEL = "block text-[12px] font-medium text-foreground";
 
@@ -500,7 +501,7 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
             </Show>
             <Show when={attempted() && request.itemAnswerError()}>
               {(error) => (
-                <p role="alert" class="text-xs text-destructive">
+                <p role="alert" class={ERROR}>
                   {error()}
                 </p>
               )}
@@ -533,17 +534,16 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
   );
 }
 
-// Follows LinkAddressWarning in apps/web/src/components/settings/LinkMachineSelect.tsx.
 function AddressWarning(props: { address: string }) {
   return (
-    <div class="rounded-lg border border-[color-mix(in_srgb,var(--warning)_32%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-3 py-2 text-[13px]">
-      <p class="m-0 font-medium text-warning-foreground">Check this address</p>
-      <p class="m-0 text-muted-foreground">
+    <Alert variant="warning">
+      <AlertTitle>Check this address</AlertTitle>
+      <AlertDescription>
         This app cannot confirm it is one of your machines. The pairing code you paste is sent
         there.
         <span class="block break-all">{linkDestination(props.address)}</span>
-      </p>
-    </div>
+      </AlertDescription>
+    </Alert>
   );
 }
 
