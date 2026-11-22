@@ -2,14 +2,11 @@
 
 Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead.
 
-## Now
-
-- **Rename the `reflex-main` branch to `treflex-main`.** Rename it on origin and in the main checkout. Update `reflex-main` in `scripts/sync-upstream.ps1`, `CLAUDE.md` and the README, and the `syncupstream` and `promote` skills, including their port variable, now `TREFLEX_WEB_PORT`. Use the `treflex/` prefix for new branches.
-
 ## 1. Parity and polish
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
+- **Resend a turn lost to a dropped connection.** Stock's `packages/client-runtime/src/operations/commands.ts` treats an interrupt-only or transport failure on a turn command as lost transport and resends it, with the same command id, across socket loss. Treflex shows "The connection dropped before the server answered" and drops the send, so a message sent as the socket drops can be lost. Port stock's resend.
 - **Sidebar status as icons.** Drop the words "Working", "Waiting" and "Done": the icon and its colour carry the status, and the word moves to the tooltip and the accessible label. That gives the title the width. Tam picked "icon and time": a working row keeps its elapsed time beside the icon, and waiting and done show the icon alone. The mockup is option 1 in `G:\Sorted\Code\t3code-dev-home\screenshots\mockups\sidebar-status-icons.png`.
 - **html-render and MCP app rows.** Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
 - **Photos from the phone.** Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".

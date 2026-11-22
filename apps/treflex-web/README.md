@@ -9,7 +9,7 @@ Log gaps and problems in [docs/issues.md](./docs/issues.md).
 | Decision           | Choice                                                                                                                                                                                          |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Repo               | Private `Tgoh/t3code`, not a public fork, because treflex is unpublished                                                                                                                        |
-| Branches           | `main` only tracks upstream. `reflex-main` is the working copy the daily driver runs from; changes go on worktree branches and merge back once they pass the gates, and a bad merge is reverted |
+| Branches           | `main` only tracks upstream. `treflex-main` is the working copy the daily driver runs from; changes go on worktree branches and merge back once they pass the gates, and a bad merge is reverted |
 | Location           | `apps/treflex-web`. Avoid editing upstream's files so merges stay easy                                                                                                                          |
 | Renderer           | Solid, through `treflex-solid`                                                                                                                                                                  |
 | Reused             | `packages/contracts`, `packages/shared`, and `client-runtime`'s `connection/` and `rpc/`                                                                                                        |
@@ -225,19 +225,19 @@ From `apps/treflex-web`, `vp run test` runs the headless suite and `vp run bench
 
 ## Making changes
 
-The client in the main checkout is the daily driver, so nobody edits files there. Each change gets a worktree off `reflex-main`, anywhere on disk. T3's worktree setup installs, or run `node scripts/setup-worktree.ts` with `T3CODE_PROJECT_ROOT` set to the main checkout. Then, from the worktree's `apps/treflex-web`, run its client against the same server:
+The client in the main checkout is the daily driver, so nobody edits files there. Each change gets a worktree off `treflex-main`, anywhere on disk. T3's worktree setup installs, or run `node scripts/setup-worktree.ts` with `T3CODE_PROJECT_ROOT` set to the main checkout. Then, from the worktree's `apps/treflex-web`, run its client against the same server:
 
 ```powershell
 $env:TREFLEX_WEB_PORT = 5735; vp run dev
 ```
 
-Keep test clients on 5735: `localStorage` is per port, so choices such as grouping by project stay set there across worktrees. The test client works on the driver's real threads, so a send there runs a real turn. The driver changes only when the branch merges into `reflex-main` and the driver is rebuilt.
+Keep test clients on 5735: `localStorage` is per port, so choices such as grouping by project stay set there across worktrees. The test client works on the driver's real threads, so a send there runs a real turn. The driver changes only when the branch merges into `treflex-main` and the driver is rebuilt.
 
 To test what the driver will serve, including the service worker, build and preview on another port: `vp build`, then `vp preview --port 5747 --strictPort`. `localhost` counts as secure, so the worker registers without HTTPS. The worker outlives the server on its port, so unregister it in DevTools before running the dev server there again.
 
 Work in the reflex repo doesn't reach this client until it's published. To move to a new release, read its breaking-changes record in the reflex repo's `docs/wip`, set both versions in `package.json`, and run `vp i`.
 
-To bring in upstream changes, use the `/syncupstream` skill: it merges on a worktree, ports the logic copied from stock, tests the client live, and fast-forwards `reflex-main` only when it all holds. `apps/treflex-web/scripts/sync-upstream.ps1` alone fast-forwards `main` and pushes it to `origin` (`-DryRun` previews).
+To bring in upstream changes, use the `/syncupstream` skill: it merges on a worktree, ports the logic copied from stock, tests the client live, and fast-forwards `treflex-main` only when it all holds. `apps/treflex-web/scripts/sync-upstream.ps1` alone fast-forwards `main` and pushes it to `origin` (`-DryRun` previews).
 
 `upstream` is fetch-only. Actions is disabled on `Tgoh/t3code`, because upstream's workflows include release and deploy jobs. Keep it disabled.
 
@@ -264,7 +264,7 @@ Tailwind v4 with preflight, like stock. `src/index.css` is the entry: it maps st
 
 Two folders sit side by side under `G:\Sorted\Code`, because `dev-stack.ps1` finds the data folder by relative path, and the Claude skills use absolute ones:
 
-- `t3code`: this repo, on `reflex-main`.
+- `t3code`: this repo, on `treflex-main`.
 - `t3code-dev-home`: the driver's data (threads, settings, attachments, stored secrets, T3's worktrees). Copy it from the old machine with the stack stopped (`./dev-stack.ps1 -Stop`), or leave it out to start empty.
 
 Install Git, PowerShell 7, nvm-windows and Vite+ (`vp`), then the Node version in the root `package.json` `engines` field:
@@ -280,7 +280,7 @@ nvm use 26.13.1
 Clone this repo from `G:\Sorted\Code`:
 
 ```powershell
-git clone -b reflex-main https://github.com/Tgoh/t3code.git t3code
+git clone -b treflex-main https://github.com/Tgoh/t3code.git t3code
 ```
 
 ```powershell

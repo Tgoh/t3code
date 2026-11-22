@@ -26,10 +26,10 @@ if ($branch -eq 'main') {
 Invoke-Git push @dry origin main
 
 if ($Merge) {
-	if ($branch -ne 'reflex-main') { throw "-Merge runs on the reflex-main branch; this is '$branch'." }
+	if ($branch -ne 'treflex-main') { throw "-Merge runs on the treflex-main branch; this is '$branch'." }
 	if (git -C $repo status --porcelain) { throw 'Commit or set aside local changes before merging.' }
 	if ($DryRun) {
-		"Would merge main into reflex-main."
+		"Would merge main into treflex-main."
 	} else {
 		Invoke-Git merge main
 		"Merged. Run 'vp i' if dependencies changed."
