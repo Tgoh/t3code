@@ -52,7 +52,15 @@ import ThreadSession, {
 } from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { iconButton } from "./ui/IconButton";
-import { composerCollapses, createMediaQuery, PHONE_QUERY, SHORT_TOUCH_QUERY } from "./viewport";
+import {
+  COARSE_POINTER_QUERY,
+  composerCollapses,
+  createMediaQuery,
+  enterSends,
+  nextFrame,
+  PHONE_QUERY,
+  SHORT_TOUCH_QUERY,
+} from "./viewport";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 export const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl";
@@ -68,6 +76,9 @@ export const COMPOSER_LANE =
 const ROUND_BUTTON =
   "relative isolate inline-flex size-8 flex-none cursor-pointer items-center justify-center overflow-hidden rounded-full border-0 p-0 text-white shadow-[0_1px_2px_rgb(0_0_0/24%)] disabled:cursor-default disabled:opacity-64 disabled:shadow-none";
 const HIDDEN_COLLAPSED = "in-data-collapsed:hidden";
+
+// iOS can fire mousedown after a prevented pointerdown, and its default blurs the prompt.
+const keepFocus = (event: MouseEvent) => event.preventDefault();
 const NOTE = "mx-4 my-1 text-[12px]";
 const ERROR = `${NOTE} text-error-foreground ${HIDDEN_COLLAPSED}`;
 const REMOVE_ATTACHMENT =
@@ -163,7 +174,8 @@ function SendButton(props: {
       aria-label={label()}
       data-tip={tip()}
       disabled={props.disabled}
-      onPointerDown={(event) => event.preventDefault()}
+      onPointerDown={keepFocus}
+      onMouseDown={keepFocus}
       onClick={(event) => {
         event.preventDefault();
         props.onSend(isAlternate(event));
@@ -289,7 +301,8 @@ function StopButton(props: { stopping: boolean; class: string; onStop: () => voi
       aria-label={props.stopping ? "Stopping" : "Stop generation"}
       data-tip={props.stopping ? "Stopping" : "Stop generation"}
       disabled={props.stopping}
-      onPointerDown={(event) => event.preventDefault()}
+      onPointerDown={keepFocus}
+      onMouseDown={keepFocus}
       onClick={() => props.onStop()}
     >
       <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -312,7 +325,8 @@ function AnswerActions(props: { question: IAnswering }) {
           aria-label="Previous question"
           data-tip="Previous question"
           disabled={responding()}
-          onPointerDown={(event) => event.preventDefault()}
+          onPointerDown={keepFocus}
+          onMouseDown={keepFocus}
           onClick={() => props.question.previous()}
         >
           <ChevronLeft />
@@ -321,7 +335,8 @@ function AnswerActions(props: { question: IAnswering }) {
       <button
         type="submit"
         class="ml-2 h-7 flex-none cursor-pointer whitespace-nowrap rounded-full border-0 bg-primary px-3 py-0 text-[14px] font-medium text-primary-foreground shadow-[0_1px_2px_color-mix(in_srgb,var(--primary)_24%,transparent)] hover:enabled:bg-[color-mix(in_srgb,var(--primary)_90%,var(--background))] disabled:cursor-default disabled:opacity-64 disabled:shadow-none"
-        onPointerDown={(event) => event.preventDefault()}
+        onPointerDown={keepFocus}
+        onMouseDown={keepFocus}
         disabled={
           !props.question.canRespond() ||
           responding() ||
@@ -402,9 +417,17 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   };
   useFocusRequests(expand);
   // A tap on a control would take focus from the prompt and drop the on-screen keyboard.
-  const keepPromptFocus = (event: PointerEvent) => {
+  const keepPromptFocus = (event: MouseEvent) => {
     if (phone() && event.target !== textarea) event.preventDefault();
   };
+  const collapseFrame = nextFrame();
+  const collapseIfLeft = () => {
+    if (form.contains(document.activeElement)) return;
+    // Menus portal out of the form, and an open one still belongs to the composer.
+    if (overlays.open()) return;
+    setFocused(false);
+  };
+  const coarsePointer = createMediaQuery(COARSE_POINTER_QUERY);
   const alternateHeld = useAlternateHeld();
   const running = () => props.active === true;
   const compactTokens = () => (answering() ? null : session.compactionOffer());
@@ -598,13 +621,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           send();
         }}
         onFocusIn={() => setFocused(true)}
-        onFocusOut={(event) => {
-          const next = event.relatedTarget;
-          if (next instanceof Node && form.contains(next)) return;
-          // Menus portal out of the form, and an open one still belongs to the composer.
-          if (overlays.open()) return;
-          setFocused(false);
-        }}
+        onFocusOut={() => collapseFrame(collapseIfLeft)}
       >
         <Show when={collapsed()}>
           <div class="flex items-center gap-2 pt-2 pr-2 pl-3">
@@ -613,7 +630,8 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               class="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] data-placeholder:text-muted-foreground"
               data-placeholder={held().Draft.trim() === "" ? "" : undefined}
               aria-label="Expand composer"
-              onPointerDown={(event) => event.preventDefault()}
+              onPointerDown={keepFocus}
+              onMouseDown={keepFocus}
               onClick={expand}
             >
               {held().Draft.trim() || placeholder()}
@@ -731,7 +749,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               event.preventDefault();
               return;
             }
-            if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+            if (!enterSends(event, coarsePointer())) return;
             event.preventDefault();
             send(isAlternate(event));
           }}
@@ -760,6 +778,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         <div
           class="flex min-h-8 items-center gap-1 px-2 pt-px pb-[7px] in-data-collapsed:pt-0 in-data-collapsed:[&>:not(.model-trigger)]:hidden"
           onPointerDown={keepPromptFocus}
+          onMouseDown={keepPromptFocus}
         >
           <Show when={!answering() && !(phone() && ownsVoice())}>
             <label class={`${iconButton()} overflow-hidden`} data-tip="Attach files">
