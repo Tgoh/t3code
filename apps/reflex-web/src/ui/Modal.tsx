@@ -5,7 +5,7 @@ import { usePresence } from "./Presence";
 
 // Follows DIALOG_BACKDROP_CLASS and DIALOG_POPUP_CLASS in apps/web/src/components/ui/dialog-styles.ts.
 const DIALOG_MOTION =
-  "transition-[scale,opacity] duration-200 ease-in-out starting:scale-98 starting:opacity-0 data-closing:pointer-events-none data-closing:scale-98 data-closing:opacity-0 backdrop:transition-opacity backdrop:duration-200 starting:backdrop:opacity-0 data-closing:backdrop:opacity-0";
+  "transition-[scale,opacity,translate] duration-200 ease-in-out starting:scale-98 starting:opacity-0 data-closing:pointer-events-none data-closing:scale-98 data-closing:opacity-0 backdrop:transition-opacity backdrop:duration-200 starting:backdrop:opacity-0 data-closing:backdrop:opacity-0";
 
 /**
  * A `<dialog>` shown modally on mount, on the overlay stack so Escape closes it only when on top.
@@ -46,9 +46,10 @@ export function Modal(
 }
 
 // Follows AlertDialog in apps/web/src/components/ui/alert-dialog.tsx and the dialog-glass and
-// dialog-backdrop utilities in apps/web/src/index.css.
+// dialog-backdrop utilities in apps/web/src/index.css. Preflight zeroes a dialog's margin, so
+// m-auto restores the centring; below sm it docks to the bottom as stock's mobile sheet does.
 const DIALOG =
-  "w-full max-w-[min(32rem,calc(100vw-32px))] rounded-2xl border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_var(--glass-opacity),transparent)] p-0 text-foreground shadow-[0_24px_64px_-24px_rgb(0_0_0/65%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) backdrop:bg-(--dialog-backdrop) backdrop:backdrop-blur-[4px]";
+  "m-auto max-h-[calc(100%-2rem)] w-full max-w-[min(32rem,calc(100vw-32px))] max-sm:mb-0 max-sm:max-h-[calc(100%-3rem)] max-sm:max-w-none max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:starting:translate-y-4 max-sm:data-closing:translate-y-4 rounded-2xl border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_var(--glass-opacity),transparent)] p-0 text-foreground shadow-[0_24px_64px_-24px_rgb(0_0_0/65%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) backdrop:bg-(--dialog-backdrop) backdrop:backdrop-blur-[4px]";
 
 /** A modal with the confirm dialog's chrome, laid out with the parts below. */
 export function Dialog(
