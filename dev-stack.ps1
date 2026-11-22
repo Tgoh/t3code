@@ -11,7 +11,10 @@
 # restart, so a running service keeps running as it was.
 # The treflex client's hooks build it with apps/treflex-web/scripts/driver-build.ps1.
 #
-# Starting and stopping run elevated: an unelevated run reopens itself as administrator.
+# Starting and stopping run elevated: an unelevated run reopens itself as administrator. The work
+# runs in a detached copy whose output is printed when it ends and kept in
+# t3code-dev-home/dev-stack/dev-stack.log, so a restart run by a T3 agent, which dies with the
+# server, still finishes and leaves its output there.
 [CmdletBinding()]
 param(
   [switch]$Status,
@@ -24,30 +27,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
-$identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $Status -and -not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-  $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Pause")
-  if ($Stop) { $arguments += "-Stop" }
-  if ($Restart) { $arguments += "-Restart" }
-  if ($Only) { $arguments += @("-Only", $Only) }
-  $shell = (Get-Process -Id $PID).Path
-  if ($Detached) {
-    Start-Process $shell -Verb RunAs -ArgumentList $arguments
-    return
-  }
-  # A RunAs child is parented to its caller, so a caller inside the server's process tree
-  # would be killed by Stop-Stack's taskkill /T; WMI parents the copy outside that tree.
-  $hidden = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }
-  $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = "`"$shell`" $($arguments -join ' ') -Detached"
-    CurrentDirectory = $PSScriptRoot
-    ProcessStartupInformation = $hidden
-  }
-  if ($created.ReturnValue -ne 0) { throw "Couldn't reopen as administrator: $($created.ReturnValue)" }
-  "Continuing in an administrator window."
-  return
-}
 
 $root = $PSScriptRoot
 $homeDir = Join-Path (Split-Path $root -Parent) "t3code-dev-home"
@@ -122,6 +101,43 @@ function Get-StartedProcess($entry) {
   $process
 }
 
+$identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+$elevated = $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$shell = (Get-Process -Id $PID).Path
+$arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Detached")
+if ($Stop) { $arguments += "-Stop" }
+if ($Restart) { $arguments += "-Restart" }
+if ($Only) { $arguments += @("-Only", $Only) }
+
+# A T3 agent runs inside the server's process tree and job, and Stop-Stack's taskkill would end
+# this script with the server. A parent-chain check can't see that, since Git Bash leaves dead
+# parent ids, so every run works in a copy WMI starts outside both, and waits for it.
+if (-not $Status -and -not $Detached) {
+  New-Item -ItemType Directory -Force $stateDir | Out-Null
+  $log = Join-Path $stateDir "dev-stack.log"
+  Remove-Item $log -ErrorAction SilentlyContinue
+  $hidden = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }
+  $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+    CommandLine = "cmd.exe /d /s /c `"`"$shell`" $($arguments -join ' ') > `"$log`" 2>&1`""
+    CurrentDirectory = $root
+    ProcessStartupInformation = $hidden
+  }
+  if ($created.ReturnValue -ne 0) { throw "Couldn't start the detached copy: $($created.ReturnValue)" }
+  $copy = Get-Process -Id $created.ProcessId -ErrorAction SilentlyContinue
+  if ($copy) {
+    $null = $copy.Handle
+    $copy.WaitForExit()
+  }
+  if (Test-Path $log) { Get-Content $log }
+  if ($copy -and $copy.ExitCode -ne 0) { exit $copy.ExitCode }
+  return
+}
+if (-not $Status -and -not $elevated) {
+  Start-Process $shell -Verb RunAs -ArgumentList ($arguments + "-Pause")
+  "Continuing in an administrator window."
+  return
+}
+
 function Show-Status {
   $state = Read-State
   foreach ($service in $services) {
@@ -139,6 +155,8 @@ if ($Status) {
   Show-Status
   return
 }
+
+New-Item -ItemType Directory -Force $stateDir | Out-Null
 
 function Stop-Stack {
   $state = Read-State
@@ -161,7 +179,6 @@ if ($Stop) {
   return
 }
 
-New-Item -ItemType Directory -Force $stateDir | Out-Null
 $failed = $false
 $prepared = @()
 foreach ($service in @($services)) {
