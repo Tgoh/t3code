@@ -706,10 +706,9 @@ const Body = (props: IDetailsProps) => {
       false,
     );
   };
-  const runScript = async (script: ProjectScript) => {
+  const runScript = (script: ProjectScript) => {
     closeMenu();
-    await details.runScript(script, session.state.Terminal.TerminalId);
-    if (details.state.ScriptError === null) void session.openTerminal();
+    void session.runScript(props.checkout, script);
   };
   const openBranches = (anchor: IMenuAnchor) => {
     setBranchQuery("");
@@ -780,12 +779,12 @@ const Body = (props: IDetailsProps) => {
               icon={<Play />}
               tip={first().command}
               menuLabel="Project scripts"
-              onRun={() => void runScript(first())}
+              onRun={() => runScript(first())}
               onMenu={(anchor) => setMenu({ Kind: "scripts", Anchor: anchor })}
             />
           )}
         </Show>
-        <Show when={details.state.ScriptError}>{(error) => <p class={ERROR}>{error()}</p>}</Show>
+        <Show when={session.state.ScriptError}>{(error) => <p class={ERROR}>{error()}</p>}</Show>
       </section>
 
       <Show when={git()?.isRepo ?? props.branch !== null}>
@@ -936,7 +935,7 @@ const Body = (props: IDetailsProps) => {
                         icon={<Play />}
                         label={script.name}
                         data-tip={script.command}
-                        onSelect={() => void runScript(script)}
+                        onSelect={() => runScript(script)}
                       />
                     )}
                   </For>
@@ -1080,7 +1079,7 @@ const Body = (props: IDetailsProps) => {
           <AddScriptDialog
             onClose={() => setAddingScript(false)}
             onAdd={(name, command) =>
-              void details.saveScripts([
+              void session.saveScripts(props.checkout, [
                 ...props.scripts,
                 {
                   id: newScriptId(name, props.scripts),

@@ -1,4 +1,4 @@
-import { useInFlight, useResource } from "treflex-solid";
+import { useDispatch, useInFlight, useResource } from "treflex-solid";
 import {
   createComputed,
   createEffect,
@@ -26,6 +26,7 @@ import { runStatus } from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { SurfaceLauncher } from "./SurfaceLauncher";
 import { type ISurfaceKind, surfaceActions } from "./surfaces";
+import { closeTerminal, openTerminal, toggleTerminal } from "./Terminal";
 import { TerminalPanel } from "./TerminalPanel";
 import type { ICheckout } from "./ThreadDetails";
 import { DetailsSurface, ThreadDetailsCard } from "./ThreadDetailsPanel";
@@ -183,15 +184,18 @@ const ThreadBody = ThreadSession.provider(() => {
     return status === "running" || status === "waiting" ? status : null;
   };
   const checklist = useChecklist(() => turnState() !== null);
+  const dispatch = useDispatch();
+  const onTerminal = (action: typeof openTerminal) =>
+    void dispatch(action, session.state.Terminal.$Id);
   const terminalOpen = () => session.state.Terminal.Open;
-  const diffOpen = () => session.state.Panels.Diff.Open;
+  const diffOpen = () => session.state.Panels.Diff !== null;
   const launcherOpen = () => session.state.Panels.Launcher.Open && !diffOpen();
   const rightPanelOpen = () => diffOpen() || launcherOpen();
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
   const [panelMotion, setPanelMotion] = createSignal(false);
   onMount(() => requestAnimationFrame(() => requestAnimationFrame(() => setPanelMotion(true))));
   const closeTopSheet = () =>
-    rightPanelOpen() ? session.closeRightPanel() : session.closeTerminal();
+    rightPanelOpen() ? void session.closeRightPanel() : onTerminal(closeTerminal);
   const [stageSize, setStageSize] = createSignal({ Width: 0, Height: 0 });
   const details = () => session.state.Panels.Details;
   const layout = createMemo(() =>
@@ -239,7 +243,7 @@ const ThreadBody = ThreadSession.provider(() => {
   const openSurface = (kind: ISurfaceKind) => {
     if (kind === "terminal") {
       void session.closeLauncher();
-      void session.openTerminal();
+      onTerminal(openTerminal);
     } else if (kind === "diff") {
       void session.openDiff(latestDiffTurn(thread.state) === null ? "branch" : "thread", null);
     }
@@ -268,7 +272,7 @@ const ThreadBody = ThreadSession.provider(() => {
             Label: "Terminal",
             On: terminalOpen(),
             Shortcut: navigation.shortcut("terminal.toggle"),
-            Run: () => void session.toggleTerminal(),
+            Run: () => onTerminal(toggleTerminal),
           },
         ]),
     {
@@ -599,7 +603,7 @@ const ThreadBody = ThreadSession.provider(() => {
           </div>
         </div>
         <Show when={terminalOpen()}>
-          <TerminalPanel />
+          <TerminalPanel state={session.state.Terminal} />
         </Show>
       </FileDropSection>
       <Show when={panelSheet() && (rightPanelOpen() || terminalOpen())}>
@@ -608,7 +612,8 @@ const ThreadBody = ThreadSession.provider(() => {
       <Show when={rightPanelOpen()}>
         <aside ref={enterPanel} class={RIGHT_PANEL}>
           <Show
-            when={diffOpen()}
+            when={session.state.Panels.Diff}
+            keyed
             fallback={
               <SurfaceLauncher
                 actions={launcher()}
@@ -617,7 +622,7 @@ const ThreadBody = ThreadSession.provider(() => {
               />
             }
           >
-            <DiffPanel />
+            {(panel) => <DiffPanel panel={panel} />}
           </Show>
         </aside>
       </Show>

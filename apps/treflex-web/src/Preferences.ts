@@ -14,7 +14,7 @@ import { minute } from "./Infrastructure/clock";
 import { type IPreferences, storePreferencesEffect } from "./Infrastructure/preferences";
 import { sidebarRowThreadId, sidebarThreads, subagentRequests } from "./Shell";
 import { type ISidebarLayout, layoutSidebar, SETTLED_PAGE } from "./sidebarLayout";
-import { followColorScheme } from "./ThreadSession";
+import { followColorScheme } from "./Terminal";
 import { liveScope } from "./threadSearch";
 
 declare module "treflex" {
@@ -100,7 +100,7 @@ function* applyColorScheme(draft: IEnvironment): IActionGenerator {
   yield* resource(draft, "Device/Appearance").apply(scheme);
   const selectedId = draft.Local.SelectedThreadId;
   const session = selectedId === null ? undefined : draft.Local.ThreadSessions[selectedId];
-  if (session?.Terminal.Open === true) yield* start(followColorScheme, session, scheme);
+  if (session?.Terminal.Open === true) yield* start(followColorScheme, session.Terminal, scheme);
 }
 
 export function* colorScheme(draft: IEnvironment): ISelectorGenerator<IColorScheme> {

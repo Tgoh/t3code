@@ -2,7 +2,7 @@ import { useInFlight, useResource } from "treflex-solid";
 import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 
 import { Trash2, X } from "./icons";
-import ThreadSession, { endTerminal } from "./ThreadSession";
+import Terminal, { endTerminal } from "./Terminal";
 import { IconButton } from "./ui/IconButton";
 import { ERROR_TEXT } from "./ui/notice";
 import { enterPanel } from "./viewport";
@@ -16,20 +16,19 @@ const DRAWER = [
   "transition-[translate,opacity] duration-200 ease-in-out data-entering:in-[.panel-sheet]:translate-y-full data-entering:not-in-[.panel-sheet]:translate-y-2 data-entering:not-in-[.panel-sheet]:opacity-0",
 ].join(" ");
 
-export function TerminalPanel() {
-  const session = ThreadSession.use();
-  const panel = () => session.state.Terminal;
-  const live = useResource(() => session.state, "Terminal/Session");
-  const ending = useInFlight(endTerminal, () => session.state);
+export const TerminalPanel = Terminal.provider(() => {
+  const terminal = Terminal.use();
+  const live = useResource(() => terminal.state, "Terminal/Session");
+  const ending = useInFlight(endTerminal, () => terminal.state);
   const state = () => {
     const status = live.status();
     if (status.State === "ended") return "error";
     if (status.State === "live" && RECONNECTING.has(status.Detail ?? "")) return "reconnecting";
-    return session.terminalAttachment().Status ?? "starting";
+    return terminal.state.Status ?? "starting";
   };
   const error = () => {
     const status = live.status();
-    return panel().Error ?? (status.State === "ended" ? status.Reason : undefined);
+    return terminal.state.Error ?? (status.State === "ended" ? status.Reason : undefined);
   };
   const [host, setHost] = createSignal<HTMLDivElement>();
   createEffect(() => {
@@ -39,7 +38,7 @@ export function TerminalPanel() {
     onCleanup(
       view.mount(
         element,
-        untrack(() => session.terminalAttachment().FocusOnMount),
+        untrack(() => terminal.state.FocusOnMount),
       ),
     );
   });
@@ -54,7 +53,7 @@ export function TerminalPanel() {
           aria-label="End shell"
           data-tip="End shell"
           disabled={ending()}
-          onClick={() => session.endTerminal()}
+          onClick={() => terminal.endTerminal()}
         >
           <Trash2 />
         </IconButton>
@@ -62,7 +61,7 @@ export function TerminalPanel() {
           size="sm"
           aria-label="Hide terminal"
           data-tip="Hide terminal"
-          onClick={() => session.closeTerminal()}
+          onClick={() => terminal.closeTerminal()}
         >
           <X />
         </IconButton>
@@ -76,4 +75,4 @@ export function TerminalPanel() {
       />
     </aside>
   );
-}
+});

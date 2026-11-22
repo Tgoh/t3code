@@ -1,15 +1,13 @@
-import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
+import type { VcsStatusResult } from "@t3tools/contracts";
 import { type IEntity, type IOpenGenerator, latest, leading, open, openResource } from "treflex";
 import { createComponentFeature } from "treflex-solid";
 
 import { serverError } from "./Infrastructure/serverError";
 import { sendThreadBranch } from "./GitWork";
-import { projectCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
 import {
   type IBranchRef,
   listBranchesEffect,
   refreshVcsStatusEffect,
-  runScriptEffect,
   switchBranchEffect,
 } from "./Infrastructure/sourceControlEffects";
 
@@ -32,7 +30,6 @@ export interface IThreadDetails extends IEntity {
   Checkout: ICheckout | null;
   Branches: IBranchRef[] | null;
   BranchError: string | null;
-  ScriptError: string | null;
 }
 
 export function getDefaultThreadDetails(): Omit<IThreadDetails, "$Id"> {
@@ -40,7 +37,6 @@ export function getDefaultThreadDetails(): Omit<IThreadDetails, "$Id"> {
     Checkout: null,
     Branches: null,
     BranchError: null,
-    ScriptError: null,
   };
 }
 
@@ -169,53 +165,6 @@ export function* createBranch(draft: IThreadDetails, name: string): IOpenGenerat
 }
 leading(createBranch);
 
-export function* runScript(
-  draft: IThreadDetails,
-  script: ProjectScript,
-  terminalId: string,
-): IOpenGenerator {
-  const held = draft.Checkout;
-  if (held === null) return;
-  draft.ScriptError = null;
-  try {
-    yield* open(
-      runScriptEffect({
-        EnvironmentId: held.EnvironmentId,
-        Cwd: held.Cwd,
-        ThreadId: held.ThreadId,
-        TerminalId: terminalId,
-        WorktreePath: held.WorktreePath,
-        ProjectRoot: held.ProjectRoot,
-        Command: script.command,
-      }),
-    );
-  } catch (error) {
-    draft.ScriptError = serverError(error).message;
-  }
-}
-
-/** Replaces the project's scripts, so an add or a removal sends the whole list. */
-export function* saveScripts(draft: IThreadDetails, scripts: ProjectScript[]): IOpenGenerator {
-  const held = draft.Checkout;
-  if (held === null) return;
-  draft.ScriptError = null;
-  try {
-    yield* open(
-      withCommandId((commandId) =>
-        projectCommandEffect({
-          EnvironmentId: held.EnvironmentId,
-          ProjectId: held.ProjectId,
-          CommandId: commandId,
-          Command: { Kind: "scripts", Scripts: scripts },
-        }),
-      ),
-    );
-  } catch (error) {
-    draft.ScriptError = serverError(error).message;
-  }
-}
-leading(saveScripts);
-
 export default createComponentFeature<IThreadDetails>(import.meta.url)(
   {
     attach,
@@ -223,8 +172,6 @@ export default createComponentFeature<IThreadDetails>(import.meta.url)(
     loadBranches,
     selectBranch,
     createBranch,
-    runScript,
-    saveScripts,
   },
   {},
 );

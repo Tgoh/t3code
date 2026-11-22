@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 
+import type { IDiffPanel } from "./Diff";
 import { type IDiffFile, type IPatchRow, parseDiff, patchRows } from "./diffView";
 import { ChevronRight, FileDiff } from "./icons";
 import { PanelHeader } from "./RightPanel";
@@ -78,9 +79,9 @@ function FileDiffRow(props: { file: IDiffFile; openFirst: boolean }) {
   );
 }
 
-export function DiffPanel() {
+export function DiffPanel(props: { panel: IDiffPanel }) {
   const session = ThreadSession.use();
-  const panel = () => session.state.Panels.Diff;
+  const panel = () => props.panel;
   const files = createMemo(() => parseDiff(panel().Text ?? ""));
   const title = () => {
     const held = panel();

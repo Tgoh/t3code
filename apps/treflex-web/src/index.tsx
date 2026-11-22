@@ -100,7 +100,8 @@ import { ThreadReceiver } from "./OpenThread";
 import { getDefaultRoot, load, RootReceiver } from "./Root";
 import { ShellReceiver } from "./Shell";
 import { GitReceiver } from "./GitWork";
-import { RewindReceiver, TerminalReceiver } from "./ThreadSession";
+import { TerminalReceiver } from "./Terminal";
+import { RewindReceiver } from "./ThreadSession";
 
 await pairFromUrl();
 

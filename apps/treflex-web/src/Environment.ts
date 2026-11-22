@@ -70,6 +70,7 @@ import {
   toggleViewportDebug,
 } from "./Preferences";
 import { type IShelves, SETTLED_PAGE } from "./sidebarLayout";
+import { getDefaultTerminal, type ITerminal } from "./Terminal";
 import { type IWireClientSettings, storedClientSettingsEffect } from "./Infrastructure/settings";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
 import {
@@ -247,9 +248,11 @@ function* sessionOf(
   const held = draft.Local.ThreadSessions[threadId];
   if (held !== undefined) return held;
   const git = yield* entity<IGitWork>(getDefaultGitWork());
+  const terminal = yield* entity<ITerminal>(getDefaultTerminal(draft.EnvironmentId, threadId));
   draft.Local.ThreadSessions[threadId] = yield* entity<IThreadSession>({
     ...getDefaultThreadSession(draft.EnvironmentId, threadId, newThreadProjectId),
     Git: git,
+    Terminal: terminal,
   });
   const session = draft.Local.ThreadSessions[threadId]!;
   yield* openResource(session, "Composer/Files", {
@@ -628,6 +631,7 @@ export interface IPanelShortcuts {
   /** The details card has a checkout to show. */
   Details: boolean;
   Terminal: boolean;
+  TerminalEntityId: string;
   /** The thread has a turn to diff. */
   Diff: boolean;
   DiffOpen: boolean;
@@ -647,8 +651,9 @@ export function* panelShortcuts(draft: IEnvironment): ISelectorGenerator<IPanelS
     Details: row != null && draft.Replica.Shell.Projects[row.projectId] !== undefined,
     Terminal: row !== null,
     Diff: latestDiffTurn(thread) !== null,
-    DiffOpen: session.Panels.Diff.Open,
-    RightPanelOpen: session.Panels.Diff.Open || session.Panels.Launcher.Open,
+    TerminalEntityId: session.Terminal.$Id,
+    DiffOpen: session.Panels.Diff !== null,
+    RightPanelOpen: session.Panels.Diff !== null || session.Panels.Launcher.Open,
   };
 }
 

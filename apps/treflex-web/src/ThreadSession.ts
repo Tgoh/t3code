@@ -12,7 +12,7 @@ import {
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
 import { COMPACT_COMMAND_PATTERN } from "@t3tools/client-runtime/state/context-window";
-import { DEFAULT_TERMINAL_ID, PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
+import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS, type ProjectScript } from "@t3tools/contracts";
 import {
   answer,
   ask,
@@ -28,7 +28,6 @@ import {
   type IResourceHandle,
   type ISelectorGenerator,
   inFlight,
-  isEnded,
   latest,
   leading,
   open,
@@ -46,7 +45,6 @@ import {
 import { createEntityFeature } from "treflex-solid";
 
 import {
-  closeTerminalEffect,
   forkThreadEffect,
   mergeBackEffect,
   type IDispatchMode,
@@ -58,18 +56,19 @@ import {
   type IWireInteractionMode,
   type IWireModelSelection,
   type IWireRuntimeMode,
+  projectCommandEffect,
   queueCommandEffect,
   rewindEffect,
   startTurnEffect,
   stopThreadEffect,
   threadCommandEffect,
-  threadDiffEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
+import { type IDiffPanel, type IDiffRequest, type IDiffScope, loadDiff } from "./Diff";
 import type { IGitWork } from "./GitWork";
 import type { IAddressView } from "./Infrastructure/address";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
-import { branchDiffEffect, type IBranchDiff } from "./Infrastructure/sourceControlEffects";
+import { runScriptEffect } from "./Infrastructure/sourceControlEffects";
 import {
   storeDraftEffect,
   storedDraftEffect,
@@ -81,13 +80,7 @@ import {
   rememberedModelsEffect,
   rememberModelEffect,
 } from "./Infrastructure/modelMemory";
-import {
-  type ITerminalLaunch,
-  rememberedTerminalEffect,
-  rememberTerminalEffect,
-} from "./Infrastructure/terminalMemory";
-import type { ITerminalStatus } from "./Infrastructure/terminalSession";
-import { type IAppearanceMode, type IColorScheme, resolveScheme } from "./colorScheme";
+import type { IAppearanceMode } from "./colorScheme";
 import {
   compatibleRuntimeMode,
   dispatchSelection,
@@ -132,11 +125,12 @@ import type {
 } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
 import { serverError, serverFailure } from "./Infrastructure/serverError";
+import { detachTerminal, type ITerminal, openTerminal, restoreTerminal } from "./Terminal";
+import type { ICheckout } from "./ThreadDetails";
 
 declare module "treflex" {
   interface IResourceRegistry {
     "Composer/Files": { Type: "composerFiles" };
-    "Terminal/Session": { Type: "terminalSession" };
     "Command/Output": { Type: "commandOutput" };
   }
   interface IDataSourceRegistry {
@@ -178,27 +172,6 @@ export interface ISelection extends IEntity {
 
 export type IAttachmentDraft = IPickedFile;
 
-export interface IDiffPanel {
-  Open: boolean;
-  Scope: "turn" | "thread" | "branch";
-  ToTurnCount: number | null;
-  Text: string | null;
-  BaseRef?: string | null;
-  Error?: string;
-}
-
-export interface ITerminalPanel {
-  Open: boolean;
-  TerminalId: string;
-  Error?: string;
-}
-
-const attachment = (draft: IThreadSession) =>
-  transient(draft, "Terminal/Attachment", {
-    Status: null as ITerminalStatus | null,
-    FocusOnMount: false,
-  });
-
 /** An expanded command row's output, whose subscription is open while its thread is shown. */
 export interface ICommandOutputRow extends IEntity {
   /** The thread that ran the command, which differs from the session's for an inherited row. */
@@ -237,15 +210,14 @@ export interface IThreadSession extends IEntity {
   RewindError?: string;
   ForkError?: string;
   MergeError?: string;
+  ScriptError?: string;
   QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
   QuestionIndex: Record<string, number>;
   QuestionNotice?: string;
-  Panels: { Diff: IDiffPanel; Details: IDetailsPanel; Launcher: { Open: boolean } };
-  Terminal: ITerminalPanel;
+  Panels: { Diff: IDiffPanel | null; Details: IDetailsPanel; Launcher: { Open: boolean } };
+  Terminal: ITerminal;
   Git: IGitWork;
-  /** Timeline rows the person expanded, by row id. */
   ExpandedRows: Record<string, true>;
-  /** The expanded command rows' outputs, by row id. */
   CommandOutputs: Record<string, ICommandOutputRow>;
 }
 
@@ -253,7 +225,7 @@ export function getDefaultThreadSession(
   environmentId: string,
   threadId: string,
   newThreadProjectId: string | null,
-): Omit<IThreadSession, "$Id" | "Git"> {
+): Omit<IThreadSession, "$Id" | "Git" | "Terminal"> {
   return {
     EnvironmentId: environmentId,
     ThreadId: threadId,
@@ -266,12 +238,11 @@ export function getDefaultThreadSession(
     QuestionAnswers: {},
     QuestionIndex: {},
     Panels: {
-      Diff: { Open: false, Scope: "turn", ToTurnCount: null, Text: null },
+      Diff: null,
       // Follows DEFAULT_THREAD_PANEL_VISIBILITY in apps/web/src/rightPanelStore.ts.
       Details: { Open: true, Popover: false, Fits: false },
       Launcher: { Open: false },
     },
-    Terminal: { Open: false, TerminalId: DEFAULT_TERMINAL_ID },
     ExpandedRows: {},
     CommandOutputs: {},
   };
@@ -460,15 +431,6 @@ function* latestThreadDiffTurn(draft: IThreadSession): ISelectorGenerator<number
   return thread === undefined ? null : latestDiffTurn(thread);
 }
 
-function* terminalLaunch(draft: IThreadSession): ISelectorGenerator<ITerminalLaunch | null> {
-  const replica = yield* getData(draft, "Replica");
-  const thread = replica?.OpenThreads[draft.ThreadId]?.Thread;
-  if (replica === undefined || thread == null) return null;
-  const root = replica.Shell.Projects[thread.projectId]?.workspaceRoot;
-  if (root === undefined) return null;
-  return { Cwd: thread.worktreePath ?? root, WorktreePath: thread.worktreePath, ProjectRoot: root };
-}
-
 export interface IMenuCatalog {
   Commands: NonNullable<IProviderOption["SlashCommands"]>;
   Skills: NonNullable<IProviderOption["Skills"]>;
@@ -497,14 +459,8 @@ export function* promptHistory(draft: IThreadSession): ISelectorGenerator<IPromp
   return thread === undefined ? [] : promptHistoryEntries(Object.values(thread.Messages));
 }
 
-/** Where the composer's `@` menu searches for files. */
 export function* fileSearchRoot(draft: IThreadSession): ISelectorGenerator<string | null> {
   return yield* searchRoot(draft);
-}
-
-function* isThreadSelected(draft: IThreadSession): ISelectorGenerator<boolean> {
-  const selection = yield* getData(draft, "Selection");
-  return selection?.SelectedThreadId === draft.ThreadId;
 }
 
 /** Stock's Follow-up behavior setting: what a send does while a turn runs. */
@@ -513,13 +469,6 @@ export function* followUpBehavior(
 ): ISelectorGenerator<ActiveTurnComposerAction> {
   const selection = yield* getData(draft, "Selection");
   return selection?.ClientSettings?.followUpBehavior ?? "queue";
-}
-
-function* terminalScheme(draft: IThreadSession): ISelectorGenerator<IColorScheme> {
-  const selection = yield* getData(draft, "Selection");
-  return selection === undefined
-    ? "light"
-    : resolveScheme(selection.Preferences.AppearanceMode, selection.SystemDark);
 }
 
 function* storeDraft(draft: IThreadSession): IActionGenerator {
@@ -1377,17 +1326,18 @@ function* openOutput(draft: IThreadSession, row: ICommandOutputRow): IActionGene
 /** Closes what only a shown thread needs; `reattachThread` opens it again. */
 export function* detachThread(draft: IThreadSession): IActionGenerator {
   draft.Panels.Details.Popover = false;
+  delete draft.ScriptError;
   for (const row of Object.values(draft.CommandOutputs)) {
     yield* closeResource(row, "Command/Output");
   }
-  yield* detachTerminal(draft);
+  yield* start(detachTerminal, draft.Terminal);
 }
 
 export function* reattachThread(draft: IThreadSession): IActionGenerator {
   for (const row of Object.values(draft.CommandOutputs)) {
     yield* openOutput(draft, row);
   }
-  yield* restoreTerminal(draft);
+  yield* start(restoreTerminal, draft.Terminal);
 }
 
 /** Code blocks wrap their lines until the person turns it off. */
@@ -1399,84 +1349,37 @@ export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActio
 
 export function* openDiff(
   draft: IThreadSession,
-  scope: "turn" | "thread" | "branch",
+  scope: IDiffScope,
   turnCount: number | null,
-): IOpenGenerator {
+): IActionGenerator {
   draft.Panels.Launcher.Open = false;
+  let request: IDiffRequest | null = null;
+  let panel: Omit<IDiffPanel, "$Id">;
   if (scope === "branch") {
-    yield* openBranchDiff(draft);
-    return;
+    const cwd = yield* select(searchRoot);
+    panel = { Scope: scope, ToTurnCount: null, Text: null, BaseRef: null };
+    if (cwd === null) panel.Error = "This thread's project isn't loaded yet.";
+    else request = { Scope: scope, EnvironmentId: draft.EnvironmentId, Cwd: cwd };
+  } else {
+    const toTurnCount = turnCount ?? (yield* select(latestThreadDiffTurn));
+    panel = { Scope: scope, ToTurnCount: toTurnCount, Text: toTurnCount === null ? "" : null };
+    if (toTurnCount !== null) {
+      request = {
+        Scope: scope,
+        EnvironmentId: draft.EnvironmentId,
+        ThreadId: draft.ThreadId,
+        ToTurnCount: toTurnCount,
+      };
+    }
   }
-  const toTurnCount = turnCount ?? (yield* select(latestThreadDiffTurn));
-  const panel = draft.Panels.Diff;
-  panel.Open = true;
-  panel.Scope = scope;
-  panel.ToTurnCount = toTurnCount;
-  panel.Text = null;
-  delete panel.BaseRef;
-  delete panel.Error;
-  if (toTurnCount === null) {
-    panel.Text = "";
-    return;
-  }
-  const request = {
-    EnvironmentId: draft.EnvironmentId,
-    ThreadId: draft.ThreadId,
-    Scope: scope,
-    ToTurnCount: toTurnCount,
-  };
-  let text: string | null = null;
-  let failure: string | null = null;
-  try {
-    text = yield* open(threadDiffEffect(request));
-  } catch (error) {
-    failure = serverError(error).message;
-  }
-  const current = draft.Panels.Diff;
-  if (!current.Open) return;
-  current.Text = text;
-  if (failure !== null) current.Error = failure;
-}
-latest(openDiff);
-
-function* openBranchDiff(draft: IThreadSession): IOpenGenerator {
-  const cwd = yield* select(searchRoot);
-  const panel = draft.Panels.Diff;
-  panel.Open = true;
-  panel.Scope = "branch";
-  panel.ToTurnCount = null;
-  panel.Text = null;
-  panel.BaseRef = null;
-  delete panel.Error;
-  if (cwd === null) {
-    panel.Error = "This thread's project isn't loaded yet.";
-    return;
-  }
-  let diff: IBranchDiff | null = null;
-  let failure: string | null = null;
-  try {
-    diff = yield* open(branchDiffEffect({ EnvironmentId: draft.EnvironmentId, Cwd: cwd }));
-  } catch (error) {
-    failure = serverError(error).message;
-  }
-  const current = draft.Panels.Diff;
-  if (!current.Open || current.Scope !== "branch") return;
-  if (diff !== null) {
-    current.Text = diff.Diff;
-    current.BaseRef = diff.BaseRef;
-  }
-  if (failure !== null) current.Error = failure;
+  draft.Panels.Diff = yield* entity<IDiffPanel>(panel);
+  if (request !== null) yield* start(loadDiff, draft.Panels.Diff, request);
 }
 
 export function* closeDiff(draft: IThreadSession): IActionGenerator {
-  const panel = draft.Panels.Diff;
-  panel.Open = false;
-  panel.Text = null;
-  delete panel.BaseRef;
-  delete panel.Error;
+  draft.Panels.Diff = null;
 }
 
-/** Pins or unpins the card where it fits, else opens or closes it as a popover. */
 export function* toggleDetails(draft: IThreadSession): IActionGenerator {
   const details = draft.Panels.Details;
   if (details.Fits) details.Open = !details.Open;
@@ -1493,7 +1396,7 @@ export function* fitDetails(draft: IThreadSession, fits: boolean): IActionGenera
 
 /** The header's right-panel toggle: closes whichever surface is open, or shows the launcher. */
 export function* toggleRightPanel(draft: IThreadSession): IActionGenerator {
-  if (draft.Panels.Diff.Open) {
+  if (draft.Panels.Diff !== null) {
     yield* closeDiff(draft);
     return;
   }
@@ -1505,105 +1408,66 @@ export function* closeLauncher(draft: IThreadSession): IActionGenerator {
 }
 
 export function* closeRightPanel(draft: IThreadSession): IActionGenerator {
-  if (draft.Panels.Diff.Open) yield* closeDiff(draft);
+  if (draft.Panels.Diff !== null) yield* closeDiff(draft);
   else draft.Panels.Launcher.Open = false;
 }
 
-export function* toggleTerminal(draft: IThreadSession): IActionGenerator {
-  if (draft.Terminal.Open) yield* closeTerminal(draft);
-  else yield* openTerminal(draft);
-}
-
-function* attachTerminal(draft: IThreadSession, launch: ITerminalLaunch): IActionGenerator {
-  yield* openResource(draft, "Terminal/Session", TerminalReceiver, {
-    Type: "terminalSession",
-    EnvironmentId: draft.EnvironmentId,
-    ThreadId: draft.ThreadId,
-    TerminalId: draft.Terminal.TerminalId,
-    Cwd: launch.Cwd,
-    WorktreePath: launch.WorktreePath,
-    ProjectRoot: launch.ProjectRoot,
-  });
-  yield* followColorScheme(draft, yield* select(terminalScheme));
-}
-
-export function* followColorScheme(draft: IThreadSession, scheme: IColorScheme): IActionGenerator {
-  yield* resource(draft, "Terminal/Session").setScheme(scheme);
-}
-
-export function* restoreTerminal(draft: IThreadSession): IActionGenerator {
-  const launch = yield* rememberedTerminalEffect({ ThreadId: draft.ThreadId });
-  if (launch === null || !(yield* select(isThreadSelected))) return;
-  draft.Terminal.Open = true;
-  (yield* attachment(draft)).FocusOnMount = false;
-  yield* attachTerminal(draft, launch);
-}
-
-export function* openTerminal(draft: IThreadSession): IActionGenerator {
-  const panel = draft.Terminal;
-  panel.Open = true;
-  delete panel.Error;
-  const attached = yield* attachment(draft);
-  attached.Status = null;
-  attached.FocusOnMount = true;
-  const launch = yield* select(terminalLaunch);
-  if (launch === null) {
-    panel.Error = "This thread's project isn't loaded yet.";
-    return;
-  }
-  yield* attachTerminal(draft, launch);
-  yield* rememberTerminalEffect({ ThreadId: draft.ThreadId, Launch: launch });
-}
-
-export function* detachTerminal(draft: IThreadSession): IActionGenerator {
-  (yield* attachment(draft)).Status = null;
-  yield* closeResource(draft, "Terminal/Session");
-}
-
-export function* closeTerminal(draft: IThreadSession): IActionGenerator {
-  draft.Terminal.Open = false;
-  delete draft.Terminal.Error;
-  yield* detachTerminal(draft);
-  yield* rememberTerminalEffect({ ThreadId: draft.ThreadId, Launch: null });
-}
-
-export function* endTerminal(draft: IThreadSession): IOpenGenerator {
-  delete draft.Terminal.Error;
+export function* runScript(
+  draft: IThreadSession,
+  checkout: ICheckout,
+  script: ProjectScript,
+): IOpenGenerator {
+  delete draft.ScriptError;
   const request = {
-    EnvironmentId: draft.EnvironmentId,
-    ThreadId: draft.ThreadId,
+    EnvironmentId: checkout.EnvironmentId,
+    Cwd: checkout.Cwd,
+    ThreadId: checkout.ThreadId,
     TerminalId: draft.Terminal.TerminalId,
+    WorktreePath: checkout.WorktreePath,
+    ProjectRoot: checkout.ProjectRoot,
+    Command: script.command,
   };
   try {
-    yield* open(closeTerminalEffect(request));
+    yield* open(runScriptEffect(request));
   } catch (error) {
-    draft.Terminal.Error = serverError(error).message;
+    draft.ScriptError = serverError(error).message;
     return;
   }
-  yield* closeTerminal(draft);
+  yield* start(openTerminal, draft.Terminal);
 }
-leading(endTerminal);
+
+/** Replaces the project's scripts, so an add or a removal sends the whole list. */
+export function* saveScripts(
+  draft: IThreadSession,
+  checkout: ICheckout,
+  scripts: ProjectScript[],
+): IOpenGenerator {
+  delete draft.ScriptError;
+  try {
+    yield* open(
+      withCommandId((commandId) =>
+        projectCommandEffect({
+          EnvironmentId: checkout.EnvironmentId,
+          ProjectId: checkout.ProjectId,
+          CommandId: commandId,
+          Command: { Kind: "scripts", Scripts: scripts },
+        }),
+      ),
+    );
+  } catch (error) {
+    draft.ScriptError = serverError(error).message;
+  }
+}
+leading(saveScripts);
 
 export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
-  return draft.Panels.Diff.Open && (yield* inFlight(openDiff, draft));
-}
-
-export function* terminalAttachment(draft: IThreadSession) {
-  return yield* attachment(draft);
+  const panel = draft.Panels.Diff;
+  return panel !== null && (yield* inFlight(loadDiff, panel));
 }
 
 export function* unwrappedCodeBlocks(draft: IThreadSession) {
   return (yield* unwrappedCode(draft)).Blocks;
 }
-
-export const TerminalReceiver = receiver<IThreadSession>("TerminalReceiver")({
-  *"Terminal/Session"(draft, message) {
-    if (isEnded(message)) return;
-    (yield* attachment(draft)).Status = message.Status;
-    if (message.Error === null) delete draft.Terminal.Error;
-    else draft.Terminal.Error = message.Error;
-  },
-});
 
 export default createEntityFeature<IThreadSession>(import.meta.url)(
   {
@@ -1636,10 +1500,8 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     toggleRightPanel,
     closeRightPanel,
     closeLauncher,
-    openTerminal,
-    closeTerminal,
-    toggleTerminal,
-    endTerminal,
+    runScript,
+    saveScripts,
   },
   {
     effectiveModel,
@@ -1662,7 +1524,6 @@ export default createEntityFeature<IThreadSession>(import.meta.url)(
     rewindConfirm,
     mergeBackRunId,
     diffLoading,
-    terminalAttachment,
     unwrappedCodeBlocks,
   },
 );

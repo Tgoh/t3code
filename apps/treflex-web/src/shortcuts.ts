@@ -3,13 +3,8 @@ import type { IDispatch } from "treflex-solid";
 
 import type { IPanelShortcuts } from "./Environment";
 import type { IOverlayStack } from "./overlays";
-import {
-  closeDiff,
-  openDiff,
-  toggleDetails,
-  toggleRightPanel,
-  toggleTerminal,
-} from "./ThreadSession";
+import { toggleTerminal } from "./Terminal";
+import { closeDiff, openDiff, toggleDetails, toggleRightPanel } from "./ThreadSession";
 
 /** A handler for plain keys while something on screen takes them, as the surface launcher does. */
 export type ILetterKeys = (event: KeyboardEvent) => boolean;
@@ -65,7 +60,6 @@ export function createKeyDispatcher(input: {
   };
 }
 
-/** Runs a panel shortcut on the shown thread's session, and says whether it applied. */
 export function runPanelShortcut(
   command: KeybindingCommand,
   panels: IPanelShortcuts | null,
@@ -80,7 +74,7 @@ export function runPanelShortcut(
       return true;
     case "terminal.toggle":
       if (!panels.Terminal) return false;
-      void dispatch(toggleTerminal, session);
+      void dispatch(toggleTerminal, panels.TerminalEntityId);
       return true;
     case "rightPanel.toggle":
       void dispatch(toggleRightPanel, session);
