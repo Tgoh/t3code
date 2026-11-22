@@ -1,6 +1,7 @@
 import { createTestRuntime, settled } from "treflex";
 import { describe, expect, it } from "vite-plus/test";
 
+import { serverFailure } from "./Infrastructure/serverError";
 import { searchMessages } from "./messageSearch";
 
 describe("searchMessages", () => {
@@ -32,5 +33,24 @@ describe("searchMessages", () => {
     await settled();
     expect(sent).toEqual(["foob"]);
     expect(runtime.state.Query).toBe("foob");
+  });
+
+  it("marks a search the server failed, and clears the mark on the next one that works", async () => {
+    let fail = true;
+    const runtime = createTestRuntime(
+      { $Id: "Search", Query: "", Matches: [], Failed: false },
+      {
+        delay: () => Promise.resolve(),
+        searchThreads: () => {
+          if (fail) throw serverFailure("down");
+          return { Matches: [] };
+        },
+      },
+    );
+    await runtime.dispatch(searchMessages, "Search", "env-1", "foo");
+    expect(runtime.state).toMatchObject({ Query: "foo", Matches: [], Failed: true });
+    fail = false;
+    await runtime.dispatch(searchMessages, "Search", "env-1", "foob");
+    expect(runtime.state).toMatchObject({ Query: "foob", Failed: false });
   });
 });

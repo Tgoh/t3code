@@ -16,6 +16,8 @@ const DEBOUNCE_MS = 120;
 interface IMessageSearch extends IEntity {
   Query: string;
   Matches: IThreadSearchMatch[];
+  /** The server failed the search for `Query`, so its empty `Matches` means nothing. */
+  Failed: boolean;
 }
 
 /** Each keystroke replaces the search waiting before it, so only a settled query is sent. */
@@ -31,9 +33,11 @@ export function* searchMessages(
       EnvironmentId: environmentId,
       Query: query,
     })).Matches;
+    draft.Failed = false;
   } catch (error) {
     serverError(error);
     draft.Matches = [];
+    draft.Failed = true;
   }
   draft.Query = query;
 }
@@ -55,7 +59,7 @@ export const searchesMessages = (query: string) =>
  */
 export function useMessageSearch(query: Accessor<string>) {
   const environment = Environment.use();
-  const held = useComponentState<IMessageSearch>(() => ({ Query: "", Matches: [] }));
+  const held = useComponentState<IMessageSearch>(() => ({ Query: "", Matches: [], Failed: false }));
   const normalized = createMemo(() => normalizeMessageQuery(query()));
   const active = createMemo(() => searchesMessages(normalized()));
   const search = (next: string) => {
@@ -77,6 +81,8 @@ export function useMessageSearch(query: Accessor<string>) {
     /** The query the shown matches were found for, which lags `query` while a search runs. */
     query: () => visible().query,
     pending: () => active() && held.state.Query !== normalized(),
+    // Follows `failed` in useThreadSearch, apps/web/src/state/queries.ts.
+    failed: () => active() && held.state.Query === normalized() && held.state.Failed,
     search,
   };
 }

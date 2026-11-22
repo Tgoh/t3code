@@ -559,7 +559,11 @@ export const Sidebar = Shell.provider(() => {
           when={results().length > 0}
           fallback={
             <p class={EMPTY_NOTE} role="status">
-              {messageSearch.pending() ? "Searching thread messages…" : "No threads found"}
+              {messageSearch.pending()
+                ? "Searching thread messages…"
+                : messageSearch.failed()
+                  ? "Couldn't search thread messages"
+                  : "No threads found"}
             </p>
           }
         >

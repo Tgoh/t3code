@@ -356,6 +356,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   const emptyMessage = () => {
     if (rows().length > 0) return null;
     if (messageSearch.pending()) return "Searching thread messages…";
+    if (messageSearch.failed()) return "Couldn't search thread messages.";
     return "No matching commands, projects or threads.";
   };
 
