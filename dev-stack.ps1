@@ -4,12 +4,12 @@
 #   ./dev-stack.ps1 -Status   show what's running
 #   ./dev-stack.ps1 -Stop     stop what this script started
 #   ./dev-stack.ps1 -Restart  stop, then start
-#   ./dev-stack.ps1 -Restart -Only reflex   restart one service (server, reflex or stock)
+#   ./dev-stack.ps1 -Restart -Only treflex   restart one service (server, treflex or stock)
 #
 # A service's optional hooks run before it is stopped (Prepare), between stop and start (Install), and
 # once its port answers (Verify). A failing hook makes the run exit 1, and a failing Prepare skips the
 # restart, so a running service keeps running as it was.
-# The reflex client's hooks build it with apps/reflex-web/scripts/driver-build.ps1.
+# The treflex client's hooks build it with apps/treflex-web/scripts/driver-build.ps1.
 #
 # Starting and stopping run elevated: an unelevated run reopens itself as administrator.
 [CmdletBinding()]
@@ -17,7 +17,7 @@ param(
   [switch]$Status,
   [switch]$Stop,
   [switch]$Restart,
-  [ValidateSet("server", "reflex", "stock")]
+  [ValidateSet("server", "treflex", "stock")]
   [string]$Only,
   [switch]$Pause,
   [switch]$Detached
@@ -55,7 +55,7 @@ $stateDir = Join-Path $homeDir "dev-stack"
 $statePath = Join-Path $stateDir "processes.json"
 $node = (Get-Command node).Source
 $vp = (Get-Command vp).Source
-$driverBuild = Join-Path $root "apps/reflex-web/scripts/driver-build.ps1"
+$driverBuild = Join-Path $root "apps/treflex-web/scripts/driver-build.ps1"
 
 $services = @(
   @{
@@ -66,11 +66,11 @@ $services = @(
     Directory = Join-Path $root "apps/server"
   },
   @{
-    Name = "reflex"
+    Name = "treflex"
     Port = 5734
     File = $vp
     Arguments = @("preview", "--port", "5734", "--strictPort")
-    Directory = Join-Path $root "apps/reflex-web"
+    Directory = Join-Path $root "apps/treflex-web"
     Prepare = { & $driverBuild -Build -StateDir $stateDir }
     Install = { & $driverBuild -Install -StateDir $stateDir }
     Verify = { & $driverBuild -Verify -Port 5734 }
@@ -105,6 +105,11 @@ function Read-State {
   $held = @{}
   (Get-Content $statePath -Raw | ConvertFrom-Json).PSObject.Properties |
     ForEach-Object { $held[$_.Name] = $_.Value }
+  # A stack started before the client's rename holds it as "reflex"; the next stop rewrites the file.
+  if ($held.ContainsKey("reflex") -and -not $held.ContainsKey("treflex")) {
+    $held["treflex"] = $held["reflex"]
+    $held.Remove("reflex")
+  }
   $held
 }
 

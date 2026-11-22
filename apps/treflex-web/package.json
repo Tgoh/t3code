@@ -1,0 +1,39 @@
+{
+  "name": "@t3tools/treflex-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "typecheck": "effect-tsgo tsrs --noEmit",
+    "test": "vp test run",
+    "bench": "vp test run --mode bench"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@pierre/diffs": "catalog:",
+    "@pierre/trees": "1.0.0-beta.6",
+    "@t3tools/client-runtime": "workspace:*",
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "dompurify": "^3.4.16",
+    "effect": "catalog:",
+    "lucide-solid": "^0.564.0",
+    "marked": "^16.0.0",
+    "solid-js": "^1.9.12",
+    "treflex": "0.2.0",
+    "treflex-solid": "0.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "playwright-core": "1.64.1",
+    "tailwindcss": "catalog:",
+    "treflex-eslint": "file:vendor/treflex-eslint-0.2.0.tgz",
+    "vite-plugin-solid": "^2.11.7",
+    "vite-plus": "catalog:"
+  }
+}
