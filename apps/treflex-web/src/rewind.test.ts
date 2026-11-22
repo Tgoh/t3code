@@ -215,10 +215,27 @@ describe("findRevertCheckpoint", () => {
   it("finds the thread start or the run's latest rewindable checkpoint", () => {
     const later = { ...checkpoint(1), id: "checkpoint-1b" } as ICheckpoint;
     const checkpoints = [startCheckpoint(), checkpoint(1), later, checkpoint(2, "error")];
-    expect(findRevertCheckpoint(checkpoints, 0)?.id).toBe("checkpoint-start");
-    expect(findRevertCheckpoint(checkpoints, 1)?.id).toBe("checkpoint-1b");
-    expect(findRevertCheckpoint(checkpoints, 2)).toBeUndefined();
-    expect(findRevertCheckpoint([startCheckpoint("missing")], 0)?.id).toBe("checkpoint-start");
+    const open = threadOf([], checkpoints);
+    expect(findRevertCheckpoint(open, 0)?.id).toBe("checkpoint-start");
+    expect(findRevertCheckpoint(open, 1)?.id).toBe("checkpoint-1b");
+    expect(findRevertCheckpoint(open, 2)).toBeUndefined();
+    expect(findRevertCheckpoint(threadOf([], [startCheckpoint("missing")]), 0)?.id).toBe(
+      "checkpoint-start",
+    );
+  });
+
+  it("never picks a tracked repository's baseline as the thread start", () => {
+    const baseline = {
+      ...startCheckpoint(),
+      id: "checkpoint-repo",
+      scopeId: "scope-repo",
+    } as unknown as ICheckpoint;
+    const open = threadOf([], [startCheckpoint(), baseline]);
+    open.CheckpointScopes["scope-repo"] = {
+      id: "scope-repo",
+      repositoryPath: "/work/lib",
+    } as never;
+    expect(findRevertCheckpoint(open, 0)?.id).toBe("checkpoint-start");
   });
 });
 

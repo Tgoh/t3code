@@ -1,3 +1,4 @@
+import { repositoryCheckpointScopeIds } from "@t3tools/client-runtime/state/thread-repositories";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
 
 import type { IWireTurnItem } from "./Infrastructure/wire";
@@ -12,11 +13,16 @@ const isRewindable = (checkpoint: Pick<ICheckpoint, "status">) =>
 
 // Follows findRevertCheckpoint in apps/web/src/session-logic.ts.
 export function findRevertCheckpoint(
-  checkpoints: ReadonlyArray<ICheckpoint>,
+  thread: Pick<IOpenThread, "Checkpoints" | "CheckpointScopes">,
   turnCount: number,
 ): ICheckpoint | undefined {
-  return checkpoints.findLast(
+  // A tracked repository's baseline also sits at ordinal zero; it is never a rewind target.
+  const repositoryScopeIds: ReadonlySet<string> = repositoryCheckpointScopeIds(
+    Object.values(thread.CheckpointScopes) as never,
+  );
+  return Object.values(thread.Checkpoints).findLast(
     (checkpoint) =>
+      !repositoryScopeIds.has(checkpoint.scopeId) &&
       isRewindable(checkpoint) &&
       (turnCount === 0
         ? checkpoint.ordinalWithinScope === 0 && checkpoint.appRunOrdinal === null
@@ -27,10 +33,7 @@ export function findRevertCheckpoint(
 // Follows threadStartCheckpointAvailable in apps/web/src/components/ChatView.tsx: a paged history
 // window can't identify the first loaded run as the thread start.
 export function threadStartAvailable(thread: IOpenThread): boolean {
-  return (
-    thread.History?.HasMore !== true &&
-    findRevertCheckpoint(Object.values(thread.Checkpoints), 0) !== undefined
-  );
+  return thread.History?.HasMore !== true && findRevertCheckpoint(thread, 0) !== undefined;
 }
 
 // Follows deriveUnsettledRunId in apps/web/src/components/chat/MessagesTimeline.logic.ts.

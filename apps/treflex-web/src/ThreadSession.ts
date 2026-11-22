@@ -946,7 +946,7 @@ export function* revertTargets(draft: IThreadSession): ISelectorGenerator<Record
 function* canRestoreFiles(draft: IThreadSession, turnCount: number): ISelectorGenerator<boolean> {
   const thread = yield* openThreadOf(draft);
   if (thread?.Thread == null || thread.Thread.worktreePath === null) return false;
-  return findRevertCheckpoint(Object.values(thread.Checkpoints), turnCount)?.status === "ready";
+  return findRevertCheckpoint(thread, turnCount)?.status === "ready";
 }
 
 interface IRewindPlan {
@@ -967,7 +967,7 @@ function* rewindPlan(
   const item = timelineItem(thread, itemId);
   const watch = rewindWatch(thread, turnCount, commandId);
   if (item?.type !== "user_message" || watch === null) return null;
-  const checkpoint = findRevertCheckpoint(Object.values(thread.Checkpoints), turnCount);
+  const checkpoint = findRevertCheckpoint(thread, turnCount);
   return {
     Prompt: recallablePrompt(item.text),
     Attachments: item.attachments ?? [],
