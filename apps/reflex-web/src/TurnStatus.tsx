@@ -23,7 +23,8 @@ import ThreadSession, { queueAction } from "./ThreadSession";
 import { QueuedMessage } from "./TimelineRows";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
-import { Popup } from "./ui/Menu";
+import { Popup, POPOVER_MOTION } from "./ui/Menu";
+import { Presence } from "./ui/Presence";
 import { BANNER_TITLE } from "./ui/notice";
 import { useWorkspaceRoot } from "./workspaceRoot";
 import {
@@ -33,8 +34,7 @@ import {
   workLogEntry,
 } from "./workLog";
 
-const POPOVER =
-  "absolute right-0 bottom-[calc(100%+4px)] left-0 z-40 max-h-[min(24rem,50dvh)] overflow-y-auto rounded-xl border border-border bg-popover px-3.5 pt-2.5 pb-3 text-[14px] text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]";
+const POPOVER = `absolute right-0 bottom-[calc(100%+4px)] left-0 z-40 max-h-[min(24rem,50dvh)] overflow-y-auto rounded-xl border border-border bg-popover px-3.5 pt-2.5 pb-3 text-[14px] text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPOVER_MOTION}`;
 
 const STEPS = "m-0 min-w-0 flex-1 list-none p-0";
 
@@ -231,7 +231,7 @@ function Checklist(props: { checklist: IChecklist }) {
           {count()}
           <ChevronUp />
         </button>
-        <Show when={open() && toggle()}>
+        <Presence when={open() && toggle()}>
           {(held) => (
             <ChecklistPopover
               checklist={props.checklist}
@@ -239,7 +239,7 @@ function Checklist(props: { checklist: IChecklist }) {
               onClose={() => setOpen(false)}
             />
           )}
-        </Show>
+        </Presence>
       </Show>
     </>
   );
@@ -405,7 +405,7 @@ export function TurnStatus(props: {
           {queued()} queued
           <ChevronUp />
         </button>
-        <Show when={open() && toggle()}>
+        <Presence when={open() && toggle()}>
           {(held) => (
             <QueuedPopover
               working={props.state !== null}
@@ -413,7 +413,7 @@ export function TurnStatus(props: {
               onClose={() => setOpen(false)}
             />
           )}
-        </Show>
+        </Presence>
       </Show>
     </div>
   );

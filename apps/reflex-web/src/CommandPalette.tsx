@@ -53,6 +53,7 @@ import {
   PALETTE_ROW_TEXT,
   PALETTE_ROW_TITLE,
 } from "./ui/palette";
+import { usePresence } from "./ui/Presence";
 
 const META_TEXT = "min-w-0 truncate";
 
@@ -73,6 +74,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   const environment = Environment.use();
   const shell = Shell.use();
   const navigation = useNavigation();
+  const presence = usePresence();
   const now = Date.now();
   const close = () => navigation.setPalette(null);
 
@@ -361,11 +363,19 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
     <Portal>
       <div
         class={PALETTE_BACKDROP}
+        data-closing={presence.closing() ? "" : undefined}
+        ref={(element) => presence.track(element)}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) close();
         }}
       >
-        <div class={PALETTE} role="dialog" aria-modal="true" aria-label="Command palette">
+        <div
+          class={PALETTE}
+          data-closing={presence.closing() ? "" : undefined}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Command palette"
+        >
           <div class={PALETTE_INPUT_ROW}>
             <Show
               when={submenu() !== null}

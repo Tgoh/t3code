@@ -74,6 +74,7 @@ import { AgentElapsed } from "./AgentElapsed";
 import { Button } from "./ui/Button";
 import { MenuItem, MenuSeparator, Popup } from "./ui/Menu";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import { Presence } from "./ui/Presence";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 
 const COMMIT_DIALOG_TITLE = "Commit changes";
@@ -1052,7 +1053,7 @@ const Body = (props: IDetailsProps) => {
         )}
       </Show>
 
-      <Show when={committing() && git()}>
+      <Presence when={committing() && git()}>
         {(held) => (
           <CommitDialog
             status={held()}
@@ -1072,27 +1073,29 @@ const Body = (props: IDetailsProps) => {
             }
           />
         )}
-      </Show>
+      </Presence>
 
-      <Show when={addingScript()}>
-        <AddScriptDialog
-          onClose={() => setAddingScript(false)}
-          onAdd={(name, command) =>
-            void details.saveScripts([
-              ...props.scripts,
-              {
-                id: newScriptId(name, props.scripts),
-                name,
-                command,
-                icon: "play",
-                runOnWorktreeCreate: false,
-              },
-            ])
-          }
-        />
-      </Show>
+      <Presence when={addingScript()}>
+        {() => (
+          <AddScriptDialog
+            onClose={() => setAddingScript(false)}
+            onAdd={(name, command) =>
+              void details.saveScripts([
+                ...props.scripts,
+                {
+                  id: newScriptId(name, props.scripts),
+                  name,
+                  command,
+                  icon: "play",
+                  runOnWorktreeCreate: false,
+                },
+              ])
+            }
+          />
+        )}
+      </Presence>
 
-      <Show when={pendingCopy()}>
+      <Presence when={pendingCopy()}>
         {(copy) => (
           <Dialog
             aria-labelledby="default-branch-title"
@@ -1133,7 +1136,7 @@ const Body = (props: IDetailsProps) => {
             </DialogFooter>
           </Dialog>
         )}
-      </Show>
+      </Presence>
     </div>
   );
 };

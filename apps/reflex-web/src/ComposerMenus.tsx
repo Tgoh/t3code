@@ -21,7 +21,8 @@ import {
 } from "./icons";
 import type { IWireRuntimeMode } from "./Infrastructure/commandEffects";
 import { arrowStep, focusStep } from "./listNavigation";
-import { Popup } from "./ui/Menu";
+import { Popup, POPOVER_MOTION } from "./ui/Menu";
+import { Presence } from "./ui/Presence";
 import { Segment, Segmented } from "./ui/Segmented";
 import { MenuSwitch } from "./ui/Switch";
 import {
@@ -330,19 +331,19 @@ export function ModelPicker() {
           )}
         </Show>
       </button>
-      <Show when={open() && trigger()}>
+      <Presence when={open() && trigger()}>
         {(anchor) => (
           <Anchored
             anchor={anchor()}
             align="end"
             label="Model"
-            class="h-96 w-[min(34rem,calc(100vw-16px))] max-sm:h-128"
+            class={`h-96 w-[min(34rem,calc(100vw-16px))] max-sm:h-128 ${POPOVER_MOTION}`}
             onClose={() => setOpen(false)}
           >
             <PickerContent traits={traits()} />
           </Anchored>
         )}
-      </Show>
+      </Presence>
     </>
   );
 }

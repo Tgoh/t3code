@@ -60,6 +60,7 @@ import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } fro
 import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import { Presence } from "./ui/Presence";
 import {
   contextThreadTarget,
   type ILinkTarget,
@@ -177,15 +178,15 @@ function FileChip(props: { link: IFileLink }) {
           {chipLabel(props.link, files.suffixes())}
         </span>
       </button>
-      <Show when={viewing()} keyed>
+      <Presence when={viewing()} keyed>
         {(held) => (
           <MediaViewer
-            target={held}
+            target={held()}
             name={chipLabel(props.link, files.suffixes())}
             onClose={() => setViewing(null)}
           />
         )}
-      </Show>
+      </Presence>
     </>
   );
 }
@@ -366,15 +367,15 @@ function LinkToken(props: ITokenProps) {
               >
                 {inner()}
               </a>
-              <Show when={viewing()} keyed>
+              <Presence when={viewing()} keyed>
                 {(held) => (
                   <MediaViewer
-                    target={held}
+                    target={held()}
                     name={plainText(link().tokens) || link().href}
                     onClose={() => setViewing(null)}
                   />
                 )}
-              </Show>
+              </Presence>
             </Show>
           }
         >
@@ -734,9 +735,9 @@ function ShownImage(props: {
             }}
             {...events}
           />
-          <Show when={expanded()}>
-            <ImageDialog src={src()} alt={props.alt} onClose={() => setExpanded(false)} />
-          </Show>
+          <Presence when={expanded()}>
+            {() => <ImageDialog src={src()} alt={props.alt} onClose={() => setExpanded(false)} />}
+          </Presence>
         </>
       )}
     </Show>

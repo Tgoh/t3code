@@ -61,6 +61,7 @@ import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
 import { Button } from "./ui/Button";
 import { IconButton, iconButton } from "./ui/IconButton";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import { Presence } from "./ui/Presence";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
 import { viewOf } from "./turnItemView";
 import {
@@ -99,13 +100,15 @@ const FILE_OPEN =
 
 const FOLD_LABEL = "max-w-[50%] flex-none truncate text-muted-foreground";
 
-const WORK_LINE = "flex min-h-6 min-w-0 items-center gap-1.5 text-[14px] leading-6";
+const WORK_LINE = "flex min-h-6 min-w-0 items-center gap-1.5 text-sm leading-relaxed";
 
 export const WORK_ICON =
-  "inline-flex size-6 flex-none items-center justify-center text-muted-foreground group-data-failed/row:text-destructive group-data-[tone=error]/row:font-medium group-data-[tone=error]/row:text-destructive [&_svg]:stroke-2 [&_svg]:opacity-70";
+  "inline-flex size-6 flex-none items-center justify-center text-muted-foreground group-data-failed/row:text-tool-error-icon/40 group-data-[tone=error]/row:font-medium group-data-[tone=error]/row:text-destructive [&_svg]:stroke-2 [&_svg]:opacity-70 light:[&_svg]:brightness-60";
 
-const SUMMARY =
-  "group/line cursor-pointer list-none group-data-action/row:pr-18 [&::-webkit-details-marker]:hidden";
+export const ROW_FOCUS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70";
+
+const SUMMARY = `group/line cursor-pointer list-none rounded-md group-data-action/row:pr-18 [&::-webkit-details-marker]:hidden ${ROW_FOCUS}`;
 
 export const workLine = (tone?: string) =>
   tone === "quiet"
@@ -315,9 +318,11 @@ function AttachmentImage(props: {
                 onError={() => props.onError()}
               />
             </button>
-            <Show when={expanded()}>
-              <ImageDialog src={url()} alt={props.file.name} onClose={() => setExpanded(false)} />
-            </Show>
+            <Presence when={expanded()}>
+              {() => (
+                <ImageDialog src={url()} alt={props.file.name} onClose={() => setExpanded(false)} />
+              )}
+            </Presence>
           </>
         )}
       </Show>
@@ -679,7 +684,7 @@ function ForkFromHere(props: IRowProps) {
 export function RewindDialog() {
   const session = ThreadSession.use();
   return (
-    <Show when={session.rewindConfirm()}>
+    <Presence when={session.rewindConfirm()}>
       {(entry) => {
         const id = () => entry().Id as IAskId<IRewindChoice>;
         const choose = (choice?: IRewindChoice) => void session.chooseRewind(id(), choice);
@@ -710,7 +715,7 @@ export function RewindDialog() {
           </Dialog>
         );
       }}
-    </Show>
+    </Presence>
   );
 }
 
@@ -798,7 +803,7 @@ const EVENT_TYPES = new Set<IWireTurnItem["type"]>([
   "checkpoint",
 ]);
 
-export function WorkRow(props: IRowProps & { single?: boolean }) {
+export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean }) {
   const { thread, item, inherited } = useRow(props);
   const session = ThreadSession.use();
   const workspaceRoot = useWorkspaceRoot();
@@ -864,7 +869,8 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
   const tone = () => view()?.Tone;
   return (
     <article
-      class="group/row relative min-w-0 rounded-md p-0.5 data-inherited:opacity-70"
+      class="group/row relative min-w-0 rounded-md px-0.5 py-0.5 data-grouped:py-0 data-inherited:opacity-70"
+      data-grouped={props.grouped ? "" : undefined}
       data-tone={tone()}
       data-inherited={inherited() ? "" : undefined}
       data-action={diffTurn() !== null ? "" : undefined}
@@ -896,7 +902,12 @@ export function WorkRow(props: IRowProps & { single?: boolean }) {
             class={`${workLine(tone())} ${SUMMARY} ${tone() === "quiet" || tone() === "error" ? "" : "hover:text-foreground"}`}
           >
             {label()}
-            <ChevronRight class="size-3.5 text-muted-foreground opacity-0 group-hover/line:opacity-100 in-open:rotate-90 in-open:opacity-100" />
+            <span
+              class="ml-auto flex size-4 flex-none items-center justify-center"
+              aria-hidden="true"
+            >
+              <ChevronRight class="size-3 text-muted-foreground opacity-70 transition-transform duration-200 in-open:rotate-90" />
+            </span>
           </summary>
           <div class="ml-7 pt-0.5 pb-1.5">
             <Show when={view()?.LiveOutput && expanded()}>

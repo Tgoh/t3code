@@ -49,6 +49,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-tool-error-icon: var(--tool-error-icon);
   --color-accent-foreground: var(--foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);

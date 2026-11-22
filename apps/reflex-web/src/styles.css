@@ -42,6 +42,7 @@
   --accent: var(--zinc-100);
   --error: oklch(63.7% 0.237 25.331);
   --error-foreground: oklch(50.5% 0.213 27.518);
+  --tool-error-icon: var(--error);
   --destructive: var(--error);
   --border: var(--zinc-200);
   --input: var(--zinc-300);
@@ -113,6 +114,7 @@
   --message-surface: color-mix(in srgb, var(--neutral-950) 92%, #fff);
   --error: color-mix(in srgb, oklch(63.7% 0.237 25.331) 90%, #fff);
   --error-foreground: oklch(70.4% 0.191 22.216);
+  --tool-error-icon: #fca5a5;
   --thread-link: oklch(76% 0.12 190);
   --file-link: oklch(0.76 0.11 215);
   --border: rgb(255 255 255 / 8%);

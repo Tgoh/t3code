@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web";
 
 import { Check } from "../icons";
 import { type ICloseReason, useOverlay } from "../overlays";
+import { usePresence } from "./Presence";
 
 const ITEM =
   "flex h-7 cursor-pointer items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 py-0 text-left text-[13px] hover:bg-accent aria-disabled:cursor-default aria-disabled:opacity-50 [&_svg]:size-3.5";
@@ -62,11 +63,15 @@ export function MenuHeading(props: { children: JSX.Element }) {
   );
 }
 
-/** A popup's entrance, for a `Popup` that replaces the surface's look with its own `class`. */
-export const POPUP_MOTION =
-  "transition-[opacity,translate] duration-200 ease-in-out starting:-translate-y-1 starting:opacity-0 motion-reduce:transition-none";
+/**
+ * A popover's entrance and exit, for a `Popup` that replaces the surface's look with its own
+ * `class`. Menus have none, as in stock. Follows PopoverPopup in apps/web/src/components/ui/popover.tsx.
+ */
+export const POPOVER_MOTION =
+  "transition-[scale,opacity] starting:scale-98 starting:opacity-0 data-closing:pointer-events-none data-closing:scale-98 data-closing:opacity-0";
 
-const SURFACE = `fixed z-[120] flex max-h-[calc(100vh-16px)] min-w-52 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPUP_MOTION}`;
+const SURFACE =
+  "fixed z-[120] flex max-h-[calc(100vh-16px)] min-w-52 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)]";
 
 const MARGIN = 8;
 
@@ -95,6 +100,7 @@ export function Popup(props: {
   portal?: boolean;
 }) {
   const [element, setElement] = createSignal<HTMLDivElement>();
+  const presence = usePresence();
   useOverlay({
     close: (reason) => props.onClose(reason),
     contains: (node) => element()?.contains(node) === true || props.anchor?.contains(node) === true,
@@ -115,7 +121,11 @@ export function Popup(props: {
       class={props.class ?? SURFACE}
       role={props.role ?? "menu"}
       aria-label={props.label}
-      ref={setElement}
+      data-closing={presence.closing() ? "" : undefined}
+      ref={(popup) => {
+        setElement(popup);
+        presence.track(popup);
+      }}
     >
       {props.children}
     </div>

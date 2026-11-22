@@ -10,7 +10,7 @@ export function MediaDialog(props: { onClose: () => void; children: JSX.Element 
     <Modal
       class="flex h-screen max-h-none w-screen max-w-none cursor-zoom-out items-center justify-center border-0 bg-transparent p-4 backdrop:bg-[rgb(0_0_0/80%)]"
       onClose={() => props.onClose()}
-      onClick={(event) => event.currentTarget.close()}
+      onClick={() => props.onClose()}
     >
       {props.children}
       <IconButton variant="media" class="absolute top-4 right-4" aria-label="Close preview">

@@ -74,6 +74,7 @@ import {
   PALETTE_SUBMIT,
   PALETTE_WARNING,
 } from "./ui/palette";
+import { usePresence } from "./ui/Presence";
 
 const SUMMARY =
   "flex items-center gap-2.5 border-b border-border px-3.5 py-2 [&>svg]:size-4 [&>svg]:flex-none [&>svg]:text-muted-foreground";
@@ -150,6 +151,7 @@ const modifierLabel = () => (isMac() ? "⌘" : "Ctrl");
 // a sources list, then a folder browser, a clone URL and destination, or a new project's name.
 export function AddProjectPalette(props: { onClose: () => void }) {
   const environment = Environment.use();
+  const presence = usePresence();
   const palette = useComponentState<IAddProjectPalette>(() => ({
     Settings: null,
     SettingsError: null,
@@ -464,11 +466,19 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     <Portal>
       <div
         class={PALETTE_BACKDROP}
+        data-closing={presence.closing() ? "" : undefined}
+        ref={(element) => presence.track(element)}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) props.onClose();
         }}
       >
-        <div class={PALETTE} role="dialog" aria-modal="true" aria-label="Add project">
+        <div
+          class={PALETTE}
+          data-closing={presence.closing() ? "" : undefined}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add project"
+        >
           <div class={PALETTE_INPUT_ROW}>
             <Show
               when={stack().length > 1}

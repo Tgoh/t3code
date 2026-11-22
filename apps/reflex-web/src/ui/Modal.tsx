@@ -1,22 +1,44 @@
-import { createSignal, type JSX } from "solid-js";
+import { createSignal, type JSX, splitProps } from "solid-js";
 
 import { useOverlay } from "../overlays";
+import { usePresence } from "./Presence";
 
-/** A `<dialog>` shown modally on mount, on the overlay stack so Escape closes it only when on top. */
+// Follows DIALOG_BACKDROP_CLASS and DIALOG_POPUP_CLASS in apps/web/src/components/ui/dialog-styles.ts.
+const DIALOG_MOTION =
+  "transition-[scale,opacity] duration-200 ease-in-out starting:scale-98 starting:opacity-0 data-closing:pointer-events-none data-closing:scale-98 data-closing:opacity-0 backdrop:transition-opacity backdrop:duration-200 starting:backdrop:opacity-0 data-closing:backdrop:opacity-0";
+
+/**
+ * A `<dialog>` shown modally on mount, on the overlay stack so Escape closes it only when on top.
+ * Inside a `Presence` it fades out before it unmounts; it never calls `close()` itself, which
+ * would drop it from the top layer at once.
+ */
 export function Modal(
-  props: JSX.DialogHtmlAttributes<HTMLDialogElement> & { onClose: () => void },
+  props: Omit<JSX.DialogHtmlAttributes<HTMLDialogElement>, "onClose" | "onCancel"> & {
+    class: string;
+    onClose: () => void;
+  },
 ) {
+  const [local, rest] = splitProps(props, ["class", "onClose"]);
   const [dialog, setDialog] = createSignal<HTMLDialogElement>();
+  const presence = usePresence();
   useOverlay({
     modal: true,
-    close: () => dialog()?.close(),
+    close: () => local.onClose(),
     contains: (node) => dialog()?.contains(node) === true,
   });
   return (
     <dialog
-      {...props}
+      {...rest}
+      class={`${local.class} ${DIALOG_MOTION}`}
+      data-closing={presence.closing() ? "" : undefined}
+      onCancel={(event) => {
+        event.preventDefault();
+        local.onClose();
+      }}
+      onClose={() => local.onClose()}
       ref={(element) => {
         setDialog(element);
+        presence.track(element);
         queueMicrotask(() => element.showModal());
       }}
     />
@@ -30,7 +52,9 @@ const DIALOG =
 
 /** A modal with the confirm dialog's chrome, laid out with the parts below. */
 export function Dialog(
-  props: Omit<JSX.DialogHtmlAttributes<HTMLDialogElement>, "class"> & { onClose: () => void },
+  props: Omit<JSX.DialogHtmlAttributes<HTMLDialogElement>, "class" | "onClose" | "onCancel"> & {
+    onClose: () => void;
+  },
 ) {
   return <Modal {...props} class={DIALOG} />;
 }

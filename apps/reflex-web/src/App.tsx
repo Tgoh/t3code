@@ -34,6 +34,7 @@ import ThreadSession, { closeRightPanel } from "./ThreadSession";
 import { CHAT_STAGE, ThreadView } from "./ThreadView";
 import { EMPTY_NOTE } from "./ui/notes";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
+import { Presence } from "./ui/Presence";
 import { TooltipHost } from "./ui/tooltip";
 import { UsageView } from "./UsageView";
 import { ViewportDebug } from "./ViewportDebug";
@@ -281,12 +282,12 @@ const EnvironmentView = Environment.provider(() => {
               />
             </Show>
             <EnvironmentMain />
-            <Show when={palette() === "add-project"}>
-              <AddProjectPalette onClose={() => setPalette(null)} />
-            </Show>
-            <Show when={palette() === "add-project" ? null : palette()} keyed>
-              {(view) => <CommandPalette state={environment.state.Replica.Shell} view={view} />}
-            </Show>
+            <Presence when={palette() === "add-project"}>
+              {() => <AddProjectPalette onClose={() => setPalette(null)} />}
+            </Presence>
+            <Presence when={palette() === "add-project" ? null : palette()} keyed>
+              {(view) => <CommandPalette state={environment.state.Replica.Shell} view={view()} />}
+            </Presence>
           </NavigationContext.Provider>
         </OverlayContext.Provider>
       </SidebarSheetContext.Provider>

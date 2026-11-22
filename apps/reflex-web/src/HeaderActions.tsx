@@ -13,7 +13,8 @@ import { useSidebarSheet } from "./viewport";
 import { clockNow } from "./timestamps";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
-import { MenuCheck, MenuItem, Popup, POPUP_MOTION } from "./ui/Menu";
+import { MenuCheck, MenuItem, Popup, POPOVER_MOTION } from "./ui/Menu";
+import { Presence } from "./ui/Presence";
 import { LimitsSummary } from "./UsageView";
 
 const MARGIN = 8;
@@ -105,35 +106,39 @@ export function UsageRing() {
           </Show>
         </svg>
       </IconButton>
-      <Show when={open() !== null && button()}>
-        {(anchor) => (
-          <Popup
-            portal
-            role="dialog"
-            label="Usage limits"
-            anchor={anchor()}
-            place={placeBelow(anchor())}
-            class={`fixed z-[120] flex max-h-[calc(100dvh-16px)] w-64 flex-col gap-3 overflow-y-auto rounded-lg border border-border bg-popover p-3 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPUP_MOTION}`}
-            onClose={(reason) => {
-              setOpen(null);
-              if (reason === "escape") anchor().focus();
-            }}
-          >
-            <LimitsSummary pools={limitPools(presentations(), open() ?? 0)} now={open() ?? 0} />
-            <Button
-              class="flex w-full items-center justify-center gap-1.5 [&_svg]:size-3.5"
-              onClick={() => {
+      <Presence when={open() !== null && button()}>
+        {(anchor) => {
+          // Read once, so the popover keeps its figures while it fades out.
+          const now = open() ?? 0;
+          return (
+            <Popup
+              portal
+              role="dialog"
+              label="Usage limits"
+              anchor={anchor()}
+              place={placeBelow(anchor())}
+              class={`fixed z-[120] flex max-h-[calc(100dvh-16px)] w-64 flex-col gap-3 overflow-y-auto rounded-lg border border-border bg-popover p-3 text-foreground shadow-[0_10px_25px_-5px_rgb(0_0_0/20%)] ${POPOVER_MOTION}`}
+              onClose={(reason) => {
                 setOpen(null);
-                sidebar.setOpen(false);
-                void environment.openView({ Kind: "usage" });
+                if (reason === "escape") anchor().focus();
               }}
             >
-              <ChartNoAxesColumn />
-              Open usage
-            </Button>
-          </Popup>
-        )}
-      </Show>
+              <LimitsSummary pools={limitPools(presentations(), now)} now={now} />
+              <Button
+                class="flex w-full items-center justify-center gap-1.5 [&_svg]:size-3.5"
+                onClick={() => {
+                  setOpen(null);
+                  sidebar.setOpen(false);
+                  void environment.openView({ Kind: "usage" });
+                }}
+              >
+                <ChartNoAxesColumn />
+                Open usage
+              </Button>
+            </Popup>
+          );
+        }}
+      </Presence>
     </>
   );
 }

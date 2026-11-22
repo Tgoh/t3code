@@ -49,6 +49,7 @@ import { Button, button, buttonLink } from "./ui/Button";
 import { Input, Select, Textarea, WrapSelect } from "./ui/Field";
 import { IconButton } from "./ui/IconButton";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/Modal";
+import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Switch as Toggle } from "./ui/Switch";
 import { VoiceSetup } from "./VoiceSettings";
@@ -924,9 +925,9 @@ const ProjectsPage = Shell.provider(() => {
           </>
         )}
       </Show>
-      <Show when={removing()} keyed>
-        {(target) => <RemoveProjectDialog project={target} onClose={() => setRemoving(null)} />}
-      </Show>
+      <Presence when={removing()} keyed>
+        {(target) => <RemoveProjectDialog project={target()} onClose={() => setRemoving(null)} />}
+      </Presence>
     </>
   );
 });
@@ -1100,34 +1101,37 @@ function ArchivedPage() {
               </SettingsSection>
             )}
           </For>
-          <Show when={deleting()} keyed>
-            {(thread) => (
-              <Dialog aria-labelledby="delete-archived-title" onClose={() => setDeleting(null)}>
-                <DialogHeader>
-                  <DialogTitle id="delete-archived-title">
-                    Delete thread "{thread.title}"?
-                  </DialogTitle>
-                  <DialogDescription>
-                    This permanently clears conversation history for this thread.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button autofocus onClick={() => setDeleting(null)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      setDeleting(null);
-                      void environment.archivedThreadCommand(thread.id, "delete");
-                    }}
-                  >
-                    Delete
-                  </Button>
-                </DialogFooter>
-              </Dialog>
-            )}
-          </Show>
+          <Presence when={deleting()} keyed>
+            {(held) => {
+              const thread = held();
+              return (
+                <Dialog aria-labelledby="delete-archived-title" onClose={() => setDeleting(null)}>
+                  <DialogHeader>
+                    <DialogTitle id="delete-archived-title">
+                      Delete thread "{thread.title}"?
+                    </DialogTitle>
+                    <DialogDescription>
+                      This permanently clears conversation history for this thread.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Button autofocus onClick={() => setDeleting(null)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        setDeleting(null);
+                        void environment.archivedThreadCommand(thread.id, "delete");
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </DialogFooter>
+                </Dialog>
+              );
+            }}
+          </Presence>
         </Show>
       )}
     </Show>

@@ -40,6 +40,7 @@ import { modelDisplay } from "./ThreadSession";
 import { IconButton, iconButton } from "./ui/IconButton";
 import { MenuCheck, MenuHeading, MenuItem, Popup } from "./ui/Menu";
 import { EMPTY_NOTE } from "./ui/notes";
+import { Presence } from "./ui/Presence";
 import { useSidebarSheet } from "./viewport";
 
 const CONNECTION_LABEL: Record<string, string> = {
@@ -748,11 +749,11 @@ export const Sidebar = Shell.provider(() => {
           />
         )}
       </Show>
-      <Show when={shell.state.Projects[removingProject() ?? ""]} keyed>
+      <Presence when={shell.state.Projects[removingProject() ?? ""]} keyed>
         {(project) => (
-          <RemoveProjectDialog project={project} onClose={() => setRemovingProject(null)} />
+          <RemoveProjectDialog project={project()} onClose={() => setRemovingProject(null)} />
         )}
-      </Show>
+      </Presence>
       <Show when={folders().get(drag.dragging() ?? "")} keyed>
         {(folder) => (
           <div
