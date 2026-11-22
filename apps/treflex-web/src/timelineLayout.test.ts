@@ -139,6 +139,10 @@ describe("the timeline's turn folds", () => {
 
   it("times a turn that isn't the latest run from its rows", () => {
     expect(shape(layout(turn, { run: null }))[1]).toBe("fold Worked for 6s");
+    // Background work spawned it once the turn settled, so it adds no turn time.
+    const late = item("subagent", "sub", 30, { childThreadId: "child", title: "Helper" });
+    expect(entryFacts(late)).not.toBeNull();
+    expect(shape(layout([...turn, late], { run: null }))[1]).toBe("fold Worked for 6s");
   });
 
   it("opens into work groups, a lone tool as its own row, and moves the reply's actions below its work", () => {

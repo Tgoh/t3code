@@ -364,7 +364,12 @@ function turnFolds(
       segment.some((entry) => hidden.has(entry.Id) && !entry.Compaction);
     if (!isRunning && !hidesWork(group.Entries)) continue;
     const first = group.Entries[0]!;
-    const last = group.Entries.at(-1)!;
+    // A subagent card after the terminal entry was spawned by background work once the turn
+    // settled, so it adds no turn time.
+    const late = new Set(
+      group.Entries.filter((entry, index) => index > terminalIndex && entry.Type === "subagent"),
+    );
+    const last = group.Entries.findLast((entry) => !late.has(entry)) ?? group.Entries.at(-1)!;
     const run = input.LatestRun?.Id === runId ? input.LatestRun : null;
     const elapsed =
       run?.StartedAt != null && run.CompletedAt != null
@@ -396,7 +401,10 @@ function turnFolds(
       if (anchor === undefined || !hidesWork(segment)) continue;
       const ms = elapsedMs(
         Steer.At,
-        segment.map((entry) => entry.End).reduce<string | null>(later, null) ?? Steer.At,
+        segment
+          .filter((entry) => !late.has(entry))
+          .map((entry) => entry.End)
+          .reduce<string | null>(later, null) ?? Steer.At,
       );
       folds.set(anchor.Id, {
         RunId: runId,
