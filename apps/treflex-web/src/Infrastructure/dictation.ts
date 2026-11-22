@@ -132,20 +132,29 @@ interface IVoiceModelCommandEffect extends IEffect {
   ModelId: string;
 }
 
-/** Answers with the catalog after the command. A download answers once it has finished. */
-export const voiceModelCommandEffect = defineEffect<IVoiceModelCommandEffect, IVoiceModel[]>(
-  "voiceModelCommand",
-);
+export interface IVoiceModelCommandResult {
+  Models: IVoiceModel[];
+  /** A download someone cancelled before it finished; older servers never say so. */
+  Cancelled: boolean;
+}
 
-export const voiceModelCommandImpl = implementation(voiceModelCommandEffect, async (effect) =>
-  modelList(
-    await voiceJson<unknown>(`/api/voice/models/${effect.Command}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ modelId: effect.ModelId }),
-    }),
-  ),
-);
+/** Answers with the catalog after the command. A download answers once it has finished. */
+export const voiceModelCommandEffect = defineEffect<
+  IVoiceModelCommandEffect,
+  IVoiceModelCommandResult
+>("voiceModelCommand");
+
+export const voiceModelCommandImpl = implementation(voiceModelCommandEffect, async (effect) => {
+  const body = await voiceJson<unknown>(`/api/voice/models/${effect.Command}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ modelId: effect.ModelId }),
+  });
+  return {
+    Models: modelList(body),
+    Cancelled: (body as { cancelled?: unknown } | null)?.cancelled === true,
+  };
+});
 
 const modelList = (catalog: unknown) =>
   (encodeModels(decodeModels(catalog)) as { models: IVoiceModel[] }).models;

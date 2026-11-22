@@ -64,12 +64,13 @@ export function* downloadModel(draft: IVoiceModels, modelId: string): IOpenGener
   draft.Error = null;
   yield* startTimer(draft, "Voice/Poll", VoiceModelsReceiver, POLL_MS);
   try {
-    let models = yield* open(voiceModelCommandEffect({ Command: "download", ModelId: modelId }));
-    const model = models.find((held) => held.id === modelId);
-    if (model?.state === "installed" && !model.active) {
-      models = yield* open(voiceModelCommandEffect({ Command: "select", ModelId: modelId }));
+    let result = yield* open(voiceModelCommandEffect({ Command: "download", ModelId: modelId }));
+    // Follows getSpeechModelDownloadOutcome in packages/client-runtime/src/voice-input/environment.ts.
+    const model = result.Models.find((held) => held.id === modelId);
+    if (!result.Cancelled && model?.state === "installed" && !model.active) {
+      result = yield* open(voiceModelCommandEffect({ Command: "select", ModelId: modelId }));
     }
-    yield* follow(draft, models);
+    yield* follow(draft, result.Models);
   } catch (error) {
     draft.Error = serverError(error).message;
   }
@@ -89,7 +90,10 @@ leading(cancelDownload);
 function* command(draft: IVoiceModels, kind: "select" | "cancel", modelId: string): IOpenGenerator {
   draft.Error = null;
   try {
-    yield* follow(draft, yield* open(voiceModelCommandEffect({ Command: kind, ModelId: modelId })));
+    yield* follow(
+      draft,
+      (yield* open(voiceModelCommandEffect({ Command: kind, ModelId: modelId }))).Models,
+    );
   } catch (error) {
     draft.Error = serverError(error).message;
   }

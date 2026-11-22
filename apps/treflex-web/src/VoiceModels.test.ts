@@ -34,9 +34,10 @@ function rig(
     { $Id: ID, ...getDefaultVoiceModels() },
     {
       voiceModels: catalog,
-      voiceModelCommand: (effect: ICommand) => {
+      voiceModelCommand: async (effect: ICommand) => {
         commands.push({ Command: effect.Command, ModelId: effect.ModelId });
-        return command(effect);
+        const answer = await command(effect);
+        return Array.isArray(answer) ? { Models: answer, Cancelled: false } : answer;
       },
     },
     options,
@@ -107,6 +108,16 @@ describe("voice models", () => {
     catalog = [model("base", "installed", true)];
     await voice.tick();
     expect(voice.polling()).toBe(false);
+  });
+
+  it("keeps the model in use when a download was cancelled as it finished", async () => {
+    const voice = rig(
+      () => [],
+      () => ({ Models: [model("base", "installed")], Cancelled: true }),
+    );
+    await voice.runtime.dispatch(downloadModel, ID, "base");
+    expect(voice.commands).toEqual([{ Command: "download", ModelId: "base" }]);
+    expect(voice.runtime.state.Models).toEqual([model("base", "installed")]);
   });
 
   it("shows a server's refusal, and sends a bug to the failure route", async () => {
