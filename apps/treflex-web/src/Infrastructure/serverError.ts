@@ -32,8 +32,14 @@ export function serverError(error: unknown): ServerError {
   throw error;
 }
 
-/** A typed failure is the server's answer; a defect or an interrupt is thrown as it is. */
+/**
+ * A typed failure is the server's answer, and so is an interrupt: one the action asked for never
+ * reaches it, so this one is a dropped connection. A defect is thrown as it is.
+ */
 export function thrownOf(cause: Cause.Cause<unknown>): unknown {
+  if (Cause.hasInterruptsOnly(cause)) {
+    return serverFailure("The connection dropped before the server answered. Try again.");
+  }
   const squashed = Cause.squash(cause);
   if (Cause.hasDies(cause) || !Cause.hasFails(cause)) return squashed;
   return serverFailure(errorText(squashed), { cause: squashed });

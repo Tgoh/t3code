@@ -13,6 +13,12 @@ describe("thrownOf", () => {
     const bug = new TypeError("x is undefined");
     expect(thrownOf(Cause.die(bug))).toBe(bug);
   });
+
+  it("makes a request a dropped connection interrupted a server error", () => {
+    const interrupted = thrownOf(Cause.interrupt());
+    expect(isServerError(interrupted)).toBe(true);
+    expect((interrupted as Error).message).toMatch(/connection/);
+  });
 });
 
 describe("serverError", () => {
