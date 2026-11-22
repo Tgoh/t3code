@@ -72,7 +72,7 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 ## Server
 
-- **Idle compaction survives a server restart.** **In progress:** `fix/idle-compaction-restart`, an upstream PR, then cherry-picked onto `treflex-main`. `IdleCompactionService` keeps its timers in memory, so a restart within the hour after a turn drops that thread's compaction; the Notes Main thread lost one to the 2026-11-22 restarts. On startup, re-arm the threads whose latest run completed inside the cache window. Takes effect after Tam's next server restart.
+- **Idle compaction survives a server restart.** **In progress:** `treflex/idle-compaction-restart`, which cherry-picks upstream's open fix, pingdotgg/t3code#27926 by a maintainer, onto `treflex-main`. No PR of ours, since that one exists; when it merges upstream, the sync takes upstream's version. `IdleCompactionService` keeps its timers in memory, so a restart within the hour after a turn drops that thread's compaction; the Notes Main thread lost one to the 2026-11-22 restarts. On startup, re-arm the threads whose latest run completed inside the cache window. Takes effect after Tam's next server restart.
 
 ## Housekeeping
 
