@@ -309,7 +309,9 @@ interface IStartCloneEffect extends IEffect, IStartClone {
   Type: "startClone";
 }
 
-export const startCloneEffect = defineEffect<IStartCloneEffect, void>("startClone");
+export const startCloneEffect = defineEffect<IStartCloneEffect, void>("startClone", {
+  redact: true,
+});
 
 interface ICloneControlEffect extends IEffect {
   Type: "cloneControl";

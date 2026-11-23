@@ -21,6 +21,7 @@ import {
   open,
   openResource,
   receiver,
+  redactArgs,
   registerDataSource,
   resource,
   select,
@@ -939,6 +940,7 @@ export function* cloneProject(
   return null;
 }
 leading(cloneProject);
+redactArgs(cloneProject);
 
 // Follows useNewProject in apps/web/src/hooks/useNewProject.ts.
 export function* newProject(
