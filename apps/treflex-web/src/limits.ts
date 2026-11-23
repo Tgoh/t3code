@@ -1,4 +1,8 @@
-import { EnvironmentId, type ServerProvider } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type ServerProvider,
+  type UsageLimitSourceSnapshots,
+} from "@t3tools/contracts";
 import {
   collectLimitAccounts,
   collectLimitPools,
@@ -18,10 +22,16 @@ export interface IWeeklyLimit {
 /** The server's id for Claude's all-models weekly window, beside per-model ones such as `Weekly · Fable`. */
 const CLAUDE_WEEKLY_ID = "seven_day";
 
+/** The providers' own limits and the usage-limit hubs', as the server config holds them. */
+export interface ILimitSources {
+  providers: readonly unknown[];
+  usageLimitSources?: readonly unknown[] | undefined;
+}
+
 export function limitPresentations(
   environmentId: string,
   label: string,
-  providers: readonly unknown[] | undefined,
+  config: ILimitSources | null,
 ): LimitPresentations {
   return new Map([
     [
@@ -29,7 +39,14 @@ export function limitPresentations(
       {
         entry: { target: { label } },
         serverConfig:
-          providers === undefined ? null : { providers: providers as readonly ServerProvider[] },
+          config === null
+            ? null
+            : {
+                providers: config.providers as readonly ServerProvider[],
+                usageLimitSources: config.usageLimitSources as
+                  | UsageLimitSourceSnapshots
+                  | undefined,
+              },
       },
     ],
   ]);

@@ -48,6 +48,13 @@ import {
 } from "./threadNotifications";
 import type { ISelection } from "./ThreadSession";
 import { serverError } from "./Infrastructure/serverError";
+import { toast } from "./Infrastructure/toasts";
+import {
+  type ITitleBatch,
+  settleTitleBatches,
+  titleRegenerationToast,
+  titleRequest,
+} from "./titleRegeneration";
 import { expireInbox, type IInbox, type IInboxFacts, inboxDeadline, observeInbox } from "./inbox";
 import { faviconKey, faviconTarget, type IProjectFaviconTarget } from "./projectIcon";
 import type {
@@ -272,6 +279,29 @@ function* visitIfDue(draft: IShell): IActionGenerator {
     yield* start(visitShown, draft);
 }
 
+const titleBatchesOf = (draft: IShell) =>
+  transient(draft, "Shell/TitleRegeneration", { Batches: [] as ITitleBatch[] });
+
+/** Waits for the rows to report the Regenerate title requests sent together, then toasts once. */
+export function* trackTitleRegenerations(
+  draft: IShell,
+  requests: Array<{ ThreadId: string; RequestId: string }>,
+): IActionGenerator {
+  (yield* titleBatchesOf(draft)).Batches.push({
+    Requests: requests.map((request) => titleRequest(request.ThreadId, request.RequestId)),
+  });
+  yield* settleTitles(draft);
+}
+
+function* settleTitles(draft: IShell): IActionGenerator {
+  const held = yield* titleBatchesOf(draft);
+  if (held.Batches.length === 0) return;
+  for (const outcomes of settleTitleBatches(held.Batches, draft.Threads)) {
+    const request = titleRegenerationToast(outcomes);
+    if (request !== null) yield* toast(request);
+  }
+}
+
 function* reopenLater(draft: IShell): IActionGenerator {
   yield* startTimer(draft, "Shell/Reopen", ShellReceiver, REOPEN_MS);
 }
@@ -352,6 +382,7 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
       if (THREAD_ITEMS.has(message.Item.kind)) {
         yield* followInbox(draft);
         yield* notifyChanges(draft);
+        yield* settleTitles(draft);
       }
       yield* visitIfDue(draft);
     }
@@ -509,6 +540,14 @@ export function runtimeStatus(thread: IWireThreadShell): IWireThreadShell["statu
     thread.status !== "failed";
   if (thread.latestRunId === null && !parkAtIdle) return null;
   return parkAtIdle ? "idle" : (thread.activityRunStatus ?? thread.status);
+}
+
+// Follows threadRuntimeCanArchive in packages/client-runtime/src/state/models.ts.
+/** The server refuses to archive a thread with an attached provider. */
+export function canArchive(thread: IWireThreadShell): boolean {
+  const status = runtimeStatus(thread);
+  if (status === "queued") return (thread.activeRunId ?? null) === null;
+  return status !== "preparing" && status !== "starting" && status !== "running";
 }
 
 export type ISidebarStatus =

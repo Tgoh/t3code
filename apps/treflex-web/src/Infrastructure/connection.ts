@@ -24,6 +24,7 @@ import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
 
+import { SERVER_CONFIG_OPT_INS } from "./serverConfigEvents";
 import { shareResponses } from "./sharedFetch";
 
 const httpBaseUrl = `${location.origin}/`;
@@ -134,7 +135,7 @@ const layerUnused = Layer.mergeAll(
   Layer.succeed(ClientCapabilities.ClientPresentation, { metadata: { label: "Treflex" } }),
 );
 
-const layerConnection = Connection.layer.pipe(
+const layerConnection = Connection.layerWithOptions(SERVER_CONFIG_OPT_INS).pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       layerPlatformSource,

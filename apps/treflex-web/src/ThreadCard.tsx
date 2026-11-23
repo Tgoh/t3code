@@ -1,6 +1,9 @@
 // @effect-diagnostics globalDate:off -- View-only timers and snooze presets, outside any Effect runtime.
 import { formatWorkingDurationLabel } from "@t3tools/client-runtime/state/models";
-import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  resolveSnoozePresets,
+  type SnoozePreset,
+} from "@t3tools/client-runtime/state/thread-settled";
 import { findSearchTokenRanges, type SearchRange } from "@t3tools/shared/paletteSearch";
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 
@@ -9,6 +12,7 @@ import Environment from "./Environment";
 import { Highlighted } from "./Highlighted";
 import {
   AlarmClockOff,
+  Archive,
   ArrowRightLeft,
   Check,
   CircleAlert,
@@ -22,6 +26,7 @@ import {
   PenLine,
   Pin,
   PinOff,
+  RefreshCw,
   ShieldQuestion,
   Trash2,
   Undo2,
@@ -31,6 +36,7 @@ import type { IWireThreadShell } from "./Infrastructure/wire";
 import { useNavigation } from "./navigation";
 import Shell, {
   activityAt,
+  canArchive,
   canSnooze,
   isBusy,
   type ISidebarStatus,
@@ -239,6 +245,10 @@ export function ThreadCard(props: {
   /** Starts a drag that reorders the row; a touch drag's long-press also stands in for the menu's. */
   onDragStart?: ((event: PointerEvent) => void) | undefined;
   dragging?: boolean;
+  /** In the sidebar's multi-selection; a search result never is. */
+  multiSelected?: boolean;
+  /** Takes a click that changes the multi-selection, returning whether it did. */
+  onSelectionClick?: ((event: MouseEvent) => boolean) | undefined;
   /** As a search result: where the title matches, the matching message, and the keyboard's row. */
   search?:
     | {
@@ -325,10 +335,17 @@ export function ThreadCard(props: {
       when={props.renaming}
       fallback={
         <span
-          class={`line-clamp-2 min-w-0 flex-1 text-[14px] wrap-anywhere leading-5 font-medium text-sidebar-foreground group-data-receded/card:font-normal group-data-receded/card:text-[color-mix(in_srgb,var(--sidebar-foreground)_75%,transparent)] group-data-receded/card:group-hover/card:text-sidebar-foreground ${MARK}`}
+          class={`line-clamp-2 min-w-0 flex-1 text-[14px] wrap-anywhere leading-5 font-medium text-sidebar-foreground group-data-receded/card:font-normal group-data-receded/card:text-[color-mix(in_srgb,var(--sidebar-foreground)_75%,transparent)] group-data-receded/card:group-hover/card:text-sidebar-foreground data-regenerating:opacity-60 ${MARK}`}
+          data-regenerating={props.thread.titleRegeneration != null ? "" : undefined}
+          aria-busy={props.thread.titleRegeneration != null ? true : undefined}
         >
           <Show when={props.search} fallback={props.thread.title}>
             {(search) => <Highlighted text={props.thread.title} ranges={search().ranges} />}
+          </Show>
+          <Show when={props.thread.titleRegeneration != null}>
+            <span role="status" class="sr-only">
+              Regenerating title
+            </span>
           </Show>
         </span>
       }
@@ -354,7 +371,7 @@ export function ThreadCard(props: {
       data-dragging={props.dragging ? "" : undefined}
     >
       <div
-        class="group/card block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left not-data-selected:hover:bg-sidebar-row-hover not-data-selected:focus-visible:bg-sidebar-row-hover not-data-selected:has-[:focus-visible]:bg-sidebar-row-hover data-compact:py-1.5 data-dimmed:opacity-70 data-dimmed:hover:opacity-100 data-highlighted:not-data-selected:bg-sidebar-row-hover data-highlighted:not-data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ring)_50%,transparent)] data-selected:bg-sidebar-row-active data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--sidebar-border)_70%,transparent)] [@media(hover:none)]:select-none [@media(hover:none)]:[-webkit-touch-callout:none]"
+        class="group/card block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left not-data-selected:not-data-multi-selected:hover:bg-sidebar-row-hover not-data-selected:not-data-multi-selected:focus-visible:bg-sidebar-row-hover not-data-selected:not-data-multi-selected:has-[:focus-visible]:bg-sidebar-row-hover data-multi-selected:not-data-selected:bg-sidebar-row-selected data-multi-selected:not-data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--sidebar-border)_70%,transparent)] data-compact:py-1.5 data-dimmed:opacity-70 data-dimmed:hover:opacity-100 data-highlighted:not-data-selected:bg-sidebar-row-hover data-highlighted:not-data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ring)_50%,transparent)] data-selected:bg-sidebar-row-active data-selected:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--sidebar-border)_70%,transparent)] [@media(hover:none)]:select-none [@media(hover:none)]:[-webkit-touch-callout:none]"
         role="button"
         tabindex="0"
         data-tip=""
@@ -364,9 +381,12 @@ export function ThreadCard(props: {
         data-compact={props.compact ? "" : undefined}
         data-pinned={props.thread.pinnedAt != null ? "" : undefined}
         data-selected={selected() ? "" : undefined}
+        data-multi-selected={props.multiSelected === true ? "" : undefined}
+        aria-pressed={props.onSelectionClick && props.multiSelected === true ? true : undefined}
         data-highlighted={props.search?.highlighted === true ? "" : undefined}
         data-receded={
           !selected() &&
+          props.multiSelected !== true &&
           (status() === null ||
             isBusy(status()) ||
             status() === "waiting" ||
@@ -374,9 +394,12 @@ export function ThreadCard(props: {
             ? ""
             : undefined
         }
-        data-dimmed={!selected() && isBusy(status()) ? "" : undefined}
-        onClick={() => {
-          if (!press.swallowsClick()) select();
+        data-dimmed={
+          !selected() && props.multiSelected !== true && isBusy(status()) ? "" : undefined
+        }
+        onClick={(event) => {
+          if (press.swallowsClick() || props.onSelectionClick?.(event) === true) return;
+          select();
         }}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
@@ -524,12 +547,54 @@ export function ThreadCard(props: {
   );
 }
 
+function useSnoozePresets(canSnoozeNow: () => boolean) {
+  const environment = Environment.use();
+  return createMemo(() =>
+    canSnoozeNow()
+      ? resolveSnoozePresets(new Date(environment.minute()), {
+          formatTime: (date) => shortTimestamp(date.toISOString(), environment.timestampFormat()),
+        })
+      : [],
+  );
+}
+
+function SnoozeSubmenu(props: {
+  label: string;
+  presets: ReadonlyArray<SnoozePreset>;
+  onSnooze: (until: string) => void;
+  onCustom: () => void;
+}) {
+  return (
+    <MenuSub>
+      <MenuSubTrigger>
+        <Clock />
+        {props.label}
+      </MenuSubTrigger>
+      <MenuSubPopup>
+        <For each={props.presets}>
+          {(preset) => (
+            <MenuItem onClick={() => props.onSnooze(preset.snoozedUntil)}>
+              {preset.label}
+              <MenuItemDetail>{preset.whenLabel}</MenuItemDetail>
+            </MenuItem>
+          )}
+        </For>
+        <Show when={props.presets.length > 0}>
+          <MenuSeparator />
+        </Show>
+        <MenuItem onClick={props.onCustom}>Custom…</MenuItem>
+      </MenuSubPopup>
+    </MenuSub>
+  );
+}
+
 export function ThreadMenu(props: {
   thread: IWireThreadShell;
   x: number;
   y: number;
   onRename: () => void;
   onConfirm: (kind: IThreadConfirmation) => void;
+  onCustomSnooze: () => void;
   onClose: () => void;
 }) {
   const environment = Environment.use();
@@ -540,13 +605,9 @@ export function ThreadMenu(props: {
   const snoozed = () => isSnoozed(props.thread, now(), subagent());
   const settled = () => props.thread.settledOverride === "settled";
   const pinned = () => props.thread.pinnedAt != null;
-  const presets = createMemo(() =>
-    snoozed() || !canSnooze(props.thread, subagent(), now())
-      ? []
-      : resolveSnoozePresets(new Date(now()), {
-          formatTime: (date) => shortTimestamp(date.toISOString(), environment.timestampFormat()),
-        }),
-  );
+  const canSnoozeNow = () => !snoozed() && canSnooze(props.thread, subagent(), now());
+  const presets = useSnoozePresets(canSnoozeNow);
+  const regenerating = () => props.thread.titleRegeneration != null;
   const run = (command: IThreadCommand) => environment.threadCommand(props.thread.id, command);
   return (
     <MenuPopup
@@ -557,23 +618,13 @@ export function ThreadMenu(props: {
       label="Thread actions"
       onClose={props.onClose}
     >
-      <Show when={presets().length > 0}>
-        <MenuSub>
-          <MenuSubTrigger>
-            <Clock />
-            Snooze
-          </MenuSubTrigger>
-          <MenuSubPopup>
-            <For each={presets()}>
-              {(preset) => (
-                <MenuItem onClick={() => run({ Kind: "snooze", Until: preset.snoozedUntil })}>
-                  {preset.label}
-                  <MenuItemDetail>{preset.whenLabel}</MenuItemDetail>
-                </MenuItem>
-              )}
-            </For>
-          </MenuSubPopup>
-        </MenuSub>
+      <Show when={canSnoozeNow()}>
+        <SnoozeSubmenu
+          label="Snooze"
+          presets={presets()}
+          onSnooze={(until) => run({ Kind: "snooze", Until: until })}
+          onCustom={props.onCustomSnooze}
+        />
       </Show>
       <Show when={snoozed()}>
         <MenuItem onClick={() => run({ Kind: "unsnooze" })}>
@@ -581,7 +632,7 @@ export function ThreadMenu(props: {
           Wake now
         </MenuItem>
       </Show>
-      <Show when={presets().length > 0 || snoozed()}>
+      <Show when={canSnoozeNow() || snoozed()}>
         <MenuSeparator />
       </Show>
       <Switch>
@@ -623,11 +674,32 @@ export function ThreadMenu(props: {
           {(shortcut) => <MenuShortcut>{shortcut()}</MenuShortcut>}
         </Show>
       </MenuItem>
+      <MenuItem
+        disabled={regenerating()}
+        onClick={() => void environment.regenerateTitles([props.thread.id])}
+      >
+        <RefreshCw />
+        {regenerating() ? "Regenerating…" : "Regenerate title"}
+        <Show when={navigation.shortcut("thread.regenerateTitle")}>
+          {(shortcut) => <MenuShortcut>{shortcut()}</MenuShortcut>}
+        </Show>
+      </MenuItem>
       <MenuItem onClick={() => run({ Kind: "markUnread" })}>
         <Mail />
         Mark unread
       </MenuItem>
       <MenuSeparator />
+      <MenuItem
+        disabled={!canArchive(props.thread)}
+        onClick={() =>
+          environment.confirmThreadArchive()
+            ? props.onConfirm("archive")
+            : void environment.archiveThread(props.thread.id)
+        }
+      >
+        <Archive />
+        Archive
+      </MenuItem>
       <MenuItem
         variant="destructive"
         onClick={() =>
@@ -641,15 +713,111 @@ export function ThreadMenu(props: {
   );
 }
 
-export type IThreadConfirmation = "unpin" | "delete";
+// Follows handleMultiSelectContextMenu in apps/web/src/components/Sidebar.tsx, and
+// buildBulkTitleRegenerationContextMenuItem and buildBulkUnpinContextMenuItem in Sidebar.logic.ts.
+export function BulkThreadMenu(props: {
+  threads: IWireThreadShell[];
+  x: number;
+  y: number;
+  onDelete: () => void;
+  onCustomSnooze: () => void;
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  const environment = Environment.use();
+  const shell = Shell.use();
+  const count = () => props.threads.length;
+  const ids = () => props.threads.map((thread) => thread.id);
+  const pinned = () => props.threads.filter((thread) => thread.pinnedAt != null);
+  const unsettled = () => props.threads.filter((thread) => thread.settledOverride !== "settled");
+  const regeneratable = () => props.threads.filter((thread) => thread.titleRegeneration == null);
+  const canSnoozeAll = () =>
+    props.threads.every((thread) =>
+      canSnooze(thread, shell.subagentRequests()[thread.id], environment.minute()),
+    );
+  const presets = useSnoozePresets(canSnoozeAll);
+  const each = (threads: IWireThreadShell[], command: IThreadCommand) => {
+    for (const thread of threads) void environment.threadCommand(thread.id, command);
+    props.onDone();
+  };
+  return (
+    <MenuPopup
+      anchor={{ X: props.x, Y: props.y }}
+      side="bottom"
+      align="start"
+      sideOffset={0}
+      label={`Actions for ${count()} threads`}
+      onClose={props.onClose}
+    >
+      <Show when={pinned().length > 0}>
+        <MenuItem onClick={() => each(pinned(), { Kind: "unpin" })}>
+          <PinOff />
+          Unpin ({pinned().length})
+        </MenuItem>
+      </Show>
+      <MenuItem
+        disabled={unsettled().length === 0}
+        onClick={() => {
+          void environment.settleThreads(unsettled().map((thread) => thread.id));
+          props.onDone();
+        }}
+      >
+        <Check />
+        Settle ({count()})
+      </MenuItem>
+      <Show when={canSnoozeAll()}>
+        <SnoozeSubmenu
+          label={`Snooze (${count()})`}
+          presets={presets()}
+          onSnooze={(until) => each(props.threads, { Kind: "snooze", Until: until })}
+          onCustom={props.onCustomSnooze}
+        />
+      </Show>
+      <MenuItem
+        disabled={regeneratable().length === 0}
+        onClick={() => {
+          void environment.regenerateTitles(regeneratable().map((thread) => thread.id));
+          props.onDone();
+        }}
+      >
+        <RefreshCw />
+        {regeneratable().length === 0
+          ? `Regenerating… (${count()})`
+          : `Regenerate titles (${regeneratable().length})`}
+      </MenuItem>
+      <MenuItem onClick={() => each(props.threads, { Kind: "markUnread" })}>
+        <Mail />
+        Mark unread ({count()})
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem
+        variant="destructive"
+        onClick={() => {
+          if (environment.confirmThreadDelete()) props.onDelete();
+          else {
+            for (const id of ids()) void environment.threadCommand(id, { Kind: "delete" });
+            props.onDone();
+          }
+        }}
+      >
+        <Trash2 />
+        Delete ({count()})
+      </MenuItem>
+    </MenuPopup>
+  );
+}
+
+export type IThreadConfirmation = "unpin" | "archive" | "delete";
 
 // Follows requestThreadUnpinConfirmation and confirmAndDeleteThread in
-// apps/web/src/hooks/useThreadActions.ts, shown as ConfirmDialogHost.tsx shows them.
+// apps/web/src/hooks/useThreadActions.ts, the archive confirmation in Sidebar.tsx, and the
+// bulk delete one in handleMultiSelectContextMenu, shown as ConfirmDialogHost.tsx shows them.
 const CONFIRMATION_COPY: Record<IThreadConfirmation, { Title: string; Description: string }> = {
   unpin: {
     Title: "Unpin thread",
     Description: "This will move the thread out of your pinned section.",
   },
+  archive: { Title: "Archive thread", Description: "" },
   delete: {
     Title: "Delete thread",
     Description: "This permanently clears conversation history for this thread.",
@@ -658,21 +826,31 @@ const CONFIRMATION_COPY: Record<IThreadConfirmation, { Title: string; Descriptio
 
 export function ThreadConfirmDialog(props: {
   kind: IThreadConfirmation;
-  title: string;
+  /** The thread's title, or how many threads a bulk delete takes. */
+  title: string | number;
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const copy = () => CONFIRMATION_COPY[props.kind];
+  const copy = () =>
+    typeof props.title === "number"
+      ? {
+          Title: `Delete ${props.title} ${props.title === 1 ? "thread" : "threads"}?`,
+          Description: "This permanently clears conversation history for these threads.",
+        }
+      : {
+          Title: `${CONFIRMATION_COPY[props.kind].Title} "${props.title}"?`,
+          Description: CONFIRMATION_COPY[props.kind].Description,
+        };
   return (
     <AlertDialog onClose={props.onClose}>
       <AlertDialogPopup>
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            {copy().Title} "{props.title}"?
-          </AlertDialogTitle>
-          <AlertDialogDescription class="whitespace-pre-line">
-            {copy().Description}
-          </AlertDialogDescription>
+          <AlertDialogTitle>{copy().Title}</AlertDialogTitle>
+          <Show when={copy().Description}>
+            <AlertDialogDescription class="whitespace-pre-line">
+              {copy().Description}
+            </AlertDialogDescription>
+          </Show>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogClose variant="outline">Cancel</AlertDialogClose>

@@ -31,7 +31,7 @@ export function UsageRing() {
     limitPresentations(
       environment.state.EnvironmentId,
       environment.state.Label,
-      environment.state.Replica.Config?.providers,
+      environment.state.Replica.Config,
     );
   const weekly = createMemo(
     () => weeklyLimit(limitPools(presentations(), environment.minute())),

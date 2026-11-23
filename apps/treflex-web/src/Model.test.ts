@@ -32,6 +32,7 @@ import { describe, expect, it, onTestFinished } from "vite-plus/test";
 import {
   addFolder,
   addProjectSettings,
+  archiveThread,
   cloneProject,
   closeSideThread,
   closeThread,
@@ -47,10 +48,12 @@ import {
   panelShortcuts,
   preferEditor,
   projectCommand,
+  regenerateTitles,
   removeProject,
   reorderPin,
   selectThread,
   settleThread,
+  settleThreads,
   startSideChat,
   threadCommand,
   toggleSettleOpenThread,
@@ -345,6 +348,7 @@ async function connect(
     InApp: [] as boolean[],
     Notified: [] as INotificationShow[],
     Opened: [] as string[],
+    KeybindingReports: [] as unknown[][],
   };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
@@ -352,6 +356,7 @@ async function connect(
     {
       environmentInfo: () => ({
         Authenticated: true,
+        BootstrapMethods: ["one-time-token"],
         EnvironmentId: ENV,
         Label: "Test",
         FileAttachmentLimit: null,
@@ -431,6 +436,10 @@ async function connect(
             },
             show: (_ctx: unknown, note: INotificationShow) => void device.Notified.push(note),
             opened: (_ctx: unknown, threadId: string) => void device.Opened.push(threadId),
+          },
+          "Keybindings/Warning": {
+            report: (_ctx: unknown, ...report: unknown[]) =>
+              void device.KeybindingReports.push(report),
           },
           ...resources?.methods,
         },
@@ -2051,6 +2060,139 @@ describe("the sidebar", () => {
     await server.runtime.dispatch(toggleSettleOpenThread, envId);
     expect(take()).toEqual([["only", "settle"]]);
     expect(server.environment().Local.ThreadSessions[selected()!]?.NewThreadProjectId).toBe("lone");
+  });
+
+  it("settles several threads at once, moving the open one past the others being settled", async () => {
+    const commands: { ThreadId: string; Command: { Kind: string } }[] = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+        if (effect.Command.Kind !== "visit") commands.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [
+          row("a1", "a", "2026-01-04T00:00:00.000Z"),
+          row("a2", "a", "2026-01-03T00:00:00.000Z"),
+          row("a3", "a", "2026-01-02T00:00:00.000Z"),
+          row("done", "a", at, { settledOverride: "settled", settledAt: at }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const envId = server.envId();
+    await server.runtime.dispatch(selectThread, envId, "a1");
+    await server.runtime.dispatch(settleThreads, envId, ["a1", "a2", "done"]);
+    expect(commands.map((sent) => [sent.ThreadId, sent.Command.Kind])).toEqual([
+      ["a1", "settle"],
+      ["a2", "settle"],
+    ]);
+    expect(server.environment().Local.SelectedThreadId).toBe("a3");
+  });
+
+  it("archives a thread, opening a new thread in its project when it was the open one", async () => {
+    const commands: { ThreadId: string; Command: { Kind: string } }[] = [];
+    let refusal: string | null = null;
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+        if (effect.Command.Kind === "visit") return;
+        if (refusal !== null) throw serverFailure(refusal);
+        commands.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [row("a1", "a", at), row("a2", "a", at)],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const envId = server.envId();
+    const selected = () => server.environment().Local.SelectedThreadId;
+    await server.runtime.dispatch(selectThread, envId, "a1");
+
+    await server.runtime.dispatch(archiveThread, envId, "a2");
+    expect(selected()).toBe("a1");
+    await server.runtime.dispatch(archiveThread, envId, "a1");
+    expect(commands.map((sent) => [sent.ThreadId, sent.Command.Kind])).toEqual([
+      ["a2", "archive"],
+      ["a1", "archive"],
+    ]);
+    expect(server.environment().Local.ThreadSessions[selected()!]?.NewThreadProjectId).toBe("a");
+
+    await server.runtime.dispatch(selectThread, envId, "a2");
+    refusal = "Cannot archive while the provider is active.";
+    await server.runtime.dispatch(archiveThread, envId, "a2");
+    expect(selected()).toBe("a2");
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to archive thread", Description: refusal },
+    ]);
+  });
+
+  it("regenerates titles under their own request ids, and toasts once the rows report them all", async () => {
+    const sent: { ThreadId: string; CommandId: string; Command: IThreadCommand }[] = [];
+    let refusal: string | null = null;
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; CommandId: string; Command: IThreadCommand }) => {
+        if (effect.Command.Kind === "visit") return;
+        if (refusal !== null && effect.ThreadId === "c") throw serverFailure(refusal);
+        sent.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    const busy = { requestId: "earlier", startedAt: at };
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [
+          row("a", "a", at),
+          row("b", "a", at),
+          row("c", "a", at),
+          row("busy", "a", at, { titleRegeneration: busy }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    refusal = "server said no";
+    await server.runtime.dispatch(regenerateTitles, server.envId(), ["a", "b", "c", "busy"]);
+    expect(sent.map((held) => held.ThreadId)).toEqual(["a", "b"]);
+    for (const held of sent) {
+      expect(held.Command).toEqual({ Kind: "regenerateTitle", RequestId: expect.any(String) });
+    }
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to regenerate thread title", Description: refusal },
+    ]);
+    const requestOf = (id: string) =>
+      (sent.find((held) => held.ThreadId === id)!.Command as { RequestId: string }).RequestId;
+    const report = (sequence: number, id: string, status: string) =>
+      server.sendShell({
+        kind: "thread.updated",
+        sequence,
+        location: "active",
+        thread: row(id, "a", at, {
+          titleRegeneration: null,
+          lastTitleRegeneration: { requestId: requestOf(id), status, completedAt: at },
+        }),
+      } as unknown as IWireShellItem);
+    await report(2, "a", "unchanged");
+    expect(server.takeToasts()).toEqual([]);
+    await report(3, "b", "renamed");
+    expect(server.takeToasts()).toEqual([
+      {
+        Kind: "info",
+        Title: "Kept 1 of 2 titles",
+        Description: "Those titles already fit their threads.",
+      },
+    ]);
   });
 
   it("folds working threads into the Working section, which holds a finished one for two seconds", async () => {
@@ -5322,21 +5464,31 @@ describe("work started by events", () => {
     expect(settings()).toMatchObject({ BaseDirectory: "~/src", GhqCloneLayout: false });
   });
 
-  it("reads the keybindings from the config stream, with no stream of their own", async () => {
+  it("reads the keybindings from the config stream, with no stream of their own, and warns of each reload's issues", async () => {
     const server = await connect();
     const bound = () => server.runtime.processSelector(keybindings, server.environment);
     const binding = (key: string) => ({ command: "sidebar.toggle", shortcut: { key } });
+    const issue = { kind: "keybindings.malformed-config", message: "Unexpected token" };
+    const snapshot = configSnapshot([replayProvider()]);
     await server.sendConfig({
-      ...configSnapshot([replayProvider()]),
-      config: { ...configSnapshot([replayProvider()]).config, keybindings: [binding("b")] },
+      ...snapshot,
+      config: {
+        ...snapshot.config,
+        keybindings: [binding("b")],
+        issues: [issue],
+        keybindingsConfigPath: "/home/keybindings.json",
+        availableEditors: ["vscode"],
+      },
     });
     expect(bound()).toEqual([binding("b")]);
+    expect(server.device.KeybindingReports).toEqual([]);
     await server.sendConfig({
       version: 1,
       type: "keybindingsUpdated",
-      payload: { keybindings: [binding("k")], issues: [] },
+      payload: { keybindings: [binding("k")], issues: [issue] },
     });
     expect(bound()).toEqual([binding("k")]);
+    expect(server.device.KeybindingReports).toEqual([[[issue], "/home/keybindings.json", true]]);
     const streams = server.runtime
       .resources()
       .filter((row) => row.Key.startsWith("Server/"))
@@ -5668,6 +5820,33 @@ describe("settings and usage", () => {
     });
     expect(server.environment().Replica.Config?.settings.sidebarAutoSettleAfterDays).toBe(3);
     expect(usedPercent()).toBe(39);
+  });
+
+  it("holds the usage-limit hubs the stream reports, through a reconnect's snapshot, until it reports none", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    const hub = {
+      id: "hub-1",
+      kind: "cliproxy",
+      label: "Hub",
+      checkedAt: "2026-11-17T00:00:00.000Z",
+      accounts: [],
+    };
+    const held = () => server.environment().Replica.Config?.usageLimitSources;
+    await server.sendConfig({
+      version: 1,
+      type: "usageLimitSourcesUpdated",
+      payload: { sources: [hub] },
+    });
+    expect(held()).toEqual([hub]);
+    await server.sendConfig(fake.snapshot());
+    expect(held()).toEqual([hub]);
+    await server.sendConfig({
+      version: 1,
+      type: "usageLimitSourcesUpdated",
+      payload: { sources: [] },
+    });
+    expect(held()).toBeUndefined();
   });
 
   it("the header's limits refresh asks the server to re-probe, and leaves the result to the stream", async () => {

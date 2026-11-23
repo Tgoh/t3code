@@ -197,8 +197,11 @@ export type IThreadCommand =
   | { Kind: "unpin" }
   | { Kind: "reorderPin"; OrderKey: string }
   | { Kind: "rename"; Title: string }
+  /** The server reports the outcome on the shell row under `RequestId`, which goes as the command id. */
+  | { Kind: "regenerateTitle"; RequestId: string }
   | { Kind: "visit"; VisitedAt: string; Opened?: true; SearchQuery?: string }
   | { Kind: "markUnread" }
+  | { Kind: "archive" }
   | { Kind: "unarchive" }
   | { Kind: "delete"; OnlyIfUnused?: true }
   | { Kind: "modelSelection"; Selection: IWireModelSelection }

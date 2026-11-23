@@ -2,6 +2,8 @@
 
 Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead. The long-term goal is full parity with stock, so `issues.md`'s gaps move in here a few at a time.
 
+**On hold until treflex 0.3.0 ships:** finish the items already in progress, and start nothing new (Tam, 2026-11-23).
+
 ## 1. Style parity
 
 Nothing hand-rolled that stock already has. Before parity and the missing features, so new work uses the shared components.
@@ -17,13 +19,12 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Settings treflex ignores.** Of Tam's picks (2026-11-23), only the Archive confirmation is left: it waits for the archive action in the Sidebar item. Show skills in slash menu comes with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
+- **Settings treflex ignores.** Of Tam's picks (2026-11-23), Show skills in slash menu goes with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
 
 ## 3. Missing features
 
 Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
 
-- **Invalid keybindings warning.** **In progress** on `treflex/small-gaps`. Stock toasts "Invalid keybindings configuration" with the config's issues (`KeybindingsUpdateToast.tsx`); nothing in treflex shows `config.issues` yet.
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:
     - linked-environment threads, which need peer-link reads;
@@ -34,14 +35,12 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
     - keeping the open side thread across a reload, as stock's `rightPanelStore` does;
     - forgetting the session of a side chat that was deleted unused, which stays until reload.
 - **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot with the Show skills in slash menu setting, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
-- **Sidebar.** **In progress** on `treflex/sidebar-features`, with the Archive confirmation. Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.
+- **Sidebar.** Moving on from the open thread when it's snoozed, stock's sweep (drag from a row's Settle, Un-settle or Wake across others), the Archived undo notice, the auto-settle toggle, and snooze presets on the Threads settings page, which the custom snooze dialog's "Edit snooze options" link needs. See the "Sidebar" entries.
 - **Thread details and git.** Context and usage rows, environment and worktree pickers, git progress phases and hook output, View PR, Initialize Git and Publish repository. See "Thread details" and "Thread details, git".
 - **Diff panel.** **In progress** on `treflex/diff-panel`. Stock's `@pierre/diffs` view with syntax highlighting, split view, wrap, tabs and the turn picker, and restoring a checkpoint. See "Diff panel" and "Restoring a checkpoint isn't offered".
 - **Terminal.** **In progress** on `treflex/terminal`. Tabs and splits, a resizable drawer, links, search and a restart button for an exited shell. See the terminal entries under "Skipped for the prototype".
-- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables. Tam picks the order. The file preview brings stock's copy button with it (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header); until a preview exists, a file attachment opens in a new browser tab.
-- **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.
-- **A pairing token box on the unpaired page.** **In progress** on `treflex/small-gaps`. Stock's unpaired page takes a pasted pairing token; treflex's only says to open a pairing link. Add the box and stock's wording ("Enter a pairing token to start a session with this environment.").
-- **Usage limits from external sources.** **In progress** on `treflex/small-gaps`. Open the config stream with `usageLimitSources` and show the usage-limit hubs, as stock does. See "Usage limits".
+- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables, in that order (Tam left the order open, 2026-11-23). Files starts after the diff panel merges, since both change the right panel. The file preview brings stock's copy button with it (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header); until a preview exists, a file attachment opens in a new browser tab.
+- **Settings pages.** Build the pages greyed out in the nav, starting with Labs, Worktrees and Source control (Tam left the order open, 2026-11-23).
 
 ## 4. Performance
 

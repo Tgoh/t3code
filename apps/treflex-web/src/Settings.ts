@@ -116,11 +116,15 @@ export function* chooseNotificationMode(
 }
 
 // Follows applyServerConfigProjection in packages/client-runtime/src/state/serverConfigProjection.ts,
-// for the events a session subscribed without opt-ins receives.
+// for the events a session subscribed with `SERVER_CONFIG_OPT_INS` receives.
 export function applyConfigEvent(draft: IEnvironment, event: IWireServerConfigEvent): void {
   if (event.type === "snapshot") {
-    if (draft.Replica.Config === null) draft.Replica.Config = event.config;
-    else reconcile(draft.Replica.Config, event.config);
+    // Wire snapshots never carry the hubs; the held set stays until the next hubs event.
+    const sources = draft.Replica.Config?.usageLimitSources;
+    const config =
+      sources === undefined ? event.config : { ...event.config, usageLimitSources: sources };
+    if (draft.Replica.Config === null) draft.Replica.Config = config;
+    else reconcile(draft.Replica.Config, config);
     syncProviders(draft);
     return;
   }
@@ -138,6 +142,10 @@ export function applyConfigEvent(draft: IEnvironment, event: IWireServerConfigEv
     case "settingsUpdated":
       reconcile(config.settings, event.payload.settings);
       syncProviders(draft);
+      return;
+    case "usageLimitSourcesUpdated":
+      if (event.payload.sources.length > 0) config.usageLimitSources = event.payload.sources;
+      else delete config.usageLimitSources;
       return;
   }
 }
@@ -218,6 +226,10 @@ export function* sendShortcut(
 
 export function* confirmThreadUnpin(draft: IEnvironment): ISelectorGenerator<boolean> {
   return draft.Local.ClientSettings?.confirmThreadUnpin ?? false;
+}
+
+export function* confirmThreadArchive(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return draft.Local.ClientSettings?.confirmThreadArchive ?? false;
 }
 
 export function* confirmThreadDelete(draft: IEnvironment): ISelectorGenerator<boolean> {
