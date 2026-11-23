@@ -1,7 +1,9 @@
 import {
+  resolveViewedImageAsset,
   summarizeToolGroup,
   type ToolGroupSummaryKind,
   toolGroupSummaryKind,
+  workEntriesViewedImagePaths,
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
 import {
@@ -29,6 +31,7 @@ import {
   Terminal,
   Wrench,
 } from "./icons";
+import { ViewedImage } from "./Markdown";
 import OpenThread, { isRowVisible, timelineItem } from "./OpenThread";
 import { runStatus } from "./Shell";
 import { SubagentGroup } from "./SubagentRows";
@@ -54,6 +57,7 @@ import {
 } from "./TimelineRows";
 import { useWorkingTimer } from "./TurnStatus";
 import { workLogEntry, workLogEntryIsToolLike } from "./workLog";
+import { useWorkspaceRoot } from "./workspaceRoot";
 
 type IRowOf<K extends ILayoutRow["Kind"]> = Extract<ILayoutRow, { Kind: K }>;
 
@@ -142,7 +146,14 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined }) {
   return (
     <Switch>
       <Match when={of("item")}>{(row) => <TimelineRow id={row().Id} meta={row().Meta} />}</Match>
-      <Match when={of("single")}>{(row) => <WorkRow id={row().Id} single />}</Match>
+      <Match when={of("single")}>
+        {(row) => (
+          <>
+            <WorkRow id={row().Id} single />
+            <ViewedImages ids={[row().Id]} />
+          </>
+        )}
+      </Match>
       <Match when={of("group")}>{(row) => <GroupRow row={row()} />}</Match>
       <Match when={of("subagents")}>
         {(row) => <SubagentGroup rowKey={row().Key} ids={row().Ids} expanded={row().Expanded} />}
@@ -159,6 +170,53 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined }) {
         {(row) => <CompactingRow id={row().Id} pending={row().Pending} />}
       </Match>
     </Switch>
+  );
+}
+
+// Follows ViewedImagesTimelineRow in apps/web/src/components/chat/TimelineWorkEntryRow.tsx: the
+// images a tool group opened stay in view while the group is collapsed.
+function ViewedImages(props: { ids: readonly string[] }) {
+  const thread = OpenThread.use();
+  const workspaceRoot = useWorkspaceRoot();
+  const paths = createMemo(
+    () =>
+      workEntriesViewedImagePaths(
+        props.ids.flatMap((id) => {
+          const item = timelineItem(thread.state, id);
+          return item === undefined ? [] : [workLogEntry(item)];
+        }),
+      ),
+    [],
+    { equals: sameKeys },
+  );
+  const imageOf = (path: string) => {
+    const threadId = thread.state.Thread?.id;
+    return threadId === undefined
+      ? null
+      : resolveViewedImageAsset(path, {
+          threadId: threadId as never,
+          workspaceRoot: workspaceRoot(),
+        });
+  };
+  return (
+    <Show when={paths().length > 0}>
+      <div class="flex flex-wrap items-start gap-2 px-0.5 pb-2">
+        <For each={paths()}>
+          {(path) => (
+            <Show when={imageOf(path)} keyed>
+              {(image) => (
+                <ViewedImage
+                  resource={image.resource}
+                  fragment={image.srcFragment}
+                  alt={image.alt}
+                  size="strip"
+                />
+              )}
+            </Show>
+          )}
+        </For>
+      </div>
+    </Show>
   );
 }
 
@@ -263,6 +321,7 @@ function GroupRow(props: { row: IRowOf<"group"> }) {
           <For each={props.row.Ids}>{(id) => <WorkRow id={id} grouped />}</For>
         </div>
       </Show>
+      <ViewedImages ids={props.row.Ids} />
     </div>
   );
 }

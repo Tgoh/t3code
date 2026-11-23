@@ -17,7 +17,7 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Settings treflex ignores.** Of Tam's picks (2026-11-23), only the Archive confirmation is left: it waits for the archive action in the Sidebar item. Tool calls in chat with Timeline rows, and Show skills in slash menu with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
+- **Settings treflex ignores.** Of Tam's picks (2026-11-23), only the Archive confirmation is left: it waits for the archive action in the Sidebar item. Show skills in slash menu comes with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
 
 ## 3. Missing features
 
@@ -34,7 +34,6 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
     - keeping the open side thread across a reload, as stock's `rightPanelStore` does;
     - forgetting the session of a side chat that was deleted unused, which stays until reload.
 - **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot with the Show skills in slash menu setting, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
-- **Timeline rows.** **In progress** on `treflex/timeline-rows`. Compaction dividers and `/compact` turns, superseded-attempt folds, the tool-call visibility setting, viewed-image strips, the "Waiting on N subagents" label and stock's per-tool detail in expanded rows. See the "Timeline" entries under "Unmatched against the stock UI".
 - **Sidebar.** **In progress** on `treflex/sidebar-features`, with the Archive confirmation. Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.
 - **Thread details and git.** Context and usage rows, environment and worktree pickers, git progress phases and hook output, View PR, Initialize Git and Publish repository. See "Thread details" and "Thread details, git".
 - **Diff panel.** **In progress** on `treflex/diff-panel`. Stock's `@pierre/diffs` view with syntax highlighting, split view, wrap, tabs and the turn picker, and restoring a checkpoint. See "Diff panel" and "Restoring a checkpoint isn't offered".

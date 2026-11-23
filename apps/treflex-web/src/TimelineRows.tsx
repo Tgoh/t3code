@@ -46,6 +46,7 @@ import {
 } from "./icons";
 import { T3Mark } from "./brand";
 import { SubagentNotification, SubagentRow } from "./SubagentRows";
+import { INSPECTED_TYPES, ToolInspector } from "./ToolInspector";
 import { notifiedSubagent } from "./subagents";
 import Environment from "./Environment";
 import type { IWireAttachment } from "./Infrastructure/commandEffects";
@@ -840,6 +841,10 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
     </>
   );
   const detail = () => session.state.ToolDetails[props.id];
+  const inspected = () => {
+    const held = item();
+    return held !== undefined && INSPECTED_TYPES.has(held.type) ? held : undefined;
+  };
   const bodyText = () => {
     const fetched = detail()?.Item;
     return fetched != null && fetched.type === item()?.type ? viewOf(fetched).Body : view()?.Body;
@@ -902,11 +907,29 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
             </span>
           </summary>
           <div class="ml-7 pt-0.5 pb-1.5">
-            <Show when={view()?.LiveOutput && expanded()}>
-              <CommandOutput itemId={props.id} />
+            <Show
+              when={inspected()}
+              fallback={
+                <>
+                  <Show when={view()?.LiveOutput && expanded()}>
+                    <CommandOutput itemId={props.id} />
+                  </Show>
+                  <Show when={detail()}>{(held) => <ToolDetailNote detail={held()} />}</Show>
+                  {body()}
+                </>
+              }
+            >
+              {(held) => (
+                <Show when={expanded()}>
+                  <ToolInspector
+                    id={props.id}
+                    item={held()}
+                    detail={detail()}
+                    liveOutput={view()?.LiveOutput === true}
+                  />
+                </Show>
+              )}
             </Show>
-            <Show when={detail()}>{(held) => <ToolDetailNote detail={held()} />}</Show>
-            {body()}
           </div>
         </details>
       </Show>
