@@ -192,6 +192,9 @@ import {
   openDiff,
   queueAction,
   runScript,
+  heldSend,
+  holdSend,
+  removeAttachment,
   send,
   setDraft,
   setModelSelection,
@@ -4370,6 +4373,104 @@ describe("drafts", () => {
     expect(sent[0]!.Attachments.map((file) => file.id)).toEqual(["upload-restored-0"]);
     expect(second.stored.Files.has(THREAD_ID)).toBe(false);
     expect(second.stored.Drafts.has(THREAD_ID)).toBe(false);
+  });
+
+  const held = (server: Awaited<ReturnType<typeof connect>>) =>
+    server.runtime.processSelector(heldSend, () => server.session());
+
+  it("a send held for preparing images goes once they join the draft, and an edit cancels it", async () => {
+    const sent: IStartTurn[] = [];
+    const server = await connect(
+      undefined,
+      null,
+      { startTurn: (effect: IStartTurn) => void sent.push(effect) },
+      undefined,
+      fileStubs([]),
+    );
+    await server.open();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "look at this");
+    await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
+    expect(held(server)).toBe(true);
+    await server.runtime.dispatch(addAttachments, server.sessionId(), [picked("a", "a")], null, 1);
+    await settled();
+    expect(sent).toEqual([]);
+    await server.runtime.dispatch(addAttachments, server.sessionId(), [picked("b", "b")], null, 0);
+    await settled();
+    expect(held(server)).toBe(false);
+    expect(sent.map((turn) => [turn.Text, turn.Attachments.map((file) => file.id)])).toEqual([
+      ["look at this", ["upload-a", "upload-b"]],
+    ]);
+
+    await server.runtime.dispatch(setDraft, server.sessionId(), "another");
+    await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
+    await server.runtime.dispatch(setDraft, server.sessionId(), "another, edited");
+    expect(held(server)).toBe(false);
+    await server.runtime.dispatch(addAttachments, server.sessionId(), [picked("c", "c")], null, 0);
+    await settled();
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a held send is dropped when an image fails to prepare or a preparing one is removed", async () => {
+    const sent: IStartTurn[] = [];
+    const server = await connect(
+      undefined,
+      null,
+      { startTurn: (effect: IStartTurn) => void sent.push(effect) },
+      undefined,
+      fileStubs([]),
+    );
+    await server.open();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "hi");
+    await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
+    await server.runtime.dispatch(
+      addAttachments,
+      server.sessionId(),
+      [],
+      "'x.png' could not be read as an image.",
+      0,
+    );
+    await settled();
+    expect(held(server)).toBe(false);
+    expect(sent).toEqual([]);
+
+    await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
+    await server.runtime.dispatch(removeAttachment, server.sessionId(), "still-preparing");
+    expect(held(server)).toBe(false);
+
+    await server.runtime.dispatch(addAttachments, server.sessionId(), [picked("a", "a")], null);
+    await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
+    await server.runtime.dispatch(removeAttachment, server.sessionId(), "a");
+    expect(held(server)).toBe(false);
+
+    await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
+    const file = { ...picked("notes", "notes.txt"), Kind: "file" as const };
+    await server.runtime.dispatch(addAttachments, server.sessionId(), [file], null, 1);
+    expect(held(server)).toBe(false);
+  });
+
+  it("a held send keeps waiting through an error that changed nothing in the draft", async () => {
+    const server = await connect(undefined, null, {}, undefined, fileStubs([]));
+    await server.open();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "hi");
+    await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
+    await server.runtime.dispatch(addAttachments, server.sessionId(), [], "Couldn't get the path.");
+    expect(held(server)).toBe(true);
+  });
+
+  it("Enter during a send doesn't hold a second one", async () => {
+    const server = await connect(
+      undefined,
+      null,
+      { startTurn: () => new Promise(() => {}) },
+      undefined,
+      fileStubs([]),
+    );
+    await server.open();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "first");
+    void server.runtime.dispatch(send, server.sessionId());
+    await settled();
+    await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
+    expect(held(server)).toBe(false);
   });
 
   it("a new-thread draft comes back under its project with the same thread id", async () => {

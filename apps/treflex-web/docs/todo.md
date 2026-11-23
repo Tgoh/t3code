@@ -25,7 +25,6 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 - **Invalid keybindings warning.** Stock toasts "Invalid keybindings configuration" with the config's issues (`KeybindingsUpdateToast.tsx`); nothing in treflex shows `config.issues` yet.
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
-  - **Held send:** **In progress** on `treflex/stock-picks`. Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
   - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:
     - linked-environment threads, which need peer-link reads;
     - the side chat header's "Add to chat" and Delete;
@@ -34,16 +33,13 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
     - tabs, so several side threads stay open beside the diff;
     - keeping the open side thread across a reload, as stock's `rightPanelStore` does;
     - forgetting the session of a side chat that was deleted unused, which stays until reload.
-  - **A show/hide toggle on secret fields.** **In progress** on `treflex/stock-picks`.
-  - **A thread error banner that can be dismissed and comes back.** **In progress** on `treflex/stock-picks`.
-  - **Copy a chat table as HTML,** and **a copy button on file previews.** **In progress** on `treflex/stock-picks`.
 - **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot with the Show skills in slash menu setting, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
 - **Timeline rows.** Compaction dividers and `/compact` turns, superseded-attempt folds, the tool-call visibility setting, viewed-image strips, the "Waiting on N subagents" label and stock's per-tool detail in expanded rows. See the "Timeline" entries under "Unmatched against the stock UI".
 - **Sidebar.** Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.
 - **Thread details and git.** Context and usage rows, environment and worktree pickers, git progress phases and hook output, View PR, Initialize Git and Publish repository. See "Thread details" and "Thread details, git".
 - **Diff panel.** Stock's `@pierre/diffs` view with syntax highlighting, split view, wrap, tabs and the turn picker, and restoring a checkpoint. See "Diff panel" and "Restoring a checkpoint isn't offered".
 - **Terminal.** Tabs and splits, a resizable drawer, links, search and a restart button for an exited shell. See the terminal entries under "Skipped for the prototype".
-- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables. Tam picks the order.
+- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables. Tam picks the order. The file preview brings stock's copy button with it (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header); until a preview exists, a file attachment opens in a new browser tab.
 - **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.
 - **A pairing token box on the unpaired page.** Stock's unpaired page takes a pasted pairing token; treflex's only says to open a pairing link. Add the box and stock's wording ("Enter a pairing token to start a session with this environment.").
 - **Usage limits from external sources.** Open the config stream with `usageLimitSources` and show the usage-limit hubs, as stock does. See "Usage limits".

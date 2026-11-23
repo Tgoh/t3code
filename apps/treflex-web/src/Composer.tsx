@@ -53,6 +53,7 @@ import ThreadSession, {
   send as sendAction,
 } from "./ThreadSession";
 import { Button, buttonVariants } from "./ui/Button";
+import { BANNER, BANNER_TITLE } from "./ui/notice";
 import { Spinner } from "./ui/Spinner";
 import { toastManager } from "./ui/toastStore";
 import {
@@ -143,6 +144,7 @@ function SendButton(props: {
   alternate: boolean;
   followUp: ActiveTurnComposerAction;
   sending: boolean;
+  held: boolean;
   disabled: boolean;
   blocked: string | null;
   /** The tokens this send compacts first, already formatted. */
@@ -161,16 +163,18 @@ function SendButton(props: {
     });
   const alternateAction = () => alternateComposerDispatchAction(props.followUp);
   const label = () =>
-    props.sending
-      ? "Sending"
-      : (props.label ??
-        (props.compacts !== null
-          ? "Compact and send"
-          : mode() === "queue"
-            ? "Queue message"
-            : mode() === "steer"
-              ? "Steer message"
-              : "Submit message"));
+    props.held
+      ? "Sending when ready"
+      : props.sending
+        ? "Sending"
+        : (props.label ??
+          (props.compacts !== null
+            ? "Compact and send"
+            : mode() === "queue"
+              ? "Queue message"
+              : mode() === "steer"
+                ? "Steer message"
+                : "Submit message"));
   const tip = () =>
     props.blocked ??
     (props.compacts !== null
@@ -183,9 +187,9 @@ function SendButton(props: {
       type="submit"
       class={`${ROUND_BUTTON} bg-transparent hover:enabled:brightness-110 ${props.class}`}
       aria-label={label()}
-      aria-busy={props.sending || undefined}
+      aria-busy={props.sending || props.held || undefined}
       data-tip={tip()}
-      disabled={props.disabled}
+      disabled={props.disabled || props.held}
       onPointerDown={keepFocus}
       onMouseDown={keepFocus}
       onClick={(event) => {
@@ -196,7 +200,10 @@ function SendButton(props: {
       <span class="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
         <StageArt compact />
       </span>
-      <Show when={!props.sending} fallback={<Spinner size="sm" aria-hidden="true" />}>
+      <Show
+        when={!props.sending && !props.held}
+        fallback={<Spinner size="sm" aria-hidden="true" />}
+      >
         <Show when={mode() !== "auto"} fallback={<ArrowUp />}>
           <Show when={mode() === "queue"} fallback={<CornerUpRight />}>
             <ListPlus />
@@ -272,13 +279,14 @@ function useAttachmentIntake() {
     // Images prepare for seconds, so other files are supplied first and show at once.
     for (const group of [others, images]) {
       if (group.length === 0) continue;
+      if (group === images) session.cancelHeldSend();
       const supplied = await files.supply(group);
       if (supplied === undefined) {
-        session.addAttachments([], "Attachments aren't available right now. Try again.");
+        session.addAttachments([], "Attachments aren't available right now. Try again.", 0);
         return;
       }
       const pasted = pastedText ? supplied.Picked[0] : undefined;
-      session.addAttachments(supplied.Picked, supplied.Error ?? admitted.Error);
+      session.addAttachments(supplied.Picked, supplied.Error ?? admitted.Error, supplied.Preparing);
       // Follows the large-paste toast in apps/web/src/components/chat/useComposerAttachmentIntake.ts.
       if (pasted !== undefined) {
         toastManager.add({
@@ -363,6 +371,35 @@ export function FileDropSection(props: { children: JSX.Element }) {
       </Show>
       {props.children}
     </section>
+  );
+}
+
+// Follows heldComposerSendBannerItem in apps/web/src/components/chat/ComposerHeldSendBanner.tsx.
+function HeldSendBanner(props: { preparing: number; onCancel: () => void }) {
+  const label = () =>
+    props.preparing === 0
+      ? "Sending message"
+      : props.preparing === 1
+        ? "Sending once image is ready"
+        : `Sending once ${props.preparing} images are ready`;
+  return (
+    <div class={BANNER}>
+      <div class={BANNER_TITLE}>
+        <Spinner size="xs" aria-hidden="true" />
+        <strong aria-live="polite">{label()}</strong>
+        <span class="font-normal text-muted-foreground">Edit or press Esc to cancel</span>
+        <Button
+          size="xs"
+          variant="ghost"
+          class="ml-auto"
+          onPointerDown={keepFocus}
+          onMouseDown={keepFocus}
+          onClick={() => props.onCancel()}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -458,13 +495,16 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const isDraft = () => held().NewThreadProjectId !== null;
   const stopping = () => session.stoppingRun();
   const clone = useProjectClone(() => session.projectId());
+  // A dictated send goes from the transcript's arrival, so it can't wait for images.
   const blocked = () =>
     cloneSendBlock(clone()) ??
-    ((files.value()?.Preparing.length ?? 0) > 0 ? "Waiting for images to finish preparing" : null);
+    (dictating() && preparing().length > 0 ? "Waiting for images to finish preparing" : null);
+  const sendHeld = () => session.heldSend();
   const canSend = () =>
     blocked() === null &&
     !sending() &&
-    (held().Draft.trim() !== "" || held().Attachments.length > 0);
+    !sendHeld() &&
+    (held().Draft.trim() !== "" || held().Attachments.length > 0 || preparing().length > 0);
   const phone = createMediaQuery(`${PHONE_QUERY}, ${SHORT_TOUCH_QUERY}`);
   const [focused, setFocused] = createSignal(false);
   const overlays = useOverlays();
@@ -536,8 +576,10 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       void dictation.sendAfterDictation(held().ThreadId, mode);
       return;
     }
+    if (sendHeld()) return;
     if (canSend()) props.onSend?.();
-    session.send(mode);
+    if (preparing().length > 0) session.holdSend(mode);
+    else session.send(mode);
     if (phone()) textarea.blur();
   };
   const startDictation = () => {
@@ -704,8 +746,23 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       <Show when={cloneSendBlock(clone()) !== null && clone()}>
         {(shown) => <ProjectCloneBanner clone={shown()} />}
       </Show>
+      <Show when={sendHeld()}>
+        <HeldSendBanner
+          preparing={preparing().length}
+          onCancel={() => {
+            session.cancelHeldSend();
+            textarea.focus();
+          }}
+        />
+      </Show>
       <form
         ref={form}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || !sendHeld() || event.defaultPrevented) return;
+          if (event.isComposing) return;
+          event.preventDefault();
+          session.cancelHeldSend();
+        }}
         class={COMPOSER_SURFACE}
         data-collapsed={collapsed() ? "" : undefined}
         inert={rewinding()}
@@ -730,13 +787,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               {held().Draft.trim() || placeholder()}
             </button>
             <Show
-              when={props.active && !canSend()}
+              when={props.active && !canSend() && !sendHeld()}
               fallback={
                 <SendButton
                   running={running()}
                   alternate={alternateHeld()}
                   followUp={session.followUpBehavior()}
                   sending={sending()}
+                  held={sendHeld()}
                   disabled={!canSend()}
                   blocked={null}
                   compacts={compacts()}
@@ -850,7 +908,8 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         <textarea
           ref={textarea}
           rows={2}
-          class={`block max-h-52 min-h-[69px] w-full resize-none border-0 bg-transparent px-4 pt-4 pb-2 text-[14px] leading-relaxed outline-none [field-sizing:content] placeholder:text-muted-foreground placeholder:opacity-100 ${HIDDEN_COLLAPSED}`}
+          class={`block max-h-52 min-h-[69px] w-full resize-none border-0 bg-transparent px-4 pt-4 pb-2 text-[14px] leading-relaxed outline-none transition-opacity duration-150 [field-sizing:content] placeholder:text-muted-foreground placeholder:opacity-100 data-held:opacity-65 ${HIDDEN_COLLAPSED}`}
+          data-held={sendHeld() ? "" : undefined}
           placeholder={placeholder()}
           value={text()}
           disabled={answerLocked()}
@@ -867,6 +926,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           onPaste={onPaste}
           onKeyDown={(event) => {
             if (isPasteAsTextShortcut(event, IS_MAC)) setPasteAsTextUntil(event.timeStamp + 1_000);
+            if (event.key === "Escape" && sendHeld() && !event.isComposing) {
+              event.preventDefault();
+              session.cancelHeldSend();
+              return;
+            }
             if (!answering() && (onMenuKey(event) || onHistoryKey(event))) {
               event.preventDefault();
               return;
@@ -948,12 +1012,13 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           <Show when={props.active}>
             <StopButton stopping={stopping()} class="ml-[5px]" onStop={() => session.stopRun()} />
           </Show>
-          <Show when={!answering() && (!props.active || canSend() || dictating())}>
+          <Show when={!answering() && (!props.active || canSend() || dictating() || sendHeld())}>
             <SendButton
               running={running()}
               alternate={alternateHeld()}
               followUp={session.followUpBehavior()}
               sending={sending()}
+              held={sendHeld()}
               disabled={!canSend() && !(dictating() && voice().Phase !== "preparing")}
               blocked={blocked()}
               compacts={compacts()}

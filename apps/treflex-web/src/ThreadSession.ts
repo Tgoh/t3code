@@ -41,6 +41,7 @@ import {
   start,
   startTimer,
   stopTimer,
+  transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
 
@@ -134,6 +135,12 @@ import {
   refreshStatus,
 } from "./ThreadDetails";
 import { checkout, threadShown } from "./checkout";
+import {
+  type IThreadError,
+  shownThreadError,
+  threadErrorKey,
+  threadRuntimeError,
+} from "./threadError";
 
 declare module "treflex" {
   interface IResourceRegistry {
@@ -250,6 +257,8 @@ export interface IThreadSession extends IEntity {
    * top sat from the view's top, or null at the end, which a return follows to the newest row.
    */
   Scroll: { RowId: string; Offset: number } | null;
+  /** Runtime error banners closed here, by `threadErrorKey`; a new error has a new key. */
+  DismissedErrors: string[];
 }
 
 export function getDefaultThreadSession(
@@ -281,6 +290,7 @@ export function getDefaultThreadSession(
     CodeWrap: {},
     Scroll: null,
     Details: null,
+    DismissedErrors: [],
   };
 }
 
@@ -602,8 +612,29 @@ export function* restoreFiles(draft: IThreadSession): IOpenGenerator {
   yield* start(storeFiles, draft);
 }
 
+const heldSendMark = (draft: IThreadSession) =>
+  transient(draft, "Composer/HeldSend", { Mode: null as IDispatchMode | null });
+
+// Follows holdComposerSend and useComposerSendHeld in apps/web/src/components/chat/preparingComposerImages.ts.
+/** Whether a send waits for images still preparing, which go with it once they join the draft. */
+export function* heldSend(draft: IThreadSession): ISelectorGenerator<boolean> {
+  return (yield* heldSendMark(draft)).Mode !== null;
+}
+
+export function* holdSend(draft: IThreadSession, mode: IDispatchMode): IActionGenerator {
+  if (yield* inFlight(send, draft)) return;
+  const mark = yield* heldSendMark(draft);
+  if (mark.Mode === null) mark.Mode = mode;
+}
+
+export function* cancelHeldSend(draft: IThreadSession): IActionGenerator {
+  const mark = yield* heldSendMark(draft);
+  if (mark.Mode !== null) mark.Mode = null;
+}
+
 export function* setDraft(draft: IThreadSession, text: string): IActionGenerator {
   draft.Draft = text;
+  yield* cancelHeldSend(draft);
   yield* storeDraft(draft);
 }
 
@@ -631,6 +662,7 @@ export function* setModelSelection(
   selection: IWireModelSelection,
 ): IOpenGenerator {
   draft.ModelSelection = selection;
+  yield* cancelHeldSend(draft);
   yield* storeDraft(draft);
   yield* rememberModelEffect({ Selection: selection });
   const thread = yield* select(threadModelSelection);
@@ -698,24 +730,40 @@ export function* chooseModel(
 
 export function* setRuntimeMode(draft: IThreadSession, mode: IWireRuntimeMode): IActionGenerator {
   draft.RuntimeMode = mode;
+  yield* cancelHeldSend(draft);
   yield* storeDraft(draft);
 }
 
-/** `error` replaces the last intake's, as stock's thread error does. */
+/**
+ * `error` replaces the last intake's, as stock's thread error does. `preparing` is how many images
+ * other supplies are still preparing, from a supply's reply; with none left a held send goes.
+ * Other files joining, or a supply's error, drop it.
+ */
 export function* addAttachments(
   draft: IThreadSession,
   picked: IPickedFile[],
   error: string | null,
+  preparing: number | null = null,
 ): IActionGenerator {
   if (error === null) delete draft.AttachmentError;
   else draft.AttachmentError = error;
   draft.Attachments.push(...picked);
   if (picked.length > 0) yield* start(storeFiles, draft);
+  const mark = yield* heldSendMark(draft);
+  if (mark.Mode === null || preparing === null) return;
+  if (error !== null || picked.some((file) => file.Kind !== "image")) {
+    mark.Mode = null;
+  } else if (preparing === 0) {
+    const mode = mark.Mode;
+    mark.Mode = null;
+    yield* start(send, draft, mode);
+  }
 }
 
 export function* removeAttachment(draft: IThreadSession, id: string): IActionGenerator {
   const index = draft.Attachments.findIndex((held) => held.Id === id);
   if (index >= 0) draft.Attachments.splice(index, 1);
+  yield* cancelHeldSend(draft);
   yield* resource(draft, "Composer/Files").remove(id);
   yield* start(storeFiles, draft);
 }
@@ -805,6 +853,7 @@ function* compactionCandidate(draft: IThreadSession): ISelectorGenerator<number 
 
 export function* toggleKeepFullHistory(draft: IThreadSession): IActionGenerator {
   draft.KeepFullHistory = !draft.KeepFullHistory;
+  yield* cancelHeldSend(draft);
 }
 
 /** `auto` lets the server choose; during a run the composer asks for `steer` or `queue`. */
@@ -895,6 +944,19 @@ function* runningRunId(draft: IThreadSession): ISelectorGenerator<string | null>
   const thread = (yield* getData(draft, "Replica"))?.OpenThreads[draft.ThreadId];
   const run = thread === undefined ? null : newestRun(thread);
   return run === null || !ACTIVE_RUN.has(run.status) ? null : run.id;
+}
+
+// Follows resolveThreadErrorBanner and its session dismissal in apps/web/src/components/ChatView.tsx.
+export function* threadError(draft: IThreadSession): ISelectorGenerator<IThreadError | null> {
+  if (draft.NewThreadProjectId !== null) return null;
+  const open = (yield* getData(draft, "Replica"))?.OpenThreads[draft.ThreadId];
+  if (open === undefined) return null;
+  return shownThreadError(threadRuntimeError(open), draft.DismissedErrors);
+}
+
+export function* dismissThreadError(draft: IThreadSession, error: IThreadError): IActionGenerator {
+  const key = threadErrorKey(error);
+  if (!draft.DismissedErrors.includes(key)) draft.DismissedErrors.push(key);
 }
 
 // Follows useStopPhase in apps/web/src/components/chat/ComposerPrimaryActions.tsx: Stop stays
@@ -1177,6 +1239,7 @@ export function* editFromHere(
     draft.RewindError = outcome.Error;
     return false;
   }
+  yield* cancelHeldSend(draft);
   draft.Draft = rewoundPrompt(draft.Draft, plan.Prompt);
   yield* storeDraft(draft);
   if (recalled.length > 0) {
@@ -1769,6 +1832,9 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     closeLauncher,
     runScript,
     saveScripts,
+    dismissThreadError,
+    holdSend,
+    cancelHeldSend,
   },
   {
     effectiveModel,
@@ -1793,5 +1859,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     diffLoading,
     checkout,
     panels,
+    threadError,
+    heldSend,
   },
 );
