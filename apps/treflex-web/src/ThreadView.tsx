@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off -- The timeline's touch settle timer, outside any Effect runtime.
+// @effect-diagnostics globalTimers:off -- The timeline's scroll quiet timer, outside any Effect runtime.
 import { sideThreadComposer, sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
 import { useDispatch, useInFlight, useResource } from "treflex-solid";
 import type { JSX } from "@solidjs/web";
@@ -50,6 +50,7 @@ import {
   trimToTail,
 } from "./timelineWindow";
 
+import { isTracing, trace, traceScroll } from "./scrollTrace";
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
 import { Button } from "./ui/Button";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
@@ -137,14 +138,11 @@ function TimelineSentinel(props: {
   onSettled(() => {
     const element = sentinel();
     if (element === undefined) return;
+    // Observations report only changes, so the view remounts the sentinel after each grow to check
+    // again from where it lands.
     const observer = new IntersectionObserver(
-      (entries, held) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        props.onReach();
-        // Observations report only changes, so one that leaves the sentinel in range re-observes it.
-        if (!element.isConnected) return;
-        held.unobserve(element);
-        held.observe(element);
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) props.onReach();
       },
       { root: props.root, rootMargin: "800px 0px 0px 0px" },
     );
@@ -249,13 +247,16 @@ const ThreadConversation = ThreadSession.provider<{
     ClientHeight: scroller.clientHeight,
   });
   let lastPosition: IScrollPosition = { Top: 0, Height: 0, ClientHeight: 0 };
+  // iOS Safari overwrites a scroll change made while a finger is down and stops momentum at one
+  // made during it, so nothing above the viewport changes until a touch and its momentum end.
   let touching = false;
+  let coasting = false;
+  let gesture: AbortController | undefined;
+  let quietTimer: ReturnType<typeof setTimeout> | undefined;
+  let heldGrow = false;
+  let heldTop = false;
   let dragging = false;
-  let touchSettle: ReturnType<typeof setTimeout> | undefined;
-  let heldShift = 0;
   const scrollToEnd = () => {
-    heldShift = 0;
-    content.style.transform = "";
     scroller.scrollTop = scroller.scrollHeight;
   };
   const statusRows = createMemo(() => checklistRows(checklist()));
@@ -286,23 +287,8 @@ const ThreadConversation = ThreadSession.provider<{
     const found = children[low] ?? null;
     return found === head ? head.nextElementSibling : found;
   };
-  // iOS Safari drops a scroll change made while a finger is down and stops momentum at one made
-  // during it, so a touch scroll holds the correction as a transform and scrolls once it ends.
-  const commitShift = () => {
-    if (heldShift === 0) return;
-    content.style.transform = "";
-    scroller.scrollBy(0, heldShift);
-    heldShift = 0;
-  };
-  const settleTouchSoon = () => {
-    clearTimeout(touchSettle);
-    touchSettle = setTimeout(() => {
-      touchSettle = undefined;
-      commitShift();
-    }, MOMENTUM_QUIET_MS);
-  };
   let correcting = false;
-  const keepStill = () => {
+  const keepStill = (cause: string) => {
     if (correcting) return;
     const anchor = firstVisible();
     if (anchor === null) return;
@@ -313,14 +299,73 @@ const ThreadConversation = ThreadSession.provider<{
       correcting = false;
       if (!anchor.isConnected) return;
       const shift = anchor.getBoundingClientRect().top - before;
-      if (shift === 0) return;
-      if (!touching && touchSettle === undefined) {
-        scroller.scrollBy(0, shift);
-        return;
-      }
-      heldShift += shift;
-      content.style.transform = `translateY(${-heldShift}px)`;
+      if (shift !== 0) scroller.scrollBy(0, shift);
+      if (isTracing())
+        trace(
+          `correct ${cause} anchor ${before.toFixed(1)}>${(before + shift).toFixed(1)} by ${shift.toFixed(1)} now ${anchor.getBoundingClientRect().top.toFixed(1)} top ${Math.round(scroller.scrollTop)}`,
+        );
     });
+  };
+  // `flow-root` on the head keeps the Load earlier row's margin inside the measured height.
+  const freezeHead = () => {
+    if (head.style.height !== "") return;
+    head.style.height = `${head.offsetHeight}px`;
+    head.style.overflow = "clip";
+  };
+  const settle = (cause: string) => {
+    coasting = false;
+    clearTimeout(quietTimer);
+    quietTimer = undefined;
+    const top = heldTop;
+    const more = heldGrow;
+    heldTop = false;
+    heldGrow = false;
+    trace(
+      `quiet ${cause} top ${Math.round(scroller.scrollTop)}${top ? " +top" : ""}${more ? " +grow" : ""}`,
+    );
+    if (head.style.height === "" && !top && !more) return;
+    const isStuck = untrack(stuck);
+    if (!isStuck) keepStill("insert");
+    head.style.height = "";
+    head.style.overflow = "";
+    // Following the end, the reader has left the top, and a grow now would raise the trim floor.
+    if (!isStuck && (top || more)) growTo(top ? 0 : grow(untrack(timeline).First), false);
+  };
+  // Momentum can pause its scroll events while still moving, so quiet also needs an unmoved scrollTop.
+  const awaitQuiet = () => {
+    clearTimeout(quietTimer);
+    const top = scroller.scrollTop;
+    quietTimer = setTimeout(() => {
+      quietTimer = undefined;
+      if (scroller.scrollTop === top) settle("timeout");
+      else awaitQuiet();
+    }, MOMENTUM_QUIET_MS);
+  };
+  const onScrollEnd = () => {
+    trace(`scrollend top ${Math.round(scroller.scrollTop)}`);
+    if (!coasting) return;
+    const top = scroller.scrollTop;
+    requestAnimationFrame(() => {
+      if (coasting && scroller.scrollTop === top) settle("scrollend");
+    });
+  };
+  const endTouch = (ended: Event) => {
+    if (ended instanceof TouchEvent && ended.touches.length > 0) return;
+    gesture?.abort();
+    gesture = undefined;
+    touching = false;
+    coasting = true;
+    trace(`${ended.type} top ${Math.round(scroller.scrollTop)}`);
+    awaitQuiet();
+  };
+  const reachTop = () => {
+    if (touching || coasting) {
+      if (!heldGrow) trace(`grow held first ${untrack(timeline).First}`);
+      heldGrow = true;
+      return;
+    }
+    trace(`grow first ${untrack(timeline).First}`);
+    growTo(grow(untrack(timeline).First), untrack(stuck));
   };
 
   const startsAt = (id: string) => {
@@ -354,8 +399,16 @@ const ThreadConversation = ThreadSession.provider<{
     (ids) => {
       const held = untrack(timeline);
       const isStuck = untrack(stuck);
+      const pinned = (touching || coasting) && !isStuck && (held.First === 0 || heldTop);
+      const oldTop = pinned && held.Ids.length > 0 ? ids.indexOf(held.Ids[held.First]!) : -1;
+      if (oldTop > 0) {
+        heldTop = true;
+        trace(`page held ${oldTop} rows`);
+        setTimeline({ ...held, Ids: ids, First: oldTop });
+        return;
+      }
       const { moved, first } = placed(held, ids, isStuck);
-      if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
+      if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill("rows");
       const trimmed = held.Ids.length > 0 && first !== moved;
       const before = trimmed ? scroller.scrollTop : 0;
       setTimeline({ ...held, Ids: ids, First: first });
@@ -383,7 +436,7 @@ const ThreadConversation = ThreadSession.provider<{
       First: snap(held.Ids, target),
       Floor: isStuck ? Math.max(held.Floor, held.Ids.length - target) : held.Floor,
     }));
-    if (!isStuck) keepStill();
+    if (!isStuck) keepStill("grow");
   };
   const showAll = (forward: boolean) => {
     const boundary = head.nextElementSibling;
@@ -486,8 +539,12 @@ const ThreadConversation = ThreadSession.provider<{
       if (stuck()) scrollToEnd();
     });
     stageObserver.observe(stage);
+    scroller.addEventListener("scrollend", onScrollEnd);
     return () => {
-      clearTimeout(touchSettle);
+      coasting = false;
+      clearTimeout(quietTimer);
+      gesture?.abort();
+      scroller.removeEventListener("scrollend", onScrollEnd);
       observer.disconnect();
       laneObserver.disconnect();
       stageObserver.disconnect();
@@ -527,7 +584,8 @@ const ThreadConversation = ThreadSession.provider<{
           data-tip-scroll-dismiss
           tabindex={-1}
           onScroll={() => {
-            if (touchSettle !== undefined) settleTouchSoon();
+            traceScroll(scroller.scrollTop, scroller.scrollHeight);
+            if (coasting) awaitQuiet();
             if (holding !== null) {
               lastPosition = position();
               return;
@@ -549,20 +607,24 @@ const ThreadConversation = ThreadSession.provider<{
           }}
           onTouchStart={(event) => {
             release();
+            trace(`touchstart ${event.touches.length} top ${Math.round(scroller.scrollTop)}`);
+            if (!touching) {
+              gesture?.abort();
+              gesture = new AbortController();
+            }
             touching = true;
-            clearTimeout(touchSettle);
-            touchSettle = undefined;
+            coasting = false;
+            clearTimeout(quietTimer);
+            quietTimer = undefined;
+            freezeHead();
             // A touch ends on the element it started on, which a re-render can take out of the scroller.
             const started = event.target instanceof Element ? event.target : scroller;
-            const done = new AbortController();
-            const end = (ended: Event) => {
-              if (ended instanceof TouchEvent && ended.touches.length > 0) return;
-              done.abort();
-              touching = false;
-              settleTouchSoon();
-            };
-            started.addEventListener("touchend", end, { signal: done.signal });
-            started.addEventListener("touchcancel", end, { signal: done.signal });
+            const signal = gesture!.signal;
+            // The last finger can lift outside the scroller, where only the window hears it.
+            for (const target of [started, window]) {
+              target.addEventListener("touchend", endTouch, { signal });
+              target.addEventListener("touchcancel", endTouch, { signal });
+            }
           }}
           onPointerDown={(event) => {
             // A press on the scroller itself, not on a row, is its scrollbar.
@@ -573,15 +635,15 @@ const ThreadConversation = ThreadSession.provider<{
           }}
         >
           <div class={CONTENT_COLUMN} ref={content}>
-            <div ref={head}>
+            <div class="flow-root" ref={head}>
               <Show
                 when={reachedTop()}
                 fallback={
-                  <TimelineSentinel
-                    root={scroller}
-                    onReach={() => growTo(grow(timeline().First), stuck())}
-                    onFocus={showAll}
-                  />
+                  <Show when={timeline().First} keyed>
+                    {(_first) => (
+                      <TimelineSentinel root={scroller} onReach={reachTop} onFocus={showAll} />
+                    )}
+                  </Show>
                 }
               >
                 <Show when={thread.state.History} keyed>

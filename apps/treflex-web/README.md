@@ -344,6 +344,8 @@ Keep test clients on 5735: `localStorage` is per port, so choices such as groupi
 
 To test what the driver will serve, including the service worker, build and preview on another port: `vp build`, then `vp preview --port 5747 --strictPort`. `localhost` counts as secure, so the worker registers without HTTPS. The worker outlives the server on its port, so unregister it in DevTools before running the dev server there again.
 
+To see what the timeline does on a phone, turn on **Layout debug** in a thread's menu. The overlay shows live layout numbers and records touches, scroll events, held and inserted rows, and each scroll correction with its anchor's position before and after. Scroll on the phone, tap **Copy trace**, and paste it into a thread. **Clear** empties the recorder, which keeps the last 600 entries and records only while the overlay is on.
+
 Work in the reflex repo doesn't reach this client until it's published. To move to a new release, read its breaking-changes record in the reflex repo's `docs/wip`, set both versions in `package.json`, and run `vp i`.
 
 To bring in upstream changes, use the `/syncupstream` skill: it merges on a worktree, ports the logic and the shared styles copied from stock, tests the client live, and fast-forwards `treflex-main` only when it all holds. `apps/treflex-web/scripts/sync-upstream.ps1` alone fast-forwards `main` and pushes it to `origin` (`-DryRun` previews). After a sync or a style change, `vp run drift` checks the shared components against stock's; see [bench/drift](./bench/drift/README.md).

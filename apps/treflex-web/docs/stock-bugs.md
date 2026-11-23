@@ -6,8 +6,8 @@ Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) 
 
 - **Where:** `ScrollAdjust` in `@legendapp/list` 3.7.3 (`react.mjs`), which `MessagesTimeline.tsx` drives with `maintainVisibleContentPosition={{ data: true, size: true }}` on a scroller set to `[overflow-anchor:none]`.
 - **What goes wrong:** when rows are added or resized above the viewport, it corrects with `el.scrollBy` straight away. Its `isDragging` and `isMomentumScrolling` checks are fed only by React Native's scroll callbacks, so on the web they never hold a correction back. iOS Safari overwrites a scroll change made while a finger is panning, and stops momentum at one made while flinging. So a correction during a touch is lost (the view jumps by the inserted height) or cuts the fling short.
-- **Status:** found by reading the code on 2026-11-23, not reproduced: neither Windows WebKit nor Chromium has iOS's UIScrollView. Treflex's driver showed this jump on an iPhone.
-- **Treflex:** fixed in `keepStill` in `ThreadView.tsx`. During a touch and its momentum, it holds the correction as a transform and scrolls once scrolling stops.
+- **Status:** found by reading the code on 2026-11-23. Tam confirmed it on an iPhone the same day: stock hitches on every row that lands above the view while scrolling up.
+- **Treflex:** in `ThreadView.tsx`, rows above the viewport (a grow of the window, a history page, the Load earlier row) wait until the touch and its momentum end, then go in and are corrected in one step while nothing is moving.
 
 ## Diff panel: the turn picker offers turns the server refuses
 
