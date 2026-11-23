@@ -4,6 +4,11 @@ interface ImportMeta {
 
 declare module "*.css";
 
+declare module "*.mp3" {
+  const url: string;
+  export default url;
+}
+
 declare module "*?worker&url" {
   const url: string;
   export default url;

@@ -121,6 +121,7 @@ import { draftModel, projectRuntimeMode } from "./newThreadDefaults";
 import { delay } from "./Infrastructure/delay";
 import type { IWireServerConfig } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
+import type { INotificationMode } from "./threadNotifications";
 import { serverError, serverFailure } from "./Infrastructure/serverError";
 import { detachTerminal, type ITerminal, openTerminal, restoreTerminal } from "./Terminal";
 import {
@@ -179,6 +180,7 @@ export interface ISelection extends IEntity {
   ClientSettings: {
     followUpBehavior: ActiveTurnComposerAction;
     sidebarWorkingShelfEnabled: boolean;
+    notificationMode: INotificationMode;
   } | null;
 }
 

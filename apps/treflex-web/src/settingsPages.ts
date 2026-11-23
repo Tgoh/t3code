@@ -179,6 +179,7 @@ const GENERAL: ISettingsSection[] = [
             "notifications-and-sound": "Notifications with sound",
           }),
         },
+        Applied: true,
       }),
       clientRow("inAppNotificationsEnabled", {
         Id: "inAppNotificationsEnabled",
@@ -217,6 +218,7 @@ const GENERAL: ISettingsSection[] = [
             manual: "Manual",
           }),
         },
+        Applied: true,
       }),
       clientRow("sidebarWorkingShelfEnabled", {
         Id: "sidebarWorkingShelfEnabled",
@@ -224,6 +226,7 @@ const GENERAL: ISettingsSection[] = [
         Description:
           "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.",
         Control: switchControl,
+        Applied: true,
       }),
     ],
   },
@@ -235,6 +238,7 @@ const GENERAL: ISettingsSection[] = [
         Title: "Unpin confirmation",
         Description: "Ask before unpinning a thread from the pinned section.",
         Control: switchControl,
+        Applied: true,
       }),
       clientRow("confirmThreadArchive", {
         Id: "confirmThreadArchive",
@@ -248,6 +252,7 @@ const GENERAL: ISettingsSection[] = [
         Title: "Delete confirmation",
         Description: "Ask before deleting a thread and its chat history.",
         Control: switchControl,
+        Applied: true,
       }),
     ],
   },
@@ -266,6 +271,7 @@ const GENERAL: ISettingsSection[] = [
             "24-hour": "24-hour",
           }),
         },
+        Applied: true,
       }),
     ],
   },
@@ -284,6 +290,7 @@ const APPEARANCE: ISettingsSection[] = [
           Kind: "select",
           Options: options({ comfortable: "Comfortable", wide: "Wide", full: "Full" }),
         },
+        Applied: true,
       }),
       clientRow("effortDisplay", {
         Id: "effortDisplay",
@@ -303,6 +310,7 @@ const APPEARANCE: ISettingsSection[] = [
         Title: "Word wrap",
         Description: "Wrap long lines in code blocks, diffs, and file previews by default.",
         Control: switchControl,
+        Applied: true,
       }),
     ],
   },
@@ -331,6 +339,7 @@ const CHAT: ISettingsSection[] = [
             "mod-enter": "Ctrl + Enter always",
           }),
         },
+        Applied: true,
       }),
       clientRow("showSkillsInSlashMenu", {
         Id: "showSkillsInSlashMenu",

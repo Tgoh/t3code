@@ -70,6 +70,7 @@ import { pull, runGitAction } from "./GitWork";
 import { loadEarlier } from "./HistoryWindow";
 import {
   autoRefreshLimits,
+  chooseNotificationMode,
   openView,
   toggleModelFavorite,
   updateServerSettings,
@@ -223,6 +224,8 @@ import {
 } from "./testing/threadFixture";
 import type { IProjectFaviconTarget } from "./projectIcon";
 import { type IProjectSort, orderFolders } from "./projectOrder";
+import type { IShownNotification } from "./Infrastructure/notifications";
+import { type INotificationMode, threadNotificationTag } from "./threadNotifications";
 import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
 
@@ -327,6 +330,8 @@ async function connect(
     Applied: [] as IColorScheme[],
     Schemes: [] as IColorScheme[],
     Favicons: [] as IProjectFaviconTarget[],
+    NotifyModes: [] as INotificationMode[],
+    Notified: [] as IShownNotification[],
   };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
@@ -402,6 +407,10 @@ async function connect(
           "Project/Favicons": {
             request: (_ctx: unknown, target: IProjectFaviconTarget) =>
               void device.Favicons.push(target),
+          },
+          "Notify/Device": {
+            setMode: (_ctx: unknown, mode: INotificationMode) => void device.NotifyModes.push(mode),
+            show: (_ctx: unknown, note: IShownNotification) => void device.Notified.push(note),
           },
           ...resources?.methods,
         },
@@ -1375,6 +1384,78 @@ describe("history pages", () => {
     gate.release(pageOf("c-1", null));
     await loading;
     expect(server.thread()).toBeUndefined();
+  });
+});
+
+describe("thread notifications", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+  const shellRow = (status: string, extra: object = {}) => ({
+    id: "t-1",
+    projectId: "p-1",
+    updatedAt: at,
+    createdAt: at,
+    title: "Fix the build",
+    status,
+    latestRunId: "run-1",
+    activeRunId: status === "running" ? "run-1" : null,
+    latestRunCompletedAt: status === "running" ? null : "2026-01-01T00:05:00.000Z",
+    activeProviderThreadId: null,
+    pendingRuntimeRequest: null,
+    lineage: { rootThreadId: "t-1", parentThreadId: null, relationshipToParent: null },
+    ...extra,
+  });
+  const update = (sequence: number, thread: object) =>
+    ({ kind: "thread.updated", sequence, location: "active", thread }) as unknown as IWireShellItem;
+
+  it("announce a finished run from the shell's status events, and a click opens the thread", async () => {
+    const server = await connect(undefined, null, {
+      storeClientSettings: () => undefined,
+      chooseNotificationMode: () => "granted",
+    });
+    expect(server.device.NotifyModes).toEqual(["off"]);
+    await server.sendShell(update(1, shellRow("running")));
+    await server.sendShell(update(2, shellRow("completed")));
+    expect(server.device.Notified).toEqual([]);
+
+    expect(
+      await server.runtime.dispatch(chooseNotificationMode, server.envId(), "notifications"),
+    ).toBeNull();
+    expect(server.environment().Local.ClientSettings?.notificationMode).toBe("notifications");
+    expect(server.device.NotifyModes).toEqual(["off", "notifications"]);
+    await server.sendShell(update(3, shellRow("running", { latestRunId: "run-2" })));
+    expect(server.device.Notified).toEqual([]);
+    await server.sendShell(
+      update(4, shellRow("completed", { latestRunCompletedAt: "2026-01-01T00:09:00.000Z" })),
+    );
+    expect(server.device.Notified).toEqual([
+      {
+        ThreadId: "t-1",
+        Kind: "completion",
+        Title: "Thread completed",
+        Body: "Fix the build",
+        Tag: threadNotificationTag(ENV, "t-1"),
+      },
+    ]);
+
+    await server.runtime.dispatch(
+      EnvironmentReceiver.handle,
+      server.envId(),
+      { Type: "Notify/Device", Opened: "t-1" } as never,
+      { publisher: { Id: server.envId() } },
+    );
+    expect(server.environment().Local.SelectedThreadId).toBe("t-1");
+  });
+
+  it("keep the mode when the browser refuses to notify, and say why", async () => {
+    const server = await connect(undefined, null, {
+      storeClientSettings: () => undefined,
+      chooseNotificationMode: () => "denied",
+    });
+    expect(
+      await server.runtime.dispatch(chooseNotificationMode, server.envId(), "notifications"),
+    ).toMatch(/^Allow notifications in your browser/);
+    expect(server.environment().Local.ClientSettings?.notificationMode).toBeUndefined();
+    expect(server.device.NotifyModes).toEqual(["off"]);
   });
 });
 

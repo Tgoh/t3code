@@ -22,6 +22,7 @@ import {
   openResource,
   receiver,
   registerDataSource,
+  resource,
   select,
   start,
   startTimer,
@@ -91,7 +92,9 @@ import {
 } from "./OpenThread";
 import {
   applyConfigEvent,
+  applyNotificationMode,
   autoRefreshLimits,
+  chooseNotificationMode,
   confirmThreadDelete,
   confirmThreadUnpin,
   openView,
@@ -142,6 +145,7 @@ declare module "treflex" {
   interface IResourceRegistry {
     "Project/Clones": { Type: "projectClones" };
     "Server/Config": { Type: "serverConfigStream" };
+    "Notify/Device": { Type: "threadNotifier" };
     "Device/History": { Type: "addressHistory" };
   }
   interface ITimerRegistry {
@@ -239,6 +243,8 @@ export function* init(draft: IEnvironment): IActionGenerator {
   bind(draft, EnvironmentReceiver);
   yield* followDevice(draft);
   yield* followActivity(draft);
+  yield* openResource(draft, "Notify/Device", EnvironmentReceiver, { Type: "threadNotifier" });
+  yield* applyNotificationMode(draft);
   yield* openShellStream(draft.Replica.Shell);
   yield* openResource(draft, "Project/Clones", {
     Type: "projectClones",
@@ -764,6 +770,13 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
     yield* stopTimer(draft, "Server/ConfigReopen");
     yield* openConfigStream(draft);
   },
+  *"Shell/Notify"(draft, { Notes }) {
+    for (const note of Notes) yield* resource(draft, "Notify/Device").show(note);
+  },
+  *"Notify/Device"(draft, message) {
+    if (isEnded(message)) return;
+    yield* start(selectThread, draft, message.Opened);
+  },
   *"Thread/Deleted"(draft, { ThreadId }) {
     delete draft.Replica.OpenThreads[ThreadId];
     yield* forgetSession(draft, ThreadId);
@@ -854,6 +867,7 @@ export default createEntityFeature<IEnvironment>("Environment")(
     preferEditor,
     openView,
     writeSetting,
+    chooseNotificationMode,
     updateServerSettings,
     autoRefreshLimits,
     setPreferences,

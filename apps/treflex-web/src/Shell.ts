@@ -32,7 +32,19 @@ import {
   threadCommandEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
+import type { IShownNotification } from "./Infrastructure/notifications";
 import { clockNowEffect } from "./Infrastructure/preferences";
+import {
+  emptyNotifyGate,
+  type INotifyGate,
+  type IThreadNotification,
+  nextRelease,
+  notificationTitle,
+  observeNotifications,
+  pauseNotifications,
+  releaseNotifications,
+  threadNotificationTag,
+} from "./threadNotifications";
 import type { ISelection } from "./ThreadSession";
 import { serverError } from "./Infrastructure/serverError";
 import { expireInbox, type IInbox, type IInboxFacts, inboxDeadline, observeInbox } from "./inbox";
@@ -53,8 +65,11 @@ declare module "treflex" {
   interface ITimerRegistry {
     "Shell/Reopen": {};
     "Shell/InboxGrace": {};
+    "Shell/NotifyRelease": {};
   }
   interface IMessageRegistry {
+    /** Thread status changes that Thread notifications announce, for the environment to show. */
+    "Shell/Notify": { Notes: IShownNotification[] };
     /** Thread rows left the shell, so an open thread's lineage may need their titles looked up. */
     "Shell/ThreadsDropped": {};
     "Shell/ProjectsChanged": {};
@@ -309,6 +324,7 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
   *"Shell/Stream"(draft, message) {
     if (isEnded(message)) {
       (yield* streamState(draft)).Synchronized = false;
+      yield* pauseNotify(draft);
       // A batch the receiver failed would fail again on every reopen.
       if (message.$Ended.Reason !== "receiver-failed") yield* reopenLater(draft);
       return;
@@ -328,13 +344,22 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
         yield* publishToNearest(draft, "Shell/ThreadsDropped");
       if (PROJECT_ITEMS.has(message.Item.kind))
         yield* publishToNearest(draft, "Shell/ProjectsChanged");
-      if (THREAD_ITEMS.has(message.Item.kind)) yield* followInbox(draft);
+      if (THREAD_ITEMS.has(message.Item.kind)) {
+        yield* followInbox(draft);
+        yield* notifyChanges(draft);
+      }
       yield* visitIfDue(draft);
     }
   },
   *"Shell/Reopen"(draft) {
     yield* stopTimer(draft, "Shell/Reopen");
     yield* openShellStream(draft);
+  },
+  *"Shell/NotifyRelease"(draft) {
+    const now = yield* clockNowEffect();
+    const gate = yield* notifyGateOf(draft);
+    yield* announce(draft, releaseNotifications(gate, now));
+    yield* scheduleNotify(draft, gate, now);
   },
   *"Shell/InboxGrace"(draft) {
     const now = yield* clockNowEffect();
@@ -473,7 +498,7 @@ export function runCompletedAt(thread: IWireThreadShell): string | null {
 }
 
 // Follows shellRuntime in packages/client-runtime/src/state/models.ts.
-function runtimeStatus(thread: IWireThreadShell): IWireThreadShell["status"] | null {
+export function runtimeStatus(thread: IWireThreadShell): IWireThreadShell["status"] | null {
   const parkAtIdle =
     backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) &&
     thread.status !== "failed";
@@ -642,6 +667,55 @@ function* scheduleInbox(draft: IShell, inbox: IInbox, now: number): IActionGener
   const deadline = inboxDeadline(inbox);
   if (deadline !== null)
     yield* startTimer(draft, "Shell/InboxGrace", ShellReceiver, Math.max(0, deadline - now));
+}
+
+// Follows startThreadNotifications in apps/web/src/components/ThreadNotificationCoordinator.tsx:
+// status changes in the shell decide, and the environment shows what they call for.
+const notifyGateOf = (draft: IShell) => transient(draft, "Shell/Notify", emptyNotifyGate());
+
+function* notifyChanges(draft: IShell): IActionGenerator {
+  const selection = yield* getData(draft, "Selection");
+  const gate = yield* notifyGateOf(draft);
+  if ((selection?.ClientSettings?.notificationMode ?? "off") === "off") {
+    if (Object.keys(gate.Previous).length > 0) Object.assign(gate, emptyNotifyGate());
+    yield* stopTimer(draft, "Shell/NotifyRelease");
+    return;
+  }
+  const now = yield* clockNowEffect();
+  const subagents = yield* subagentRequests(draft);
+  yield* announce(draft, observeNotifications(gate, Object.values(draft.Threads), subagents, now));
+  yield* scheduleNotify(draft, gate, now);
+}
+
+function* pauseNotify(draft: IShell): IActionGenerator {
+  pauseNotifications(yield* notifyGateOf(draft));
+  yield* stopTimer(draft, "Shell/NotifyRelease");
+}
+
+function* scheduleNotify(draft: IShell, gate: INotifyGate, now: number): IActionGenerator {
+  yield* stopTimer(draft, "Shell/NotifyRelease");
+  const due = nextRelease(gate);
+  if (due !== null)
+    yield* startTimer(draft, "Shell/NotifyRelease", ShellReceiver, Math.max(0, due - now));
+}
+
+function* announce(draft: IShell, notes: IThreadNotification[]): IActionGenerator {
+  if (notes.length === 0) return;
+  const subagents = yield* subagentRequests(draft);
+  const shown = notes.flatMap((note): IShownNotification[] => {
+    const thread = draft.Threads[note.ThreadId];
+    if (thread === undefined) return [];
+    return [
+      {
+        ThreadId: thread.id,
+        Kind: note.Kind,
+        Title: notificationTitle(note.Kind, thread, subagents[thread.id]),
+        Body: thread.title,
+        Tag: threadNotificationTag(draft.EnvironmentId, thread.id),
+      },
+    ];
+  });
+  if (shown.length > 0) yield* publishToNearest(draft, "Shell/Notify", { Notes: shown });
 }
 
 /** Which threads the Working section holds, with the exit grace stock gives them. */

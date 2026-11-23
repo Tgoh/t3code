@@ -56,6 +56,7 @@ import {
 import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { ThreadConfirmDialog } from "./ThreadCard";
+import { isNotificationMode } from "./threadNotifications";
 import { clockNow, relativeTime } from "./timestamps";
 import { Badge } from "./ui/Badge";
 import { Button, buttonVariants, InlineButton } from "./ui/Button";
@@ -416,8 +417,21 @@ function Sections(props: { sections: ISettingsSection[] }) {
 function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
   const environment = Environment.use();
   const value = () => props.row.Read(props.held);
-  const write = (next: ISettingValue) =>
-    void environment.writeSetting(props.row.Write(next, props.held));
+  // Follows NotificationSettings.tsx: a mode is saved only once the browser allows it.
+  const [notice, setNotice] = createSignal<string | null>(null);
+  const [requesting, setRequesting] = createSignal(false);
+  const chooseNotificationMode = async (next: ISettingValue) => {
+    if (!isNotificationMode(next)) return;
+    setNotice(null);
+    setRequesting(true);
+    const refused = await environment.chooseNotificationMode(next);
+    setRequesting(false);
+    setNotice(refused ?? null);
+  };
+  const write = (next: ISettingValue) => {
+    if (props.row.Id === "notificationMode") void chooseNotificationMode(next);
+    else void environment.writeSetting(props.row.Write(next, props.held));
+  };
   // Only availability rebuilds the control, so a change of value keeps its focus.
   const available = createMemo(() => value() !== null);
   const current = () => String(value());
@@ -431,7 +445,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
         );
       case "select":
         return (
-          <Select value={current()} onValueChange={write}>
+          <Select value={current()} disabled={requesting()} onValueChange={write}>
             <SelectTrigger size="sm" class={rowSelect} aria-label={props.row.Title}>
               <SelectValue>
                 {control.Options.find((option) => option.Value === current())?.Label ?? current()}
@@ -524,7 +538,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
           </Show>
         </>
       }
-      description={props.row.Description}
+      description={notice() ?? props.row.Description}
       settingId={props.row.Id}
       control={control()}
     >
