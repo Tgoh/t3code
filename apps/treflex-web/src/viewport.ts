@@ -258,13 +258,12 @@ export interface ISidebarSheet {
 export function createSidebarSheet(
   sheet: Accessor<boolean>,
   selection: Accessor<unknown>,
-  collapse: { initial: boolean; onChange: (collapsed: boolean) => void } = {
-    initial: false,
+  collapse: { collapsed: Accessor<boolean>; onChange: (collapsed: boolean) => void } = {
+    collapsed: () => false,
     onChange: () => {},
   },
 ) {
   const [open, setOpen] = createSignal(false);
-  const [collapsed, setCollapsed] = createSignal(collapse.initial);
   createRenderEffect(
     selection,
     () => {
@@ -284,12 +283,10 @@ export function createSidebarSheet(
     sheet,
     open: () => sheet() && open(),
     setOpen,
-    collapsed: () => !sheet() && collapsed(),
+    collapsed: () => !sheet() && collapse.collapsed(),
     toggle: () => {
       if (sheet()) return setOpen(!open());
-      const next = !collapsed();
-      setCollapsed(next);
-      collapse.onChange(next);
+      collapse.onChange(!collapse.collapsed());
     },
     choseThread: () => setOpen(false),
   } satisfies ISidebarSheet;

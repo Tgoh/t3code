@@ -92,11 +92,15 @@ describe("createSidebarSheet", () => {
 
   it("toggles the sheet on a narrow layout and the column's collapse on a wide one", () => {
     const [sheet, setSheet] = createSignal(false);
+    const [collapsed, setCollapsed] = createSignal(true);
     const saved: boolean[] = [];
     const { sidebar, dispose } = createRoot((dispose) => ({
       sidebar: createSidebarSheet(sheet, () => null, {
-        initial: true,
-        onChange: (collapsed) => saved.push(collapsed),
+        collapsed,
+        onChange: (next) => {
+          saved.push(next);
+          setCollapsed(next);
+        },
       }),
       dispose,
     }));
