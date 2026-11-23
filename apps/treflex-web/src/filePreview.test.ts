@@ -6,11 +6,15 @@ import {
   clampFileLine,
   diffPathForWorkspace,
   fileBreadcrumbs,
+  markdownBaseDir,
   panelFilePath,
   previewPath,
   readErrorMessage,
+  revisionedUrl,
   workspaceCopyable,
+  workspaceMediaKind,
 } from "./filePreview";
+import { keptRead } from "./FilePanel";
 
 describe("the file a preview opens", () => {
   it("drops trailing separators but keeps a bare drive's", () => {
@@ -99,5 +103,53 @@ describe("a diff's file in the workspace", () => {
     [{ filePath: "App\\a.ts", workspaceRoot: "C:\\repo\\app", repositoryRoot: "C:\\repo" }, "a.ts"],
   ])("places %o at %s", (input, expected) => {
     expect(diffPathForWorkspace(input)).toBe(expected);
+  });
+});
+
+describe("a previewed file's surroundings", () => {
+  it("writes a Markdown file's relative links from its own folder", () => {
+    expect(markdownBaseDir("docs/guide.md", "/repo")).toBe("/repo/docs");
+    expect(markdownBaseDir("README.md", "/repo")).toBe("/repo");
+  });
+
+  it("keys a media URL on the file's revision, else the workspace's changes", () => {
+    expect(revisionedUrl("/a?s=1", null, 0)).toBe("/a?s=1");
+    expect(revisionedUrl("/a?s=1", null, 2)).toBe("/a?s=1&workspace-revision=2");
+    expect(revisionedUrl("/a", "r 1", 2)).toBe("/a?file-revision=r%201");
+  });
+
+  it("tells media from text by its path", () => {
+    expect(workspaceMediaKind("a.png")).toBe("image");
+    expect(workspaceMediaKind("a.mp4")).toBe("video");
+    expect(workspaceMediaKind("a.mp3")).toBe("audio");
+    expect(workspaceMediaKind("a.ts")).toBeNull();
+  });
+});
+
+describe("a reread", () => {
+  const shown = { Kind: "text", Contents: "a", ByteLength: 1, Truncated: false } as const;
+  const refusal = (Failure: string) =>
+    ({
+      Kind: "error",
+      Message: "no",
+      Failure,
+      Operation: null,
+      AttemptedPath: null,
+      Cwd: null,
+    }) as const;
+
+  it("keeps the shown contents through a dropped read or a refusal, unless the path stopped being a file", () => {
+    expect(keptRead(shown, { Kind: "failed", Message: "socket closed" })).toBe(shown);
+    expect(keptRead(shown, refusal("operation_failed"))).toBe(shown);
+    expect(keptRead(shown, refusal("path_not_file"))).toEqual(refusal("path_not_file"));
+    expect(keptRead(null, refusal("operation_failed"))).toEqual(refusal("operation_failed"));
+  });
+
+  it("keeps the held read when the contents didn't change, so views over it stay put", () => {
+    expect(keptRead(shown, { ...shown })).toBe(shown);
+    expect(keptRead(shown, { ...shown, Contents: "b", ByteLength: 1 })).toEqual({
+      ...shown,
+      Contents: "b",
+    });
   });
 });

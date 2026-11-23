@@ -407,6 +407,8 @@ export interface IAssetUrl {
   /** When the server stops accepting `Url`, in epoch milliseconds. */
   ExpiresAt: number;
   Size?: { Width: number; Height: number };
+  /** The file's content revision, from servers that report one. */
+  FileRevision?: string;
 }
 
 export const assetUrlEffect = defineEffect<IAssetUrlEffect, IAssetUrl>("assetUrl");

@@ -40,6 +40,14 @@ describe("fileLinkFromHref", () => {
   it("needs a workspace to place a relative path", () => {
     expect(fileLinkFromHref("src/a.ts", undefined)).toBeNull();
   });
+
+  it("places a previewed file's relative links from its own folder, and a nested code path from the root", () => {
+    const docs = "/repo/docs";
+    expect(fileLinkFromHref("img/a.png", "/repo", docs)?.FilePath).toBe("/repo/docs/img/a.png");
+    expect(fileLinkFromHref("guide.md", "/repo", docs)?.FilePath).toBe("/repo/docs/guide.md");
+    expect(fileLinkFromCode("src/a.ts", "/repo", docs)?.FilePath).toBe("/repo/src/a.ts");
+    expect(fileLinkFromCode("./b.ts", "/repo", docs)?.FilePath).toBe("/repo/docs/b.ts");
+  });
 });
 
 describe("fileLinkFromCode", () => {

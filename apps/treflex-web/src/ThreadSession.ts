@@ -69,7 +69,7 @@ import {
 } from "./Infrastructure/commandEffects";
 import { type IDiffPanel, type IDiffScope, loadDiff } from "./Diff";
 import { type IFilePanel, type IFileSource, loadFile } from "./FilePanel";
-import { panelFilePath, previewPath } from "./filePreview";
+import { isWorkspaceMediaPath, panelFilePath, previewPath } from "./filePreview";
 import { type IToolDetail, loadToolDetail } from "./ToolDetail";
 import type { IGitWork } from "./GitWork";
 import type { IAddressView } from "./Infrastructure/address";
@@ -1805,7 +1805,11 @@ function clearDiff(panel: IDiffPanel): void {
 // Follows the workspaceMutationId refetch in apps/web/src/components/DiffPanel.tsx.
 export function* followWorkspace(draft: IThreadSession): IActionGenerator {
   const file = draft.Panels.File;
-  if (file?.Source.Kind === "workspace") yield* start(loadFile, file);
+  if (file?.Source.Kind === "workspace") {
+    file.Revision += 1;
+    // Stock rereads media through its revisioned URL, never as text.
+    if (!isWorkspaceMediaPath(file.Source.Path)) yield* start(loadFile, file);
+  }
   const panel = draft.Panels.Diff;
   if (panel === null) return;
   if (panel.Scope !== "turn") {
@@ -1904,6 +1908,7 @@ function* newFilePanel(
     RevealLine: revealLine,
     RevealId: 1,
     Read: null,
+    Revision: 0,
   });
 }
 

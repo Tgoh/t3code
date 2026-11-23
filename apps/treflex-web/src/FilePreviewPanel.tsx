@@ -2,16 +2,21 @@
 import { type AssetResource, ThreadId } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
-import {
-  filePreviewKind,
-  isWorkspaceAudioPreviewPath,
-  isWorkspaceImagePreviewPath,
-  isWorkspaceVideoPreviewPath,
-} from "@t3tools/shared/filePreview";
+import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { maskMarkdownFrontmatter } from "@t3tools/shared/markdownFrontmatter";
 import { fileBasename, isHostPath, workspaceRelativeFilePath } from "@t3tools/shared/path";
 import type { JSX } from "@solidjs/web";
-import { createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+  untrack,
+} from "solid-js";
 
 import { copyText } from "./clipboard";
 import Environment from "./Environment";
@@ -22,9 +27,13 @@ import {
   attachmentNeedsText,
   fileBreadcrumbs,
   isMarkdownPreviewFile,
+  type IWorkspaceMediaKind,
+  markdownBaseDir,
   readErrorMessage,
   renderedToggleLabel,
+  revisionedUrl,
   workspaceCopyable,
+  workspaceMediaKind,
 } from "./filePreview";
 import {
   Check,
@@ -161,11 +170,19 @@ function SurfaceFailure(props: { message: string; onRetry?: () => void }) {
   );
 }
 
-function RenderedMarkdown(props: { text: string }) {
+function RenderedMarkdown(props: {
+  text: string;
+  cwd: string | undefined;
+  baseDir: string | undefined;
+}) {
   return (
     <ScrollArea class="min-h-0 flex-1">
       <div class="mx-auto max-w-4xl px-6 py-5">
-        <Markdown text={maskMarkdownFrontmatter(props.text)} fromUser={false} />
+        <Markdown
+          text={maskMarkdownFrontmatter(props.text)}
+          fromUser={false}
+          files={{ Cwd: props.cwd, BaseDir: props.baseDir }}
+        />
       </div>
     </ScrollArea>
   );
@@ -177,6 +194,8 @@ function SourceView(props: {
   wrap: boolean;
   revealLine: number | null;
   revealId: number;
+  revealedId: number | null;
+  onRevealed: (id: number) => void;
 }) {
   const environment = Environment.use();
   return (
@@ -187,6 +206,8 @@ function SourceView(props: {
       scheme={environment.colorScheme()}
       revealLine={props.revealLine}
       revealId={props.revealId}
+      revealedId={props.revealedId}
+      onRevealed={props.onRevealed}
     />
   );
 }
@@ -302,14 +323,38 @@ function PreviewImage(props: { src: string; name: string; onError: () => void })
   );
 }
 
-type IMediaKind = "image" | "video" | "audio";
+type IMediaKind = IWorkspaceMediaKind;
 
 /** A signed media file: its URL is this view's, signed again when it fails near its expiry. */
-function SignedMedia(props: { kind: IMediaKind; resource: AssetResource; name: string }) {
+function SignedMedia(props: {
+  kind: IMediaKind;
+  resource: AssetResource;
+  name: string;
+  /** The workspace changes seen since the file opened; 0 for an attachment. */
+  revision: number;
+}) {
   const media = useMediaUrl(props.resource);
+  // Follows WorkspaceVideoPreview and WorkspaceAudioPreview, which sign the URL again on each
+  // workspace change but load it only when the file's revision changed.
+  createEffect(
+    () => props.revision,
+    () => {
+      if (props.kind !== "image") void media.reload();
+    },
+    { defer: true },
+  );
+  const playbackKey = createMemo(() => media.state.FileRevision ?? String(props.revision));
+  const signed = () => media.state.Url !== null;
+  const src = createMemo(() => {
+    if (props.kind === "image") {
+      return media.state.Url === null ? null : revisionedUrl(media.state.Url, null, props.revision);
+    }
+    playbackKey();
+    if (!signed()) return null;
+    return untrack(() => revisionedUrl(media.state.Url!, media.state.FileRevision, props.revision));
+  });
   const [erroredSrc, setErroredSrc] = createSignal<string | null>(null);
-  const failed = () =>
-    media.state.Failed || (media.state.Url !== null && erroredSrc() === media.state.Url);
+  const failed = () => media.state.Failed || (src() !== null && erroredSrc() === src());
   const failure = () =>
     props.kind === "image"
       ? "Unable to load workspace image."
@@ -329,7 +374,7 @@ function SignedMedia(props: { kind: IMediaKind; resource: AssetResource; name: s
         />
       }
     >
-      <Show when={media.state.Url} keyed fallback={<SurfaceLoading />}>
+      <Show when={src()} keyed fallback={<SurfaceLoading />}>
         {(src) => (
           <Switch>
             <Match when={props.kind === "image"}>
@@ -497,15 +542,19 @@ function AttachmentView(props: {
                   wrap={wrap()}
                   revealLine={null}
                   revealId={0}
+                  revealedId={0}
+                  onRevealed={() => undefined}
                 />
               }
             >
-              <RenderedMarkdown text={held().Text} />
+              <RenderedMarkdown text={held().Text} cwd={undefined} baseDir={undefined} />
             </Show>
           )}
         </Match>
         <Match when={media()}>
-          {(held) => <SignedMedia kind={held()} resource={props.resource} name={props.name} />}
+          {(held) => (
+            <SignedMedia kind={held()} resource={props.resource} name={props.name} revision={0} />
+          )}
         </Match>
       </Switch>
     </div>
@@ -514,30 +563,45 @@ function AttachmentView(props: {
 
 function Breadcrumbs(props: { projectName: string; path: string }) {
   const crumbs = () => fileBreadcrumbs(props.projectName, props.path);
+  const [list, setList] = createSignal<HTMLOListElement>();
+  // Follows the crumb scroll in FilePreviewPanel.tsx: the deepest crumb shows when it fits, but
+  // never at the cost of the current one.
+  createEffect(
+    () => [list(), crumbs()] as const,
+    ([element]) => {
+      if (element === undefined) return;
+      element.lastElementChild?.scrollIntoView({ block: "nearest", inline: "end" });
+      element
+        .querySelector("[aria-current='page']")
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    },
+  );
   return (
-    <nav aria-label="File path" class="flex h-full min-w-0 flex-1 overflow-x-auto">
-      <ol class="flex items-center text-xs">
-        <For each={crumbs()}>
-          {(crumb, index) => {
-            const current = () => index() === crumbs().length - 1;
-            return (
-              <li class="flex min-w-0 shrink-0 items-center">
-                <span
-                  class="block max-w-40 truncate rounded-sm px-0.5 text-muted-foreground aria-[current=page]:font-medium aria-[current=page]:text-foreground"
-                  aria-current={current() ? "page" : undefined}
-                  data-tip={crumb.Path || props.projectName}
-                >
-                  {crumb.Label}
-                </span>
-                <Show when={!current()}>
-                  <ChevronRight aria-hidden="true" class={CRUMB_SEPARATOR} />
-                </Show>
-              </li>
-            );
-          }}
-        </For>
-      </ol>
-    </nav>
+    <ScrollArea radius="none" hideScrollbars scrollFade class="min-w-0 flex-1">
+      <nav aria-label="File path" class="flex h-full w-max min-w-full items-center text-xs">
+        <ol ref={setList} class="flex items-center">
+          <For each={crumbs()}>
+            {(crumb, index) => {
+              const current = () => index() === crumbs().length - 1;
+              return (
+                <li class="flex min-w-0 shrink-0 items-center">
+                  <span
+                    class="block max-w-40 truncate rounded-sm px-0.5 text-muted-foreground aria-[current=page]:font-medium aria-[current=page]:text-foreground"
+                    aria-current={current() ? "page" : undefined}
+                    data-tip={crumb.Path || props.projectName}
+                  >
+                    {crumb.Label}
+                  </span>
+                  <Show when={!current()}>
+                    <ChevronRight aria-hidden="true" class={CRUMB_SEPARATOR} />
+                  </Show>
+                </li>
+              );
+            }}
+          </For>
+        </ol>
+      </nav>
+    </ScrollArea>
   );
 }
 
@@ -550,11 +614,7 @@ function WorkspaceFile(props: {
   const thread = OpenThread.use();
   const path = () => props.source.Path;
   const absolute = () => resolvePathLinkTarget(path(), props.source.Cwd);
-  const video = () => isWorkspaceVideoPreviewPath(path());
-  const audio = () => !video() && isWorkspaceAudioPreviewPath(path());
-  const image = () => !video() && isWorkspaceImagePreviewPath(path());
-  const mediaKind = (): IMediaKind | null =>
-    video() ? "video" : audio() ? "audio" : image() ? "image" : null;
+  const mediaKind = () => workspaceMediaKind(path());
   const hostFile = () => isHostPath(path());
   const read = () => props.panel.Read;
   const text = () => {
@@ -572,6 +632,8 @@ function WorkspaceFile(props: {
   const binary = () => readError()?.Failure === "binary_file";
   const markdown = () => isMarkdownPreviewFile(path());
   const [handledReveal, setHandledReveal] = createSignal<number | null>(null);
+  // Stock reveals each request once, so a reread or a remounted source view keeps the scroll.
+  const [revealedId, setRevealedId] = createSignal<number | null>(null);
   const revealHandled = () =>
     props.panel.RevealLine === null || handledReveal() === props.panel.RevealId;
   const rendered = () => environment.state.Local.Preferences.RenderMarkdown && revealHandled();
@@ -628,7 +690,14 @@ function WorkspaceFile(props: {
       </Show>
       <Switch>
         <Match when={mediaKind()} keyed>
-          {(kind) => <SignedMedia kind={kind} resource={mediaResource(kind)} name={path()} />}
+          {(kind) => (
+            <SignedMedia
+              kind={kind}
+              resource={mediaResource(kind)}
+              name={path()}
+              revision={props.panel.Revision}
+            />
+          )}
         </Match>
         <Match when={binary()}>
           <AttachmentView
@@ -679,21 +748,27 @@ function WorkspaceFile(props: {
             <SurfaceFailure message={message()} onRetry={() => void session.reloadFile()} />
           )}
         </Match>
-        <Match when={text()} keyed>
+        <Match when={text()}>
           {(held) => (
             <Show
               when={markdownRendered()}
               fallback={
                 <SourceView
                   name={path()}
-                  text={held.Contents}
+                  text={held().Contents}
                   wrap={wrap()}
                   revealLine={props.panel.RevealLine}
                   revealId={props.panel.RevealId}
+                  revealedId={revealedId()}
+                  onRevealed={setRevealedId}
                 />
               }
             >
-              <RenderedMarkdown text={held.Contents} />
+              <RenderedMarkdown
+                text={held().Contents}
+                cwd={props.source.Cwd}
+                baseDir={markdownBaseDir(path(), props.source.Cwd)}
+              />
             </Show>
           )}
         </Match>

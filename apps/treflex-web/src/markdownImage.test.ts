@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { fileLinkFromHref } from "./fileLinks";
 import type { IAssetUrl } from "./Infrastructure/commandEffects";
 import {
+  EMPTY_MEDIA_URL,
   type IMediaUrl,
   loadMediaUrl,
   mediaFailed,
@@ -128,7 +129,7 @@ describe("loadMediaUrl", () => {
   function media(reply: () => IAssetUrl, held: Partial<IMediaUrl> = {}, now = 0) {
     const asked: unknown[] = [];
     const runtime = createTestRuntime<IMediaUrl>(
-      { $Id: "Media", Url: null, Size: null, ExpiresAt: null, Failed: false, ...held },
+      { $Id: "Media", ...EMPTY_MEDIA_URL, ...held },
       {
         assetUrl: (effect: { EnvironmentId: string; Resource: AssetResource }) => {
           asked.push([effect.EnvironmentId, effect.Resource]);
@@ -146,17 +147,19 @@ describe("loadMediaUrl", () => {
     return { state: runtime.state, asked };
   }
 
-  it("asks the server to sign the file and keeps its size and expiry", async () => {
+  it("asks the server to sign the file and keeps its size, expiry and revision", async () => {
     const { state, asked } = await load(() => ({
       Url: "/api/assets/signed",
       ExpiresAt: HOUR,
       Size: { Width: 800, Height: 600 },
+      FileRevision: "r1",
     }));
     expect(asked).toEqual([["env-1", resource]]);
     expect(state).toMatchObject({
       Url: "/api/assets/signed",
       ExpiresAt: HOUR,
       Size: { Width: 800, Height: 600 },
+      FileRevision: "r1",
       Failed: false,
     });
   });

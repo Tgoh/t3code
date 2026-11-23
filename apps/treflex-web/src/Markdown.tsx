@@ -131,6 +131,8 @@ function Inline(props: { tokens: Token[] | undefined }) {
 
 interface IFileLinks {
   cwd: () => string | undefined;
+  /** The folder relative links and images are written from; a previewed file's own. */
+  baseDir: () => string | undefined;
   suffixes: () => ReadonlyMap<string, string>;
   // Text inside a link already belongs to it, so its paths don't become chips.
   inLink: boolean;
@@ -138,6 +140,7 @@ interface IFileLinks {
 
 const FileLinkContext = createContext<IFileLinks>({
   cwd: () => undefined,
+  baseDir: () => undefined,
   suffixes: () => new Map(),
   inLink: false,
 });
@@ -311,7 +314,9 @@ function LiteralToken(props: ITokenProps) {
 function CodeSpanToken(props: ITokenProps) {
   const files = useContext(FileLinkContext);
   const text = () => of<Tokens.Codespan>(props).text;
-  const link = createMemo(() => (files.inLink ? null : fileLinkFromCode(text(), files.cwd())));
+  const link = createMemo(() =>
+    files.inLink ? null : fileLinkFromCode(text(), files.cwd(), files.baseDir()),
+  );
   return (
     <Show when={link()} fallback={<code>{text()}</code>}>
       {(held) => <FileChip link={held()} />}
@@ -413,7 +418,7 @@ function LinkToken(props: ITokenProps) {
     );
   });
   const files = useContext(FileLinkContext);
-  const file = createMemo(() => fileLinkFromHref(link().href, files.cwd()));
+  const file = createMemo(() => fileLinkFromHref(link().href, files.cwd(), files.baseDir()));
   const [viewing, setViewing] = createSignal<IMediaTarget | null>(null);
   const inner = () => (
     <FileLinkContext value={{ ...files, inLink: true }}>
@@ -887,9 +892,9 @@ function ShownImage(props: {
 
 function MarkdownImage(props: { token: Tokens.Image; standalone: boolean }) {
   const thread = OpenThread.use();
-  const workspaceRoot = useWorkspaceRoot();
+  const files = useContext(FileLinkContext);
   const target = createMemo(
-    () => markdownImageTarget(props.token.href, workspaceRoot(), thread.state.Thread?.id),
+    () => markdownImageTarget(props.token.href, files.baseDir(), thread.state.Thread?.id),
     { equals: sameTarget },
   );
   return (
@@ -1230,15 +1235,19 @@ export function Markdown(props: {
   message?: ISentMessage | undefined;
   // The row the text belongs to, which keys state its blocks keep across remounts.
   id?: string;
+  /** Where links resolve, when not the thread's workspace: a previewed file's. */
+  files?: { Cwd: string | undefined; BaseDir: string | undefined };
 }) {
   const lex = createMarkdownLexer(props.fromUser);
   const lexed = createMemo(() => lex(props.text));
   const environment = Environment.use();
   const title = useThreadTitle();
   const workspaceRoot = useWorkspaceRoot();
-  const pathsKey = createMemo(() => fileLinkPathsKey(props.text, workspaceRoot()));
+  const cwd = () => (props.files === undefined ? workspaceRoot() : props.files.Cwd);
+  const baseDir = () => (props.files === undefined ? workspaceRoot() : props.files.BaseDir);
+  const pathsKey = createMemo(() => fileLinkPathsKey(props.text, cwd(), baseDir()));
   const suffixes = createMemo(() => parentSuffixes(pathsKey()));
-  const files: IFileLinks = { cwd: workspaceRoot, suffixes, inLink: false };
+  const files: IFileLinks = { cwd, baseDir, suffixes, inLink: false };
   // Raw HTML can't hold a component, so sanitize marks its thread links and a click here opens them.
   const openHtmlThreadLink = (event: MouseEvent) => {
     const href = (event.target as Element)

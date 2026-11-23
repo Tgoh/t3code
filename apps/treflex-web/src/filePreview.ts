@@ -1,4 +1,10 @@
-import { filePreviewKind } from "@t3tools/shared/filePreview";
+import {
+  filePreviewKind,
+  isWorkspaceAudioPreviewPath,
+  isWorkspaceImagePreviewPath,
+  isWorkspaceVideoPreviewPath,
+} from "@t3tools/shared/filePreview";
+import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import {
   isAbsolutePath,
   isHostPath,
@@ -167,4 +173,34 @@ export function diffPathForWorkspace(input: {
   if (!inWorkspace) return null;
   const rest = fileSegments.slice(workspaceSegments.length);
   return rest.length > 0 ? rest.join("/") : null;
+}
+
+export type IWorkspaceMediaKind = "image" | "video" | "audio";
+
+export function workspaceMediaKind(path: string): IWorkspaceMediaKind | null {
+  if (isWorkspaceVideoPreviewPath(path)) return "video";
+  if (isWorkspaceAudioPreviewPath(path)) return "audio";
+  return isWorkspaceImagePreviewPath(path) ? "image" : null;
+}
+
+export const isWorkspaceMediaPath = (path: string): boolean => workspaceMediaKind(path) !== null;
+
+// Follows the revision suffix in WorkspaceImagePreview, WorkspaceVideoPreview and
+// WorkspaceAudioPreview in apps/web/src/components/files/FilePreviewPanel.tsx. Two mints in the
+// same millisecond sign identical URLs, so the revision also goes in the URL.
+export function revisionedUrl(
+  url: string,
+  fileRevision: string | null,
+  workspaceRevision: number,
+): string {
+  if (fileRevision === null && workspaceRevision === 0) return url;
+  const [name, value] =
+    fileRevision === null ? ["workspace", String(workspaceRevision)] : ["file", fileRevision];
+  return `${url}${url.includes("?") ? "&" : "?"}${name}-revision=${encodeURIComponent(value)}`;
+}
+
+// Follows `imageBaseDir` in apps/web/src/components/files/FileMarkdownPreview.tsx.
+export function markdownBaseDir(relativePath: string, cwd: string): string {
+  const separator = Math.max(relativePath.lastIndexOf("/"), relativePath.lastIndexOf("\\"));
+  return separator >= 0 ? resolvePathLinkTarget(relativePath.slice(0, separator), cwd) : cwd;
 }

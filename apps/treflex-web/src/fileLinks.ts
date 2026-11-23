@@ -12,6 +12,7 @@ import {
   extractMarkdownLinkHrefs,
   inlineCodeFilePathCandidate,
   isMarkdownFileLinkLabel,
+  isRelativeFilePath,
   normalizeMarkdownLinkDestination,
   parseMarkdownFileLink,
   resolveMarkdownFileLinkTarget,
@@ -42,8 +43,13 @@ export function linkHrefKey(href: string): string {
   return WINDOWS_DRIVE_PATH.test(rewritten) ? rewritten.replaceAll("\\", "/") : rewritten;
 }
 
-function fileLinkFrom(source: string, cwd: string | undefined): IFileLink | null {
-  const targetPath = resolveMarkdownFileLinkTarget(source, cwd);
+/** `baseDir` is the folder a relative link is written from: a previewed file's own. */
+function fileLinkFrom(
+  source: string,
+  cwd: string | undefined,
+  baseDir: string | undefined,
+): IFileLink | null {
+  const targetPath = resolveMarkdownFileLinkTarget(source, cwd, baseDir);
   if (targetPath === null) return null;
   const { path, line, column } = splitFilePathPosition(targetPath);
   const endLine = parseMarkdownFileLink(source)?.endLine;
@@ -56,12 +62,33 @@ function fileLinkFrom(source: string, cwd: string | undefined): IFileLink | null
   };
 }
 
-export const fileLinkFromHref = (href: string, cwd: string | undefined): IFileLink | null =>
-  fileLinkFrom(linkHrefKey(href), cwd);
+export const fileLinkFromHref = (
+  href: string,
+  cwd: string | undefined,
+  baseDir: string | undefined = cwd,
+): IFileLink | null => fileLinkFrom(linkHrefKey(href), cwd, baseDir);
 
-export function fileLinkFromCode(code: string, cwd: string | undefined): IFileLink | null {
+// Follows inlineCodePathNamesFromWorkspaceRoot in apps/web/src/markdown-links.ts: a code span
+// naming a nested path is read from the workspace root, as agents write them.
+function codeNamesFromRoot(
+  candidate: string,
+  cwd: string | undefined,
+  baseDir: string | undefined,
+): boolean {
+  if (!cwd || !baseDir || !isRelativeFilePath(candidate)) return false;
+  if (/^(?:~|\.{1,2})\//.test(candidate)) return false;
+  if (!splitFilePathPosition(candidate).path.includes("/")) return false;
+  return workspaceRelativeFilePath(baseDir, cwd) !== null;
+}
+
+export function fileLinkFromCode(
+  code: string,
+  cwd: string | undefined,
+  baseDir: string | undefined = cwd,
+): IFileLink | null {
   const candidate = inlineCodeFilePathCandidate(code);
-  return candidate === null ? null : fileLinkFrom(candidate, cwd);
+  if (candidate === null) return null;
+  return fileLinkFrom(candidate, cwd, codeNamesFromRoot(candidate, cwd, baseDir) ? cwd : baseDir);
 }
 
 // A link's own text names the file, so the chip replaces it rather than following it.
@@ -90,14 +117,18 @@ export function prosePathParts(text: string): ProsePart[] {
 }
 
 // The paths a message links, as a string that stays equal while streamed text adds none.
-export function fileLinkPathsKey(text: string, cwd: string | undefined): string {
+export function fileLinkPathsKey(
+  text: string,
+  cwd: string | undefined,
+  baseDir: string | undefined = cwd,
+): string {
   const paths = new Set<string>();
   for (const href of extractMarkdownLinkHrefs(text)) {
-    const link = fileLinkFromHref(href, cwd);
+    const link = fileLinkFromHref(href, cwd, baseDir);
     if (link !== null) paths.add(link.FilePath);
   }
   for (const span of extractInlineCodeSpans(text)) {
-    const link = fileLinkFromCode(span, cwd);
+    const link = fileLinkFromCode(span, cwd, baseDir);
     if (link !== null) paths.add(link.FilePath);
   }
   return JSON.stringify([...paths]);

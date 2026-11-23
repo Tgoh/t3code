@@ -75,8 +75,10 @@ export default function FileCodeView(props: {
   wrap: boolean;
   scheme: IScheme;
   revealLine: number | null;
-  /** A new id scrolls to `revealLine` again. */
+  /** Each request to reveal `revealLine`; one equal to `revealedId` has been. */
   revealId: number;
+  revealedId: number | null;
+  onRevealed: (id: number) => void;
 }) {
   const workers = acquireDiffWorkers(untrack(() => props.scheme));
   const line = () =>
@@ -106,9 +108,10 @@ export default function FileCodeView(props: {
   const view = new CodeView<undefined, undefined>(untrack(options), workers.pool);
   const reveal = () => {
     const target = untrack(line);
-    if (target !== null) {
-      view.scrollTo({ type: "line", id: ITEM_ID, lineNumber: target, align: "center" });
-    }
+    const id = untrack(() => props.revealId);
+    if (target === null || id === untrack(() => props.revealedId)) return;
+    view.scrollTo({ type: "line", id: ITEM_ID, lineNumber: target, align: "center" });
+    props.onRevealed(id);
   };
   const [host, setHost] = createSignal<HTMLDivElement>();
   createEffect(host, (element) => {

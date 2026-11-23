@@ -629,7 +629,7 @@ export const mcpAppImpl = implementation(mcpAppEffect, async (input, action) => 
 });
 
 export const assetUrlImpl = implementation(assetUrlEffect, async (input, action) => {
-  const { relativeUrl, expiresAt, imageDimensions } = await inEnvironment(
+  const { relativeUrl, expiresAt, imageDimensions, fileRevision } = await inEnvironment(
     input.EnvironmentId,
     request(WS_METHODS.assetsCreateUrl, { resource: input.Resource }),
     action?.signal,
@@ -640,6 +640,7 @@ export const assetUrlImpl = implementation(assetUrlEffect, async (input, action)
     ...(imageDimensions === undefined
       ? {}
       : { Size: { Width: imageDimensions.width, Height: imageDimensions.height } }),
+    ...(fileRevision === undefined ? {} : { FileRevision: fileRevision }),
   };
 });
 

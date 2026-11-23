@@ -5338,6 +5338,77 @@ describe("the files preview", () => {
     expect(panels().File).toBeNull();
   });
 
+  it("lets a second link and Try again in while a read is out, and rereads only text files when the workspace changes", async () => {
+    const asked: string[] = [];
+    const replies: Array<(value: unknown) => void> = [];
+    const server = await withRepo({
+      readProjectFile: (effect: { Path: string }) => {
+        asked.push(effect.Path);
+        return new Promise((resolve) => replies.push(resolve));
+      },
+    });
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1), run("run-2", 2, "running")],
+          checkpoints: [
+            {
+              id: "checkpoint-1",
+              threadId: THREAD_ID,
+              runId: "run-1",
+              appRunOrdinal: 1,
+              status: "ready",
+              files: [],
+            },
+          ],
+        } as never,
+        1,
+      ),
+    );
+    const file = () => server.session().Panels.File;
+    await server.runtime.dispatch(openFile, server.sessionId(), "src/a.ts", 3);
+    await server.runtime.dispatch(openFile, server.sessionId(), "src/a.ts", 9);
+    expect(file()).toMatchObject({ RevealLine: 9, RevealId: 2, Read: null });
+    await server.runtime.dispatch(reloadFile, server.sessionId());
+    await settled();
+    expect(asked).toEqual(["src/a.ts", "src/a.ts"]);
+    replies.at(-1)!(text("fresh"));
+    await settled();
+    expect(file()?.Read).toEqual(text("fresh"));
+
+    await server.runtime.dispatch(openFile, server.sessionId(), "shot.png", null);
+    replies.at(-1)!({
+      Kind: "error",
+      Message: "binary",
+      Failure: "binary_file",
+      Operation: null,
+      AttemptedPath: null,
+      Cwd: null,
+    });
+    await settled();
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("run.updated", run("run-2", 2)),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 3,
+      event: event("checkpoint.captured", {
+        id: "checkpoint-2",
+        threadId: THREAD_ID,
+        runId: "run-2",
+        appRunOrdinal: 2,
+        status: "ready",
+        files: [],
+      }),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toEqual(["src/a.ts", "src/a.ts", "shot.png"]);
+    expect(file()?.Revision).toBeGreaterThan(0);
+  });
+
   it("keeps the server's refusal as the file's answer, and a dropped read as a failure to retry", async () => {
     const refusal = {
       Kind: "error",

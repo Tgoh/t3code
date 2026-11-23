@@ -1,5 +1,5 @@
 import { filePreviewKind } from "@t3tools/shared/filePreview";
-import { type IActionGenerator, type IEntity, latest } from "treflex";
+import { type IEntity, type IOpenGenerator, latest, open } from "treflex";
 
 import { attachmentNeedsText } from "./filePreview";
 import {
@@ -39,6 +39,8 @@ export interface IFilePanel extends IEntity {
   RevealId: number;
   /** Null until the first read lands; a reread keeps the last one shown. */
   Read: IFileRead | null;
+  /** Counts the workspace changes seen since the file opened, which media URLs key on. */
+  Revision: number;
 }
 
 export const attachmentSource = (attachment: IWireAttachment): IFileSource => ({
@@ -56,32 +58,50 @@ export function needsRead(source: IFileSource): boolean {
   );
 }
 
-export function* loadFile(draft: IFilePanel): IActionGenerator {
-  const source = draft.Source;
-  if (!needsRead(source)) return;
+function* readFile(draft: IFilePanel, source: IFileSource): IOpenGenerator<IFileRead> {
   try {
     if (source.Kind === "workspace") {
-      draft.Read = yield* readProjectFileEffect({
-        EnvironmentId: draft.EnvironmentId,
-        Cwd: source.Cwd,
-        Path: source.Path,
-      });
-      return;
+      return yield* open(
+        readProjectFileEffect({
+          EnvironmentId: draft.EnvironmentId,
+          Cwd: source.Cwd,
+          Path: source.Path,
+        }),
+      );
     }
-    const text = yield* assetTextEffect({
-      EnvironmentId: draft.EnvironmentId,
-      Resource: {
-        _tag: "attachment",
-        attachmentId: source.Id,
-        fileName: source.Name,
-        mimeType: source.MimeType,
-        disposition: "inline",
-      },
-      SizeBytes: source.SizeBytes,
-    });
-    draft.Read = { Kind: "attachment", Text: text.Text, Truncated: text.Truncated };
+    const text = yield* open(
+      assetTextEffect({
+        EnvironmentId: draft.EnvironmentId,
+        Resource: {
+          _tag: "attachment",
+          attachmentId: source.Id,
+          fileName: source.Name,
+          mimeType: source.MimeType,
+          disposition: "inline",
+        },
+        SizeBytes: source.SizeBytes,
+      }),
+    );
+    return { Kind: "attachment", Text: text.Text, Truncated: text.Truncated };
   } catch (error) {
-    draft.Read = { Kind: "failed", Message: serverError(error).message };
+    return { Kind: "failed", Message: serverError(error).message };
   }
+}
+
+// Follows useProjectFileQuery in apps/web/src/components/files/projectFilesQueryState.ts, whose
+// failed refresh keeps the last contents unless the path stopped being a file.
+export function keptRead(held: IFileRead | null, next: IFileRead): IFileRead | null {
+  const shown = held?.Kind === "text" || held?.Kind === "attachment";
+  if (!shown) return next;
+  if (next.Kind === "failed") return held;
+  if (next.Kind === "error") return next.Failure === "path_not_file" ? next : held;
+  return JSON.stringify(next) === JSON.stringify(held) ? held : next;
+}
+
+export function* loadFile(draft: IFilePanel): IOpenGenerator {
+  if (!needsRead(draft.Source)) return;
+  const read = yield* readFile(draft, draft.Source);
+  const kept = keptRead(draft.Read, read);
+  if (kept !== draft.Read) draft.Read = kept;
 }
 latest(loadFile);
