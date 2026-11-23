@@ -25,6 +25,11 @@ vi.mock("@xterm/addon-fit", () => ({
     fit() {}
   },
 }));
+vi.mock("@xterm/addon-search", () => ({
+  SearchAddon: class {
+    onDidChangeResults() {}
+  },
+}));
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     options: Record<string, unknown> = {};
@@ -35,6 +40,7 @@ vi.mock("@xterm/xterm", () => ({
     onData() {}
     onResize() {}
     attachCustomKeyEventHandler() {}
+    registerLinkProvider() {}
     open(element: unknown) {
       this.element = element;
     }
@@ -57,6 +63,7 @@ interface ICase {
   tag: string;
   start: (context: never) => unknown;
   event: (marker: string) => unknown;
+  input?: unknown;
   /** What the resource has passed on so far, one entry per event. */
   delivered: (resource: IFakeResource) => unknown[];
 }
@@ -96,6 +103,7 @@ const CASES: ICase[] = [
     start: (r) =>
       serverConfigStream({ Type: "serverConfigStream", EnvironmentId: ENVIRONMENT_ID }, r),
     event: keybindingsUpdated,
+    input: { usageLimitSources: true },
     delivered: items,
   },
   {
@@ -141,12 +149,14 @@ describe("a session swap", () => {
     const delivered = () => test.delivered(resource).length;
     try {
       const first = sessions.current;
-      await first.opened(test.tag);
+      const input = await first.opened(test.tag);
+      if (test.input !== undefined) expect(input).toEqual(test.input);
       first.push(test.tag, test.event("first"));
       await resource.until(() => delivered() === 1);
 
       const second = sessions.swap();
-      await second.opened(test.tag);
+      const reopened = await second.opened(test.tag);
+      if (test.input !== undefined) expect(reopened).toEqual(test.input);
       await first.ended(test.tag);
       second.push(test.tag, test.event("second"));
       await resource.until(() => delivered() === 2);
@@ -189,7 +199,10 @@ describe("a session swap", () => {
     xterm.onWrite = resource.changed;
     try {
       await resource.until(() => resource.values.length > 0);
-      (resource.values[0] as { mount(element: unknown, focus: boolean): void }).mount({}, false);
+      (resource.values[0] as { mount(element: unknown, options: object): void }).mount(
+        {},
+        { focus: false },
+      );
       const first = sessions.current;
       expect(await first.opened(WS_METHODS.terminalAttach)).toMatchObject({
         restartIfNotRunning: true,

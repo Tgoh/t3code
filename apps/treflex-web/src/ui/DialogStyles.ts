@@ -19,7 +19,7 @@ const EXPANDED_MEDIA_CLASS =
   "row-start-1 h-full w-[92vw] items-center justify-center [--media-width:92vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]";
 
 export type IDialogVariant = "default" | "media";
-const POPUP_WIDTH = { default: "max-w-lg", xl: "max-w-xl", "3xl": "max-w-3xl" };
+const POPUP_WIDTH = { md: "max-w-md", default: "max-w-lg", xl: "max-w-xl", "3xl": "max-w-3xl" };
 
 export type IDialogSize = keyof typeof POPUP_WIDTH | "expanded";
 

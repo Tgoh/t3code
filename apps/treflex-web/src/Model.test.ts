@@ -33,6 +33,7 @@ import { describe, expect, it, onTestFinished } from "vite-plus/test";
 import {
   addFolder,
   addProjectSettings,
+  archiveThread,
   cloneProject,
   closeSideThread,
   closeThread,
@@ -48,10 +49,12 @@ import {
   panelShortcuts,
   preferEditor,
   projectCommand,
+  regenerateTitles,
   removeProject,
   reorderPin,
   selectThread,
   settleThread,
+  settleThreads,
   startSideChat,
   threadCommand,
   toggleSettleOpenThread,
@@ -82,7 +85,7 @@ import {
   writeSetting,
 } from "./Settings";
 import type { IAddress, IAddressView } from "./Infrastructure/address";
-import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
+import { type IRememberedTerminal, readRememberedTerminal } from "./Infrastructure/terminalMemory";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type {
   IWireHistoryPage,
@@ -223,7 +226,16 @@ import {
   toggleRowExpanded,
   sendAppMessage,
 } from "./ThreadSession";
-import { closeTerminal, endTerminal, openTerminal, TerminalReceiver } from "./Terminal";
+import {
+  activateShell,
+  addTerminal,
+  closeTerminal,
+  endShell,
+  openTerminal,
+  restartShell,
+  setTerminalHeight,
+  TerminalShellReceiver,
+} from "./Terminal";
 import { loadBranches } from "./ThreadDetails";
 import {
   assistantItem,
@@ -339,7 +351,7 @@ async function connect(
       return history.entries[history.index]!.View;
     },
   };
-  const terminals = new Map<string, ITerminalLaunch>();
+  const terminals = new Map<string, IRememberedTerminal>();
   const toasts: IToastRequest[] = [];
   const models: IRememberedModels = { Last: null, OptionsByModel: {} };
   const device = {
@@ -353,6 +365,7 @@ async function connect(
     InApp: [] as boolean[],
     Notified: [] as INotificationShow[],
     Opened: [] as string[],
+    KeybindingReports: [] as unknown[][],
   };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
@@ -360,6 +373,7 @@ async function connect(
     {
       environmentInfo: () => ({
         Authenticated: true,
+        BootstrapMethods: ["one-time-token"],
         EnvironmentId: ENV,
         Label: "Test",
         FileAttachmentLimit: null,
@@ -412,9 +426,9 @@ async function connect(
         toasts.push(request);
       },
       rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
-      rememberTerminal: (effect: { ThreadId: string; Launch: ITerminalLaunch | null }) => {
-        if (effect.Launch === null) terminals.delete(effect.ThreadId);
-        else terminals.set(effect.ThreadId, effect.Launch);
+      rememberTerminal: (effect: { ThreadId: string; Terminal: IRememberedTerminal | null }) => {
+        if (effect.Terminal === null) terminals.delete(effect.ThreadId);
+        else terminals.set(effect.ThreadId, copy(effect.Terminal));
       },
     },
     {
@@ -439,6 +453,10 @@ async function connect(
             },
             show: (_ctx: unknown, note: INotificationShow) => void device.Notified.push(note),
             opened: (_ctx: unknown, threadId: string) => void device.Opened.push(threadId),
+          },
+          "Keybindings/Warning": {
+            report: (_ctx: unknown, ...report: unknown[]) =>
+              void device.KeybindingReports.push(report),
           },
           ...resources?.methods,
         },
@@ -502,6 +520,8 @@ async function connect(
     envId,
     sessionId: (threadId = THREAD_ID) => session(threadId).$Id,
     terminalId: (threadId = THREAD_ID) => session(threadId).Terminal.$Id,
+    terminalShellId: (terminalId = "term-1", threadId = THREAD_ID) =>
+      session(threadId).Terminal.Shells[terminalId]!.$Id,
     openId,
     shellId,
     open: () => runtime.dispatch(openThread, envId(), THREAD_ID),
@@ -2059,6 +2079,139 @@ describe("the sidebar", () => {
     await server.runtime.dispatch(toggleSettleOpenThread, envId);
     expect(take()).toEqual([["only", "settle"]]);
     expect(server.environment().Local.ThreadSessions[selected()!]?.NewThreadProjectId).toBe("lone");
+  });
+
+  it("settles several threads at once, moving the open one past the others being settled", async () => {
+    const commands: { ThreadId: string; Command: { Kind: string } }[] = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+        if (effect.Command.Kind !== "visit") commands.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [
+          row("a1", "a", "2026-01-04T00:00:00.000Z"),
+          row("a2", "a", "2026-01-03T00:00:00.000Z"),
+          row("a3", "a", "2026-01-02T00:00:00.000Z"),
+          row("done", "a", at, { settledOverride: "settled", settledAt: at }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const envId = server.envId();
+    await server.runtime.dispatch(selectThread, envId, "a1");
+    await server.runtime.dispatch(settleThreads, envId, ["a1", "a2", "done"]);
+    expect(commands.map((sent) => [sent.ThreadId, sent.Command.Kind])).toEqual([
+      ["a1", "settle"],
+      ["a2", "settle"],
+    ]);
+    expect(server.environment().Local.SelectedThreadId).toBe("a3");
+  });
+
+  it("archives a thread, opening a new thread in its project when it was the open one", async () => {
+    const commands: { ThreadId: string; Command: { Kind: string } }[] = [];
+    let refusal: string | null = null;
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+        if (effect.Command.Kind === "visit") return;
+        if (refusal !== null) throw serverFailure(refusal);
+        commands.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [row("a1", "a", at), row("a2", "a", at)],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const envId = server.envId();
+    const selected = () => server.environment().Local.SelectedThreadId;
+    await server.runtime.dispatch(selectThread, envId, "a1");
+
+    await server.runtime.dispatch(archiveThread, envId, "a2");
+    expect(selected()).toBe("a1");
+    await server.runtime.dispatch(archiveThread, envId, "a1");
+    expect(commands.map((sent) => [sent.ThreadId, sent.Command.Kind])).toEqual([
+      ["a2", "archive"],
+      ["a1", "archive"],
+    ]);
+    expect(server.environment().Local.ThreadSessions[selected()!]?.NewThreadProjectId).toBe("a");
+
+    await server.runtime.dispatch(selectThread, envId, "a2");
+    refusal = "Cannot archive while the provider is active.";
+    await server.runtime.dispatch(archiveThread, envId, "a2");
+    expect(selected()).toBe("a2");
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to archive thread", Description: refusal },
+    ]);
+  });
+
+  it("regenerates titles under their own request ids, and toasts once the rows report them all", async () => {
+    const sent: { ThreadId: string; CommandId: string; Command: IThreadCommand }[] = [];
+    let refusal: string | null = null;
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; CommandId: string; Command: IThreadCommand }) => {
+        if (effect.Command.Kind === "visit") return;
+        if (refusal !== null && effect.ThreadId === "c") throw serverFailure(refusal);
+        sent.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    const busy = { requestId: "earlier", startedAt: at };
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [
+          row("a", "a", at),
+          row("b", "a", at),
+          row("c", "a", at),
+          row("busy", "a", at, { titleRegeneration: busy }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    refusal = "server said no";
+    await server.runtime.dispatch(regenerateTitles, server.envId(), ["a", "b", "c", "busy"]);
+    expect(sent.map((held) => held.ThreadId)).toEqual(["a", "b"]);
+    for (const held of sent) {
+      expect(held.Command).toEqual({ Kind: "regenerateTitle", RequestId: expect.any(String) });
+    }
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to regenerate thread title", Description: refusal },
+    ]);
+    const requestOf = (id: string) =>
+      (sent.find((held) => held.ThreadId === id)!.Command as { RequestId: string }).RequestId;
+    const report = (sequence: number, id: string, status: string) =>
+      server.sendShell({
+        kind: "thread.updated",
+        sequence,
+        location: "active",
+        thread: row(id, "a", at, {
+          titleRegeneration: null,
+          lastTitleRegeneration: { requestId: requestOf(id), status, completedAt: at },
+        }),
+      } as unknown as IWireShellItem);
+    await report(2, "a", "unchanged");
+    expect(server.takeToasts()).toEqual([]);
+    await report(3, "b", "renamed");
+    expect(server.takeToasts()).toEqual([
+      {
+        Kind: "info",
+        Title: "Kept 1 of 2 titles",
+        Description: "Those titles already fit their threads.",
+      },
+    ]);
   });
 
   it("folds working threads into the Working section, which holds a finished one for two seconds", async () => {
@@ -5100,7 +5253,7 @@ describe("the terminal", () => {
       .filter((row) => row.Key === "Terminal/Session")
       .map((row) => row.Params as unknown as { ThreadId: string; TerminalId: string; Cwd: string });
 
-  it("runs in the worktree when the thread has one, otherwise the project root", async () => {
+  it("starts in the worktree when the thread has one, and a shell keeps where it started", async () => {
     const server = await connect();
     await server.open();
     await withProject(server, null);
@@ -5109,7 +5262,9 @@ describe("the terminal", () => {
     await server.runtime.dispatch(closeTerminal, server.terminalId());
     await withProject(server, "/root/wt");
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    expect(attached(server)[0]).toMatchObject({ Cwd: "/root/wt", WorktreePath: "/root/wt" });
+    expect(attached(server)[0]).toMatchObject({ Cwd: "/root", TerminalId: "term-1" });
+    await server.runtime.dispatch(addTerminal, server.terminalId(), null);
+    expect(attached(server)[1]).toMatchObject({ Cwd: "/root/wt", WorktreePath: "/root/wt" });
   });
 
   it("hiding detaches and keeps the terminal id, and asks the server to end nothing", async () => {
@@ -5123,15 +5278,46 @@ describe("the terminal", () => {
     await withProject(server, null);
     await server.runtime.dispatch(openTerminal, server.terminalId());
     expect(panel(server).Open).toBe(true);
+    await server.runtime.dispatch(addTerminal, server.terminalId(), null);
     await server.runtime.dispatch(closeTerminal, server.terminalId());
-    expect(panel(server)).toMatchObject({ Open: false, TerminalId: "term-1" });
+    expect(panel(server)).toMatchObject({
+      Open: false,
+      Layout: { TerminalIds: ["term-1", "term-2"] },
+    });
     expect(attached(server)).toEqual([]);
     expect(closes).toEqual([]);
+    expect(server.terminals.get(THREAD_ID)).toMatchObject({ Open: false });
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
+    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1", "term-2"]);
   });
 
-  it("ending the shell tells the server and hides the panel; a failure keeps it open", async () => {
+  it("opens new tabs and splits beside the active shell, each with its own shell", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, server.terminalId());
+    await server.runtime.dispatch(addTerminal, server.terminalId(), null);
+    await server.runtime.dispatch(addTerminal, server.terminalId(), "vertical");
+    expect(panel(server).Layout).toEqual({
+      TerminalIds: ["term-1", "term-2", "term-3"],
+      Groups: [
+        { Id: "group-term-1", TerminalIds: ["term-1"], SplitDirection: "horizontal" },
+        { Id: "group-term-2", TerminalIds: ["term-2", "term-3"], SplitDirection: "vertical" },
+      ],
+      ActiveTerminalId: "term-3",
+      ActiveGroupId: "group-term-2",
+    });
+    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1", "term-2", "term-3"]);
+    expect(panel(server).Shells["term-3"]).toMatchObject({ FocusOnMount: true });
+    await server.runtime.dispatch(activateShell, server.terminalId(), "term-1");
+    expect(server.terminals.get(THREAD_ID)).toMatchObject({
+      Open: true,
+      Layout: { ActiveTerminalId: "term-1", ActiveGroupId: "group-term-1" },
+      Launches: { "term-1": { Cwd: "/root" }, "term-3": { Cwd: "/root" } },
+    });
+  });
+
+  it("ending a shell tells the server and closes its tab; the last one hides the drawer", async () => {
     const closes: Array<{ TerminalId: string }> = [];
     let refuse = true;
     const server = await connect(undefined, null, {
@@ -5143,33 +5329,83 @@ describe("the terminal", () => {
     await server.open();
     await withProject(server, null);
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    await server.runtime.dispatch(endTerminal, server.terminalId());
-    expect(panel(server)).toMatchObject({ Open: true, Error: "server said no" });
-    expect(inFlightOf(server.runtime, endTerminal, () => server.session().Terminal)).toBe(false);
-    expect(attached(server)).toHaveLength(1);
+    await server.runtime.dispatch(addTerminal, server.terminalId(), "horizontal");
+    await server.runtime.dispatch(endShell, server.terminalShellId("term-2"));
+    expect(panel(server).Shells["term-2"]).toMatchObject({ Error: "server said no" });
+    expect(attached(server)).toHaveLength(2);
     refuse = false;
-    await server.runtime.dispatch(endTerminal, server.terminalId());
-    expect(closes.map((close) => close.TerminalId)).toEqual(["term-1"]);
+    await server.runtime.dispatch(endShell, server.terminalShellId("term-2"));
+    await settled();
+    expect(panel(server)).toMatchObject({
+      Open: true,
+      Layout: { TerminalIds: ["term-1"], ActiveTerminalId: "term-1" },
+    });
+    expect(Object.keys(panel(server).Shells)).toEqual(["term-1"]);
+    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
+    await server.runtime.dispatch(endShell, server.terminalShellId("term-1"));
+    await settled();
+    expect(closes.map((close) => close.TerminalId)).toEqual(["term-2", "term-1"]);
     expect(panel(server).Open).toBe(false);
     expect(attached(server)).toEqual([]);
     expect(server.terminals.size).toBe(0);
   });
 
+  it("restarts an exited shell in its own tab", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, server.terminalId());
+    const shellId = server.terminalShellId();
+    await server.runtime.dispatch(
+      TerminalShellReceiver.handle,
+      shellId,
+      { Type: "Terminal/Session", Status: "exited", Error: "gone" } as never,
+      { publisher: { Id: shellId } },
+    );
+    const before = server.runtime.resources().find((row) => row.Key === "Terminal/Session");
+    await server.runtime.dispatch(restartShell, shellId);
+    const after = server.runtime.resources().find((row) => row.Key === "Terminal/Session");
+    expect(panel(server).Shells["term-1"]).toMatchObject({ Status: null, FocusOnMount: true });
+    expect(panel(server).Shells["term-1"]!.Error).toBeUndefined();
+    expect(after).toBeDefined();
+    expect(after).not.toBe(before);
+  });
+
+  it("keeps the drawer's height per thread", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, server.terminalId());
+    await server.runtime.dispatch(setTerminalHeight, server.terminalId(), 412.4);
+    expect(panel(server).Height).toBe(412);
+    expect(server.terminals.get(THREAD_ID)).toMatchObject({ Height: 412 });
+  });
+
   it("detaches while another thread is selected, and a return or a reload reattaches", async () => {
     const launch = { Cwd: "/root", WorktreePath: null, ProjectRoot: "/root" };
     const server = await connect();
-    server.terminals.set("a", launch);
+    // A launch stored before tabs comes back as one open shell.
+    const held = readRememberedTerminal(launch)!;
+    server.terminals.set("a", {
+      ...held,
+      Height: 360,
+      Layout: { ...held.Layout, TerminalIds: ["term-1", "term-2", "term-9"] },
+      Launches: { ...held.Launches, "term-2": launch },
+    });
     await server.runtime.dispatch(selectThread, server.envId(), "a");
     await settled();
-    expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]);
-    expect(panel(server, "a").Open).toBe(true);
-    expect(panel(server, "a").FocusOnMount).toBe(false);
+    expect(attached(server).map((row) => [row.ThreadId, row.TerminalId])).toEqual([
+      ["a", "term-1"],
+      ["a", "term-2"],
+    ]);
+    expect(panel(server, "a")).toMatchObject({ Open: true, Height: 360 });
+    expect(panel(server, "a").Shells["term-1"]!.FocusOnMount).toBe(false);
     await server.runtime.dispatch(selectThread, server.envId(), "b");
     await settled();
     expect(attached(server)).toEqual([]);
     await server.runtime.dispatch(selectThread, server.envId(), "a");
     await settled();
-    expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]);
+    expect(attached(server)).toHaveLength(2);
   });
 
   it("deleting the thread disposes the attachment and forgets the launch", async () => {
@@ -5195,41 +5431,42 @@ describe("the terminal", () => {
     await server.open();
     await withProject(server, null);
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    const terminalId = server.terminalId();
+    const shellId = server.terminalShellId();
     const deliver = (message: object) =>
       server.runtime.dispatch(
-        TerminalReceiver.handle,
-        terminalId,
+        TerminalShellReceiver.handle,
+        shellId,
         { Type: "Terminal/Session", ...message } as never,
-        { publisher: { Id: terminalId } },
+        { publisher: { Id: shellId } },
       );
+    const shell = () => panel(server).Shells["term-1"]!;
     await deliver({ Status: "running", Error: null });
-    expect(panel(server).Status).toBe("running");
+    expect(shell().Status).toBe("running");
     await deliver({ Status: "exited", Error: null });
-    expect(panel(server).Status).toBe("exited");
+    expect(shell().Status).toBe("exited");
     await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
     await settled();
-    expect(panel(server).Status).toBeNull();
+    expect(shell().Status).toBeNull();
   });
 
-  it("holds its attachment in the terminal's own plain fields", async () => {
+  it("holds its attachment in the shell's own plain fields", async () => {
     const server = await connect();
     await server.open();
     await withProject(server, null);
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    const terminalId = server.terminalId();
+    const shellId = server.terminalShellId();
     await server.runtime.dispatch(
-      TerminalReceiver.handle,
-      terminalId,
+      TerminalShellReceiver.handle,
+      shellId,
       { Type: "Terminal/Session", Status: "running", Error: "lost a line" } as never,
-      { publisher: { Id: terminalId } },
+      { publisher: { Id: shellId } },
     );
-    expect(JSON.parse(JSON.stringify(panel(server)))).toEqual({
-      $Id: terminalId,
+    expect(JSON.parse(JSON.stringify(panel(server).Shells["term-1"]))).toEqual({
+      $Id: shellId,
       EnvironmentId: ENV,
       ThreadId: THREAD_ID,
       TerminalId: "term-1",
-      Open: true,
+      Launch: { Cwd: "/root", WorktreePath: null, ProjectRoot: "/root" },
       Error: "lost a line",
       Status: "running",
       FocusOnMount: true,
@@ -5257,7 +5494,10 @@ describe("the terminal", () => {
     await settled();
     expect(server.session().ScriptError).toBeUndefined();
     expect(ran).toMatchObject([{ TerminalId: "term-1", Command: "vp dev", Cwd: "/root" }]);
-    expect(panel(server)).toMatchObject({ Open: true, FocusOnMount: true });
+    expect(panel(server)).toMatchObject({
+      Open: true,
+      Shells: { "term-1": { FocusOnMount: true } },
+    });
     expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
     refuse = true;
     await server.runtime.dispatch(runScript, server.sessionId(), script as never);
@@ -5465,21 +5705,31 @@ describe("work started by events", () => {
     expect(settings()).toMatchObject({ BaseDirectory: "~/src", GhqCloneLayout: false });
   });
 
-  it("reads the keybindings from the config stream, with no stream of their own", async () => {
+  it("reads the keybindings from the config stream, with no stream of their own, and warns of each reload's issues", async () => {
     const server = await connect();
     const bound = () => server.runtime.processSelector(keybindings, server.environment);
     const binding = (key: string) => ({ command: "sidebar.toggle", shortcut: { key } });
+    const issue = { kind: "keybindings.malformed-config", message: "Unexpected token" };
+    const snapshot = configSnapshot([replayProvider()]);
     await server.sendConfig({
-      ...configSnapshot([replayProvider()]),
-      config: { ...configSnapshot([replayProvider()]).config, keybindings: [binding("b")] },
+      ...snapshot,
+      config: {
+        ...snapshot.config,
+        keybindings: [binding("b")],
+        issues: [issue],
+        keybindingsConfigPath: "/home/keybindings.json",
+        availableEditors: ["vscode"],
+      },
     });
     expect(bound()).toEqual([binding("b")]);
+    expect(server.device.KeybindingReports).toEqual([]);
     await server.sendConfig({
       version: 1,
       type: "keybindingsUpdated",
-      payload: { keybindings: [binding("k")], issues: [] },
+      payload: { keybindings: [binding("k")], issues: [issue] },
     });
     expect(bound()).toEqual([binding("k")]);
+    expect(server.device.KeybindingReports).toEqual([[[issue], "/home/keybindings.json", true]]);
     const streams = server.runtime
       .resources()
       .filter((row) => row.Key.startsWith("Server/"))
@@ -5811,6 +6061,33 @@ describe("settings and usage", () => {
     });
     expect(server.environment().Replica.Config?.settings.sidebarAutoSettleAfterDays).toBe(3);
     expect(usedPercent()).toBe(39);
+  });
+
+  it("holds the usage-limit hubs the stream reports, through a reconnect's snapshot, until it reports none", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    const hub = {
+      id: "hub-1",
+      kind: "cliproxy",
+      label: "Hub",
+      checkedAt: "2026-11-17T00:00:00.000Z",
+      accounts: [],
+    };
+    const held = () => server.environment().Replica.Config?.usageLimitSources;
+    await server.sendConfig({
+      version: 1,
+      type: "usageLimitSourcesUpdated",
+      payload: { sources: [hub] },
+    });
+    expect(held()).toEqual([hub]);
+    await server.sendConfig(fake.snapshot());
+    expect(held()).toEqual([hub]);
+    await server.sendConfig({
+      version: 1,
+      type: "usageLimitSourcesUpdated",
+      payload: { sources: [] },
+    });
+    expect(held()).toBeUndefined();
   });
 
   it("the header's limits refresh asks the server to re-probe, and leaves the result to the stream", async () => {

@@ -14,7 +14,7 @@ Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) 
 - **Where:** the Archive confirmation row in `GeneralSettingsPanel`, `apps/web/src/components/settings/SettingsPanels.tsx`.
 - **What goes wrong:** it says "Require a second click on the inline archive action before a thread is archived", but `confirmThreadArchive` opens an `Archive thread "…"?` dialog from the thread menu in `Sidebar.tsx` and `useThreadActionMenu.ts`. No inline archive action asks for a second click.
 - **Status:** found by reading the code on 2026-11-23, not run.
-- **Treflex:** copies the description in `settingsPages.ts`. Treflex has no archive action, so the setting does nothing yet.
+- **Treflex:** copies the description in `settingsPages.ts`, and the setting gates the thread menu's Archive dialog, as stock's does.
 
 ## Server: a restart drops pending idle compactions
 

@@ -585,6 +585,31 @@ function FileMedia(props: {
   );
 }
 
+type IToolImageSize = "strip" | "detail";
+
+const TOOL_IMAGE_HEIGHT: Record<IToolImageSize, string> = { strip: "max-h-40", detail: "max-h-64" };
+
+/** An image a tool opened or returned, signed like a markdown image of a workspace file. */
+export function ViewedImage(props: {
+  resource: AssetResource;
+  fragment: string;
+  alt: string;
+  size: IToolImageSize;
+}) {
+  const media = useMediaUrl(props.resource);
+  return (
+    <ShownImage
+      src={media.state.Url === null ? null : media.state.Url + props.fragment}
+      sourceFailed={media.state.Failed}
+      size={media.state.Size}
+      alt={props.alt}
+      standalone={false}
+      tool={props.size}
+      onSourceError={media.failed}
+    />
+  );
+}
+
 function ViewerContent(props: {
   kind: IMediaKind;
   src: string | null;
@@ -684,6 +709,8 @@ function ShownImage(props: {
   size: IAssetUrl["Size"] | null;
   alt: string;
   standalone: boolean;
+  /** A tool's image, at stock's 10rem in a viewed-image strip or 16rem in its expanded row. */
+  tool?: IToolImageSize;
   onSourceError?: () => void;
 }) {
   const [loaded, setLoaded] = createSignal(false);
@@ -750,7 +777,7 @@ function ShownImage(props: {
       {(src) => (
         <>
           <img
-            class={`h-auto max-h-[30rem] w-auto max-w-[min(100%,30rem)] cursor-zoom-in rounded-lg ${IMAGE_BORDER} object-contain`}
+            class={`h-auto w-auto max-w-[min(100%,30rem)] cursor-zoom-in rounded-lg ${IMAGE_BORDER} object-contain ${props.tool === undefined ? "max-h-[30rem]" : TOOL_IMAGE_HEIGHT[props.tool]}`}
             src={src()}
             alt={props.alt}
             style={style()}

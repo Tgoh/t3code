@@ -238,6 +238,8 @@ describe("compaction rows", () => {
       compactionLabel(item("failed"), "onReturn"),
       compactionLabel(item("cancelled"), "onReturn"),
       compactionLabel(item("interrupted"), "onReturn"),
+      compactionLabel(item("completed"), undefined, "2h 5m"),
+      compactionLabel(item("completed", false), undefined, "2h 5m"),
     ]).toEqual([
       "Context compacted before sending 64.8K → 14.3K tokens",
       "Context compacted before sending",
@@ -247,6 +249,8 @@ describe("compaction rows", () => {
       "Context compaction failed",
       "Context compaction stopped",
       "Context compaction stopped",
+      "Context compacted after 2h 5m idle 64.8K → 14.3K tokens",
+      "Context compacted after 2h 5m idle",
     ]);
   });
 });

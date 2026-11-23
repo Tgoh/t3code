@@ -257,6 +257,7 @@ const GENERAL: ISettingsSection[] = [
         Description:
           "Require a second click on the inline archive action before a thread is archived.",
         Control: switchControl,
+        Applied: true,
       }),
       clientRow("confirmThreadDelete", {
         Id: "confirmThreadDelete",
@@ -406,6 +407,8 @@ const CHAT: ISettingsSection[] = [
             zen: "Zen",
           }),
         },
+        Default: "showAll",
+        Applied: true,
       }),
     ],
   },
