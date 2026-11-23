@@ -58,7 +58,7 @@ import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { ThreadConfirmDialog } from "./ThreadCard";
 import { isNotificationMode } from "./threadNotifications";
-import { clockNow, relativeTime } from "./timestamps";
+import { relativeTime } from "./timestamps";
 import { Badge } from "./ui/Badge";
 import { Button, buttonVariants, InlineButton } from "./ui/Button";
 import {
@@ -1240,7 +1240,7 @@ const ArchivedPage = ArchivedThreads.provider(() => {
       Threads: threads.toSorted((left, right) => stamp(right).localeCompare(stamp(left))),
     }));
   });
-  const [now] = createSignal(clockNow());
+  const now = () => environment.minute();
   const [deleting, setDeleting] = createSignal<IArchivedThread | null>(null);
   return (
     <Show

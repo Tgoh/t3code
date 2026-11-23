@@ -831,10 +831,11 @@ const LIMIT_DRIVER_LABELS: Record<string, string> = Object.fromEntries(
 
 function UsageLimits(props: { config: ILimitSources | null }) {
   const environment = Environment.use();
-  const now = clockNow();
+  // The minute clock only paces this: "resets in" reads the wall clock, as the header's popover does.
+  const now = createMemo(() => Math.max(environment.minute(), clockNow()));
   const presentations = () =>
     limitPresentations(environment.state.EnvironmentId, environment.state.Label, props.config);
-  const pools = createMemo(() => limitPools(presentations(), now));
+  const pools = createMemo(() => limitPools(presentations(), now()));
   const notices = createMemo(() => collectLimitNotices(presentations()));
   return (
     <Show when={props.config} fallback={<p class={loading}>Reading limits…</p>}>
@@ -844,7 +845,7 @@ function UsageLimits(props: { config: ILimitSources | null }) {
             No provider on the selected environments reports subscription limits.
           </p>
         </Show>
-        <For each={pools()}>{(pool) => <LimitPoolSection pool={pool} now={now} />}</For>
+        <For each={pools()}>{(pool) => <LimitPoolSection pool={pool} now={now()} />}</For>
         <Show when={notices().length > 0}>
           <Alert variant="warning" controlAlignment="first-line">
             <TriangleAlert />
