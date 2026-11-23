@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 const BASE =
   "flex flex-none items-center gap-3 bg-background pl-5 in-[.sidebar-collapsed]:pl-[calc(1.25rem+env(safe-area-inset-left))] in-[.sidebar-sheet]:gap-1 in-[.sidebar-sheet]:pr-[calc(8px+env(safe-area-inset-right))] in-[.sidebar-sheet]:pl-[calc(8px+env(safe-area-inset-left))]";
@@ -12,11 +13,11 @@ const VARIANTS = {
 export function PageHeader(
   props: JSX.HTMLAttributes<HTMLElement> & { variant?: keyof typeof VARIANTS },
 ) {
-  const [local, rest] = splitProps(props, ["variant", "class"]);
+  const rest = omit(props, "variant", "class");
   return (
     <header
       {...rest}
-      class={`${BASE} ${VARIANTS[local.variant ?? "thread"]}${local.class ? ` ${local.class}` : ""}`}
+      class={`${BASE} ${VARIANTS[props.variant ?? "thread"]}${props.class ? ` ${props.class}` : ""}`}
     />
   );
 }

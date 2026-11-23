@@ -2,21 +2,20 @@ import { changeRequestTerminologyFor } from "@t3tools/client-runtime/state/vcs";
 import type { ProjectScript, VcsStatusResult } from "@t3tools/contracts";
 import type { IAskId } from "treflex";
 import { useInFlight, useResource } from "treflex-solid";
-import { Dynamic } from "solid-js/web";
+import { Dynamic, type JSX } from "@solidjs/web";
 import {
   type Component,
   createEffect,
   createMemo,
   createSignal,
+  createTrackedEffect,
   createUniqueId,
   For,
-  type JSX,
   Match,
-  on,
+  omit,
   onCleanup,
-  onMount,
+  onSettled,
   Show,
-  splitProps,
   Switch,
 } from "solid-js";
 
@@ -474,7 +473,7 @@ function LineageRow(props: {
     >
       <button
         class={ROW}
-        aria-disabled={remote() !== null || undefined}
+        aria-disabled={remote() !== null ? "true" : undefined}
         data-tip={
           remote() !== null
             ? `${title()}: runs on ${remote()}`
@@ -508,7 +507,7 @@ function LineageRow(props: {
             <button
               class={ICON_ACTION}
               aria-label={`Merge back to ${title()}`}
-              aria-disabled={!canMerge() || props.merging || undefined}
+              aria-disabled={!canMerge() || props.merging ? "true" : undefined}
               data-tip={
                 canMerge()
                   ? `Merge this conversation back into ${title()}`
@@ -573,7 +572,7 @@ function LineageGroups(props: { lineage: ILineage }) {
       <Show when={props.lineage.Previous.length > 0}>
         <button
           class={ROW}
-          aria-expanded={previousOpen()}
+          aria-expanded={previousOpen() ? "true" : "false"}
           onClick={() => setPreviousOpen(!previousOpen())}
         >
           <Bot />
@@ -618,7 +617,6 @@ function LineageSection(props: { threadId: string }) {
       const held = input();
       return held === null ? [] : threadLineage({ ...held, titles: null }).Lookup;
     },
-    [],
     { equals: (left, right) => left.join(",") === right.join(",") },
   );
   const lineage = createMemo(() => {
@@ -744,15 +742,13 @@ const Body = (props: IDetailsProps) => {
   const [addingScript, setAddingScript] = createSignal(false);
   const [branchQuery, setBranchQuery] = createSignal("");
   createEffect(
-    on(
-      () => props.shown,
-      (shown) => {
-        if (shown) return;
-        setMenu(null);
-        setBranchPicker(null);
-      },
-      { defer: true },
-    ),
+    () => props.shown,
+    (shown) => {
+      if (shown) return;
+      setMenu(null);
+      setBranchPicker(null);
+    },
+    { defer: true },
   );
 
   const terminology = () => changeRequestTerminologyFor(git());
@@ -1232,7 +1228,7 @@ const DetailsCard = ThreadDetails.provider(Body);
 
 export const ThreadDetailsCard = GitWork.provider<IDetailsProps & { details: IThreadDetails }>(
   (props) => {
-    const [, card] = splitProps(props, ["state", "details"]);
+    const card = omit(props, "state", "details");
     return <DetailsCard {...card} state={props.details} />;
   },
 );
@@ -1256,7 +1252,7 @@ export function DetailsSurface(props: {
   };
   const [card, setCard] = createSignal<HTMLElement>();
   const overlays = useOverlays();
-  createEffect(() => {
+  createTrackedEffect(() => {
     if (props.inline || !props.shown) return;
     measure();
     onCleanup(
@@ -1267,10 +1263,10 @@ export function DetailsSurface(props: {
       }),
     );
   });
-  onMount(() => {
+  onSettled(() => {
     measure();
     window.addEventListener("resize", measure);
-    onCleanup(() => window.removeEventListener("resize", measure));
+    return () => window.removeEventListener("resize", measure);
   });
   return (
     <aside
@@ -1278,7 +1274,7 @@ export function DetailsSurface(props: {
       class={`w-[280px] overflow-y-auto rounded-[16px] data-[shown=false]:invisible data-[shown=false]:-translate-y-2 data-[shown=false]:opacity-0 in-[.panel-motion]:motion-safe:transition-[translate,opacity,visibility] in-[.panel-motion]:motion-safe:duration-200 in-[.panel-motion]:motion-safe:ease-in-out border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--popover)_var(--glass-opacity),transparent)] shadow-[0_10px_25px_-5px_rgb(0_0_0/12%)] backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation) ${props.inline ? "absolute top-3 right-3 z-30 max-h-[calc(100%-24px)]" : "fixed z-70 max-h-[min(calc(100dvh-6.5rem),32rem)] max-w-[calc(100vw-16px)]"}`}
       role="region"
       aria-label="Thread details"
-      data-shown={props.shown}
+      data-shown={props.shown ? "true" : "false"}
       inert={!props.shown}
       style={props.inline ? undefined : { top: `${place().Top}px`, right: `${place().Right}px` }}
     >

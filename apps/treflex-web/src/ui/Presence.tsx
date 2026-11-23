@@ -1,10 +1,9 @@
+import type { JSX } from "@solidjs/web";
 import {
   type Accessor,
   createContext,
   createRenderEffect,
   createSignal,
-  type JSX,
-  on,
   Show,
   untrack,
   useContext,
@@ -42,55 +41,51 @@ export function Presence<T>(props: {
   const [ending, setEnding] = createSignal(false);
   let generation = 0;
   createRenderEffect(
-    on(
-      () => props.when,
-      (when) => {
-        const run = ++generation;
-        if (when) {
-          for (const element of elements) {
-            if (!element.isConnected) elements.delete(element);
-            else if (ending()) element.removeAttribute(ENDING);
-          }
-          setEnding(false);
-          setHeld(() => when as NonNullable<T>);
-          return;
-        }
-        if (held() === undefined) return;
-        setEnding(true);
+    () => props.when,
+    (when) => {
+      const run = ++generation;
+      if (when) {
         for (const element of elements) {
-          element.removeAttribute(STARTING);
-          element.setAttribute(ENDING, "");
+          if (!element.isConnected) elements.delete(element);
+          else if (ending()) element.removeAttribute(ENDING);
         }
-        // Closing mid-entrance cancels the entrance, whose promise settles before the exit has
-        // run, so the wait reads the transitions again until none is left. An infinite animation
-        // (a spinner inside) never finishes, so it's left out, as Base UI does.
-        const settle = async () => {
-          for (;;) {
-            const running = [...elements].flatMap((element) =>
-              element.isConnected
-                ? element
-                    .getAnimations({ subtree: true })
-                    .filter(
-                      (animation) => animation.effect?.getComputedTiming().endTime !== Infinity,
-                    )
-                : [],
-            );
-            if (running.length === 0 || run !== generation) return;
-            await Promise.allSettled(running.map((animation) => animation.finished));
-          }
-        };
-        queueMicrotask(
-          () =>
-            void settle().then(() => {
-              if (run !== generation) return;
-              elements.clear();
-              // Unmount first, so the children never see `exiting` turn false as a reopen.
-              setHeld(undefined);
-              setEnding(false);
-            }),
-        );
-      },
-    ),
+        setEnding(false);
+        setHeld(() => when as NonNullable<T>);
+        return;
+      }
+      if (held() === undefined) return;
+      setEnding(true);
+      for (const element of elements) {
+        element.removeAttribute(STARTING);
+        element.setAttribute(ENDING, "");
+      }
+      // Closing mid-entrance cancels the entrance, whose promise settles before the exit has
+      // run, so the wait reads the transitions again until none is left. An infinite animation
+      // (a spinner inside) never finishes, so it's left out, as Base UI does.
+      const settle = async () => {
+        for (;;) {
+          const running = [...elements].flatMap((element) =>
+            element.isConnected
+              ? element
+                  .getAnimations({ subtree: true })
+                  .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+              : [],
+          );
+          if (running.length === 0 || run !== generation) return;
+          await Promise.allSettled(running.map((animation) => animation.finished));
+        }
+      };
+      queueMicrotask(
+        () =>
+          void settle().then(() => {
+            if (run !== generation) return;
+            elements.clear();
+            // Unmount first, so the children never see `exiting` turn false as a reopen.
+            setHeld(undefined);
+            setEnding(false);
+          }),
+      );
+    },
   );
   const presence: IPresence = {
     track: (element) => {
@@ -105,7 +100,7 @@ export function Presence<T>(props: {
     exiting: ending,
   };
   return (
-    <PresenceContext.Provider value={presence}>
+    <PresenceContext value={presence}>
       <Show
         when={props.keyed}
         fallback={<Show when={held()}>{(value) => props.children(value)}</Show>}
@@ -114,6 +109,6 @@ export function Presence<T>(props: {
           {(value) => props.children(() => value)}
         </Show>
       </Show>
-    </PresenceContext.Provider>
+    </PresenceContext>
   );
 }

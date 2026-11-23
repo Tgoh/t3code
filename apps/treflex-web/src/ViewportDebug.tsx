@@ -1,5 +1,5 @@
 // @effect-diagnostics globalTimers:off -- A view-only sampling tick, outside any Effect runtime.
-import { createSignal, For, onCleanup, onMount } from "solid-js";
+import { createSignal, For, onCleanup, onSettled } from "solid-js";
 
 const SAMPLE_MS = 250;
 
@@ -42,7 +42,7 @@ function sample(probe: HTMLElement): Array<[string, string]> {
 /** Live layout numbers for diagnosing phone bugs, shown on demand from the thread header. */
 export function ViewportDebug() {
   const [rows, setRows] = createSignal<Array<[string, string]>>([]);
-  onMount(() => {
+  onSettled(() => {
     // Reads the safe-area insets, which only CSS can resolve.
     const probe = document.createElement("div");
     probe.className =

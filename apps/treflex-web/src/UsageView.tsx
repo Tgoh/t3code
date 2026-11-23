@@ -236,7 +236,7 @@ export const UsageView = UsagePage.provider(() => {
             size="icon-sm"
             aria-label={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             data-tip={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
-            aria-busy={refreshing()}
+            aria-busy={refreshing() ? "true" : "false"}
             disabled={refreshing()}
             onClick={() =>
               void page.refreshUsage(
@@ -542,7 +542,7 @@ function UsageOverview(props: {
                   when={periods().length > 0}
                   fallback={
                     <tr>
-                      <td colSpan={providers().length + 3} class={EMPTY_CELL}>
+                      <td colspan={providers().length + 3} class={EMPTY_CELL}>
                         No activity in this window.
                       </td>
                     </tr>
@@ -589,7 +589,7 @@ function UsageOverview(props: {
                 when={models().length > 0}
                 fallback={
                   <tr>
-                    <td colSpan={5} class={EMPTY_CELL}>
+                    <td colspan={5} class={EMPTY_CELL}>
                       No activity in this window.
                     </td>
                   </tr>

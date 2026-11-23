@@ -1,4 +1,4 @@
-import { type ComponentProps, splitProps } from "solid-js";
+import { type ComponentProps, omit } from "solid-js";
 
 import { LoaderCircle } from "../icons";
 import { observeVisibleAnimation } from "./visibleAnimation";
@@ -22,7 +22,7 @@ export function Spinner(
     tone?: keyof typeof TONES;
   },
 ) {
-  const [local, rest] = splitProps(props, ["size", "tone", "class"]);
+  const rest = omit(props, "size", "tone", "class");
   return (
     <LoaderCircle
       aria-label="Loading"
@@ -31,9 +31,9 @@ export function Spinner(
       {...rest}
       class={[
         "motion-safe:visible-animate-spin",
-        local.size === undefined ? undefined : SIZES[local.size],
-        TONES[local.tone ?? "current"],
-        local.class,
+        props.size === undefined ? undefined : SIZES[props.size],
+        TONES[props.tone ?? "current"],
+        props.class,
       ]
         .filter(Boolean)
         .join(" ")}

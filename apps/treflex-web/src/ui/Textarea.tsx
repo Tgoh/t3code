@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 import { overrides } from "./merge";
 
@@ -53,31 +54,32 @@ function textareaClass(size: TextareaSize | number | undefined, hasRows: boolean
 
 export function Textarea(
   props: JSX.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+    class?: string;
     size?: TextareaSize | number;
     unstyled?: boolean;
   },
 ) {
-  const [local, rest] = splitProps(props, ["class", "size", "unstyled", "rows"]);
-  const padding = () => SIZES[typeof local.size === "string" ? local.size : "default"][2];
+  const rest = omit(props, "class", "size", "unstyled", "rows");
+  const padding = () => SIZES[typeof props.size === "string" ? props.size : "default"][2];
   return (
     <span
-      class={textareaControlClass({ unstyled: local.unstyled, class: local.class })}
-      data-size={local.size ?? "default"}
+      class={textareaControlClass({ unstyled: props.unstyled, class: props.class })}
+      data-size={props.size ?? "default"}
       data-slot="textarea-control"
     >
       <textarea
         // field-sizing: content ignores `rows`, so an explicit row count sets the minimum height.
         style={
-          local.rows === undefined
+          props.rows === undefined
             ? undefined
             : {
-                "min-height": `calc(${local.rows}lh + 2 * (var(--spacing) * ${padding()} - 1px))`,
+                "min-height": `calc(${props.rows}lh + 2 * (var(--spacing) * ${padding()} - 1px))`,
               }
         }
         data-slot="textarea"
-        rows={local.rows}
+        rows={props.rows}
         {...rest}
-        class={textareaClass(local.size, local.rows !== undefined)}
+        class={textareaClass(props.size, props.rows !== undefined)}
       />
     </span>
   );

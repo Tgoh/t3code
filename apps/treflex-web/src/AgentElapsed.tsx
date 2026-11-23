@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for live timers, outside any Effect runtime.
 import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 import { deriveSubagentElapsedMs } from "@t3tools/shared/orchestrationTiming";
-import { type Accessor, createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { type Accessor, createSignal, createTrackedEffect, onCleanup, Show } from "solid-js";
 
 import { compactElapsed, fullElapsed, type ILineageAgent } from "./lineage";
 
@@ -9,7 +9,7 @@ export const SECOND = 1_000;
 
 export function useTick(live: Accessor<boolean>): Accessor<number> {
   const [now, setNow] = createSignal(Date.now());
-  createEffect(() => {
+  createTrackedEffect(() => {
     if (!live()) return;
     const tick = setInterval(() => setNow(Date.now()), SECOND);
     onCleanup(() => clearInterval(tick));

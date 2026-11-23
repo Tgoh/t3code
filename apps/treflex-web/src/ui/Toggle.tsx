@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 const BASE =
   "[&_svg]:-mx-0.5 relative inline-flex shrink-0 cursor-pointer select-none items-center justify-center gap-2 whitespace-nowrap border outline-none before:pointer-events-none before:absolute before:inset-0 pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none aria-disabled:opacity-64 sm:text-sm [&_svg:not([class*='opacity-'])]:opacity-80 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
@@ -115,20 +116,21 @@ export function toggleVariants(
 
 export function Toggle(
   props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+    class?: string;
     variant?: ToggleVariant;
     size?: ToggleSize;
     pressed?: boolean;
   },
 ) {
-  const [local, rest] = splitProps(props, ["variant", "size", "pressed", "class"]);
+  const rest = omit(props, "variant", "size", "pressed", "class");
   return (
     <button
       type="button"
       data-slot="toggle"
       {...rest}
-      aria-pressed={local.pressed === true}
-      data-pressed={local.pressed === true ? "" : undefined}
-      class={toggleVariants({ variant: local.variant, size: local.size, class: local.class })}
+      aria-pressed={props.pressed === true ? "true" : "false"}
+      data-pressed={props.pressed === true ? "" : undefined}
+      class={toggleVariants({ variant: props.variant, size: props.size, class: props.class })}
     />
   );
 }

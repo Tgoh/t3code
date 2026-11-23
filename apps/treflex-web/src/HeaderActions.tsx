@@ -33,14 +33,9 @@ export function UsageRing() {
       environment.state.Label,
       environment.state.Replica.Config,
     );
-  const weekly = createMemo(
-    () => weeklyLimit(limitPools(presentations(), environment.minute())),
-    null,
-    {
-      equals: (left, right) =>
-        left?.UsedPercent === right?.UsedPercent && left?.Tone === right?.Tone,
-    },
-  );
+  const weekly = createMemo(() => weeklyLimit(limitPools(presentations(), environment.minute())), {
+    equals: (left, right) => left?.UsedPercent === right?.UsedPercent && left?.Tone === right?.Tone,
+  });
   const label = () => {
     const held = weekly();
     return held === null
@@ -62,13 +57,15 @@ export function UsageRing() {
       <Button
         variant="ghost"
         size="icon-titlebar"
-        ref={setButton}
+        ref={(element: HTMLButtonElement) => {
+          setButton(element);
+          element.addEventListener("pointerover", freshTip);
+          element.addEventListener("focusin", freshTip);
+        }}
         aria-label={label()}
         aria-haspopup="dialog"
         aria-expanded="false"
         data-tip={label()}
-        on:pointerover={freshTip}
-        on:focusin={freshTip}
         onClick={() => {
           if (open() !== null) return setOpen(null);
           setOpen(clockNow());

@@ -6,7 +6,8 @@ import {
 } from "@t3tools/client-runtime/state/composer-dispatch";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useInFlight, useResource } from "treflex-solid";
-import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createSignal, For, onCleanup, onSettled, Show } from "solid-js";
 
 import {
   admitFiles,
@@ -95,7 +96,7 @@ const NOTE = "mx-4 my-1 text-[12px]";
 const ERROR = `${NOTE} text-error-foreground ${HIDDEN_COLLAPSED}`;
 
 function useFocusRequests(focus: (threadId: string) => void) {
-  onMount(() => {
+  onSettled(() => {
     const onRequest = (event: Event) => focus((event as CustomEvent<string>).detail);
     window.addEventListener(FOCUS_COMPOSER_EVENT, onRequest);
     onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, onRequest));
@@ -103,7 +104,7 @@ function useFocusRequests(focus: (threadId: string) => void) {
 }
 
 function useTypedText(take: (event: Event, typed: ITypedText) => void) {
-  onMount(() => {
+  onSettled(() => {
     const onTyped = (event: Event) => take(event, (event as CustomEvent<ITypedText>).detail);
     window.addEventListener(TYPE_INTO_COMPOSER_EVENT, onTyped);
     onCleanup(() => window.removeEventListener(TYPE_INTO_COMPOSER_EVENT, onTyped));
@@ -111,7 +112,7 @@ function useTypedText(take: (event: Event, typed: ITypedText) => void) {
 }
 
 function useDictationKeys(toggle: () => void, escape: (event: KeyboardEvent) => void) {
-  onMount(() => {
+  onSettled(() => {
     window.addEventListener(TOGGLE_DICTATION_EVENT, toggle);
     window.addEventListener("keydown", escape, true);
     onCleanup(() => {
@@ -124,7 +125,7 @@ function useDictationKeys(toggle: () => void, escape: (event: KeyboardEvent) => 
 /** Holds whether ⌘ or Ctrl is down, so the send button can show what a click would do. */
 function useAlternateHeld() {
   const [held, setHeld] = createSignal(false);
-  onMount(() => {
+  onSettled(() => {
     const update = (event: KeyboardEvent) => setHeld(isAlternate(event));
     const clear = () => setHeld(false);
     window.addEventListener("keydown", update);
@@ -187,7 +188,7 @@ function SendButton(props: {
       type="submit"
       class={`${ROUND_BUTTON} bg-transparent hover:enabled:brightness-110 ${props.class}`}
       aria-label={label()}
-      aria-busy={props.sending || props.held || undefined}
+      aria-busy={props.sending || props.held ? "true" : undefined}
       data-tip={tip()}
       disabled={props.disabled || props.held}
       onPointerDown={keepFocus}
@@ -320,7 +321,7 @@ export function FileDropSection(props: { children: JSX.Element }) {
   const isFileDrag = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
   const movedWithin = (event: DragEvent & { currentTarget: HTMLElement }) =>
     event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget);
-  onMount(() => {
+  onSettled(() => {
     // Escape can cancel a drag without a dragleave.
     const clear = () => setDragActive(false);
     window.addEventListener("dragend", clear);
@@ -913,7 +914,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
           placeholder={placeholder()}
           value={text()}
           disabled={answerLocked()}
-          readOnly={dictating()}
+          readonly={dictating()}
           onInput={(event) => {
             moveCaret(event.currentTarget.value, event.currentTarget.selectionStart);
             const question = answering();

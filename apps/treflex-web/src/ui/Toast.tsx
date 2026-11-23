@@ -1,16 +1,15 @@
 // @effect-diagnostics globalTimers:off globalDate:off -- View-only toast timing, outside any Effect runtime.
+import { type JSX, Portal } from "@solidjs/web";
 import {
   type Accessor,
-  createEffect,
   createMemo,
   createSignal,
+  createTrackedEffect,
   For,
-  type JSX,
   onCleanup,
-  onMount,
+  onSettled,
   Show,
 } from "solid-js";
-import { Portal } from "solid-js/web";
 
 import { copyText } from "../clipboard";
 import {
@@ -160,7 +159,7 @@ function createToastRoot(
     store.updateInternal(current.id, { height, transitionStatus: undefined });
   };
 
-  onMount(() => {
+  onSettled(() => {
     // Reading the height lays the toast out with `data-starting-style` on, so clearing it then
     // transitions from there.
     measure();
@@ -184,7 +183,7 @@ function createToastRoot(
   });
 
   let removing = false;
-  createEffect(() => {
+  createTrackedEffect(() => {
     const element = root();
     if (removing || !element || toast().transitionStatus !== "ending") return;
     removing = true;
@@ -425,7 +424,7 @@ function ToastDescription(props: { toast: IToast }) {
             <div class="min-w-0">
               <button
                 type="button"
-                aria-expanded={open()}
+                aria-expanded={open() ? "true" : "false"}
                 class="inline-flex cursor-pointer items-center gap-1 rounded-md py-0.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => setOpen((value) => !value)}
               >
@@ -441,9 +440,9 @@ function ToastDescription(props: { toast: IToast }) {
       >
         <div
           role="button"
-          tabIndex={0}
+          tabindex={0}
           aria-label={label()}
-          aria-expanded={open()}
+          aria-expanded={open() ? "true" : "false"}
           data-tip={label()}
           data-tip-side="top"
           class="group flex w-full min-w-0 cursor-pointer items-start gap-1.5 rounded-sm text-left ring-offset-background outline-none select-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:ring-inset"
@@ -589,7 +588,7 @@ const visibleRemainingMs = new Map<string, number>();
 
 /** Stock's `dismissAfterVisibleMs`: a dismiss timer that only counts time the window is in view and focused. */
 function VisibleAutoDismiss(props: { id: string; ms: number }) {
-  onMount(() => {
+  onSettled(() => {
     let remaining = visibleRemainingMs.get(props.id) ?? props.ms;
     let startedAt: number | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -764,7 +763,7 @@ export function Toasts(props: { activeThread: IActiveThreadRef; position?: IToas
       toasts().filter((toast) => shouldRenderThreadScopedToast(toast.data, props.activeThread)),
     ),
   );
-  const ids = createMemo(() => layout().items.map((item) => item.toast.id), undefined, {
+  const ids = createMemo(() => layout().items.map((item) => item.toast.id), {
     equals: (a, b) => a.length === b.length && a.every((id, index) => id === b[index]),
   });
   const item = (id: string) => layout().items.find((entry) => entry.toast.id === id);
@@ -782,7 +781,7 @@ export function Toasts(props: { activeThread: IActiveThreadRef; position?: IToas
     <Portal>
       <div
         ref={attach}
-        tabIndex={-1}
+        tabindex={-1}
         role="region"
         aria-live="polite"
         aria-atomic="false"
@@ -844,7 +843,7 @@ function StackedToast(props: {
         setElement(node);
       }}
       role={highPriority() ? "alertdialog" : "dialog"}
-      tabIndex={0}
+      tabindex={0}
       aria-modal="false"
       aria-hidden={highPriority() && !props.store.focused ? "true" : undefined}
       inert={toast().limited}
@@ -898,7 +897,6 @@ export function AnchoredToasts(props: { activeThread: IActiveThreadRef }) {
             shouldRenderThreadScopedToast(toast.data, props.activeThread),
         )
         .map((toast) => toast.id),
-    undefined,
     { equals: (a, b) => a.length === b.length && a.every((id, index) => id === b[index]) },
   );
   return (
@@ -952,7 +950,7 @@ function AnchoredToast(props: { store: ToastStore; toast: Accessor<IToast> }) {
           setElement(node);
         }}
         role="dialog"
-        tabIndex={0}
+        tabindex={0}
         aria-modal="false"
         class={`${ANCHORED_ROOT} ${tooltipStyle() ? "rounded-md" : "rounded-lg"}`}
         data-slot="toast-popup"

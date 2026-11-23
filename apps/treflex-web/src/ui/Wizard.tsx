@@ -1,15 +1,6 @@
 // @effect-diagnostics globalTimers:off -- A view-only height animation, outside any Effect runtime.
-import {
-  createEffect,
-  createSignal,
-  For,
-  type JSX,
-  onCleanup,
-  Show,
-  splitProps,
-  untrack,
-} from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic, type JSX } from "@solidjs/web";
+import { createSignal, createTrackedEffect, For, omit, onCleanup, Show, untrack } from "solid-js";
 
 import { Check } from "../icons";
 import {
@@ -28,11 +19,11 @@ export function WizardPopup(
     showCloseButton?: boolean;
   },
 ) {
-  const [local, rest] = splitProps(props, ["size", "children"]);
+  const rest = omit(props, "size", "children");
   return (
-    <DialogPopup {...rest} size={local.size === "wide" ? "3xl" : "xl"}>
+    <DialogPopup {...rest} size={props.size === "wide" ? "3xl" : "xl"}>
       <ScrollArea class="*:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4">
-        <div class="flex min-h-0 flex-col">{local.children}</div>
+        <div class="flex min-h-0 flex-col">{props.children}</div>
       </ScrollArea>
     </DialogPopup>
   );
@@ -150,13 +141,13 @@ function AnimatedHeight(props: { holdHeight: boolean; children: JSX.Element }) {
   const [content, setContent] = createSignal<HTMLDivElement>();
   const [height, setHeight] = createSignal<number | null>(null);
   const [clipping, setClipping] = createSignal(false);
-  createEffect(() => {
+  createTrackedEffect(() => {
     height();
     if (!clipping()) return;
     const timer = setTimeout(() => setClipping(false), HEIGHT_TRANSITION_FALLBACK_MS);
     onCleanup(() => clearTimeout(timer));
   });
-  createEffect(() => {
+  createTrackedEffect(() => {
     const element = content();
     if (props.holdHeight || element === undefined) return;
     const frames: number[] = [];

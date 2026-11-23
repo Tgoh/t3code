@@ -15,8 +15,8 @@ import {
 } from "@t3tools/client-runtime/secret-request";
 import { AuthMcpClientAccess } from "@t3tools/contracts";
 import { useInFlight } from "treflex-solid";
-import { type Component, createSignal, createUniqueId, For, type JSX, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic, type JSX } from "@solidjs/web";
+import { type Component, createSignal, createUniqueId, For, Show } from "solid-js";
 
 import { RUNTIME_MODE_CONFIG } from "./ComposerMenus";
 import { Check, ExternalLink, Eye, EyeOff, Link, Lock, Minus, ShieldCheck, X } from "./icons";
@@ -183,7 +183,7 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
           data-bwignore=""
           placeholder={input.placeholder}
           disabled={busy()}
-          aria-invalid={request.itemAnswerError() !== null || undefined}
+          aria-invalid={request.itemAnswerError() !== null ? "true" : undefined}
           aria-describedby={describedBy()}
           onInput={refreshComplete}
         />
@@ -194,7 +194,7 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
               size="icon-xs"
               variant="ghost"
               aria-label={`Show ${input.label}`}
-              aria-pressed={revealed()}
+              aria-pressed={revealed() ? "true" : "false"}
               disabled={busy()}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => setRevealed((current) => !current)}

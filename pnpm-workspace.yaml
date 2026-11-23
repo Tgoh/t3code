@@ -345,3 +345,5 @@ minimumReleaseAgeExclude:
   - "@effect/sql-sqlite-do@4.1.5"
   - "@effect/vitest@4.1.5"
   - effect@4.1.5
+  - treflex-solid@0.3.0
+  - treflex@0.3.0

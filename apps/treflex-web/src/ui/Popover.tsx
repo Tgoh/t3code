@@ -1,5 +1,5 @@
-import { createSignal, type JSX, Show, splitProps } from "solid-js";
-import { Portal } from "solid-js/web";
+import { type JSX, Portal } from "@solidjs/web";
+import { createSignal, omit, Show } from "solid-js";
 
 import {
   createPopup,
@@ -115,7 +115,8 @@ export function PopoverPopup(
     children: JSX.Element;
   },
 ) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "anchor",
     "trigger",
     "label",
@@ -134,32 +135,32 @@ export function PopoverPopup(
     "role",
     "class",
     "children",
-  ]);
-  const variant = () => local.variant ?? "default";
+  );
+  const variant = () => props.variant ?? "default";
   const [popupElement, setPopupElement] = createSignal<HTMLDivElement>();
-  const trigger = local.trigger ?? (local.anchor instanceof HTMLElement ? local.anchor : null);
+  const trigger = props.trigger ?? (props.anchor instanceof HTMLElement ? props.anchor : null);
   const popup = createPopup({
-    anchor: local.anchor,
+    anchor: props.anchor,
     placement: () => ({
-      side: local.side ?? "bottom",
-      align: local.align ?? "center",
-      sideOffset: local.sideOffset ?? 4,
-      alignOffset: local.alignOffset ?? 0,
+      side: props.side ?? "bottom",
+      align: props.align ?? "center",
+      sideOffset: props.sideOffset ?? 4,
+      alignOffset: props.alignOffset ?? 0,
       collisionPadding: variant() === "panel" ? 0 : undefined,
-      collisionAvoidance: local.collisionAvoidance,
+      collisionAvoidance: props.collisionAvoidance,
     }),
-    onClose: () => local.onClose(),
+    onClose: () => props.onClose(),
     trigger,
     initialFocus: () => {
       const element = popupElement();
       if (element === undefined) return;
       const coarse = window.matchMedia("(pointer: coarse)").matches;
       const target =
-        local.initialFocus === undefined
+        props.initialFocus === undefined
           ? coarse
             ? null
             : (tabbables(element)[0] ?? null)
-          : local.initialFocus(element);
+          : props.initialFocus(element);
       (target ?? element).focus({ preventScroll: true });
     },
   });
@@ -174,7 +175,7 @@ export function PopoverPopup(
       if (inside.length > 0 && active !== inside[0] && active !== element) return;
       event.preventDefault();
       trigger.focus({ preventScroll: true });
-      local.onClose();
+      props.onClose();
       return;
     }
     if (inside.length > 0 && active !== inside.at(-1)) return;
@@ -185,20 +186,20 @@ export function PopoverPopup(
         !trigger.contains(candidate) &&
         (trigger.compareDocumentPosition(candidate) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
     );
-    local.onClose();
+    props.onClose();
     (next ?? trigger).focus({ preventScroll: true });
   };
   const classes = () =>
     popoverClasses({
-      padding: local.padding ?? "default",
+      padding: props.padding ?? "default",
       variant: variant(),
-      width: local.width ?? "auto",
-      tooltipStyle: local.tooltipStyle === true,
-      class: local.class,
+      width: props.width ?? "auto",
+      tooltipStyle: props.tooltipStyle === true,
+      class: props.class,
     });
   return (
     <Portal>
-      <Show when={local.touchBackdrop}>
+      <Show when={props.touchBackdrop}>
         <div
           ref={(held) => popup.backdrop(held)}
           class="fixed inset-0 z-[130] hidden pointer-coarse:block"
@@ -218,9 +219,9 @@ export function PopoverPopup(
             popup.popup(held);
           }}
           class={classes().popup}
-          role={local.role ?? "dialog"}
-          tabIndex={-1}
-          aria-label={local.label}
+          role={props.role ?? "dialog"}
+          tabindex={-1}
+          aria-label={props.label}
           data-slot="popover-popup"
           onKeyDown={onKeyDown}
           onFocusOut={(event) => {
@@ -228,11 +229,11 @@ export function PopoverPopup(
             if (!(next instanceof Node) || popup.exiting()) return;
             if (event.currentTarget.contains(next) || trigger?.contains(next)) return;
             if (inFloating(next)) return;
-            local.onClose();
+            props.onClose();
           }}
         >
           <div class={classes().viewport} data-slot="popover-viewport">
-            {local.children}
+            {props.children}
           </div>
         </div>
       </div>

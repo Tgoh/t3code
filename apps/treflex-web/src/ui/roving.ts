@@ -1,4 +1,4 @@
-import { type Accessor, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { type Accessor, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
 
 export type IOrientation = "horizontal" | "vertical" | "both";
 
@@ -77,7 +77,9 @@ export function createRoving(options: { orientation: Accessor<IOrientation>; hom
     register(item: HTMLElement, entry: { active: Accessor<boolean>; disabled: Accessor<boolean> }) {
       entries.set(item, entry);
       // Mounted, the item has its place in the document, which orders the group.
-      onMount(changed);
+      onSettled(() => {
+        changed();
+      });
       onCleanup(() => {
         entries.delete(item);
         if (focused() === item) setFocused(null);

@@ -1,4 +1,5 @@
-import { type JSX, Show, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit, Show } from "solid-js";
 
 // Stands in for tailwind-merge: a variant's border colour replaces the default one.
 const ROOT =
@@ -13,7 +14,7 @@ const INDICATOR =
 
 type ICheckboxVariant = keyof typeof VARIANTS;
 
-const flag = (on: boolean | undefined) => (on === true ? "" : undefined);
+const flag = (on: boolean | "" | undefined) => (on === true ? "" : undefined);
 
 function Glyph(props: { path: string }) {
   return (
@@ -45,41 +46,42 @@ export function Checkbox(
     variant?: ICheckboxVariant;
   },
 ) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "checked",
     "indeterminate",
     "onCheckedChange",
     "variant",
     "class",
     "disabled",
-  ]);
-  const mixed = () => local.indeterminate === true;
+  );
+  const mixed = () => props.indeterminate === true;
   return (
     <button
       type="button"
       role="checkbox"
       data-slot="checkbox"
       {...rest}
-      aria-checked={mixed() ? "mixed" : local.checked}
-      data-checked={flag(!mixed() && local.checked)}
-      data-unchecked={flag(!mixed() && !local.checked)}
+      aria-checked={mixed() ? "mixed" : props.checked ? "true" : "false"}
+      data-checked={flag(!mixed() && props.checked)}
+      data-unchecked={flag(!mixed() && !props.checked)}
       data-indeterminate={flag(mixed())}
-      data-disabled={flag(local.disabled)}
-      disabled={local.disabled}
-      class={[ROOT, VARIANTS[local.variant ?? "default"], local.class].filter(Boolean).join(" ")}
-      onClick={() => local.onCheckedChange(!local.checked)}
+      data-disabled={flag(props.disabled)}
+      disabled={props.disabled}
+      class={[ROOT, VARIANTS[props.variant ?? "default"], props.class].filter(Boolean).join(" ")}
+      onClick={() => props.onCheckedChange(!props.checked)}
       onKeyDown={(event) => {
         // Checkboxes toggle with Space only.
         if (event.key === "Enter") event.preventDefault();
       }}
     >
-      <Show when={mixed() || local.checked}>
+      <Show when={mixed() || props.checked}>
         <span
           class={INDICATOR}
           data-slot="checkbox-indicator"
-          data-checked={flag(!mixed() && local.checked)}
+          data-checked={flag(!mixed() && props.checked)}
           data-indeterminate={flag(mixed())}
-          data-disabled={flag(local.disabled)}
+          data-disabled={flag(props.disabled)}
         >
           <Glyph path={mixed() ? DASH : CHECK} />
         </span>

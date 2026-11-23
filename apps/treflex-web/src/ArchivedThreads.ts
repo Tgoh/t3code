@@ -1,6 +1,6 @@
 import { type IEntity, type IOpenGenerator, latest, open } from "treflex";
 import { createComponentFeature } from "treflex-solid";
-import { onMount } from "solid-js";
+import { onSettled } from "solid-js";
 
 import type { IThreadCommand } from "./Infrastructure/commandEffects";
 import { archivedShellEffect, type IWireArchivedShell } from "./Infrastructure/settings";
@@ -30,7 +30,9 @@ export function useArchivedThreads(
   threadCommand: (threadId: string, command: IThreadCommand) => Promise<unknown>,
 ) {
   const page = ArchivedThreads.use();
-  onMount(() => void page.loadArchived(environmentId));
+  onSettled(() => {
+    void page.loadArchived(environmentId);
+  });
   const command = (threadId: string, kind: "unarchive" | "delete") =>
     void threadCommand(threadId, { Kind: kind }).then(() => page.loadArchived(environmentId));
   return { state: page.state, command };

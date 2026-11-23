@@ -1,13 +1,13 @@
 import type { KeybindingCommand } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import { useInFlight, useResource } from "treflex-solid";
+import type { JSX } from "@solidjs/web";
 import {
-  createEffect,
   createSignal,
+  createTrackedEffect,
   For,
-  type JSX,
   onCleanup,
-  onMount,
+  onSettled,
   Show,
   untrack,
 } from "solid-js";
@@ -181,7 +181,7 @@ export const TerminalPanel = Terminal.provider(() => {
   const [maxHeight, setMaxHeight] = createSignal(Number.POSITIVE_INFINITY);
   const [dragHeight, setDragHeight] = createSignal<number | null>(null);
   const height = () => clampHeight(dragHeight() ?? terminal.state.Height, maxHeight());
-  onMount(() => {
+  onSettled(() => {
     const column = drawer?.parentElement ?? null;
     const measure = () => setMaxHeight(maxDrawerHeight(column));
     measure();
@@ -190,10 +190,10 @@ export const TerminalPanel = Terminal.provider(() => {
     const composer = column?.querySelector(".composer-lane");
     if (composer) observer.observe(composer);
     window.addEventListener("resize", measure);
-    onCleanup(() => {
+    return () => {
       observer.disconnect();
       window.removeEventListener("resize", measure);
-    });
+    };
   });
   let drag: { pointerId: number; startY: number; startHeight: number } | null = null;
   const onResizeDown = (event: PointerEvent & { currentTarget: HTMLElement }) => {
@@ -456,7 +456,7 @@ const ShellPane = TerminalShell.provider(
     };
     const [results, setResults] = createSignal<{ Index: number; Count: number } | null>(null);
     const [host, setHost] = createSignal<HTMLDivElement>();
-    createEffect(() => {
+    createTrackedEffect(() => {
       const view = live.value();
       const element = host();
       if (view === undefined || element === undefined) return;
@@ -470,7 +470,7 @@ const ShellPane = TerminalShell.provider(
         }),
       );
     });
-    createEffect(() => {
+    createTrackedEffect(() => {
       if (props.finding) return;
       untrack(() => live.value())?.clearFind();
       setResults(null);

@@ -3,13 +3,13 @@ import type { KeybindingCommand } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useDispatch } from "treflex-solid";
 import {
-  createEffect,
   createMemo,
   createSignal,
   For,
   Match,
+  createTrackedEffect,
   onCleanup,
-  onMount,
+  onSettled,
   Show,
   Switch,
 } from "solid-js";
@@ -106,7 +106,7 @@ const EnvironmentView = Environment.provider(() => {
     },
   );
   // Follows appInit.tsx: styles.css sizes --chat-content-max-width from this attribute.
-  createEffect(() => {
+  createTrackedEffect(() => {
     document.documentElement.dataset.chatWidth =
       environment.state.Local.ClientSettings?.chatWidth ?? "comfortable";
   });
@@ -120,10 +120,10 @@ const EnvironmentView = Environment.provider(() => {
     const view = palette();
     return view === null ? null : { View: view };
   });
-  const paletteSessions = createMemo<ReadonlyArray<{ View: IPaletteView }>>((held) => {
+  const paletteSessions = createMemo<ReadonlyArray<{ View: IPaletteView }>>((held = []) => {
     const session = paletteSession();
     return session === null || held.includes(session) ? held : [...held.slice(-1), session];
-  }, []);
+  });
   // The on-screen keyboard would cover a phone's thread, so the sheet layout leaves focus alone.
   const focusComposer = () => {
     if (sidebar.sheet()) return;
@@ -306,17 +306,19 @@ const EnvironmentView = Environment.provider(() => {
   };
   return (
     <div
-      class="layout fixed inset-x-0 top-[var(--viewport-top,0)] max-sm:[--workspace-titlebar-control-size:--spacing(8)] grid h-[var(--viewport-height,100%)] grid-cols-[calc(var(--sidebar-width)+env(safe-area-inset-left))_minmax(0,1fr)] pt-[env(safe-area-inset-top)] [&:is(.sidebar-sheet,.sidebar-collapsed)]:grid-cols-[minmax(0,1fr)]"
+      class={[
+        "layout fixed inset-x-0 top-[var(--viewport-top,0)] max-sm:[--workspace-titlebar-control-size:--spacing(8)] grid h-[var(--viewport-height,100%)] grid-cols-[calc(var(--sidebar-width)+env(safe-area-inset-left))_minmax(0,1fr)] pt-[env(safe-area-inset-top)] [&:is(.sidebar-sheet,.sidebar-collapsed)]:grid-cols-[minmax(0,1fr)]",
+        {
+          "sidebar-sheet": sidebar.sheet(),
+          "sidebar-open": sidebar.open(),
+          "sidebar-collapsed": sidebar.collapsed(),
+        },
+      ]}
       style={{ "--sidebar-width": `${sidebarWidth()}px` }}
-      classList={{
-        "sidebar-sheet": sidebar.sheet(),
-        "sidebar-open": sidebar.open(),
-        "sidebar-collapsed": sidebar.collapsed(),
-      }}
     >
-      <SidebarSheetContext.Provider value={sidebar}>
-        <OverlayContext.Provider value={overlays}>
-          <NavigationContext.Provider value={navigation}>
+      <SidebarSheetContext value={sidebar}>
+        <OverlayContext value={overlays}>
+          <NavigationContext value={navigation}>
             <Presence when={sidebar.open()}>
               {() => (
                 <SheetBackdrop ref={usePresence().track} onClick={() => sidebar.setOpen(false)} />
@@ -351,9 +353,9 @@ const EnvironmentView = Environment.provider(() => {
                 </Presence>
               )}
             </For>
-          </NavigationContext.Provider>
-        </OverlayContext.Provider>
-      </SidebarSheetContext.Provider>
+          </NavigationContext>
+        </OverlayContext>
+      </SidebarSheetContext>
     </div>
   );
 });
@@ -411,7 +413,7 @@ const EnvironmentMain = Dictation.provider(() => {
 
 export const App = Root.provider(() => {
   const root = Root.use();
-  onMount(() => trackVisualViewport(document.documentElement));
+  onSettled(() => trackVisualViewport(document.documentElement));
   const activeThread = createMemo(() => {
     const environment = root.state.Environments.find((entry) => entry.Local.SelectedThreadId);
     const threadId = environment?.Local.SelectedThreadId;

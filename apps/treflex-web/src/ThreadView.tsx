@@ -1,17 +1,16 @@
 import { sideThreadComposer, sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
 import { useDispatch, useInFlight, useResource } from "treflex-solid";
+import type { JSX } from "@solidjs/web";
 import {
-  createComputed,
   createEffect,
   createMemo,
+  createRenderEffect,
   createSignal,
+  createTrackedEffect,
   For,
-  type JSX,
   lazy,
   Match,
-  on,
-  onCleanup,
-  onMount,
+  onSettled,
   Show,
   Switch,
   untrack,
@@ -132,7 +131,7 @@ function TimelineSentinel(props: {
   onFocus: (forward: boolean) => void;
 }) {
   const [sentinel, setSentinel] = createSignal<HTMLButtonElement>();
-  onMount(() => {
+  onSettled(() => {
     const element = sentinel();
     if (element === undefined) return;
     const observer = new IntersectionObserver(
@@ -147,7 +146,7 @@ function TimelineSentinel(props: {
       { root: props.root, rootMargin: "800px 0px 0px 0px" },
     );
     observer.observe(element);
-    onCleanup(() => observer.disconnect());
+    return () => observer.disconnect();
   });
   return (
     <button
@@ -255,13 +254,11 @@ const ThreadConversation = ThreadSession.provider<{
   const statusRows = createMemo(() => checklistRows(checklist()));
   // The status band sits outside the lane's box, so the lane's observer misses its resize.
   createEffect(
-    on(
-      statusRows,
-      () => {
-        if (untrack(stuck)) scrollToEnd();
-      },
-      { defer: true },
-    ),
+    statusRows,
+    () => {
+      if (untrack(stuck)) scrollToEnd();
+    },
+    { defer: true },
   );
   const onComposerSend = () => {
     release();
@@ -311,8 +308,7 @@ const ThreadConversation = ThreadSession.provider<{
     First: 0,
     Floor: INITIAL_ROWS,
   });
-  createComputed(() => {
-    const ids = thread.timelineIds();
+  createRenderEffect(thread.timelineIds, (ids) => {
     const held = untrack(timeline);
     const moved = firstAfterChange(held.Ids, ids, held.First, saved?.RowId ?? null);
     const isStuck = untrack(stuck);
@@ -401,7 +397,7 @@ const ThreadConversation = ThreadSession.provider<{
     restoring = false;
     holding = null;
   };
-  createEffect(() => {
+  createTrackedEffect(() => {
     if (!restoring || saved === null) return;
     const ids = timeline().Ids;
     if (responses()?.Starts.includes(saved.RowId)) {
@@ -417,7 +413,7 @@ const ThreadConversation = ThreadSession.provider<{
       scrollToEnd();
     }
   });
-  onMount(() => {
+  onSettled(() => {
     const observer = new ResizeObserver(() => {
       if (stuck()) scrollToEnd();
       else putBack();
@@ -435,11 +431,11 @@ const ThreadConversation = ThreadSession.provider<{
       if (stuck()) scrollToEnd();
     });
     stageObserver.observe(stage);
-    onCleanup(() => {
+    return () => {
       observer.disconnect();
       laneObserver.disconnect();
       stageObserver.disconnect();
-    });
+    };
   });
   return (
     <>
@@ -450,8 +446,7 @@ const ThreadConversation = ThreadSession.provider<{
         <p class={NOTICE}>Can't load this thread right now. Retrying.</p>
       </Show>
       <div
-        class={CHAT_STAGE}
-        classList={props.stageClass}
+        class={[CHAT_STAGE, props.stageClass]}
         data-checklist={checklist() === null ? undefined : ""}
         ref={stage}
         style={{ "--checklist-rows": statusRows(), ...props.stageStyle }}
@@ -474,7 +469,7 @@ const ThreadConversation = ThreadSession.provider<{
           ref={scroller}
           data-timeline
           data-tip-scroll-dismiss
-          tabIndex={-1}
+          tabindex={-1}
           onScroll={() => {
             if (holding !== null) {
               lastPosition = position();
@@ -654,7 +649,9 @@ const ThreadBody = ThreadSession.provider(() => {
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
   const [panelMotion, setPanelMotion] = createSignal(false);
   // Late, so panels already open on a thread switch don't slide in again.
-  onMount(() => requestAnimationFrame(() => requestAnimationFrame(() => setPanelMotion(true))));
+  onSettled(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => setPanelMotion(true)));
+  });
   const closeTopSheet = () =>
     rightPanelOpen() ? void session.closeRightPanel() : onTerminal(closeTerminal);
   const [stageSize, setStageSize] = createSignal({ Width: 0, Height: 0 });
@@ -734,7 +731,7 @@ const ThreadBody = ThreadSession.provider(() => {
     },
   ];
   return (
-    <div class="relative flex h-full" classList={{ "panel-motion": panelMotion() }}>
+    <div class={["relative flex h-full", { "panel-motion": panelMotion() }]}>
       <Show when={panelSheet() && (rightPanelOpen() || terminalOpen())}>
         <SheetBackdrop contained ref={enterPanel} onClick={closeTopSheet} />
       </Show>

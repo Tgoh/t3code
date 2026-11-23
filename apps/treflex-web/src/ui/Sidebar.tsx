@@ -1,4 +1,5 @@
-import { children, type JSX, Show, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { children, omit, Show } from "solid-js";
 
 import { Input, type InputProps } from "./Input";
 import { ScrollArea } from "./ScrollArea";
@@ -9,8 +10,10 @@ const join = (...classes: (string | false | undefined)[]) => classes.filter(Bool
  * Stock's resizable rail on an open sidebar. Its `group-data-*` classes key on stock's sidebar
  * root, which treflex doesn't have; the caller positions it and unmounts it while collapsed.
  */
-export function SidebarRail(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+export function SidebarRail(
+  props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { class?: string },
+) {
+  const rest = omit(props, "class");
   return (
     <button
       aria-label="Resize Sidebar"
@@ -18,7 +21,7 @@ export function SidebarRail(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) 
       data-tip-side="right"
       data-sidebar="rail"
       data-slot="sidebar-rail"
-      tabIndex={-1}
+      tabindex={-1}
       type="button"
       {...rest}
       class={join(
@@ -29,14 +32,14 @@ export function SidebarRail(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) 
         "group-data-[collapsible=offcanvas]:translate-x-0 hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:after:left-full",
         "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
         "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
-        local.class,
+        props.class,
       )}
     />
   );
 }
 
-export function SidebarFooter(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+export function SidebarFooter(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
   return (
     <div
       data-sidebar="footer"
@@ -44,17 +47,17 @@ export function SidebarFooter(props: JSX.HTMLAttributes<HTMLDivElement>) {
       {...rest}
       class={join(
         "flex flex-col gap-2 px-[var(--sidebar-content-inset)] pt-1 pb-[var(--sidebar-content-inset)]",
-        local.class,
+        props.class,
       )}
     />
   );
 }
 
 export function SidebarContent(
-  props: JSX.HTMLAttributes<HTMLDivElement> & { fixedHeader?: JSX.Element },
+  props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string; fixedHeader?: JSX.Element },
 ) {
-  const [local, rest] = splitProps(props, ["class", "fixedHeader"]);
-  const header = children(() => local.fixedHeader);
+  const rest = omit(props, "class", "fixedHeader");
+  const header = children(() => props.fixedHeader);
   return (
     <>
       <Show when={header()}>
@@ -74,7 +77,7 @@ export function SidebarContent(
           class={join(
             "flex w-full min-w-0 flex-col [overflow-anchor:none] group-data-[collapsible=icon]:overflow-hidden [&>[data-sidebar=group]+[data-sidebar=group]]:pt-0",
             header() !== undefined && "[&>[data-sidebar=group]:first-child]:pt-0",
-            local.class,
+            props.class,
           )}
         />
       </ScrollArea>
@@ -82,8 +85,8 @@ export function SidebarContent(
   );
 }
 
-export function SidebarGroup(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+export function SidebarGroup(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
   return (
     <div
       data-sidebar="group"
@@ -91,7 +94,7 @@ export function SidebarGroup(props: JSX.HTMLAttributes<HTMLDivElement>) {
       {...rest}
       class={join(
         "relative flex w-full min-w-0 flex-col p-[var(--sidebar-content-inset)]",
-        local.class,
+        props.class,
       )}
     />
   );
@@ -100,9 +103,12 @@ export function SidebarGroup(props: JSX.HTMLAttributes<HTMLDivElement>) {
 const MENU_LAYOUTS = { default: "flex-col", row: "flex-row items-center" };
 
 export function SidebarMenu(
-  props: JSX.HTMLAttributes<HTMLUListElement> & { layout?: keyof typeof MENU_LAYOUTS },
+  props: JSX.HTMLAttributes<HTMLUListElement> & {
+    class?: string;
+    layout?: keyof typeof MENU_LAYOUTS;
+  },
 ) {
-  const [local, rest] = splitProps(props, ["class", "layout"]);
+  const rest = omit(props, "class", "layout");
   return (
     <ul
       data-sidebar="menu"
@@ -110,21 +116,21 @@ export function SidebarMenu(
       {...rest}
       class={join(
         "flex w-full min-w-0 gap-1",
-        MENU_LAYOUTS[local.layout ?? "default"],
-        local.class,
+        MENU_LAYOUTS[props.layout ?? "default"],
+        props.class,
       )}
     />
   );
 }
 
-export function SidebarMenuItem(props: JSX.LiHTMLAttributes<HTMLLIElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+export function SidebarMenuItem(props: JSX.LiHTMLAttributes<HTMLLIElement> & { class?: string }) {
+  const rest = omit(props, "class");
   return (
     <li
       data-sidebar="menu-item"
       data-slot="sidebar-menu-item"
       {...rest}
-      class={join("group/menu-item relative", local.class)}
+      class={join("group/menu-item relative", props.class)}
     />
   );
 }
@@ -193,37 +199,38 @@ function sidebarMenuButtonVariants(
 
 export function SidebarMenuButton(
   props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+    class?: string;
     variant?: keyof typeof VARIANTS;
     size?: SidebarMenuButtonSize;
     isActive?: boolean;
   },
 ) {
-  const [local, rest] = splitProps(props, ["variant", "size", "isActive", "class"]);
+  const rest = omit(props, "variant", "size", "isActive", "class");
   return (
     <button
       type="button"
-      data-active={local.isActive === true ? "true" : "false"}
+      data-active={props.isActive === true ? "true" : "false"}
       data-sidebar="menu-button"
-      data-size={local.size ?? "default"}
+      data-size={props.size ?? "default"}
       data-slot="sidebar-menu-button"
       {...rest}
       class={sidebarMenuButtonVariants({
-        variant: local.variant,
-        size: local.size,
-        class: local.class,
+        variant: props.variant,
+        size: props.size,
+        class: props.class,
       })}
     />
   );
 }
 
 export function SidebarInput(props: Omit<InputProps, "unstyled">) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const rest = omit(props, "class");
   return (
     <Input
       {...rest}
       class={[
         "[&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground",
-        local.class,
+        props.class,
       ]
         .filter(Boolean)
         .join(" ")}

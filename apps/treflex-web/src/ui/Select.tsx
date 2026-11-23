@@ -1,17 +1,16 @@
 // @effect-diagnostics globalTimers:off -- View-only scroll-arrow and selection timing, outside any Effect runtime.
+import { type JSX, Portal } from "@solidjs/web";
 import {
   type Accessor,
   createContext,
   createSignal,
   createUniqueId,
-  type JSX,
+  omit,
   onCleanup,
-  onMount,
+  onSettled,
   Show,
-  splitProps,
   useContext,
 } from "solid-js";
-import { Portal } from "solid-js/web";
 
 import { ChevronDown, ChevronUp } from "../icons";
 import { backdropStyle, createPopup, type IAlign, type ISide } from "./floating";
@@ -177,7 +176,7 @@ export function Select(props: {
     setShadow: (element) => setShadow(() => element),
     listId: createUniqueId(),
   };
-  return <RootContext.Provider value={root}>{props.children}</RootContext.Provider>;
+  return <RootContext value={root}>{props.children}</RootContext>;
 }
 
 function triggerHandlers(root: IRoot) {
@@ -269,19 +268,19 @@ export function SelectTrigger(
   },
 ) {
   const root = useRoot();
-  const [local, rest] = splitProps(props, ["variant", "size", "class", "children"]);
+  const rest = omit(props, "variant", "size", "class", "children");
   const handlers = triggerHandlers(root);
   return (
     <button
       type="button"
       {...rest}
       ref={(held) => root.setTrigger(held)}
-      class={triggerClass(local.variant ?? "default", local.size ?? "default", local.class)}
+      class={triggerClass(props.variant ?? "default", props.size ?? "default", props.class)}
       role="combobox"
       aria-haspopup="listbox"
       aria-expanded="false"
       disabled={root.disabled()}
-      tabIndex={root.disabled() ? -1 : 0}
+      tabindex={root.disabled() ? -1 : 0}
       data-disabled={flag(root.disabled())}
       data-placeholder={flag(root.value() === null)}
       data-slot="select-trigger"
@@ -292,7 +291,7 @@ export function SelectTrigger(
       onClick={handlers.onClick}
       onKeyDown={handlers.onKeyDown}
     >
-      {local.children}
+      {props.children}
       <span aria-hidden="true" data-slot="select-icon">
         <ChevronDown class={ICON} />
       </span>
@@ -424,7 +423,7 @@ function selectSurface(root: IRoot, props: IPopupProps & { trigger: HTMLButtonEl
       requestAnimationFrame(() => target.scrollIntoView({ block: "nearest" }));
     },
   });
-  onMount(() => {
+  onSettled(() => {
     if (list !== undefined) props.trigger.setAttribute("aria-controls", list.id);
   });
 
@@ -585,7 +584,7 @@ function SelectSurface(props: IPopupProps & { trigger: HTMLButtonElement }) {
           ref={(held) => surface.popup(held)}
           class={POPUP}
           role="presentation"
-          tabIndex={-1}
+          tabindex={-1}
           data-slot="select-popup"
           onKeyDown={surface.onKeyDown}
           onPointerMove={surface.onPointerMove}
@@ -614,9 +613,7 @@ function SelectSurface(props: IPopupProps & { trigger: HTMLButtonElement }) {
               data-slot="select-list"
               onScroll={surface.updateArrows}
             >
-              <ItemHostContext.Provider value={surface.host}>
-                {props.children}
-              </ItemHostContext.Provider>
+              <ItemHostContext value={surface.host}>{props.children}</ItemHostContext>
             </div>
           </div>
           <Show when={surface.scrollDown()}>
@@ -680,8 +677,8 @@ export function SelectItem(props: { value: string; disabled?: boolean; children:
       ref={(element) => itemValues.set(element, props.value)}
       class={ITEM}
       role="option"
-      tabIndex={-1}
-      aria-selected={selected()}
+      tabindex={-1}
+      aria-selected={selected() ? "true" : "false"}
       aria-disabled={props.disabled === true ? "true" : undefined}
       data-selected={flag(selected())}
       data-disabled={flag(props.disabled)}

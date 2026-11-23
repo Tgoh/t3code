@@ -1,4 +1,5 @@
-import { type JSX, Show, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit, Show } from "solid-js";
 
 const SIZES = {
   compact:
@@ -24,49 +25,56 @@ const ICON_DECORATION = MEDIA_VARIANTS.icon
 
 const join = (...classes: (string | undefined)[]) => classes.filter(Boolean).join(" ");
 
-export function Empty(props: JSX.HTMLAttributes<HTMLDivElement> & { size?: keyof typeof SIZES }) {
-  const [local, rest] = splitProps(props, ["size", "class"]);
+export function Empty(
+  props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string; size?: keyof typeof SIZES },
+) {
+  const rest = omit(props, "size", "class");
   return (
     <div
       data-slot="empty"
       {...rest}
       class={join(
         "flex min-w-0 flex-1 flex-col items-center justify-center text-balance text-center",
-        SIZES[local.size ?? "default"],
-        local.class,
+        SIZES[props.size ?? "default"],
+        props.class,
       )}
     />
   );
 }
 
-export function EmptyHeader(props: JSX.HTMLAttributes<HTMLDivElement> & { wide?: boolean }) {
-  const [local, rest] = splitProps(props, ["wide", "class"]);
+export function EmptyHeader(
+  props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string; wide?: boolean },
+) {
+  const rest = omit(props, "wide", "class");
   return (
     <div
       data-slot="empty-header"
       {...rest}
       class={join(
         "flex flex-col items-center text-center",
-        local.wide ? "max-w-none" : "max-w-sm",
-        local.class,
+        props.wide ? "max-w-none" : "max-w-sm",
+        props.class,
       )}
     />
   );
 }
 
 export function EmptyMedia(
-  props: JSX.HTMLAttributes<HTMLDivElement> & { variant?: keyof typeof MEDIA_VARIANTS },
+  props: JSX.HTMLAttributes<HTMLDivElement> & {
+    class?: string;
+    variant?: keyof typeof MEDIA_VARIANTS;
+  },
 ) {
-  const [local, rest] = splitProps(props, ["variant", "class", "children"]);
-  const variant = () => local.variant ?? "default";
-  const media = () => join(MEDIA_BASE, MEDIA_VARIANTS[variant()], local.class);
-  const decoration = (extra: string) => join(MEDIA_BASE, ICON_DECORATION, local.class, extra);
+  const rest = omit(props, "variant", "class", "children");
+  const variant = () => props.variant ?? "default";
+  const media = () => join(MEDIA_BASE, MEDIA_VARIANTS[variant()], props.class);
+  const decoration = (extra: string) => join(MEDIA_BASE, ICON_DECORATION, props.class, extra);
   return (
     <div
       data-slot="empty-media"
       data-variant={variant()}
       {...rest}
-      class={join("relative mb-6", local.class)}
+      class={join("relative mb-6", props.class)}
     >
       <Show when={variant() === "icon"}>
         <div
@@ -82,41 +90,41 @@ export function EmptyMedia(
           )}
         />
       </Show>
-      <div class={media()}>{local.children}</div>
+      <div class={media()}>{props.children}</div>
     </div>
   );
 }
 
-export function EmptyTitle(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+export function EmptyTitle(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
   return (
-    <div data-slot="empty-title" {...rest} class={join("font-semibold text-xl", local.class)} />
+    <div data-slot="empty-title" {...rest} class={join("font-semibold text-xl", props.class)} />
   );
 }
 
-export function EmptyDescription(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+export function EmptyDescription(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
   return (
     <div
       data-slot="empty-description"
       {...rest}
       class={join(
         "text-muted-foreground text-sm [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4 [[data-slot=empty-title]+&]:mt-1 [[data-slot=empty-description]+&]:mt-1",
-        local.class,
+        props.class,
       )}
     />
   );
 }
 
-export function EmptyContent(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+export function EmptyContent(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
   return (
     <div
       data-slot="empty-content"
       {...rest}
       class={join(
         "flex w-full min-w-0 max-w-sm flex-col items-center gap-4 text-balance text-sm",
-        local.class,
+        props.class,
       )}
     />
   );

@@ -1,15 +1,14 @@
 // @effect-diagnostics globalTimers:off -- View-only hover delays, outside any Effect runtime.
+import { type JSX, Portal } from "@solidjs/web";
 import {
   type Accessor,
   createContext,
   createSignal,
-  type JSX,
+  omit,
   onCleanup,
   Show,
-  splitProps,
   useContext,
 } from "solid-js";
-import { Portal } from "solid-js/web";
 
 import { Check, ChevronRight } from "../icons";
 import type { ICloseReason } from "../overlays";
@@ -298,7 +297,7 @@ function menuNavigation(props: ISurface) {
 function MenuSurface(props: ISurface & { children: JSX.Element }) {
   const navigation = menuNavigation(props);
   return (
-    <MenuContext.Provider value={navigation.level}>
+    <MenuContext value={navigation.level}>
       <Portal>
         <Show when={props.sub === undefined && !isContextMenu(props)}>
           <div
@@ -319,7 +318,7 @@ function MenuSurface(props: ISurface & { children: JSX.Element }) {
             ref={(held) => navigation.popup(held)}
             class={`${POPUP} ${POPUP_WIDTH[props.width]} ${props.class ?? ""}`}
             role="menu"
-            tabIndex={-1}
+            tabindex={-1}
             aria-label={props.label}
             aria-labelledby={navigation.labelledBy()}
             data-slot={props.slot}
@@ -335,7 +334,7 @@ function MenuSurface(props: ISurface & { children: JSX.Element }) {
           </div>
         </div>
       </Portal>
-    </MenuContext.Provider>
+    </MenuContext>
   );
 }
 
@@ -362,7 +361,8 @@ type IPopupProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, "class" | "children"
  * it in a `Presence` so it plays its exit.
  */
 export function MenuPopup(props: IPopupProps) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "anchor",
     "trigger",
     "label",
@@ -374,29 +374,29 @@ export function MenuPopup(props: IPopupProps) {
     "width",
     "class",
     "children",
-  ]);
-  const anchor = local.anchor;
-  const trigger = local.trigger ?? (anchor instanceof HTMLElement ? anchor : null);
+  );
+  const anchor = props.anchor;
+  const trigger = props.trigger ?? (anchor instanceof HTMLElement ? anchor : null);
   return (
     <MenuSurface
       anchor={anchor}
       trigger={trigger}
       placement={{
-        side: local.side ?? "bottom",
-        align: local.align ?? "center",
-        sideOffset: local.sideOffset ?? 4,
-        alignOffset: local.alignOffset ?? 0,
+        side: props.side ?? "bottom",
+        align: props.align ?? "center",
+        sideOffset: props.sideOffset ?? 4,
+        alignOffset: props.alignOffset ?? 0,
         collisionAvoidance: { fallbackAxisSide: "none" },
       }}
-      label={local.label}
-      width={local.width ?? "default"}
-      class={local.class}
+      label={props.label}
+      width={props.width ?? "default"}
+      class={props.class}
       slot="menu-popup"
-      onClose={() => local.onClose()}
+      onClose={() => props.onClose()}
       highlight={pendingHighlight ?? (trigger?.matches(":focus-visible") === true ? "first" : null)}
       rest={rest}
     >
-      {local.children}
+      {props.children}
     </MenuSurface>
   );
 }
@@ -451,10 +451,10 @@ export function MenuItem(
     children: JSX.Element;
   },
 ) {
-  const [local, item, rest] = splitProps(props, ["variant", "density", "inset"], ITEM_KEYS);
-  const activate = useActivate(item, true);
-  const variant = () => local.variant ?? "default";
-  const density = () => local.density ?? "default";
+  const rest = omit(props, "variant", "density", "inset", ...ITEM_KEYS);
+  const activate = useActivate(props, true);
+  const variant = () => props.variant ?? "default";
+  const density = () => props.density ?? "default";
   const height = () =>
     density() === "touch"
       ? ITEM_HEIGHT.touch
@@ -464,19 +464,19 @@ export function MenuItem(
   return (
     <div
       {...rest}
-      tabIndex={-1}
-      aria-disabled={disabledFlag(item)}
-      data-disabled={flag(item.disabled)}
-      data-label={item.label}
+      tabindex={-1}
+      aria-disabled={disabledFlag(props)}
+      data-disabled={flag(props.disabled)}
+      data-label={props.label}
       onClick={activate}
       role="menuitem"
       class={`${variant() === "ghost" ? GHOST_ITEM : `${ITEM} ${ITEM_SVG}`} ${height()}`}
       data-density={density()}
-      data-inset={flag(local.inset)}
+      data-inset={flag(props.inset)}
       data-slot="menu-item"
       data-variant={variant()}
     >
-      {item.children}
+      {props.children}
     </div>
   );
 }
@@ -523,25 +523,21 @@ export function MenuCheckboxItem(
     children: JSX.Element;
   },
 ) {
-  const [local, item, rest] = splitProps(
-    props,
-    ["checked", "onCheckedChange", "variant"],
-    ITEM_KEYS,
-  );
-  const activate = useActivate(item, false, () => local.onCheckedChange?.(!local.checked));
-  const variant = () => local.variant ?? "default";
+  const rest = omit(props, "checked", "onCheckedChange", "variant", ...ITEM_KEYS);
+  const activate = useActivate(props, false, () => props.onCheckedChange?.(!props.checked));
+  const variant = () => props.variant ?? "default";
   return (
     <div
       {...rest}
-      tabIndex={-1}
-      aria-disabled={disabledFlag(item)}
-      data-disabled={flag(item.disabled)}
-      data-label={item.label}
-      data-checked={flag(local.checked)}
-      data-unchecked={flag(!local.checked)}
+      tabindex={-1}
+      aria-disabled={disabledFlag(props)}
+      data-disabled={flag(props.disabled)}
+      data-label={props.label}
+      data-checked={flag(props.checked)}
+      data-unchecked={flag(!props.checked)}
       onClick={activate}
       role="menuitemcheckbox"
-      aria-checked={local.checked}
+      aria-checked={props.checked ? "true" : "false"}
       class={`${CHECKBOX_ITEM} ${CHECKBOX_VARIANT[variant()]}`}
       data-slot="menu-checkbox-item"
     >
@@ -549,7 +545,7 @@ export function MenuCheckboxItem(
         when={variant() === "switch"}
         fallback={
           <>
-            <Show when={local.checked}>
+            <Show when={props.checked}>
               <span
                 class={variant() === "icon" ? "col-start-1 -mx-0.5" : "col-start-1"}
                 data-checked=""
@@ -570,16 +566,16 @@ export function MenuCheckboxItem(
                 </svg>
               </span>
             </Show>
-            <span class="col-start-2">{item.children}</span>
+            <span class="col-start-2">{props.children}</span>
           </>
         }
       >
-        <span class="col-start-1">{item.children}</span>
+        <span class="col-start-1">{props.children}</span>
         <span
           class={SWITCH_TRACK}
-          data-checked={flag(local.checked)}
-          data-unchecked={flag(!local.checked)}
-          data-disabled={flag(item.disabled)}
+          data-checked={flag(props.checked)}
+          data-unchecked={flag(!props.checked)}
+          data-disabled={flag(props.disabled)}
         >
           <span class={SWITCH_THUMB} />
         </span>
@@ -604,7 +600,7 @@ export function MenuRadioGroup(props: {
   children: JSX.Element;
 }) {
   return (
-    <RadioContext.Provider
+    <RadioContext
       value={{ value: () => props.value, onValueChange: (value) => props.onValueChange(value) }}
     >
       <div
@@ -616,7 +612,7 @@ export function MenuRadioGroup(props: {
       >
         {props.children}
       </div>
-    </RadioContext.Provider>
+    </RadioContext>
   );
 }
 
@@ -632,31 +628,31 @@ export function MenuRadioItem(
   },
 ) {
   const group = useContext(RadioContext);
-  const [local, item, rest] = splitProps(props, ["value", "class"], ITEM_KEYS);
-  const checked = () => group?.value() === local.value;
-  const activate = useActivate(item, false, () => {
-    if (!checked()) group?.onValueChange(local.value);
+  const rest = omit(props, "value", "class", ...ITEM_KEYS);
+  const checked = () => group?.value() === props.value;
+  const activate = useActivate(props, false, () => {
+    if (!checked()) group?.onValueChange(props.value);
   });
   return (
     <div
       {...rest}
-      tabIndex={-1}
-      aria-disabled={disabledFlag(item)}
-      data-disabled={flag(item.disabled)}
-      data-label={item.label}
+      tabindex={-1}
+      aria-disabled={disabledFlag(props)}
+      data-disabled={flag(props.disabled)}
+      data-label={props.label}
       onClick={activate}
       role="menuitemradio"
-      aria-checked={checked()}
-      class={local.class ?? RADIO_ITEM}
+      aria-checked={checked() ? "true" : "false"}
+      class={props.class ?? RADIO_ITEM}
       data-checked={flag(checked())}
       data-unchecked={flag(!checked())}
       data-slot="menu-radio-item"
     >
-      <RadioItemContext.Provider value={checked}>
-        <Show when={local.class === undefined} fallback={item.children}>
-          <span class="min-w-0 flex-1">{item.children}</span>
+      <RadioItemContext value={checked}>
+        <Show when={props.class === undefined} fallback={props.children}>
+          <span class="min-w-0 flex-1">{props.children}</span>
         </Show>
-      </RadioItemContext.Provider>
+      </RadioItemContext>
     </div>
   );
 }
@@ -698,9 +694,7 @@ export function MenuSub(props: { children: JSX.Element }) {
   const [open, setOpen] = createSignal<IOpenedBy | null>(null);
   const [trigger, setTrigger] = createSignal<HTMLElement>();
   return (
-    <SubContext.Provider value={{ open, setOpen, trigger, setTrigger, parent }}>
-      {props.children}
-    </SubContext.Provider>
+    <SubContext value={{ open, setOpen, trigger, setTrigger, parent }}>{props.children}</SubContext>
   );
 }
 
@@ -729,9 +723,9 @@ export function MenuSubTrigger(props: {
     <div
       ref={(held) => sub.setTrigger(held)}
       role="menuitem"
-      tabIndex={-1}
+      tabindex={-1}
       aria-haspopup="menu"
-      aria-expanded={sub.open() !== null}
+      aria-expanded={sub.open() !== null ? "true" : "false"}
       aria-disabled={props.disabled === true ? "true" : undefined}
       class={`${SUB_TRIGGER} ${props.density === "touch" ? ITEM_HEIGHT.touch : ITEM_HEIGHT.default}`}
       data-density={props.density ?? "default"}

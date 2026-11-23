@@ -1,12 +1,11 @@
+import type { JSX } from "@solidjs/web";
 import {
   createContext,
   createRenderEffect,
   createSignal,
   createUniqueId,
-  type JSX,
-  on,
+  omit,
   Show,
-  splitProps,
   useContext,
 } from "solid-js";
 
@@ -32,36 +31,36 @@ export function Collapsible(
     onOpenChange: (open: boolean) => void;
   },
 ) {
-  const [local, rest] = splitProps(props, ["open", "onOpenChange"]);
+  const rest = omit(props, "open", "onOpenChange");
   const context: ICollapsible = {
-    open: () => local.open,
-    setOpen: (open) => local.onOpenChange(open),
+    open: () => props.open,
+    setOpen: (open) => props.onOpenChange(open),
     panelId: createUniqueId(),
   };
   return (
-    <CollapsibleContext.Provider value={context}>
+    <CollapsibleContext value={context}>
       <div
         data-slot="collapsible"
-        data-open={local.open ? "" : undefined}
-        data-closed={local.open ? undefined : ""}
+        data-open={props.open ? "" : undefined}
+        data-closed={props.open ? undefined : ""}
         {...rest}
       />
-    </CollapsibleContext.Provider>
+    </CollapsibleContext>
   );
 }
 
 export function CollapsibleTrigger(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
   const collapsible = useCollapsible();
-  const [local, rest] = splitProps(props, ["class"]);
+  const rest = omit(props, "class");
   return (
     <button
       type="button"
       data-slot="collapsible-trigger"
       {...rest}
-      aria-expanded={collapsible.open()}
+      aria-expanded={collapsible.open() ? "true" : "false"}
       aria-controls={collapsible.open() ? collapsible.panelId : undefined}
       data-panel-open={collapsible.open() ? "" : undefined}
-      class={["cursor-pointer", local.class].filter(Boolean).join(" ")}
+      class={["cursor-pointer", props.class].filter(Boolean).join(" ")}
       onClick={() => collapsible.setOpen(!collapsible.open())}
     />
   );
@@ -79,8 +78,8 @@ export function CollapsiblePanel(
   props: JSX.HTMLAttributes<HTMLDivElement> & { animate?: boolean },
 ) {
   const collapsible = useCollapsible();
-  const [local, rest] = splitProps(props, ["animate", "class", "children"]);
-  const animate = () => local.animate ?? true;
+  const rest = omit(props, "animate", "class", "children");
+  const animate = () => props.animate ?? true;
   const [mounted, setMounted] = createSignal(collapsible.open());
   const [starting, setStarting] = createSignal(false);
   const [ending, setEnding] = createSignal(false);
@@ -95,55 +94,53 @@ export function CollapsiblePanel(
     });
   };
   createRenderEffect(
-    on(
-      collapsible.open,
-      (open) => {
-        const run = ++generation;
-        if (!animate()) {
-          setMounted(open);
+    collapsible.open,
+    (open) => {
+      const run = ++generation;
+      if (!animate()) {
+        setMounted(open);
+        return;
+      }
+      if (open) {
+        if (ending()) {
+          setEnding(false);
+          after(run, () => setHeight("auto"));
           return;
         }
-        if (open) {
-          if (ending()) {
-            setEnding(false);
-            after(run, () => setHeight("auto"));
-            return;
-          }
-          setStarting(true);
-          setMounted(true);
-          queueMicrotask(() => {
-            const element = panel();
-            if (run !== generation || element === undefined) return;
-            // Reading the height also gives the panel its no-height starting style to move from.
-            setHeight(`${element.scrollHeight}px`);
-            requestAnimationFrame(() => {
-              if (run !== generation) return;
-              setStarting(false);
-              after(run, () => setHeight("auto"));
-            });
-          });
-          return;
-        }
-        const element = panel();
-        if (!mounted() || element === undefined) {
-          setMounted(false);
-          return;
-        }
-        setStarting(false);
-        setHeight(`${element.scrollHeight}px`);
+        setStarting(true);
+        setMounted(true);
         queueMicrotask(() => {
-          if (run !== generation) return;
-          // The measured height must be the transition's start, so it's applied before the ending style.
-          void element.offsetHeight;
-          setEnding(true);
-          after(run, () => {
-            setEnding(false);
-            setMounted(false);
+          const element = panel();
+          if (run !== generation || element === undefined) return;
+          // Reading the height also gives the panel its no-height starting style to move from.
+          setHeight(`${element.scrollHeight}px`);
+          requestAnimationFrame(() => {
+            if (run !== generation) return;
+            setStarting(false);
+            after(run, () => setHeight("auto"));
           });
         });
-      },
-      { defer: true },
-    ),
+        return;
+      }
+      const element = panel();
+      if (!mounted() || element === undefined) {
+        setMounted(false);
+        return;
+      }
+      setStarting(false);
+      setHeight(`${element.scrollHeight}px`);
+      queueMicrotask(() => {
+        if (run !== generation) return;
+        // The measured height must be the transition's start, so it's applied before the ending style.
+        void element.offsetHeight;
+        setEnding(true);
+        after(run, () => {
+          setEnding(false);
+          setMounted(false);
+        });
+      });
+    },
+    { defer: true },
   );
   return (
     <Show when={mounted()}>
@@ -161,12 +158,12 @@ export function CollapsiblePanel(
           "overflow-hidden",
           animate() &&
             "h-(--collapsible-panel-height) transition-[height] duration-200 motion-reduce:transition-none data-ending-style:h-0 data-starting-style:h-0 data-open:data-ending-style:[height:var(--collapsible-panel-height)]",
-          local.class,
+          props.class,
         ]
           .filter(Boolean)
           .join(" ")}
       >
-        {local.children}
+        {props.children}
       </div>
     </Show>
   );

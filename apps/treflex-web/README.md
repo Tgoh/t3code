@@ -20,7 +20,7 @@ Log gaps and problems in [docs/issues.md](./docs/issues.md).
 | Tests              | Headless, with a scripted server at the effect boundary                                                                                                                                          |
 | Terminal emulator  | `@xterm/xterm` with its fit and search addons, loaded on first open. Stock's libghostty WASM surface isn't reusable from a non-React app without its build and surface code                      |
 | Project order      | `localStorage`, like stock's `projectOrder` in `uiStateStore` and its `sidebarProjectSortOrder` client setting. Neither is on the server, so neither is shared with stock or other devices       |
-| Treflex dependency | `treflex` and `treflex-solid` 0.2.0 from npm, pinned to the exact version. `treflex-eslint` is a tarball in `vendor/`, installed with `file:`, since builds between releases aren't published    |
+| Treflex dependency | `treflex` and `treflex-solid` 0.3.0 from npm, pinned to the exact version. `treflex-eslint` is a tarball in `vendor/`, installed with `file:`, since builds between releases aren't published    |
 
 The server holds all the work, and the client receives its data and uses treflex for client state.
 
@@ -79,7 +79,7 @@ The minute clock isn't in the tree: it's the `Minute` outside value (`Infrastruc
 
 ## Reference code
 
-- **Treflex concepts:** in the reflex repo (`G:\Sorted\Code\reflex`), `docs\guide` in order, then `docs\patterns.md`, and `docs\reference` for the rules. Its `main` runs ahead of the release this client uses; `docs\wip\13-external\breaking-changes-since-0.2.0.md` lists what differs.
+- **Treflex concepts:** in the reflex repo (`G:\Sorted\Code\reflex`), `docs\guide` in order, then `docs\patterns.md`, and `docs\reference` for the rules. Its `docs\upgrading.md` lists what changes between releases.
 - **Conventions at scale:** `G:\Sorted\Code\solidportal\docs\exemplars.md` and `Concepts.md`.
 
 ## Logic copied from stock

@@ -2,8 +2,16 @@
 import type { ShownOrder } from "@t3tools/client-runtime/state/thread-search";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useResource } from "treflex-solid";
-import { createEffect, createMemo, createSignal, For, onCleanup, Show, splitProps } from "solid-js";
-import { Portal } from "solid-js/web";
+import { Portal } from "@solidjs/web";
+import {
+  createMemo,
+  createSignal,
+  createTrackedEffect,
+  For,
+  omit,
+  onCleanup,
+  Show,
+} from "solid-js";
 
 import { T3Mark } from "./brand";
 import Environment from "./Environment";
@@ -123,12 +131,12 @@ function SectionHeader(props: {
 }
 
 function SidebarHeaderButton(props: Parameters<typeof SidebarMenuButton>[0]) {
-  const [local, rest] = splitProps(props, ["children", "size"]);
+  const rest = omit(props, "children", "size");
   return (
-    <SidebarMenuButton size={local.size ?? "icon-sm"} class="relative shrink-0" {...rest}>
-      {local.children}
+    <SidebarMenuButton size={props.size ?? "icon-sm"} class="relative shrink-0" {...rest}>
+      {props.children}
       <span
-        aria-hidden
+        aria-hidden="true"
         class="pointer-events-none absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
       />
     </SidebarMenuButton>
@@ -152,7 +160,7 @@ export function SidebarToggle(props: { inSidebar?: boolean }) {
         aria-label="Toggle main sidebar"
         data-tip={withShortcut("Toggle sidebar", navigation.shortcut("sidebar.toggle"))}
         data-tip-side="bottom"
-        aria-expanded={sidebar.sheet() ? sidebar.open() : !sidebar.collapsed()}
+        aria-expanded={(sidebar.sheet() ? sidebar.open() : !sidebar.collapsed()) ? "true" : "false"}
         onClick={() => sidebar.toggle()}
       >
         <PanelLeft class="size-4" />
@@ -211,7 +219,7 @@ export const Sidebar = Shell.provider(() => {
       isBusy(sidebarStatus(thread, shell.subagentRequests()[thread.id])),
     ),
   );
-  createEffect(() => {
+  createTrackedEffect(() => {
     if (!anyWorking()) return;
     setSecond(Date.now());
     const ticking = setInterval(() => setSecond(Date.now()), SECOND);
@@ -561,7 +569,7 @@ export const Sidebar = Shell.provider(() => {
                       aria-label="Search threads"
                       role="combobox"
                       aria-autocomplete="list"
-                      aria-expanded={searching() && results().length > 0}
+                      aria-expanded={searching() && results().length > 0 ? "true" : "false"}
                       aria-controls={searching() ? "sidebar-search-results" : undefined}
                       aria-activedescendant={
                         searching() && results().length > 0
@@ -613,7 +621,7 @@ export const Sidebar = Shell.provider(() => {
                     <SidebarHeaderButton
                       aria-label="Add project"
                       data-tip="Add project"
-                      aria-pressed={navigation.palette() === "add-project"}
+                      aria-pressed={navigation.palette() === "add-project" ? "true" : "false"}
                       onClick={() => navigation.setPalette("add-project")}
                     >
                       <FolderPlus />
@@ -634,7 +642,7 @@ export const Sidebar = Shell.provider(() => {
                         size="icon-sm-narrow"
                         aria-label="New thread in project"
                         data-tip="New thread in project"
-                        aria-pressed={navigation.palette() === "new-thread-in"}
+                        aria-pressed={navigation.palette() === "new-thread-in" ? "true" : "false"}
                         onClick={() => navigation.setPalette("new-thread-in")}
                       >
                         <ChevronDown class="size-3.5" />

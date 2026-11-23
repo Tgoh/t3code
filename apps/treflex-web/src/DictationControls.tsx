@@ -2,7 +2,7 @@
 import { MICROPHONE_PERMISSION_ERROR } from "@t3tools/client-runtime/voice-input";
 import type { SpeechStreamText } from "@t3tools/contracts";
 import { useResource } from "treflex-solid";
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { createSignal, createTrackedEffect, For, onCleanup, Show } from "solid-js";
 
 import Dictation, { type IRecording, MISSING_MODEL, STALE_DRAFT } from "./Dictation";
 import Environment from "./Environment";
@@ -91,7 +91,7 @@ function Waveform() {
   const still = createMediaQuery("(prefers-reduced-motion: reduce)");
   const bars: HTMLSpanElement[] = [];
   const levels = BARS.map(() => 0);
-  createEffect(() => {
+  createTrackedEffect(() => {
     const value = live.value();
     if (value === undefined) return;
     const reduced = still();
@@ -259,7 +259,7 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
 export function DictationPreview() {
   const live = useLive();
   const [preview, setPreview] = createSignal<SpeechStreamText | null>(null);
-  createEffect(() => {
+  createTrackedEffect(() => {
     const value = live.value();
     if (value === undefined) return;
     setPreview(value.preview());

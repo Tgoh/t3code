@@ -4,7 +4,7 @@ import {
   type ProjectCloneSnapshot,
 } from "@t3tools/contracts";
 import { useInFlight, useResource } from "treflex-solid";
-import { createEffect, createMemo, onCleanup, Show } from "solid-js";
+import { createMemo, createTrackedEffect, onCleanup, Show } from "solid-js";
 
 import Environment, { cloneControl } from "./Environment";
 import { Download } from "./icons";
@@ -95,7 +95,7 @@ export function CloneToasts() {
       },
     });
   };
-  createEffect(() => {
+  createTrackedEffect(() => {
     const seen = new Set<string>();
     const viewed = viewedProject();
     for (const clone of clones.value() ?? []) {

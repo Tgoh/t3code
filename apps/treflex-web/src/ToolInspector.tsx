@@ -11,7 +11,8 @@ import {
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
-import { createEffect, createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createMemo, createSignal, createTrackedEffect, For, Show } from "solid-js";
 
 import { cachedHighlight, highlight } from "./codeHighlight";
 import { CommandOutput, ToolDetailNote } from "./CommandOutput";
@@ -44,7 +45,7 @@ function HighlightedText(props: { text: string; language: string }) {
     loads();
     return cachedHighlight(props.text, props.language, environment.colorScheme());
   });
-  createEffect(() => {
+  createTrackedEffect(() => {
     if (html() !== null) return;
     void highlight(props.text, props.language, environment.colorScheme()).then(
       () => setLoads((count) => count + 1),

@@ -1,6 +1,6 @@
 import { useComponentState } from "treflex-solid";
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic } from "@solidjs/web";
+import { createEffect, createMemo, createSignal, createTrackedEffect, For, Show } from "solid-js";
 
 import {
   fileItems,
@@ -23,7 +23,7 @@ const ICONS = { file: FileIcon, directory: Folder, command: null, skill: null };
 /** The `@`, `/` and `$` menu state for one composer, driven by its text and caret. */
 export function useComposerMenu(text: () => string, cursor: () => number) {
   const session = ThreadSession.use();
-  const trigger = createMemo(() => menuTrigger(text(), cursor()), undefined, {
+  const trigger = createMemo(() => menuTrigger(text(), cursor()), {
     equals: (left, right) =>
       left?.kind === right?.kind &&
       left?.query === right?.query &&
@@ -36,12 +36,10 @@ export function useComposerMenu(text: () => string, cursor: () => number) {
     const held = trigger();
     return held !== null && dismissedAt() !== held.rangeStart ? held : null;
   };
-  createEffect(
-    on(trigger, (held) => {
-      setHighlight(0);
-      if (held === null || held.rangeStart !== dismissedAt()) setDismissedAt(null);
-    }),
-  );
+  createEffect(trigger, (held) => {
+    setHighlight(0);
+    if (held === null || held.rangeStart !== dismissedAt()) setDismissedAt(null);
+  });
   const files = useComponentState<IFileSearch>(() => ({ Query: null, Root: null, Entries: [] }));
   const searching = () => {
     const held = open();
@@ -119,9 +117,9 @@ export function ComposerCommandMenu(props: {
                 return (
                   <CommandItem
                     active={active()}
-                    aria-selected={active()}
+                    aria-selected={active() ? "true" : "false"}
                     ref={(element) =>
-                      createEffect(() => {
+                      createTrackedEffect(() => {
                         if (active()) element.scrollIntoView({ block: "nearest" });
                       })
                     }

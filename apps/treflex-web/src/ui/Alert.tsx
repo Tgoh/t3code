@@ -1,4 +1,5 @@
-import { children, createMemo, type JSX, Show, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { children, createMemo, omit, Show } from "solid-js";
 
 const BASE = "relative border";
 
@@ -55,19 +56,14 @@ function alertClass(
 
 export function Alert(
   props: JSX.HTMLAttributes<HTMLDivElement> & {
+    class?: string;
     variant?: keyof typeof VARIANTS;
     surface?: keyof typeof SURFACES;
     controlAlignment?: "center" | "first-line";
   },
 ) {
-  const [local, rest] = splitProps(props, [
-    "variant",
-    "surface",
-    "controlAlignment",
-    "class",
-    "children",
-  ]);
-  const resolved = children(() => local.children);
+  const rest = omit(props, "variant", "surface", "controlAlignment", "class", "children");
+  const resolved = children(() => props.children);
   const slots = createMemo(() => {
     const icon: JSX.Element[] = [];
     const content: JSX.Element[] = [];
@@ -84,15 +80,15 @@ export function Alert(
     }
     return { icon, content, action };
   });
-  const firstLine = () => local.controlAlignment === "first-line";
-  const variant = () => local.variant ?? "default";
+  const firstLine = () => props.controlAlignment === "first-line";
+  const variant = () => props.variant ?? "default";
   return (
     <div
       data-slot="alert"
       data-variant={variant()}
       role="alert"
       {...rest}
-      class={alertClass(variant(), local.surface ?? "default", local.class)}
+      class={alertClass(variant(), props.surface ?? "default", props.class)}
     >
       <div
         class={join(
@@ -129,23 +125,23 @@ export function Alert(
   );
 }
 
-export function AlertTitle(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
-  return <div data-slot="alert-title" {...rest} class={join("font-medium", local.class)} />;
+export function AlertTitle(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
+  return <div data-slot="alert-title" {...rest} class={join("font-medium", props.class)} />;
 }
 
-export function AlertDescription(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+export function AlertDescription(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
   return (
     <div
       data-slot="alert-description"
       {...rest}
-      class={join("flex flex-col gap-2.5 text-muted-foreground", local.class)}
+      class={join("flex flex-col gap-2.5 text-muted-foreground", props.class)}
     />
   );
 }
 
-export function AlertAction(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
-  return <div data-slot="alert-action" {...rest} class={join("flex gap-1", local.class)} />;
+export function AlertAction(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
+  return <div data-slot="alert-action" {...rest} class={join("flex gap-1", props.class)} />;
 }

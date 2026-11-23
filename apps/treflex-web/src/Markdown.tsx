@@ -4,15 +4,15 @@ import type { Token, Tokens } from "marked";
 import {
   type Component,
   createContext,
-  createEffect,
   createMemo,
   createSignal,
-  Index,
-  onMount,
+  createTrackedEffect,
+  For,
+  onSettled,
   Show,
   useContext,
 } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic } from "@solidjs/web";
 import { useComponentState } from "treflex-solid";
 
 import { ProjectBadge } from "./brand";
@@ -114,9 +114,9 @@ const plainText = (tokens: Token[] | undefined): string =>
 
 function Inline(props: { tokens: Token[] | undefined }) {
   return (
-    <Index each={props.tokens}>
+    <For each={props.tokens} keyed={false}>
       {(token) => <Dynamic component={INLINE[token().type] ?? TextToken} token={token()} />}
-    </Index>
+    </For>
   );
 }
 
@@ -156,7 +156,6 @@ function FileChip(props: { link: IFileLink }) {
   const files = useContext(FileLinkContext);
   const media = createMemo(
     () => mediaLinkTarget(props.link, files.cwd(), thread.state.Thread?.id),
-    undefined,
     { equals: sameTarget },
   );
   const [viewing, setViewing] = createSignal<IMediaTarget | null>(null);
@@ -202,14 +201,14 @@ function ProseText(props: { text: string }) {
   const parts = createMemo(() => (files.inLink ? [props.text] : prosePathParts(props.text)));
   return (
     <Show when={parts().length > 1} fallback={props.text}>
-      <Index each={parts()}>
+      <For each={parts()} keyed={false}>
         {(part) => {
           const held = part();
           if (typeof held === "string") return held;
           const link = fileLinkFromHref(held.Path, files.cwd());
           return link === null ? held.Path : <FileChip link={link} />;
         }}
-      </Index>
+      </For>
     </Show>
   );
 }
@@ -335,9 +334,9 @@ function LinkToken(props: ITokenProps) {
   const file = createMemo(() => fileLinkFromHref(link().href, files.cwd()));
   const [viewing, setViewing] = createSignal<IMediaTarget | null>(null);
   const inner = () => (
-    <FileLinkContext.Provider value={{ ...files, inLink: true }}>
+    <FileLinkContext value={{ ...files, inLink: true }}>
       <Inline tokens={link().tokens} />
-    </FileLinkContext.Provider>
+    </FileLinkContext>
   );
   return (
     <Show
@@ -425,7 +424,9 @@ function useMediaUrl(resource: AssetResource) {
   const environment = Environment.use();
   const local = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
   const load = () => local.dispatch(loadMediaUrl, environment.state.EnvironmentId, resource);
-  onMount(load);
+  onSettled(() => {
+    void load();
+  });
   return {
     state: local.state,
     reload: load,
@@ -783,9 +784,9 @@ function ShownImage(props: {
             style={style()}
             decoding="async"
             loading="lazy"
-            draggable={false}
+            draggable="false"
             role="button"
-            tabIndex={0}
+            tabindex={0}
             aria-label={`Preview ${props.alt.trim() || "image"}`}
             onClick={expand}
             onKeyDown={(event) => {
@@ -807,7 +808,6 @@ function MarkdownImage(props: { token: Tokens.Image; standalone: boolean }) {
   const workspaceRoot = useWorkspaceRoot();
   const target = createMemo(
     () => markdownImageTarget(props.token.href, workspaceRoot(), thread.state.Thread?.id),
-    undefined,
     { equals: sameTarget },
   );
   return (
@@ -863,9 +863,9 @@ const INLINE: Record<string, Component<ITokenProps>> = {
 function Blocks(props: { tokens: Token[]; loose?: boolean }) {
   const blocks = createMemo(() => blockTokens(props.tokens, props.loose));
   return (
-    <Index each={blocks()}>
+    <For each={blocks()} keyed={false}>
       {(token) => <Dynamic component={BLOCK[token().type] ?? TextToken} token={token()} />}
-    </Index>
+    </For>
   );
 }
 
@@ -927,9 +927,11 @@ function ListToken(props: ITokenProps) {
     <Dynamic
       component={list().ordered ? "ol" : "ul"}
       start={list().ordered && list().start !== 1 ? list().start : undefined}
-      classList={{ "wide-markers": list().ordered && lastNumber() >= 10 }}
+      class={{ "wide-markers": list().ordered && lastNumber() >= 10 }}
     >
-      <Index each={list().items}>{(item) => <ListItem item={item()} />}</Index>
+      <For each={list().items} keyed={false}>
+        {(item) => <ListItem item={item()} />}
+      </For>
     </Dynamic>
   );
 }
@@ -954,17 +956,21 @@ function TableToken(props: ITokenProps) {
         <table ref={element}>
           <thead>
             <tr>
-              <Index each={table().header}>{(cell) => <TableCell cell={cell()} tag="th" />}</Index>
+              <For each={table().header} keyed={false}>
+                {(cell) => <TableCell cell={cell()} tag="th" />}
+              </For>
             </tr>
           </thead>
           <tbody>
-            <Index each={table().rows}>
+            <For each={table().rows} keyed={false}>
               {(row) => (
                 <tr>
-                  <Index each={row()}>{(cell) => <TableCell cell={cell()} tag="td" />}</Index>
+                  <For each={row()} keyed={false}>
+                    {(cell) => <TableCell cell={cell()} tag="td" />}
+                  </For>
                 </tr>
               )}
-            </Index>
+            </For>
           </tbody>
         </table>
       </ScrollArea>
@@ -1012,7 +1018,7 @@ function CodeTitle(props: { fence: IFence }) {
 function CodeToken(props: ITokenProps) {
   const environment = Environment.use();
   const code = () => of<Tokens.Code>(props);
-  const fence = createMemo(() => fenceOf(code().lang), undefined, {
+  const fence = createMemo(() => fenceOf(code().lang), {
     equals: (a, b) => a.Language === b.Language && a.Title === b.Title,
   });
   const key = useContext(CodeBlockKey)();
@@ -1032,7 +1038,6 @@ function CodeToken(props: ITokenProps) {
       isSettled(code()) && !isPlainLanguage(fence().Language)
         ? { Text: code().text, Language: fence().Language, Scheme: environment.colorScheme() }
         : null,
-    undefined,
     {
       equals: (a, b) =>
         a === b ||
@@ -1049,7 +1054,7 @@ function CodeToken(props: ITokenProps) {
     loads();
     return held === null ? null : cachedHighlight(held.Text, held.Language, held.Scheme);
   });
-  createEffect(() => {
+  createTrackedEffect(() => {
     const held = wanted();
     if (held === null || html() !== null) return;
     void highlight(held.Text, held.Language, held.Scheme).then(
@@ -1061,9 +1066,9 @@ function CodeToken(props: ITokenProps) {
     <div
       class={CODE_BLOCK}
       dir="ltr"
-      data-wrap={wrapped()}
+      data-wrap={wrapped() ? "true" : "false"}
       data-language={fence().Language}
-      data-highlighted={html() !== null}
+      data-highlighted={html() !== null ? "true" : "false"}
       data-tip-hoverable
     >
       <div class="flex items-center justify-between gap-2 pt-1.5 pr-1.5 pl-3 text-[color-mix(in_srgb,var(--foreground)_72%,transparent)] select-none">
@@ -1072,7 +1077,7 @@ function CodeToken(props: ITokenProps) {
           <Button
             variant={wrapped() ? "secondary" : "ghost-muted"}
             size="icon-xs"
-            aria-pressed={wrapped()}
+            aria-pressed={wrapped() ? "true" : "false"}
             aria-label={wrapLabel()}
             data-tip={wrapLabel()}
             onClick={toggleWrap}
@@ -1122,9 +1127,9 @@ function TopBlock(props: { token: Token; fromUser: boolean; key: string | null }
     <Show
       when={html()}
       fallback={
-        <CodeBlockKey.Provider value={nextCodeKey}>
+        <CodeBlockKey value={nextCodeKey}>
           <Dynamic component={BLOCK[props.token.type] ?? TextToken} token={props.token} />
-        </CodeBlockKey.Provider>
+        </CodeBlockKey>
       }
     >
       {(markup) => <RawHtml class="contents" markup={markup()} />}
@@ -1158,13 +1163,13 @@ export function Markdown(props: {
       environment.openThreadLink(target.Ref.threadId);
   };
   return (
-    <MessageContext.Provider value={props.message ?? null}>
-      <FileLinkContext.Provider value={files}>
+    <MessageContext value={props.message ?? null}>
+      <FileLinkContext value={files}>
         <Show
           when={lexed().WholeHtml}
           fallback={
             <div class="chat-markdown" onClick={openHtmlThreadLink} data-tip-shared>
-              <Index each={lexed().Blocks}>
+              <For each={lexed().Blocks} keyed={false}>
                 {(token, index) => (
                   <TopBlock
                     token={token()}
@@ -1172,7 +1177,7 @@ export function Markdown(props: {
                     key={props.id === undefined ? null : `${props.id}:${index}`}
                   />
                 )}
-              </Index>
+              </For>
             </div>
           }
         >
@@ -1184,7 +1189,7 @@ export function Markdown(props: {
             />
           )}
         </Show>
-      </FileLinkContext.Provider>
-    </MessageContext.Provider>
+      </FileLinkContext>
+    </MessageContext>
   );
 }

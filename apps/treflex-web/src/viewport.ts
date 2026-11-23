@@ -3,10 +3,9 @@ import type { ClientSettings } from "@t3tools/contracts/settings";
 import { isEditable } from "./keybindings";
 import {
   type Accessor,
-  createComputed,
   createContext,
+  createRenderEffect,
   createSignal,
-  on,
   onCleanup,
   useContext,
 } from "solid-js";
@@ -266,9 +265,15 @@ export function createSidebarSheet(
 ) {
   const [open, setOpen] = createSignal(false);
   const [collapsed, setCollapsed] = createSignal(collapse.initial);
-  createComputed(on(selection, () => setOpen(false), { defer: true }));
-  createComputed(() => {
-    if (!sheet()) setOpen(false);
+  createRenderEffect(
+    selection,
+    () => {
+      setOpen(false);
+    },
+    { defer: true },
+  );
+  createRenderEffect(sheet, (isSheet) => {
+    if (!isSheet) setOpen(false);
   });
   return {
     sheet,

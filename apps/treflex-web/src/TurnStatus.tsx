@@ -4,16 +4,8 @@ import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
 import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { useInFlight } from "treflex-solid";
-import {
-  type Accessor,
-  createMemo,
-  createSignal,
-  For,
-  Index,
-  type JSX,
-  onCleanup,
-  Show,
-} from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { type Accessor, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 
 import { SECOND, useTick } from "./AgentElapsed";
 import {
@@ -185,11 +177,11 @@ function ChecklistSteps(props: {
   const steps = () => props.checklist.Steps.slice(props.start, props.end);
   return (
     <ol class={props.class}>
-      <Index each={steps()}>
+      <For each={steps()} keyed={false}>
         {(step, index) => (
           <ChecklistStep step={step()} active={props.start + index === props.checklist.Active} />
         )}
-      </Index>
+      </For>
     </ol>
   );
 }
@@ -264,7 +256,7 @@ function Checklist(props: { checklist: IChecklist }) {
           ref={setToggle}
           class={`${QUEUED_TOGGLE} h-(--checklist-row-height)`}
           aria-haspopup="dialog"
-          aria-expanded={open()}
+          aria-expanded={open() ? "true" : "false"}
           aria-label={`${count()} done, show all steps`}
           onClick={() => setOpen((held) => !held)}
         >
@@ -444,7 +436,7 @@ export function TurnStatus(props: {
           ref={setToggle}
           class={`${QUEUED_TOGGLE} group-data-checklist/status:h-(--checklist-row-height)`}
           aria-haspopup="dialog"
-          aria-expanded={open()}
+          aria-expanded={open() ? "true" : "false"}
           onClick={() => setOpen((held) => !held)}
         >
           <Show when={props.state !== null}>

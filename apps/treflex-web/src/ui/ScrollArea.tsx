@@ -1,4 +1,5 @@
-import { createSignal, type JSX, onCleanup, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createSignal, omit, onCleanup } from "solid-js";
 
 import { overrides } from "./merge";
 import { trackScrollOverflow } from "./scrollOverflow";
@@ -97,25 +98,33 @@ function scrollAreaViewportClass(options: IScrollAreaOptions = {}) {
 export function ScrollArea(
   props: JSX.HTMLAttributes<HTMLDivElement> &
     IScrollAreaOptions & {
+      class?: string;
       radius?: keyof typeof RADIUS;
       viewportTabIndex?: number;
     },
 ) {
-  const [local, options, rest] = splitProps(
+  const rest = omit(
     props,
-    ["class", "radius", "viewportTabIndex", "children"],
-    ["scrollFade", "scrollFadePadding", "scrollbarGutter", "hideScrollbars", "chainVerticalScroll"],
+    "class",
+    "radius",
+    "viewportTabIndex",
+    "children",
+    "scrollFade",
+    "scrollFadePadding",
+    "scrollbarGutter",
+    "hideScrollbars",
+    "chainVerticalScroll",
   );
   return (
-    <div {...rest} class={scrollAreaClass({ radius: local.radius, class: local.class })}>
+    <div {...rest} class={scrollAreaClass({ radius: props.radius, class: props.class })}>
       <div
         ref={(element) =>
-          onCleanup(trackScrollOverflow(element, { tabIndex: local.viewportTabIndex }))
+          onCleanup(trackScrollOverflow(element, { tabIndex: props.viewportTabIndex }))
         }
-        class={scrollAreaViewportClass(options)}
+        class={scrollAreaViewportClass(props)}
         data-slot="scroll-area-viewport"
       >
-        {local.children}
+        {props.children}
       </div>
     </div>
   );

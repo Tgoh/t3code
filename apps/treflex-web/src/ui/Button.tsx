@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 import { overrides } from "./merge";
 
@@ -201,17 +202,18 @@ export function buttonVariants(
 
 export function Button(
   props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+    class?: string | undefined;
     variant?: ButtonVariant;
     size?: ButtonSize;
   },
 ) {
-  const [local, rest] = splitProps(props, ["variant", "size", "class"]);
+  const rest = omit(props, "variant", "size", "class");
   return (
     <button
       type="button"
       data-slot="button"
       {...rest}
-      class={buttonVariants({ variant: local.variant, size: local.size, class: local.class })}
+      class={buttonVariants({ variant: props.variant, size: props.size, class: props.class })}
     />
   );
 }
@@ -245,20 +247,21 @@ function inlineButtonVariants(
 
 export function InlineButton(
   props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+    class?: string | undefined;
     tone?: keyof typeof INLINE_TONES;
     touchTarget?: "padded";
   },
 ) {
-  const [local, rest] = splitProps(props, ["tone", "touchTarget", "class"]);
+  const rest = omit(props, "tone", "touchTarget", "class");
   return (
     <button
       type="button"
       data-slot="inline-button"
       {...rest}
       class={inlineButtonVariants({
-        tone: local.tone,
-        touchTarget: local.touchTarget,
-        class: local.class,
+        tone: props.tone,
+        touchTarget: props.touchTarget,
+        class: props.class,
       })}
     />
   );

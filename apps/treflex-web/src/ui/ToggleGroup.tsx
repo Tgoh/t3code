@@ -1,4 +1,5 @@
-import { createContext, createSignal, type JSX, splitProps, useContext } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createContext, createSignal, omit, useContext } from "solid-js";
 
 import { createRoving } from "./roving";
 import { Toggle as ToggleComponent, type ToggleSize, type ToggleVariant } from "./Toggle";
@@ -37,7 +38,8 @@ export function ToggleGroup(
     orientation?: "horizontal" | "vertical";
   },
 ) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "value",
     "onValueChange",
     "multiple",
@@ -46,10 +48,10 @@ export function ToggleGroup(
     "orientation",
     "class",
     "children",
-  ]);
-  const variant = () => local.variant ?? "segmented";
-  const size = () => local.size ?? (variant() === "segmented" ? "segmented" : "default");
-  const orientation = () => local.orientation ?? "horizontal";
+  );
+  const variant = () => props.variant ?? "segmented";
+  const size = () => props.size ?? (variant() === "segmented" ? "segmented" : "default");
+  const orientation = () => props.orientation ?? "horizontal";
   const roving = createRoving({ orientation, homeEnd: true });
   const shape = () =>
     variant() === "segmented"
@@ -71,14 +73,14 @@ export function ToggleGroup(
           ? "*:pointer-coarse:after:min-w-auto"
           : "*:pointer-coarse:after:min-h-auto",
         shape(),
-        local.class,
+        props.class,
       ]
         .filter(Boolean)
         .join(" ")}
       onFocusIn={roving.onFocusIn}
       onKeyDown={roving.onKeyDown}
     >
-      <Group.Provider
+      <Group
         value={{
           get variant() {
             return variant();
@@ -86,18 +88,18 @@ export function ToggleGroup(
           get size() {
             return size();
           },
-          pressed: (value) => local.value.includes(value),
+          pressed: (value) => props.value.includes(value),
           press: (value, pressed) => {
-            const held = local.value.filter((entry) => entry !== value);
-            local.onValueChange(
-              pressed ? (local.multiple === true ? [...held, value] : [value]) : held,
+            const held = props.value.filter((entry) => entry !== value);
+            props.onValueChange(
+              pressed ? (props.multiple === true ? [...held, value] : [value]) : held,
             );
           },
           roving,
         }}
       >
-        {local.children}
-      </Group.Provider>
+        {props.children}
+      </Group>
     </div>
   );
 }
@@ -109,30 +111,27 @@ export function Toggle(
 ) {
   const group = useContext(Group);
   if (group === undefined) throw new Error("A grouped Toggle must sit in a ToggleGroup.");
-  const [local, rest] = splitProps(props, ["variant", "size", "value", "disabled"]);
+  const rest = omit(props, "variant", "size", "value", "disabled");
   const [element, setElement] = createSignal<HTMLButtonElement>();
-  const pressed = () => group.pressed(local.value);
+  const pressed = () => group.pressed(props.value);
   return (
     <ToggleComponent
-      data-variant={local.variant ?? group.variant}
-      data-size={local.size ?? group.size}
-      variant={local.variant ?? group.variant}
-      size={local.size ?? group.size}
+      data-variant={props.variant ?? group.variant}
+      data-size={props.size ?? group.size}
+      variant={props.variant ?? group.variant}
+      size={props.size ?? group.size}
       {...rest}
       ref={(item) => {
         setElement(item);
         group.roving.register(item, {
           active: () => false,
-          disabled: () =>
-            local.disabled === true ||
-            rest["aria-disabled"] === true ||
-            rest["aria-disabled"] === "true",
+          disabled: () => props.disabled === true || rest["aria-disabled"] === "true",
         });
       }}
-      tabIndex={group.roving.tabIndex(element())}
-      disabled={local.disabled}
+      tabindex={group.roving.tabIndex(element())}
+      disabled={props.disabled}
       pressed={pressed()}
-      onClick={() => group.press(local.value, !pressed())}
+      onClick={() => group.press(props.value, !pressed())}
     />
   );
 }

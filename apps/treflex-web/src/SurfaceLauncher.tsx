@@ -1,4 +1,5 @@
-import { createSignal, For, type JSX, onCleanup, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createSignal, For, onCleanup, Show } from "solid-js";
 
 import {
   FileDiff,
@@ -79,7 +80,7 @@ export function SurfaceLauncher(props: {
       <PanelHeader closeLabel="Close panel" onClose={props.onClose} />
       <div
         class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pt-0 pb-(--workspace-topbar-height) outline-none"
-        tabIndex={0}
+        tabindex={0}
         aria-label="Open a surface"
         onKeyDown={onKeyDown}
       >
@@ -93,7 +94,7 @@ export function SurfaceLauncher(props: {
                   fallback={
                     <div
                       class={ITEM}
-                      tabIndex={0}
+                      tabindex={0}
                       aria-disabled="true"
                       data-tip={action.Unavailable ?? undefined}
                     >

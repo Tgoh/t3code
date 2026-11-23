@@ -5,13 +5,12 @@ import {
   createMemo,
   createSignal,
   For,
-  type JSX,
   Match,
   onCleanup,
   Show,
   Switch as SolidSwitch,
 } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic, type JSX } from "@solidjs/web";
 
 import ArchivedThreads, { getDefaultArchivedThreads, useArchivedThreads } from "./ArchivedThreads";
 import { ProjectBadge, ProviderIcon } from "./brand";
@@ -222,7 +221,7 @@ function SettingsNav(props: { page: string }) {
           aria-label="Search settings"
           role="combobox"
           aria-autocomplete="list"
-          aria-expanded={searching() && results().length > 0}
+          aria-expanded={searching() && results().length > 0 ? "true" : "false"}
           value={query()}
           onInput={(event) => {
             setQuery(event.currentTarget.value);
@@ -271,8 +270,8 @@ function SettingsNav(props: { page: string }) {
                 <SidebarMenuItem role="presentation">
                   <SidebarMenuButton
                     role="option"
-                    aria-selected={index() === active()}
-                    tabIndex={-1}
+                    aria-selected={index() === active() ? "true" : "false"}
+                    tabindex={-1}
                     size="sm-search-result"
                     isActive={index() === active()}
                     onMouseMove={() => setActive(index())}
@@ -594,7 +593,9 @@ function ColorSchemeSection() {
             <button
               class="group flex cursor-pointer flex-col items-stretch gap-1.5 border-0 bg-transparent p-0"
               role="radio"
-              aria-checked={environment.state.Local.Preferences.AppearanceMode === entry.Mode}
+              aria-checked={
+                environment.state.Local.Preferences.AppearanceMode === entry.Mode ? "true" : "false"
+              }
               onClick={() => void environment.setAppearanceMode(entry.Mode)}
             >
               <span
@@ -775,7 +776,7 @@ function ProvidersPage() {
                               variant="ghost-muted"
                               size="icon-micro"
                               aria-label={model.Favorite ? "Remove favorite" : "Add favorite"}
-                              aria-pressed={model.Favorite}
+                              aria-pressed={model.Favorite ? "true" : "false"}
                               data-tip={model.Favorite ? "Remove favorite" : "Add favorite"}
                               onClick={() =>
                                 void environment.updateServerSettings(

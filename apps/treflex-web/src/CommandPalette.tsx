@@ -1,16 +1,8 @@
 // @effect-diagnostics globalDate:off -- Ranking samples the clock once, when the palette opens.
 import { getLatestThreadForProject } from "@t3tools/client-runtime/state/thread-sort";
 import { findSearchTokenRanges } from "@t3tools/shared/paletteSearch";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  createUniqueId,
-  For,
-  type JSX,
-  on,
-  Show,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 
 import {
   CommandPaletteContent,
@@ -296,12 +288,16 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
     });
   });
   const rows = createMemo(() => paletteRows(groups()));
-  createEffect(on(query, () => setHighlight(0), { defer: true }));
   createEffect(
-    on(highlight, (held) =>
-      list()?.querySelector(`[data-row="${held}"]`)?.scrollIntoView({ block: "nearest" }),
-    ),
+    query,
+    () => {
+      setHighlight(0);
+    },
+    { defer: true },
   );
+  createEffect(highlight, (held) => {
+    list()?.querySelector(`[data-row="${held}"]`)?.scrollIntoView({ block: "nearest" });
+  });
 
   const enter = (item: IPaletteItem) => {
     setStack([...stack(), { Item: item, ParentQuery: query() }]);

@@ -33,11 +33,11 @@ import {
 } from "@t3tools/shared/themePalettes";
 import { useComponentState } from "treflex-solid";
 import {
-  createEffect,
   createMemo,
   createSignal,
+  createTrackedEffect,
   onCleanup,
-  onMount,
+  onSettled,
   Show,
   untrack,
 } from "solid-js";
@@ -130,14 +130,16 @@ export function HtmlRenderFrame(props: { htmlRender: HtmlRenderReference }) {
   }));
   const asset = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
   const mint = () => asset.dispatch(loadMediaUrl, environment.state.EnvironmentId, resource);
-  onMount(mint);
+  onSettled(() => {
+    void mint();
+  });
   const [width, setWidth] = createSignal(HTML_RENDER_COLUMN_WIDTH);
   const [contentHeight, setContentHeight] = createSignal(
     measuredContentHeights.get(resource.attachmentId),
   );
   const height = () => htmlRenderFrameHeight(props.htmlRender, width(), contentHeight());
   // The frame keeps the first URL it loads, so a later mint doesn't reload the page.
-  const src = createMemo<string | null>((first) => first ?? asset.state.Url, null);
+  const src = createMemo<string | null>((first = null) => first ?? asset.state.Url);
   const [expandedSrc, setExpandedSrc] = createSignal<string | null>(null);
   const [unavailable, setUnavailable] = createSignal(false);
   const expand = async () => {
@@ -261,8 +263,12 @@ function HtmlRenderDocument(props: {
   const postTheme = () => post(htmlRenderThemeMessage(theme()));
   const postShortcuts = () =>
     post(htmlRenderShortcutsMessage(shortcuts().allowed, shortcuts().blocked));
-  createEffect(postTheme);
-  createEffect(postShortcuts);
+  createTrackedEffect(() => {
+    postTheme();
+  });
+  createTrackedEffect(() => {
+    postShortcuts();
+  });
   // Pages can forge key and code pairs: a pair matching another binding is refused, and a named
   // key must match the shortcut.
   const isShortcut = (key: NonNullable<ReturnType<typeof readHtmlRenderKeyDown>>) => {

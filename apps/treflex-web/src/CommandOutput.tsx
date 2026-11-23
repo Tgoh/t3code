@@ -4,7 +4,7 @@ import {
   type TerminalSpanStyle,
 } from "@t3tools/shared/terminalOutput";
 import { useResource } from "treflex-solid";
-import { createEffect, createMemo, createSignal, Index, Show } from "solid-js";
+import { createMemo, createSignal, createTrackedEffect, For, Show } from "solid-js";
 
 import Environment from "./Environment";
 import ThreadSession from "./ThreadSession";
@@ -57,7 +57,7 @@ export function CommandOutput(props: { itemId: string }) {
   );
   const [scroller, setScroller] = createSignal<HTMLPreElement>();
   const [following, setFollowing] = createSignal(true);
-  createEffect(() => {
+  createTrackedEffect(() => {
     spans();
     const element = scroller();
     if (element !== undefined && following()) element.scrollTop = element.scrollHeight;
@@ -88,13 +88,13 @@ export function CommandOutput(props: { itemId: string }) {
                 setFollowing(element.scrollHeight - element.scrollTop - element.clientHeight < 8);
               }}
             >
-              <Index each={spans()}>
+              <For each={spans()} keyed={false}>
                 {(span) => (
                   <Show when={span().style} fallback={span().text}>
                     {(style) => <span style={cssOf(style())}>{span().text}</span>}
                   </Show>
                 )}
-              </Index>
+              </For>
             </pre>
           </Show>
         </>

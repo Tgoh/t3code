@@ -200,7 +200,7 @@ export function FolderHeader(props: {
         data-folder-header
         role="button"
         tabindex="0"
-        aria-expanded={props.open}
+        aria-expanded={props.open ? "true" : "false"}
         onClick={props.onToggle}
         onPointerDown={(event) => {
           if (!props.draggable || props.renaming) return;

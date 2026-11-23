@@ -12,7 +12,7 @@ import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
 } from "@t3tools/shared/claudeCompaction";
-import { createEffect, createMemo, createRoot } from "solid-js";
+import { createMemo, createRoot, createTrackedEffect } from "solid-js";
 import {
   createTestRuntime,
   defineEffect,
@@ -855,19 +855,19 @@ describe("thread events", () => {
     const thread = server.thread();
     const runs = { changed: 0, other: 0, selector: 0, ids: 0 };
     const dispose = createRoot((disposeRoot) => {
-      createEffect(() => {
+      createTrackedEffect(() => {
         runs.selector += 1;
         timelineEntries(thread);
       });
-      createEffect(() => {
+      createTrackedEffect(() => {
         runs.ids += 1;
         server.runtime.processSelector(timelineIds, () => thread);
       });
-      createEffect(() => {
+      createTrackedEffect(() => {
         runs.changed += 1;
         void (thread.TurnItems["item-6"] as { text?: string }).text;
       });
-      createEffect(() => {
+      createTrackedEffect(() => {
         runs.other += 1;
         void (thread.TurnItems["item-0"] as { text?: string }).text;
       });

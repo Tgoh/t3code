@@ -32,7 +32,7 @@ function ExpandableText(props: { text: string; collapsedText: string }) {
       </div>
       <Show when={canExpand()}>
         <InlineButton
-          aria-expanded={expanded()}
+          aria-expanded={expanded() ? "true" : "false"}
           aria-controls={id}
           tone="muted"
           class="mt-1"

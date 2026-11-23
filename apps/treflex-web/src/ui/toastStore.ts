@@ -1,5 +1,5 @@
 // @effect-diagnostics globalTimers:off globalDate:off -- A view-only toast queue, outside any Effect runtime.
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 
 import type { ButtonVariant } from "./Button";
 

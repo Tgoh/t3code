@@ -1,4 +1,5 @@
-import { children, createUniqueId, type JSX, Show, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { children, createUniqueId, omit, Show } from "solid-js";
 
 import { Search } from "../icons";
 import { DialogRoot, DialogSurface, type IPopupProps } from "./Dialog";
@@ -106,8 +107,8 @@ export function CommandInput(
     endInset?: ICommandInputEndInset | undefined;
   },
 ) {
-  const [local, rest] = splitProps(props, ["startAddon", "endInset"]);
-  const addon = children(() => local.startAddon);
+  const rest = omit(props, "startAddon", "endInset");
+  const addon = children(() => props.startAddon);
   return (
     <div class={INPUT_WRAP}>
       <div class={INPUT_ROOT}>
@@ -117,7 +118,7 @@ export function CommandInput(
           </Show>
         </div>
         <span
-          class={withClass(INPUT_CONTROL, END_INSET[local.endInset ?? "none"])}
+          class={withClass(INPUT_CONTROL, END_INSET[props.endInset ?? "none"])}
           data-size="lg"
           data-slot="input-control"
         >
@@ -137,9 +138,9 @@ export function CommandInput(
   );
 }
 
-export function CommandPanel(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
-  return <div {...rest} class={withClass(PANEL, local.class)} />;
+export function CommandPanel(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
+  return <div {...rest} class={withClass(PANEL, props.class)} />;
 }
 
 export function CommandList(
@@ -149,13 +150,13 @@ export function CommandList(
     class?: string;
   },
 ) {
-  const [local, rest] = splitProps(props, ["ref", "class"]);
+  const rest = omit(props, "ref", "class");
   return (
     <ScrollArea class="flex flex-col" scrollbarGutter scrollFade>
       <div
         {...rest}
-        ref={(element) => local.ref?.(element)}
-        class={withClass(LIST, local.class)}
+        ref={(element) => props.ref?.(element)}
+        class={withClass(LIST, props.class)}
         role="listbox"
         data-slot="command-list"
       />
@@ -186,25 +187,25 @@ export function CommandGroup(props: { label?: JSX.Element; children: JSX.Element
 export function CommandItem(
   props: Omit<JSX.HTMLAttributes<HTMLDivElement>, "class" | "role"> & { active: boolean },
 ) {
-  const [local, rest] = splitProps(props, ["active"]);
+  const rest = omit(props, "active");
   return (
     <div
       {...rest}
-      class={local.active ? ITEM_ACTIVE : ITEM}
+      class={props.active ? ITEM_ACTIVE : ITEM}
       role="option"
-      data-active={local.active ? "" : undefined}
-      data-highlighted={local.active ? "" : undefined}
+      data-active={props.active ? "" : undefined}
+      data-highlighted={props.active ? "" : undefined}
       data-slot="command-item"
     />
   );
 }
 
-export function CommandShortcut(props: JSX.HTMLAttributes<HTMLElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
-  return <kbd {...rest} class={withClass(SHORTCUT, local.class)} data-slot="command-shortcut" />;
+export function CommandShortcut(props: JSX.HTMLAttributes<HTMLElement> & { class?: string }) {
+  const rest = omit(props, "class");
+  return <kbd {...rest} class={withClass(SHORTCUT, props.class)} data-slot="command-shortcut" />;
 }
 
-export function CommandFooter(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
-  return <div {...rest} class={withClass(FOOTER, local.class)} data-slot="command-footer" />;
+export function CommandFooter(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
+  return <div {...rest} class={withClass(FOOTER, props.class)} data-slot="command-footer" />;
 }

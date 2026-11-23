@@ -3,7 +3,8 @@ import {
   sideThreadOpenIntentOf,
 } from "@t3tools/client-runtime/side-thread";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
-import { createSignal, type JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createSignal } from "solid-js";
 
 import { MenuItem, MenuPopup } from "./ui/Menu";
 import { Presence } from "./ui/Presence";

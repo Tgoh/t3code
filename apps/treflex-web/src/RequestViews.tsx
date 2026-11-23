@@ -1,5 +1,6 @@
 import { useInFlight } from "treflex-solid";
-import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 
 import { ChevronDown, ShieldQuestion, X } from "./icons";
 import type { IApprovalDecision } from "./Infrastructure/commandEffects";
@@ -178,7 +179,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
   const selected = (optionValue: string) =>
     progress().CustomAnswer.trim() === "" && progress().SelectedOptionValues.includes(optionValue);
 
-  onMount(() => {
+  onSettled(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const question = progress().Question;
       if (question === null || locked() || collapsed()) return;
@@ -194,7 +195,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
       choose(question, option.value ?? option.label);
     };
     document.addEventListener("keydown", onKeyDown);
-    onCleanup(() => document.removeEventListener("keydown", onKeyDown));
+    return () => document.removeEventListener("keydown", onKeyDown);
   });
 
   return (
@@ -233,11 +234,11 @@ export const PendingQuestion = RuntimeRequest.provider<{
                 <Show when={dismissible()}>
                   <span
                     role="button"
-                    tabIndex={0}
+                    tabindex={0}
                     class="inline-flex size-6 items-center justify-center rounded-[6px] hover:bg-accent hover:text-foreground"
                     aria-label="Dismiss question without answering"
                     data-tip="Dismiss question without answering"
-                    aria-disabled={responding()}
+                    aria-disabled={responding() ? "true" : "false"}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (!responding())
@@ -270,7 +271,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
                           <button
                             type="button"
                             class="flex w-full cursor-pointer items-start gap-2.5 rounded-[6px] border-0 bg-transparent py-1.5 pr-0 pl-1.5 text-start [font:inherit] text-[color-mix(in_srgb,var(--foreground)_70%,transparent)] hover:enabled:not-aria-pressed:bg-[color-mix(in_srgb,var(--muted)_30%,transparent)] focus-visible:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--primary)_25%,transparent)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 aria-pressed:text-foreground"
-                            aria-pressed={selected(value())}
+                            aria-pressed={selected(value()) ? "true" : "false"}
                             disabled={locked()}
                             onClick={() => choose(question(), value())}
                           >

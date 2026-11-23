@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 const BASE =
   "relative inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap border font-medium outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-3.5 sm:[&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0 [button&,a&]:cursor-pointer [button&,a&]:pointer-coarse:after:absolute [button&,a&]:pointer-coarse:after:size-full [button&,a&]:pointer-coarse:after:min-h-11 [button&,a&]:pointer-coarse:after:min-w-11";
@@ -70,14 +71,18 @@ function badgeVariants(
 }
 
 export function Badge(
-  props: JSX.HTMLAttributes<HTMLSpanElement> & { variant?: BadgeVariant; size?: BadgeSize },
+  props: JSX.HTMLAttributes<HTMLSpanElement> & {
+    class?: string;
+    variant?: BadgeVariant;
+    size?: BadgeSize;
+  },
 ) {
-  const [local, rest] = splitProps(props, ["variant", "size", "class"]);
+  const rest = omit(props, "variant", "size", "class");
   return (
     <span
       data-slot="badge"
       {...rest}
-      class={badgeVariants({ variant: local.variant, size: local.size, class: local.class })}
+      class={badgeVariants({ variant: props.variant, size: props.size, class: props.class })}
     />
   );
 }

@@ -1,15 +1,14 @@
+import type { JSX } from "@solidjs/web";
 import {
   type Accessor,
   createContext,
   createRenderEffect,
   createSignal,
   createUniqueId,
-  type JSX,
-  on,
+  omit,
   onCleanup,
   type Setter,
   Show,
-  splitProps,
   useContext,
 } from "solid-js";
 
@@ -63,7 +62,7 @@ export function DialogRoot(props: { alert: boolean; onClose: () => void; childre
     descriptionId,
     setDescriptionId,
   };
-  return <DialogContext.Provider value={root}>{props.children}</DialogContext.Provider>;
+  return <DialogContext value={root}>{props.children}</DialogContext>;
 }
 
 /**
@@ -122,7 +121,8 @@ export function DialogSurface(
     closeOnBackdropPress?: boolean;
   },
 ) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "slot",
     "backdropClass",
     "viewportClass",
@@ -133,7 +133,7 @@ export function DialogSurface(
     "initialFocus",
     "class",
     "children",
-  ]);
+  );
   const root = useDialogRoot();
   const presence = usePresence();
   const returnTarget = () => {
@@ -193,20 +193,18 @@ export function DialogSurface(
     returnFocus();
   };
   createRenderEffect(
-    on(
-      presence.exiting,
-      (exiting, was) => {
-        const element = dialog();
-        if (element === undefined || !element.open) return;
-        if (exiting) return leave(element);
-        if (was !== true) return;
-        element.inert = false;
-        element.close();
-        leaveStack = overlays.push(overlay);
-        open(element);
-      },
-      { defer: true },
-    ),
+    presence.exiting,
+    (exiting, was) => {
+      const element = dialog();
+      if (element === undefined || !element.open) return;
+      if (exiting) return leave(element);
+      if (was !== true) return;
+      element.inert = false;
+      element.close();
+      leaveStack = overlays.push(overlay);
+      open(element);
+    },
+    { defer: true },
   );
   onCleanup(() => {
     leaveStack?.();
@@ -224,7 +222,7 @@ export function DialogSurface(
     if (opened !== undefined) setOpener(opened);
     element.showModal();
     const target =
-      local.initialFocus === undefined ? initialFocusTarget(surface) : local.initialFocus(surface);
+      props.initialFocus === undefined ? initialFocusTarget(surface) : props.initialFocus(surface);
     (target ?? surface).focus({ preventScroll: true });
   };
   return (
@@ -245,16 +243,16 @@ export function DialogSurface(
     >
       <div
         ref={(element) => presence.track(element)}
-        class={local.backdropClass}
-        data-slot={`${local.slot}-backdrop`}
+        class={props.backdropClass}
+        data-slot={`${props.slot}-backdrop`}
         onPointerDown={() => {
-          if (local.closeOnBackdropPress === true) root.close();
+          if (props.closeOnBackdropPress === true) root.close();
         }}
       />
       <div
-        class={local.viewportClass}
-        style={local.viewportStyle}
-        data-slot={`${local.slot}-viewport`}
+        class={props.viewportClass}
+        style={props.viewportStyle}
+        data-slot={`${props.slot}-viewport`}
         onPointerDown={(event) => {
           setPressedOutside(!root.alert && event.button === 0 && outside(event.target));
         }}
@@ -270,14 +268,14 @@ export function DialogSurface(
             presence.track(element);
           }}
           class={
-            local.class === undefined ? local.popupClass : `${local.popupClass} ${local.class}`
+            props.class === undefined ? props.popupClass : `${props.popupClass} ${props.class}`
           }
           style={{ "--nested-dialogs": "0" }}
-          tabIndex={-1}
-          data-slot={`${local.slot}-popup`}
+          tabindex={-1}
+          data-slot={`${props.slot}-popup`}
         >
-          {local.children}
-          <Show when={local.closeButton}>
+          {props.children}
+          <Show when={props.closeButton}>
             <DialogClose
               aria-label="Close"
               class="absolute end-2 top-2"
@@ -302,18 +300,19 @@ export function DialogPopup(
     mediaControlsPlacement?: "inside" | "outside";
   },
 ) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "showCloseButton",
     "bottomStickOnMobile",
     "variant",
     "size",
     "mediaControlsPlacement",
-  ]);
+  );
   const layout = () => ({
-    variant: local.variant ?? "default",
-    size: local.size ?? "default",
-    bottomStickOnMobile: local.bottomStickOnMobile ?? true,
-    mediaControlsPlacement: local.mediaControlsPlacement ?? "outside",
+    variant: props.variant ?? "default",
+    size: props.size ?? "default",
+    bottomStickOnMobile: props.bottomStickOnMobile ?? true,
+    mediaControlsPlacement: props.mediaControlsPlacement ?? "outside",
   });
   return (
     <DialogSurface
@@ -322,7 +321,7 @@ export function DialogPopup(
       backdropClass={dialogBackdropClass(layout().variant)}
       viewportClass={dialogViewportClass(layout())}
       popupClass={dialogPopupClass(layout())}
-      closeButton={local.showCloseButton ?? true}
+      closeButton={props.showCloseButton ?? true}
     />
   );
 }
@@ -331,13 +330,13 @@ type IButtonProps = Parameters<typeof Button>[0];
 
 export function DialogClose(props: IButtonProps) {
   const root = useDialogRoot();
-  const [local, rest] = splitProps(props, ["onClick"]);
+  const rest = omit(props, "onClick");
   return (
     <Button
       {...rest}
       data-slot={root.alert ? "alert-dialog-close" : "dialog-close"}
       onClick={(event) => {
-        if (typeof local.onClick === "function") local.onClick(event);
+        if (typeof props.onClick === "function") props.onClick(event);
         root.close();
       }}
     />
@@ -354,11 +353,11 @@ export function DialogAction(
 }
 
 export function DialogHeader(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const rest = omit(props, "class");
   return (
     <div
       {...rest}
-      class={`${DIALOG_HEADER_CLASS} ${local.class ?? ""}`}
+      class={`${DIALOG_HEADER_CLASS} ${props.class ?? ""}`}
       data-slot="dialog-header"
     />
   );
@@ -367,11 +366,11 @@ export function DialogHeader(props: JSX.HTMLAttributes<HTMLDivElement>) {
 export function DialogFooter(
   props: JSX.HTMLAttributes<HTMLDivElement> & { variant?: "default" | "bare" },
 ) {
-  const [local, rest] = splitProps(props, ["class", "variant"]);
+  const rest = omit(props, "class", "variant");
   return (
     <div
       {...rest}
-      class={`${dialogFooterClass(local.variant ?? "default")} ${local.class ?? ""}`}
+      class={`${dialogFooterClass(props.variant ?? "default")} ${props.class ?? ""}`}
       data-slot="dialog-footer"
     />
   );
@@ -394,24 +393,24 @@ export function useDescriptionId(): string {
 }
 
 export function DialogTitle(props: Omit<JSX.HTMLAttributes<HTMLHeadingElement>, "id">) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const rest = omit(props, "class");
   return (
     <h2
       {...rest}
       id={useTitleId()}
-      class={`${DIALOG_TITLE_CLASS} ${local.class ?? ""}`}
+      class={`${DIALOG_TITLE_CLASS} ${props.class ?? ""}`}
       data-slot="dialog-title"
     />
   );
 }
 
 export function DialogDescription(props: Omit<JSX.HTMLAttributes<HTMLParagraphElement>, "id">) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const rest = omit(props, "class");
   return (
     <p
       {...rest}
       id={useDescriptionId()}
-      class={`${DIALOG_DESCRIPTION_CLASS} ${local.class ?? ""}`}
+      class={`${DIALOG_DESCRIPTION_CLASS} ${props.class ?? ""}`}
       data-slot="dialog-description"
     />
   );
@@ -419,12 +418,12 @@ export function DialogDescription(props: Omit<JSX.HTMLAttributes<HTMLParagraphEl
 
 /** Scrolls when the popup runs out of height. */
 export function DialogPanel(props: JSX.HTMLAttributes<HTMLDivElement> & { scrollFade?: boolean }) {
-  const [local, rest] = splitProps(props, ["class", "scrollFade"]);
+  const rest = omit(props, "class", "scrollFade");
   return (
-    <ScrollArea scrollFade={local.scrollFade ?? true}>
+    <ScrollArea scrollFade={props.scrollFade ?? true}>
       <div
         {...rest}
-        class={`${DIALOG_PANEL_CLASS} ${local.class ?? ""}`}
+        class={`${DIALOG_PANEL_CLASS} ${props.class ?? ""}`}
         data-slot="dialog-panel"
       />
     </ScrollArea>

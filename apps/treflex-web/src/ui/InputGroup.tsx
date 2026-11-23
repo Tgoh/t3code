@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 import { Input, type InputProps } from "./Input";
 import { overrides } from "./merge";
@@ -68,14 +69,15 @@ function inputGroupVariants(
 
 export function InputGroup(
   props: JSX.HTMLAttributes<HTMLDivElement> & {
+    class?: string;
     variant?: InputGroupVariant;
     size?: InputGroupSize;
   },
 ) {
-  const [local, rest] = splitProps(props, ["variant", "size", "class"]);
+  const rest = omit(props, "variant", "size", "class");
   return (
     <div
-      class={inputGroupVariants({ variant: local.variant, size: local.size, class: local.class })}
+      class={inputGroupVariants({ variant: props.variant, size: props.size, class: props.class })}
       data-slot="input-group"
       role="group"
       {...rest}
@@ -160,19 +162,20 @@ const INTERACTIVE =
 
 export function InputGroupAddon(
   props: JSX.HTMLAttributes<HTMLDivElement> & {
+    class?: string;
     align?: InputGroupAddonAlign;
     inset?: "default" | "pill";
   },
 ) {
-  const [local, rest] = splitProps(props, ["align", "inset", "class"]);
+  const rest = omit(props, "align", "inset", "class");
   return (
     <div
       class={inputGroupAddonVariants({
-        align: local.align,
-        inset: local.inset,
-        class: local.class,
+        align: props.align,
+        inset: props.inset,
+        class: props.class,
       })}
-      data-align={local.align ?? "inline-start"}
+      data-align={props.align ?? "inline-start"}
       data-slot="input-group-addon"
       onMouseDown={(event) => {
         if (event.button !== 0) return;

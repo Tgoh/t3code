@@ -1,4 +1,4 @@
-import { type ComponentProps, createEffect, splitProps } from "solid-js";
+import { type ComponentProps, createTrackedEffect, omit } from "solid-js";
 
 import { RefreshCw } from "../icons";
 import { observeVisibleAnimation } from "./visibleAnimation";
@@ -17,20 +17,20 @@ export function RefreshIcon(
     refreshing?: boolean;
   },
 ) {
-  const [local, rest] = splitProps(props, ["size", "refreshing", "class"]);
+  const rest = omit(props, "size", "refreshing", "class");
   return (
     <RefreshCw
       aria-hidden="true"
       ref={(icon: SVGSVGElement) =>
-        createEffect(() => {
-          if (local.refreshing) observeVisibleAnimation(icon);
+        createTrackedEffect(() => {
+          if (props.refreshing) observeVisibleAnimation(icon);
         })
       }
       {...rest}
       class={[
-        local.size === undefined ? undefined : SIZES[local.size],
-        local.refreshing ? "motion-safe:visible-animate-spin" : undefined,
-        local.class,
+        props.size === undefined ? undefined : SIZES[props.size],
+        props.refreshing ? "motion-safe:visible-animate-spin" : undefined,
+        props.class,
       ]
         .filter(Boolean)
         .join(" ")}

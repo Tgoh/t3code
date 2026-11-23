@@ -17,7 +17,7 @@ import {
   Show,
   Switch,
 } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic } from "@solidjs/web";
 import { latestProviderTurnForAttempt } from "@t3tools/contracts";
 
 import Environment from "./Environment";
@@ -98,7 +98,6 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
               ? null
               : entryFacts(item, attemptOf(thread.state, byRoot(), item));
           },
-          null,
           { equals: sameFacts },
         ),
       )!;
@@ -126,7 +125,6 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
         TurnEnded: turn !== undefined && turn.status !== "pending" && turn.status !== "running",
       };
     },
-    null,
     { equals: sameRun },
   );
   const working = () => {
@@ -148,7 +146,7 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
     }),
   );
   const rows = createMemo(() => new Map(layout().map((row) => [row.Key, row])));
-  const keys = createMemo(() => layout().map((row) => row.Key), [], { equals: sameKeys });
+  const keys = createMemo(() => layout().map((row) => row.Key), { equals: sameKeys });
   return <For each={keys()}>{(key) => <LayoutRow row={() => rows().get(key)} />}</For>;
 }
 
@@ -200,7 +198,6 @@ function ViewedImages(props: { ids: readonly string[] }) {
           return item === undefined ? [] : [workLogEntry(item)];
         }),
       ),
-    [],
     { equals: sameKeys },
   );
   const imageOf = (path: string) => {
@@ -240,7 +237,7 @@ function AttemptRow(props: { row: IRowOf<"attempt"> }) {
   return (
     <button
       class={`mb-1.5 flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-left transition-colors select-none hover:bg-muted/35 [&_svg]:size-3.5 [&_svg]:flex-none [&_svg]:text-muted-foreground ${ROW_FOCUS}`}
-      aria-expanded={props.row.Expanded}
+      aria-expanded={props.row.Expanded ? "true" : "false"}
       onClick={() => session.toggleRowExpanded(props.row.Key)}
     >
       <Show when={props.row.Expanded} fallback={<ChevronRight />}>
@@ -263,7 +260,7 @@ function FoldRow(props: { row: IRowOf<"fold"> }) {
     <div class="group/fold mb-1.5 flex items-center gap-1 border-b border-[color-mix(in_srgb,var(--border)_60%,transparent)] pt-1 pr-0.5 pb-2 text-sm leading-relaxed text-muted-foreground tabular-nums">
       <button
         class={`inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1 py-0 transition-colors select-none hover:text-foreground [&_svg]:size-3.5 ${ROW_FOCUS}`}
-        aria-expanded={props.row.Expanded}
+        aria-expanded={props.row.Expanded ? "true" : "false"}
         onClick={() => session.toggleRowExpanded(props.row.Key)}
       >
         <span>
@@ -318,7 +315,7 @@ function GroupRow(props: { row: IRowOf<"group"> }) {
       <button
         class={`group/row relative flex min-h-6 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-0.5 py-0.5 text-left text-sm leading-relaxed text-secondary-label ${ROW_FOCUS}`}
         aria-label={failed() ? `${summary()}, tool call failed` : undefined}
-        aria-expanded={props.row.Expanded}
+        aria-expanded={props.row.Expanded ? "true" : "false"}
         onClick={() => session.toggleRowExpanded(props.row.Key)}
       >
         <span class={WORK_ICON}>

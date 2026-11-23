@@ -4,7 +4,8 @@ import {
   subagentGroupSummary,
   summarizeSubagentStatuses,
 } from "@t3tools/client-runtime/state/subagent-display";
-import { createMemo, For, type JSX, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createMemo, For, Show } from "solid-js";
 
 import { ProviderIcon, hasProviderIcon } from "./brand";
 import Environment from "./Environment";

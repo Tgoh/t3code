@@ -1,6 +1,6 @@
 // @effect-diagnostics globalTimers:off -- A view-only reset of the copied icon, outside any Effect runtime.
-import { createRenderEffect, createSignal, For, type JSX, Show } from "solid-js";
-import { Portal } from "solid-js/web";
+import { type JSX, Portal } from "@solidjs/web";
+import { createRenderEffect, createSignal, For, Show } from "solid-js";
 
 import { copyHtml, copyText } from "./clipboard";
 import { Check, Copy } from "./icons";
@@ -95,12 +95,14 @@ export function RawHtml(props: {
 }) {
   const [element, setElement] = createSignal<HTMLDivElement>();
   const [tables, setTables] = createSignal<ITableMount[]>([]);
-  createRenderEffect(() => {
-    const container = element();
-    if (container === undefined) return;
-    container.innerHTML = props.markup;
-    setTables(wrapTables(container));
-  });
+  createRenderEffect(
+    () => [element(), props.markup] as const,
+    ([container, markup]) => {
+      if (container === undefined) return;
+      container.innerHTML = markup;
+      setTables(wrapTables(container));
+    },
+  );
   return (
     <>
       <div ref={setElement} class={props.class} onClick={(event) => props.onClick?.(event)} />

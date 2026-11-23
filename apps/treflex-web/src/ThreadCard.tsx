@@ -337,7 +337,7 @@ export function ThreadCard(props: {
         <span
           class={`line-clamp-2 min-w-0 flex-1 text-[14px] wrap-anywhere leading-5 font-medium text-sidebar-foreground group-data-receded/card:font-normal group-data-receded/card:text-[color-mix(in_srgb,var(--sidebar-foreground)_75%,transparent)] group-data-receded/card:group-hover/card:text-sidebar-foreground data-regenerating:opacity-60 ${MARK}`}
           data-regenerating={props.thread.titleRegeneration != null ? "" : undefined}
-          aria-busy={props.thread.titleRegeneration != null ? true : undefined}
+          aria-busy={props.thread.titleRegeneration != null ? "true" : undefined}
         >
           <Show when={props.search} fallback={props.thread.title}>
             {(search) => <Highlighted text={props.thread.title} ranges={search().ranges} />}
@@ -365,7 +365,7 @@ export function ThreadCard(props: {
       class="data-dragging:opacity-40"
       id={props.search?.id}
       role={props.search ? "option" : undefined}
-      aria-selected={props.search ? props.search.highlighted : undefined}
+      aria-selected={props.search ? (props.search.highlighted ? "true" : "false") : undefined}
       data-pin-id={props.onDragStart ? props.thread.id : undefined}
       data-pin-folder={props.onDragStart ? props.thread.projectId : undefined}
       data-dragging={props.dragging ? "" : undefined}
@@ -382,7 +382,7 @@ export function ThreadCard(props: {
         data-pinned={props.thread.pinnedAt != null ? "" : undefined}
         data-selected={selected() ? "" : undefined}
         data-multi-selected={props.multiSelected === true ? "" : undefined}
-        aria-pressed={props.onSelectionClick && props.multiSelected === true ? true : undefined}
+        aria-pressed={props.onSelectionClick && props.multiSelected === true ? "true" : undefined}
         data-highlighted={props.search?.highlighted === true ? "" : undefined}
         data-receded={
           !selected() &&

@@ -2,7 +2,8 @@ import {
   repositorySectionForPath,
   turnDiffSections,
 } from "@t3tools/client-runtime/state/thread-repositories";
-import { createMemo, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { useInFlight } from "treflex-solid";
 
 import { type IDiffPanel, loadDiff } from "./Diff";
@@ -154,7 +155,7 @@ function Picker(props: {
         class={props.class}
         aria-label={props.ariaLabel}
         aria-haspopup="menu"
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
         onClick={() => setOpen(!open())}
         onKeyDown={(event) => openMenuFromKeys(event, () => setOpen(true))}
       >

@@ -1,13 +1,5 @@
-import {
-  createContext,
-  createUniqueId,
-  type JSX,
-  onCleanup,
-  onMount,
-  splitProps,
-  useContext,
-} from "solid-js";
-import { Portal } from "solid-js/web";
+import { type JSX, Portal } from "@solidjs/web";
+import { createContext, createUniqueId, omit, onCleanup, onSettled, useContext } from "solid-js";
 
 import { Search } from "../icons";
 import { createPopup, type IAlign, type IAnchor, inFloating, type ISide } from "./floating";
@@ -86,7 +78,7 @@ export function ComboboxTrigger(
     onOpen: (trigger: HTMLButtonElement) => void;
   },
 ) {
-  const [local, rest] = splitProps(props, ["onOpen"]);
+  const rest = omit(props, "onOpen");
   return (
     <button
       type="button"
@@ -94,10 +86,10 @@ export function ComboboxTrigger(
       aria-expanded="false"
       data-slot="combobox-trigger"
       {...rest}
-      onClick={(event) => local.onOpen(event.currentTarget)}
+      onClick={(event) => props.onOpen(event.currentTarget)}
       onKeyDown={(event) => {
         const trigger = event.currentTarget;
-        openComboboxFromKeys(event, () => local.onOpen(trigger));
+        openComboboxFromKeys(event, () => props.onOpen(trigger));
       }}
     />
   );
@@ -288,7 +280,7 @@ export function Combobox(props: {
       onItemHighlighted: (value) => props.onItemHighlighted?.(value),
     }),
   };
-  return <RootContext.Provider value={root}>{props.children}</RootContext.Provider>;
+  return <RootContext value={root}>{props.children}</RootContext>;
 }
 
 /** A combobox's filter field, which keeps focus while its list's highlight moves. */
@@ -298,7 +290,7 @@ export function ComboboxSearchInput(
   },
 ) {
   const root = useRoot();
-  const [local, rest] = splitProps(props, ["ref", "onInput", "onKeyDown"]);
+  const rest = omit(props, "ref", "onInput", "onKeyDown");
   return (
     <label class={SEARCH_LABEL}>
       <div class={SEARCH_FRAME}>
@@ -315,17 +307,17 @@ export function ComboboxSearchInput(
               {...rest}
               ref={(element) => {
                 root.navigation.setInput(element);
-                local.ref?.(element);
+                props.ref?.(element);
               }}
               class={SEARCH_FIELD}
               data-slot="combobox-input"
               onInput={(event) => {
-                const handler = local.onInput;
+                const handler = props.onInput;
                 if (typeof handler === "function") handler(event);
                 root.navigation.queryChanged(event.currentTarget.value);
               }}
               onKeyDown={(event) => {
-                const handler = local.onKeyDown;
+                const handler = props.onKeyDown;
                 if (typeof handler === "function") handler(event);
                 if (event.defaultPrevented || event.isComposing) return;
                 if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -392,7 +384,7 @@ export function ComboboxPopup(props: {
         <span ref={(held) => popup.popup(held)} class={withClass(POPUP_FRAME, props.class)}>
           <div
             class={POPUP}
-            tabIndex={-1}
+            tabindex={-1}
             data-slot="combobox-popup"
             onKeyDown={(event) => {
               if (event.key !== "Tab") return;
@@ -448,7 +440,7 @@ export function ComboboxListVirtualized(props: {
   children: JSX.Element;
 }) {
   const root = useRoot();
-  onMount(() => {
+  onSettled(() => {
     if (props.inline === true) root.navigation.open(null);
   });
   return (
@@ -484,7 +476,8 @@ export function ComboboxItem(
   },
 ) {
   const root = useRoot();
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "value",
     "disabled",
     "selectedFill",
@@ -492,17 +485,17 @@ export function ComboboxItem(
     "class",
     "onClick",
     "children",
-  ]);
+  );
   const id = createUniqueId();
-  const selected = () => root.value() === local.value;
+  const selected = () => root.value() === props.value;
   const classes = () =>
     [
       ITEM_BASE,
-      local.pointerWhenDisabled === true
+      props.pointerWhenDisabled === true
         ? "data-disabled:pointer-events-auto"
         : "data-disabled:pointer-events-none",
-      local.selectedFill !== false && ITEM_SELECTED_FILL,
-      local.class,
+      props.selectedFill !== false && ITEM_SELECTED_FILL,
+      props.class,
     ]
       .filter(Boolean)
       .join(" ");
@@ -510,31 +503,31 @@ export function ComboboxItem(
     <div
       id={id}
       {...rest}
-      ref={(element) => itemValues.set(element, local.value)}
+      ref={(element) => itemValues.set(element, props.value)}
       class={classes()}
       role="option"
-      aria-selected={selected()}
-      aria-disabled={local.disabled === true ? "true" : undefined}
+      aria-selected={selected() ? "true" : "false"}
+      aria-disabled={props.disabled === true ? "true" : undefined}
       data-selected={selected() ? "" : undefined}
-      data-disabled={local.disabled === true ? "" : undefined}
+      data-disabled={props.disabled === true ? "" : undefined}
       data-slot="combobox-item"
       onPointerDown={root.navigation.onItemPointerDown}
       onMouseDown={(event) => event.preventDefault()}
       onMouseUp={root.navigation.onItemMouseUp}
       onClick={(event) => {
-        if (local.disabled !== true) local.onClick?.(event);
+        if (props.disabled !== true) props.onClick?.(event);
       }}
     >
       <div class={ITEM_CONTENT} data-slot="combobox-item-content">
-        {local.children}
+        {props.children}
       </div>
     </div>
   );
 }
 
-export function ComboboxEmpty(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
-  return <div {...rest} class={withClass(EMPTY, local.class)} data-slot="combobox-empty" />;
+export function ComboboxEmpty(props: JSX.HTMLAttributes<HTMLDivElement> & { class?: string }) {
+  const rest = omit(props, "class");
+  return <div {...rest} class={withClass(EMPTY, props.class)} data-slot="combobox-empty" />;
 }
 
 export function ComboboxStatus(props: { children: JSX.Element }) {

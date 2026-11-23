@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 import {
   DialogAction,
@@ -29,8 +30,8 @@ export function AlertDialog(props: { onClose: () => void; children: JSX.Element 
 }
 
 export function AlertDialogPopup(props: IPopupProps & { bottomStickOnMobile?: boolean }) {
-  const [local, rest] = splitProps(props, ["bottomStickOnMobile"]);
-  const bottomStick = () => local.bottomStickOnMobile ?? true;
+  const rest = omit(props, "bottomStickOnMobile");
+  const bottomStick = () => props.bottomStickOnMobile ?? true;
   return (
     <DialogSurface
       {...rest}
@@ -44,11 +45,11 @@ export function AlertDialogPopup(props: IPopupProps & { bottomStickOnMobile?: bo
 }
 
 export function AlertDialogHeader(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const rest = omit(props, "class");
   return (
     <div
       {...rest}
-      class={`${ALERT_DIALOG_HEADER_CLASS} ${local.class ?? ""}`}
+      class={`${ALERT_DIALOG_HEADER_CLASS} ${props.class ?? ""}`}
       data-slot="alert-dialog-header"
     />
   );
@@ -57,23 +58,23 @@ export function AlertDialogHeader(props: JSX.HTMLAttributes<HTMLDivElement>) {
 export function AlertDialogFooter(
   props: JSX.HTMLAttributes<HTMLDivElement> & { variant?: "default" | "bare" },
 ) {
-  const [local, rest] = splitProps(props, ["class", "variant"]);
+  const rest = omit(props, "class", "variant");
   return (
     <div
       {...rest}
-      class={`${alertDialogFooterClass(local.variant ?? "default")} ${local.class ?? ""}`}
+      class={`${alertDialogFooterClass(props.variant ?? "default")} ${props.class ?? ""}`}
       data-slot="alert-dialog-footer"
     />
   );
 }
 
 export function AlertDialogTitle(props: Omit<JSX.HTMLAttributes<HTMLHeadingElement>, "id">) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const rest = omit(props, "class");
   return (
     <h2
       {...rest}
       id={useTitleId()}
-      class={`${ALERT_DIALOG_TITLE_CLASS} ${local.class ?? ""}`}
+      class={`${ALERT_DIALOG_TITLE_CLASS} ${props.class ?? ""}`}
       data-slot="alert-dialog-title"
     />
   );
@@ -82,12 +83,12 @@ export function AlertDialogTitle(props: Omit<JSX.HTMLAttributes<HTMLHeadingEleme
 export function AlertDialogDescription(
   props: Omit<JSX.HTMLAttributes<HTMLParagraphElement>, "id">,
 ) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const rest = omit(props, "class");
   return (
     <p
       {...rest}
       id={useDescriptionId()}
-      class={`${ALERT_DIALOG_DESCRIPTION_CLASS} ${local.class ?? ""}`}
+      class={`${ALERT_DIALOG_DESCRIPTION_CLASS} ${props.class ?? ""}`}
       data-slot="alert-dialog-description"
     />
   );

@@ -1,19 +1,11 @@
 import { getProviderClient } from "@t3tools/client-runtime/provider-clients";
 import type { ProjectIconColor } from "@t3tools/contracts";
+import type { IconNode } from "lucide";
 import { useResource } from "treflex-solid";
-import {
-  type Component,
-  createMemo,
-  createSignal,
-  createUniqueId,
-  For,
-  Match,
-  Show,
-  Switch,
-} from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { createMemo, createSignal, createUniqueId, For, Match, Show, Switch } from "solid-js";
 
 import Environment from "./Environment";
+import { Icon } from "./Icon";
 import { FolderCode } from "./icons";
 import type { IWireProject } from "./Infrastructure/wire";
 import {
@@ -88,13 +80,13 @@ function Monogram(props: { text: string; color: ProjectIconColor }) {
   );
 }
 
-type ILucideIcons = Record<string, Component<{ class?: string }> | undefined>;
+type ILucideIcons = Record<string, IconNode | undefined>;
 const [lucideIcons, setLucideIcons] = createSignal<ILucideIcons>();
 let lucideLoading: Promise<void> | undefined;
 
 // The whole set loads as one chunk, and only once a project uses a lucide override.
 function LucideIcon(props: { name: string; color: ProjectIconColor }) {
-  lucideLoading ??= import("lucide-solid").then((module) => {
+  lucideLoading ??= import("lucide/dist/esm/lucide/src/iconsAndAliases.js").then((module) => {
     setLucideIcons(() => module as unknown as ILucideIcons);
   });
   const pascal = () =>
@@ -104,7 +96,9 @@ function LucideIcon(props: { name: string; color: ProjectIconColor }) {
       .join("");
   return (
     <span class="size-full [&_svg]:size-full" style={{ color: ICON_COLORS[props.color] }}>
-      <Dynamic component={lucideIcons()?.[pascal()] ?? FolderCode} />
+      <Show when={lucideIcons()?.[pascal()]} fallback={<FolderCode />}>
+        {(node) => <Icon name={props.name} node={node()} />}
+      </Show>
     </span>
   );
 }

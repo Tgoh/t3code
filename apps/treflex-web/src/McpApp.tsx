@@ -21,11 +21,11 @@ import {
 import { type IOpenGenerator, open } from "treflex";
 import { useComponentState } from "treflex-solid";
 import {
-  createEffect,
   createMemo,
   createSignal,
+  createTrackedEffect,
   onCleanup,
-  onMount,
+  onSettled,
   Show,
   untrack,
 } from "solid-js";
@@ -191,7 +191,7 @@ export function McpAppFrame(props: {
     renderIntent: "mcp-app" as const,
   };
   const mint = () => local.dispatch(loadMediaUrl, environment.state.EnvironmentId, resource);
-  onMount(() => {
+  onSettled(() => {
     void mint();
     void local.dispatch(loadAppContext, target(), app.tool);
   });
@@ -211,7 +211,7 @@ export function McpAppFrame(props: {
 
   // The frame keeps its first URL for each document, since a new one would reload the app.
   const page = createMemo<{ Generation: number; Src: string | null }>(
-    (held) => {
+    (held = { Generation: 0, Src: null }) => {
       const current = generation();
       if (held.Generation === current && held.Src !== null) return held;
       // A failed mint leaves the previous, possibly expired, URL in place.
@@ -222,12 +222,11 @@ export function McpAppFrame(props: {
       absolute.searchParams.set(MCP_APP_COLOR_SCHEME_PARAM, untrack(theme).appearance);
       return { Generation: current, Src: absolute.toString() };
     },
-    { Generation: 0, Src: null },
   );
   const src = () => page().Src;
 
   // An approval goes inline so it stays above the app.
-  createEffect(() => {
+  createTrackedEffect(() => {
     if (awaitingUser()) setDisplayMode("inline");
   });
 
@@ -411,7 +410,7 @@ export function McpAppFrame(props: {
     });
   };
 
-  createEffect(() => {
+  createTrackedEffect(() => {
     theme();
     width();
     displayMode();
@@ -419,7 +418,7 @@ export function McpAppFrame(props: {
     host()?.updateHostContext();
   });
   // Each new document needs the call again.
-  createEffect(() => {
+  createTrackedEffect(() => {
     const call = local.state.ToolCall;
     src();
     if (call !== null) {

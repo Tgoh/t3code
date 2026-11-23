@@ -1,4 +1,5 @@
-import { children, type JSX, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { children, Show } from "solid-js";
 
 import { ArrowDown, ArrowLeft, ArrowUp, ChevronRight } from "./icons";
 import { Button } from "./ui/Button";

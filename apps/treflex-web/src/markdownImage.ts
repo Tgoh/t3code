@@ -4,7 +4,7 @@ import { type AssetResource, ThreadId } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { mediaKindFromPath, mediaMimeTypeFromExtension } from "@t3tools/shared/mediaPreview";
 import { fileBasename } from "@t3tools/shared/path";
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { IActionGenerator, IEntity } from "treflex";
 
 import type { IFileLink } from "./fileLinks";

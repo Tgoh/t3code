@@ -1,4 +1,4 @@
-import { createSignal, splitProps } from "solid-js";
+import { createSignal, omit } from "solid-js";
 
 import { Input, type InputProps } from "./Input";
 
@@ -9,22 +9,22 @@ export function DraftInput(
     onCommit: (next: string) => void;
   },
 ) {
-  const [local, rest] = splitProps(props, ["value", "onCommit"]);
+  const rest = omit(props, "value", "onCommit");
   const [draft, setDraft] = createSignal<{ Text: string; OnFocus: string } | null>(null);
   return (
     <Input
       {...rest}
-      value={draft()?.Text ?? local.value}
+      value={draft()?.Text ?? props.value}
       onInput={(event) => {
         const text = event.currentTarget.value;
-        setDraft((current) => ({ Text: text, OnFocus: current?.OnFocus ?? local.value }));
+        setDraft((current) => ({ Text: text, OnFocus: current?.OnFocus ?? props.value }));
       }}
-      onFocus={() => setDraft({ Text: local.value, OnFocus: local.value })}
+      onFocus={() => setDraft({ Text: props.value, OnFocus: props.value })}
       onBlur={() => {
         const held = draft();
         setDraft(null);
-        if (held !== null && held.Text !== held.OnFocus && held.Text !== local.value) {
-          local.onCommit(held.Text);
+        if (held !== null && held.Text !== held.OnFocus && held.Text !== props.value) {
+          props.onCommit(held.Text);
         }
       }}
       onKeyDown={(event) => {

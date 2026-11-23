@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 const SHAPES = {
   block: "rounded-sm",
@@ -9,14 +10,14 @@ const SHAPES = {
 export function Skeleton(
   props: JSX.HTMLAttributes<HTMLDivElement> & { shape?: keyof typeof SHAPES },
 ) {
-  const [local, rest] = splitProps(props, ["shape", "class"]);
+  const rest = omit(props, "shape", "class");
   return (
     <div
       {...rest}
       class={[
         "bg-muted-foreground/15 motion-safe:animate-skeleton",
-        SHAPES[local.shape ?? "block"],
-        local.class,
+        SHAPES[props.shape ?? "block"],
+        props.class,
       ]
         .filter(Boolean)
         .join(" ")}

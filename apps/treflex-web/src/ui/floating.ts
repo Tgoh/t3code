@@ -11,7 +11,7 @@ import {
   size,
   type VirtualElement,
 } from "@floating-ui/dom";
-import { createComputed, on, onCleanup, onMount } from "solid-js";
+import { createRenderEffect, onCleanup, onSettled } from "solid-js";
 
 import { type ICloseReason, useOverlays } from "../overlays";
 import { usePresence } from "./Presence";
@@ -349,11 +349,16 @@ export function createPopup(options: {
   show(false);
   // Presence keeps the same children when it reopens mid-exit, so this opens again too. It runs
   // as a computation, since an effect can miss an exit that settles within the same flush.
-  createComputed(
-    on(presence.exiting, (exiting) => (exiting ? hide() : show(true)), { defer: true }),
+  createRenderEffect(
+    presence.exiting,
+    (exiting) => {
+      if (exiting) hide();
+      else show(true);
+    },
+    { defer: true },
   );
   onCleanup(hide);
-  onMount(() => {
+  onSettled(() => {
     if (!open) return;
     setTriggerOpen();
     startFollowing();

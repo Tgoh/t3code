@@ -1,14 +1,15 @@
 // @effect-diagnostics globalTimers:off -- View-only hover delays, outside any Effect runtime.
+import type { JSX } from "@solidjs/web";
 import {
   type Component,
   createComponent,
   createRoot,
   createSignal,
   getOwner,
-  type JSX,
   onCleanup,
-  onMount,
+  onSettled,
   type Owner,
+  runWithOwner,
 } from "solid-js";
 
 import { follow, type IAlign, type IPlacement, type ISide } from "./floating";
@@ -108,10 +109,12 @@ function followTip(positioner: HTMLElement, trigger: HTMLElement, onLost: () => 
 
 function renderCard(card: ICard): JSX.Element {
   let dispose = () => {};
-  const view = createRoot((disposeRoot) => {
-    dispose = disposeRoot;
-    return card.Render();
-  }, card.Owner);
+  const view = runWithOwner(card.Owner, () =>
+    createRoot((disposeRoot) => {
+      dispose = disposeRoot;
+      return card.Render();
+    }),
+  );
   onCleanup(() => dispose());
   return view;
 }
@@ -129,7 +132,7 @@ function TipPopup(props: { tip: IOpenTip; onLost: () => void }) {
   if (card !== undefined) classes.push(CARD);
   const [positioner, setPositioner] = createSignal<HTMLDivElement>();
   const [text, setText] = createSignal(trigger.dataset.tip);
-  onMount(() => {
+  onSettled(() => {
     const element = positioner();
     if (element !== undefined) onCleanup(followTip(element, trigger, () => props.onLost()));
     if (card !== undefined) return;
@@ -287,7 +290,7 @@ function tooltipController() {
     hide();
   };
 
-  onMount(() => {
+  onSettled(() => {
     document.addEventListener("pointerover", onPointerOver);
     document.addEventListener("pointerout", onPointerOut);
     document.addEventListener("pointerdown", onPointerDown, true);

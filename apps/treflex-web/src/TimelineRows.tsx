@@ -9,8 +9,8 @@ import { htmlRenderReferencesEqual } from "@t3tools/shared/htmlRender";
 import { mcpAppReferencesEqual } from "@t3tools/shared/mcpApp";
 import type { IAskId } from "treflex";
 import { useComponentState, useInFlight } from "treflex-solid";
-import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic } from "@solidjs/web";
+import { type Component, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 
 import { attachmentDetail } from "./attachmentIntake";
 import { CommandOutput, ToolDetailNote, WORK_PRE } from "./CommandOutput";
@@ -219,7 +219,9 @@ const attachmentResource = (file: IWireAttachment): AssetResource => ({
 function UserAttachment(props: { environmentId: string; file: IWireAttachment; grouped: boolean }) {
   const local = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
   const resource = attachmentResource(props.file);
-  onMount(() => local.dispatch(loadMediaUrl, props.environmentId, resource));
+  onSettled(() => {
+    local.dispatch(loadMediaUrl, props.environmentId, resource);
+  });
   return (
     <Show
       when={props.file.type === "image"}
@@ -456,7 +458,7 @@ export function FoldHeader(props: { fold: IMessageFold; expanded: boolean; onTog
       <button
         type="button"
         class="group/toggle flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left"
-        aria-expanded={props.expanded}
+        aria-expanded={props.expanded ? "true" : "false"}
         onClick={() => props.onToggle()}
       >
         <span class="min-w-0 flex-1 truncate">{props.fold.Summary.normalize("NFC")}</span>
@@ -1049,7 +1051,6 @@ function HtmlRenderRow(props: IRowProps) {
       const found = held === undefined ? null : embedOf(held);
       return found?.Kind === "html-render" ? found.HtmlRender : null;
     },
-    null,
     {
       equals: (left, right) =>
         left === right ||
@@ -1076,7 +1077,6 @@ function McpAppRow(props: IRowProps) {
       const found = held === undefined ? null : embedOf(held);
       return found?.Kind === "mcp-app" ? found.App : null;
     },
-    null,
     {
       equals: (left, right) =>
         left === right || (left !== null && right !== null && mcpAppReferencesEqual(left, right)),

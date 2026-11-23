@@ -1,4 +1,5 @@
-import { type JSX, splitProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 import { overrides } from "./merge";
 
@@ -33,6 +34,7 @@ const TYPES: Partial<Record<string, string>> = {
 type InputSize = keyof typeof INPUT_SIZES;
 
 export type InputProps = Omit<JSX.InputHTMLAttributes<HTMLInputElement>, "size"> & {
+  class?: string;
   size?: InputSize | number;
   font?: "default" | "mono";
   unstyled?: boolean;
@@ -69,23 +71,23 @@ function inputClass(size: InputSize | number | undefined, type: string | undefin
 }
 
 export function Input(props: InputProps) {
-  const [local, rest] = splitProps(props, ["class", "size", "font", "unstyled"]);
+  const rest = omit(props, "class", "size", "font", "unstyled");
   return (
     <span
       class={inputControlClass({
-        size: local.size,
-        font: local.font,
-        unstyled: local.unstyled,
-        class: local.class,
+        size: props.size,
+        font: props.font,
+        unstyled: props.unstyled,
+        class: props.class,
       })}
-      data-size={local.size ?? "default"}
+      data-size={props.size ?? "default"}
       data-slot="input-control"
     >
       <input
         data-slot="input"
-        size={typeof local.size === "number" ? local.size : undefined}
+        size={typeof props.size === "number" ? props.size : undefined}
         {...rest}
-        class={inputClass(local.size, rest.type)}
+        class={inputClass(props.size, typeof rest.type === "string" ? rest.type : undefined)}
       />
     </span>
   );

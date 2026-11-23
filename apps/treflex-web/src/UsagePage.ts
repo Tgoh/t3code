@@ -2,7 +2,7 @@
 import { makeWindow } from "@t3tools/shared/usageFormat";
 import { type IEntity, type IOpenGenerator, latest, open, workTag } from "treflex";
 import { createComponentFeature } from "treflex-solid";
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onSettled } from "solid-js";
 
 import {
   type IWireUsageInput,
@@ -79,7 +79,7 @@ export function useUsagePage(environmentId: string, opening: { Days: number; Lim
     setInput(next);
     void page.loadUsage(environmentId, String(days), next);
   };
-  onMount(() => {
+  onSettled(() => {
     load(opening.Days);
     if (opening.Limits) void page.autoRefreshLimits(environmentId);
   });

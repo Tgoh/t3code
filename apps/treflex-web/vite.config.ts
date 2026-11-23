@@ -9,7 +9,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import "vite-plus/test/config";
 import { defineConfig, type Plugin } from "vite-plus";
-import solidPlugin from "vite-plugin-solid";
+import solidPlugin from "@solidjs/vite-plugin";
 
 import { serviceWorker as worker, type WorkerBuild } from "./src/sw";
 
@@ -66,9 +66,9 @@ export default defineConfig(({ mode }) => ({
   // Pierre's diff worker splits its highlighter into chunks, which a classic worker can't load.
   worker: { format: "es" },
   ...(mode === "bench" ? { define: { "import.meta.env.DEV": "false" } } : {}),
-  // Solid's default Node export is its server build, which has no reactive runtime.
-  resolve: { conditions: ["solid", "browser"] },
-  ssr: { resolve: { conditions: ["solid", "browser"] } },
+  // Without "browser", Node resolves solid-js and @solidjs/web to their server builds.
+  resolve: { conditions: ["browser"] },
+  ssr: { resolve: { conditions: ["browser"] } },
   test: {
     environment: "node",
     server: { deps: { inline: ["treflex", "treflex-solid"] } },

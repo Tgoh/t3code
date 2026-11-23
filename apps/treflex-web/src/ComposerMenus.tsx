@@ -1,6 +1,6 @@
 import { selectableProviderOptionChoices } from "@t3tools/client-runtime/model-traits";
-import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic } from "@solidjs/web";
+import { type Component, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 
 import { hasProviderIcon, ProviderIcon } from "./brand";
 import { formatContextTokens } from "./compaction";
@@ -119,11 +119,11 @@ function PermissionsSection(props: {
   const [preview, setPreview] = createSignal<IWireRuntimeMode | null>(null);
   const shown = () => RUNTIME_MODE_CONFIG[preview() ?? props.mode];
   const [section, setSection] = createSignal<HTMLDivElement>();
-  onMount(() =>
+  onSettled(() => {
     section()
       ?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')
-      ?.focus({ preventScroll: true }),
-  );
+      ?.focus({ preventScroll: true });
+  });
   return (
     <div class="grid w-72 gap-1.5 px-2 py-1.5" ref={setSection}>
       <div class={`${SMALL_MUTED} font-medium`}>Permissions</div>
@@ -206,7 +206,7 @@ export function CompactToggle(props: { tokens: number }) {
     <button
       type="button"
       class={`${COMPOSER_CONTROL} tabular-nums aria-pressed:bg-foreground/9 aria-pressed:text-foreground [&>svg]:text-muted-foreground`}
-      aria-pressed={!keep()}
+      aria-pressed={!keep() ? "true" : "false"}
       aria-label={`Compact ${tokens()} tokens of history before sending`}
       data-tip={
         keep()
@@ -239,7 +239,7 @@ export function PermissionsChip(props: { context?: boolean }) {
         ref={setTrigger}
         aria-label={`Permissions: ${mode().Label}`}
         aria-haspopup="menu"
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
         data-tip={`Permissions: ${mode().Label}. ${mode().Description}`}
         onClick={() => setOpen(!open())}
         onKeyDown={(event) => openMenuFromKeys(event, () => setOpen(true))}
@@ -286,7 +286,7 @@ export function ModelPicker() {
         ref={setTrigger}
         aria-label={`Model: ${name()}${suffix()?.Detail ? `, ${suffix()!.Detail}` : ""}`}
         aria-haspopup="dialog"
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
         data-tip={suffix()?.Detail ?? undefined}
         onClick={() => setOpen(!open())}
       >
@@ -507,7 +507,9 @@ function PickerContent(props: { traits: ITraits | null }) {
     )?.focus();
   };
 
-  onMount(() => search()?.focus());
+  onSettled(() => {
+    search()?.focus();
+  });
 
   return (
     <div
@@ -538,7 +540,7 @@ function PickerContent(props: { traits: ITraits | null }) {
         <button
           type="button"
           class={`${PROVIDER_TAB} [&_svg]:fill-current`}
-          aria-pressed={tab() === FAVORITES_TAB && query() === ""}
+          aria-pressed={tab() === FAVORITES_TAB && query() === "" ? "true" : "false"}
           aria-label="Favorites"
           data-tip="Favorites"
           data-tip-side="right"
@@ -552,7 +554,7 @@ function PickerContent(props: { traits: ITraits | null }) {
             <button
               type="button"
               class={PROVIDER_TAB}
-              aria-pressed={tab() === provider.InstanceId && query() === ""}
+              aria-pressed={tab() === provider.InstanceId && query() === "" ? "true" : "false"}
               aria-label={provider.Name}
               data-tip={
                 blockOf(provider.InstanceId) === null
@@ -633,7 +635,7 @@ function PickerContent(props: { traits: ITraits | null }) {
                         </Show>
                         <ComboboxItem
                           value={LEGACY_KEY}
-                          aria-expanded={legacy().Expanded}
+                          aria-expanded={legacy().Expanded ? "true" : "false"}
                           class="group w-full cursor-pointer"
                           onClick={toggleLegacy}
                         >
@@ -796,8 +798,8 @@ function EffortRow(props: {
       type="button"
       role="radio"
       class={`${EFFORT_ROW} py-0`}
-      aria-checked={props.selected}
-      tabIndex={props.selected ? 0 : -1}
+      aria-checked={props.selected ? "true" : "false"}
+      tabindex={props.selected ? 0 : -1}
       data-effort-row
       data-effort-level
       data-tip={props.description}
@@ -831,8 +833,8 @@ function OptionMenuRow(props: { descriptor: ISelectDescriptor; traits: ITraits }
         type="button"
         class={`${EFFORT_ROW} py-1`}
         data-effort-row
-        tabIndex={-1}
-        aria-expanded={open()}
+        tabindex={-1}
+        aria-expanded={open() ? "true" : "false"}
         aria-label={`${props.descriptor.label}: ${current()}`}
         onClick={() => setOpen(!open())}
       >
@@ -878,7 +880,7 @@ function OptionSwitchRow(props: { descriptor: IBooleanDescriptor; traits: ITrait
         checked={checked()}
         aria-label={props.descriptor.label}
         data-effort-row
-        tabIndex={-1}
+        tabindex={-1}
         onCheckedChange={(next) => pick.toggle(props.traits, props.descriptor.id, next)}
       />
     </label>
@@ -895,8 +897,8 @@ function SpeedSegment(props: {
     <button
       type="button"
       role="radio"
-      aria-checked={props.checked}
-      data-checked={props.checked || undefined}
+      aria-checked={props.checked ? "true" : "false"}
+      data-checked={props.checked ? "true" : undefined}
       class={FOOTER_SEGMENT}
       data-tip={props.tip}
       onClick={props.onPick}
@@ -954,8 +956,8 @@ function PickerFooter(props: { traits: ITraits | null }) {
             <button
               type="button"
               class={FOOTER_SEGMENT}
-              aria-pressed={ultracode().currentValue === true}
-              data-checked={ultracode().currentValue === true || undefined}
+              aria-pressed={ultracode().currentValue === true ? "true" : "false"}
+              data-checked={ultracode().currentValue === true ? "true" : undefined}
               onClick={() =>
                 pick.toggle(props.traits!, ultracode().id, ultracode().currentValue !== true)
               }
@@ -972,7 +974,7 @@ function PickerFooter(props: { traits: ITraits | null }) {
         ref={setPermissions}
         aria-label={`Permissions: ${mode().Label}`}
         aria-haspopup="menu"
-        aria-expanded={permissionsOpen()}
+        aria-expanded={permissionsOpen() ? "true" : "false"}
         onClick={() => setPermissionsOpen(!permissionsOpen())}
         onKeyDown={(event) => openMenuFromKeys(event, () => setPermissionsOpen(true))}
       >

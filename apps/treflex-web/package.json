@@ -16,6 +16,7 @@
     "@fontsource-variable/inter": "^5.3.0",
     "@pierre/diffs": "catalog:",
     "@pierre/trees": "1.0.0-beta.6",
+    "@solidjs/web": "^2.0.3",
     "@t3tools/client-runtime": "workspace:*",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
@@ -25,19 +26,19 @@
     "dompurify": "^3.4.16",
     "effect": "catalog:",
     "heic-to": "^1.5.2",
-    "lucide-solid": "^0.564.0",
+    "lucide": "^0.564.0",
     "marked": "^16.0.0",
-    "solid-js": "^1.9.12",
-    "treflex": "0.2.0",
-    "treflex-solid": "0.2.0"
+    "solid-js": "^2.0.3",
+    "treflex": "0.3.0",
+    "treflex-solid": "0.3.0"
   },
   "devDependencies": {
+    "@solidjs/vite-plugin": "^3.0.1",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "playwright-core": "1.64.1",
     "tailwindcss": "catalog:",
-    "treflex-eslint": "file:vendor/treflex-eslint-0.2.1.tgz",
-    "vite-plugin-solid": "^2.11.7",
+    "treflex-eslint": "file:vendor/treflex-eslint-0.3.0.tgz",
     "vite-plus": "catalog:"
   }
 }

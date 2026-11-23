@@ -1,7 +1,8 @@
 // Copied from apps/web/src/components/Icons.tsx and JetBrainsIcons.tsx, with SVG attributes in DOM
 // names for Solid. Solid types feBlend's mode without overlay, hence its casts.
 import { isMacPlatform } from "@t3tools/shared/keybindings";
-import { createUniqueId, type JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createUniqueId } from "solid-js";
 
 type Icon = (props: JSX.SvgSVGAttributes<SVGSVGElement>) => JSX.Element;
 
