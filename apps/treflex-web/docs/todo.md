@@ -73,6 +73,7 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 Any time; none of it touches the client.
 
+- **Where threads get stuck, and where bugs come from.** Tam asked (2026-11-23) for a review of the worktree threads' transcripts: failed and repeated tool calls, setup and port trouble, waits, rework after review, and which kinds of bug reviewers keep finding or Tam finds after a merge (the Solid 2 read-after-write lag and the iPhone-only scroll and keyboard bugs, for example). Start from the `/getfriction` skill over this project's transcripts, add the review findings from the merged branches, and turn each cause into a fix: a line in this app's `CLAUDE.md` or README, a change to the brief template or the `/build` skill, a script fix, a lint rule or a permission rule. The goal is faster builds and fewer tokens per thread.
 - **Make `vp run check:changed` pass for this app.** Every thread reports the same two failures, which hide real ones.
   - Its test step runs this app's tests in the root vitest project, where tests fail that pass from `apps/treflex-web`. Give the app its own vitest project in the root config, or exclude it from the root run and have `check:changed` run it from its folder.
   - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.3.0.tgz`.
