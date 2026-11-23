@@ -115,6 +115,7 @@ import {
   checkRewind,
   detachThread,
   followCheckout,
+  followWorkspace,
   getDefaultThreadSession,
   type IPanels,
   panels,
@@ -706,6 +707,10 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Thread/CheckoutChanged"(draft, { ThreadId }) {
     const session = draft.Local.ThreadSessions[ThreadId];
     if (session !== undefined) yield* start(followCheckout, session);
+  },
+  *"Thread/WorkspaceChanged"(draft, { ThreadId }) {
+    const session = draft.Local.ThreadSessions[ThreadId];
+    if (session?.Panels.Diff != null) yield* start(followWorkspace, session);
   },
   *"Shell/ProjectsChanged"(draft) {
     const session = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];

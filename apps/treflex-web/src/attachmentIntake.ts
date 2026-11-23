@@ -12,7 +12,6 @@ import {
   type ExecutionEnvironmentCapabilities,
   isProviderSendTurnSupportedImageMimeType,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
-  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
 } from "@t3tools/contracts";
 import { isSvgAttachment } from "@t3tools/shared/image";
@@ -54,7 +53,8 @@ function inferredImageMimeType(file: Pick<File, "name" | "type">): string | null
   return extension === null ? null : (IMAGE_MIME_TYPE_BY_EXTENSION[extension] ?? null);
 }
 
-function isHeicFile(file: Pick<File, "name" | "type">): boolean {
+/** Finder and some browsers omit the MIME type when dragging HEIC photos. */
+export function isHeicFile(file: Pick<File, "name" | "type">): boolean {
   return (
     HEIC_MIME_TYPE.test(file.type) ||
     (isGenericMimeType(file.type) && HEIC_EXTENSION.test(file.name))
@@ -71,13 +71,12 @@ function isDngFile(file: Pick<File, "name" | "type">): boolean {
   );
 }
 
-/** Stock converts HEIC to JPEG on a canvas; this client doesn't, so HEIC is refused. */
 export function classifyAttachmentFile(
   file: Pick<File, "name" | "type">,
 ): IAttachmentKind | "unsupported-image" {
   if (isSvgAttachment({ name: file.name, mimeType: file.type })) return "file";
   if (isDngFile(file)) return "file";
-  if (isHeicFile(file)) return "unsupported-image";
+  if (isHeicFile(file)) return "image";
   if (inferredImageMimeType(file)) return "image";
   if (!file.type.toLowerCase().startsWith("image/")) return "file";
   if (isProviderSendTurnSupportedImageMimeType(file.type)) return "image";
@@ -167,16 +166,12 @@ export function admitFiles(
       continue;
     }
     if (kind === "unsupported-image") {
-      error = `'${file.name}' is not a supported image type. Attach GIF, JPEG, PNG, or WebP images.`;
+      error = `'${file.name}' is not a supported image type. Attach GIF, HEIC, HEIF, JPEG, PNG, or WebP images.`;
       continue;
     }
     if (kind === "image") {
       if (file.size <= 0) {
         error = `'${file.name}' could not be read as an image.`;
-        continue;
-      }
-      if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-        error = `'${file.name}' is too large to attach. Images can be up to 10 MB.`;
         continue;
       }
       const type = inferredImageMimeType(file) ?? file.type;
@@ -203,6 +198,33 @@ export function admitFiles(
     reserved += 1;
   }
   return { Accepted: accepted, Error: error };
+}
+
+/** cyrb53, synchronous: crypto.subtle is missing on plain-http remote origins. */
+function bytesFingerprint(bytes: Uint8Array): string {
+  let first = 0xdeadbeef;
+  let second = 0x41c6ce57;
+  for (let index = 0; index < bytes.length; index++) {
+    const byte = bytes[index]!;
+    first = Math.imul(first ^ byte, 2654435761);
+    second = Math.imul(second ^ byte, 1597334677);
+  }
+  first = Math.imul(first ^ (first >>> 16), 2246822507);
+  first ^= Math.imul(second ^ (second >>> 13), 3266489909);
+  second = Math.imul(second ^ (second >>> 16), 2246822507);
+  second ^= Math.imul(first ^ (first >>> 13), 3266489909);
+  return `${second >>> 0}:${first >>> 0}`;
+}
+
+export function attachmentKey(
+  kind: IAttachmentKind,
+  file: Pick<File, "name" | "type" | "size">,
+  bytes?: Uint8Array,
+): string {
+  const signature = `${file.type}\u0000${file.size}\u0000${file.name}`;
+  return kind === "image" && bytes !== undefined
+    ? `${signature}\u0000${bytesFingerprint(bytes)}`
+    : signature;
 }
 
 export type IPastedTextDecision =

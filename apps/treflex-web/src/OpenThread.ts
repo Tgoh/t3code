@@ -51,6 +51,7 @@ declare module "treflex" {
     "Thread/Expired": { ThreadId: string };
     "Thread/RewindProgress": { ThreadId: string };
     "Thread/CheckoutChanged": { ThreadId: string };
+    "Thread/WorkspaceChanged": { ThreadId: string };
     "Thread/RequestsSettled": {
       ThreadId: string;
       PendingIds: string[];
@@ -543,7 +544,9 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     const history = yield* windowOf(draft, item);
     yield* reconcileEntities(draft.RuntimeRequests, item.projection.runtimeRequests);
     yield* reconcileEntities(draft.ItemRequests, answeredItemIds(item.projection));
+    const workspaceBefore = snapshotWorkspaceMark(draft);
     applySnapshot(draft, item, history);
+    if (snapshotWorkspaceMark(draft) !== workspaceBefore) yield* announceWorkspaceChange(draft);
     yield* announceSettled(draft);
     yield* announceRewind(draft);
     yield* start(lookUpLineageTitles, draft);
@@ -564,7 +567,9 @@ function* applyItem(draft: IOpenThread, item: IWireThreadItem): IActionGenerator
     if (item.event.payload.status !== "pending") yield* announceSettled(draft);
     return;
   }
+  const workspaceBefore = workspaceMark(draft, item.event);
   applyEvent(draft, item.event);
+  if (workspaceBefore !== workspaceMark(draft, item.event)) yield* announceWorkspaceChange(draft);
   if (
     item.event.type === "turn-item.updated" &&
     ANSWERED_ITEM_TYPES.has(item.event.payload.type) &&
@@ -590,6 +595,44 @@ const REWIND_EVENTS = new Set<IWireThreadEvent["type"]>([
   "run.updated",
   "provider-thread.updated",
 ]);
+
+// Follows deriveWorkspaceMutationId in packages/client-runtime/src/state/threadDetail.ts.
+const WORKSPACE_ITEM_TYPES = new Set<IWireTurnItem["type"]>([
+  "command_execution",
+  "file_change",
+  "dynamic_tool",
+  "subagent",
+]);
+const UNSETTLED_ITEM = new Set(["pending", "running", "waiting"]);
+
+function snapshotWorkspaceMark(draft: IOpenThread): string {
+  let newest: IWireTurnItem | null = null;
+  for (const item of Object.values(draft.TurnItems)) {
+    if (!WORKSPACE_ITEM_TYPES.has(item.type) || UNSETTLED_ITEM.has(item.status)) continue;
+    if (newest === null || item.ordinal > newest.ordinal) newest = item;
+  }
+  return `${newest?.id ?? ""}\n${latestDiffTurn(draft) ?? ""}`;
+}
+
+function workspaceMark(draft: IOpenThread, event: IWireThreadEvent): number | boolean | null {
+  switch (event.type) {
+    case "checkpoint.captured":
+    case "run.created":
+    case "run.updated":
+      return latestDiffTurn(draft);
+    case "turn-item.updated": {
+      if (!WORKSPACE_ITEM_TYPES.has(event.payload.type)) return null;
+      const held = draft.TurnItems[event.payload.id];
+      return held !== undefined && !UNSETTLED_ITEM.has(held.status);
+    }
+    default:
+      return null;
+  }
+}
+
+function* announceWorkspaceChange(draft: IOpenThread): IActionGenerator {
+  yield* publishToNearest(draft, "Thread/WorkspaceChanged", { ThreadId: draft.ThreadId });
+}
 
 function* announceRewind(draft: IOpenThread): IActionGenerator {
   if (draft.Thread?.rollbackRequestId == null) return;
@@ -751,7 +794,7 @@ export function* timelineIds(draft: IOpenThread): ISelectorGenerator<string[]> {
   return [...draft.Timeline];
 }
 
-const ACTIVE_RUN = new Set(["preparing", "starting", "running", "waiting"]);
+export const ACTIVE_RUN = new Set(["preparing", "starting", "running", "waiting"]);
 
 export function* latestRun(draft: IOpenThread): ISelectorGenerator<IWireRun | null> {
   return newestRun(draft);
