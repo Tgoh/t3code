@@ -10,6 +10,7 @@ import {
   For,
   lazy,
   Match,
+  onFlush,
   onSettled,
   Show,
   Switch,
@@ -308,7 +309,7 @@ const ThreadConversation = ThreadSession.provider<{
     const before = anchor.getBoundingClientRect().top;
     correcting = true;
     // Measured after the patch, so native anchoring has applied; the difference is 0 where it did.
-    queueMicrotask(() => {
+    onFlush(() => {
       correcting = false;
       if (!anchor.isConnected) return;
       const shift = anchor.getBoundingClientRect().top - before;
@@ -382,7 +383,6 @@ const ThreadConversation = ThreadSession.provider<{
       First: snap(held.Ids, target),
       Floor: isStuck ? Math.max(held.Floor, held.Ids.length - target) : held.Floor,
     }));
-    // After the write: its correction must queue behind the flush the write schedules.
     if (!isStuck) keepStill();
   };
   const showAll = (forward: boolean) => {
