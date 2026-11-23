@@ -431,7 +431,9 @@ function useMediaUrl(resource: AssetResource) {
     void load();
   });
   return {
-    state: local.state,
+    get state() {
+      return local.state;
+    },
     reload: load,
     failed: () => void local.dispatch(mediaFailed, environment.state.EnvironmentId, resource),
   };
