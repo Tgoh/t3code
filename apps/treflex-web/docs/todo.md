@@ -2,6 +2,8 @@
 
 Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead. The long-term goal is full parity with stock, so `issues.md`'s gaps move in here a few at a time.
 
+**On hold until treflex 0.3.0 ships:** finish the items already in progress, and start nothing new (Tam, 2026-11-23).
+
 ## 1. Style parity
 
 Nothing hand-rolled that stock already has. Before parity and the missing features, so new work uses the shared components.
@@ -38,8 +40,8 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 - **Thread details and git.** Context and usage rows, environment and worktree pickers, git progress phases and hook output, View PR, Initialize Git and Publish repository. See "Thread details" and "Thread details, git".
 - **Diff panel.** **In progress** on `treflex/diff-panel`. Stock's `@pierre/diffs` view with syntax highlighting, split view, wrap, tabs and the turn picker, and restoring a checkpoint. See "Diff panel" and "Restoring a checkpoint isn't offered".
 - **Terminal.** **In progress** on `treflex/terminal`. Tabs and splits, a resizable drawer, links, search and a restart button for an exited shell. See the terminal entries under "Skipped for the prototype".
-- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables. Tam picks the order. The file preview brings stock's copy button with it (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header); until a preview exists, a file attachment opens in a new browser tab.
-- **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.
+- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables, in that order (Tam left the order open, 2026-11-23). Files starts after the diff panel merges, since both change the right panel. The file preview brings stock's copy button with it (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header); until a preview exists, a file attachment opens in a new browser tab.
+- **Settings pages.** Build the pages greyed out in the nav, starting with Labs, Worktrees and Source control (Tam left the order open, 2026-11-23).
 
 ## 4. Performance
 
