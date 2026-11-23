@@ -36,8 +36,10 @@ import {
   File as FileIcon,
   ListPlus,
   Paperclip,
+  RefreshCw,
   X,
 } from "./icons";
+import type { IFileStatus } from "./Infrastructure/composerFiles";
 import { arrowStep } from "./listNavigation";
 import { useNavigation } from "./navigation";
 import { useOverlays } from "./overlays";
@@ -194,6 +196,55 @@ function SendButton(props: {
   );
 }
 
+// Follows the upload overlays in apps/web/src/components/chat/ComposerAttachmentStrip.tsx.
+function UploadStatus(props: {
+  status: IFileStatus | undefined;
+  name: string;
+  tile?: boolean;
+  onRetry: () => void;
+}) {
+  const progress = () => {
+    const status = props.status;
+    return status?.Phase === "uploading" ? `${Math.floor(status.Progress * 100)}%` : null;
+  };
+  const failure = () => {
+    const status = props.status;
+    return status?.Phase === "failed" ? status.Error : null;
+  };
+  return (
+    <>
+      <Show when={progress()}>
+        {(label) => (
+          <span
+            class={
+              props.tile
+                ? "pointer-events-none absolute inset-x-0 bottom-0 bg-background/85 px-1 text-center text-3xs text-foreground"
+                : "flex-none text-[12px] text-secondary-label tabular-nums"
+            }
+          >
+            {label()}
+          </span>
+        )}
+      </Show>
+      <Show when={failure()}>
+        {(error) => (
+          <span class={props.tile ? "absolute bottom-1 left-1 flex" : "flex flex-none"}>
+            <Button
+              variant={props.tile ? "overlay" : "ghost"}
+              size="icon-xs"
+              aria-label={`Retry upload for ${props.name}`}
+              data-tip={error()}
+              onClick={() => props.onRetry()}
+            >
+              <RefreshCw />
+            </Button>
+          </span>
+        )}
+      </Show>
+    </>
+  );
+}
+
 function useAttachmentIntake() {
   const environment = Environment.use();
   const session = ThreadSession.use();
@@ -201,25 +252,32 @@ function useAttachmentIntake() {
   const addFiles = async (picked: File[], pastedText = false) => {
     if (picked.length === 0) return;
     const admitted = admitFiles(picked, {
-      Reserved: session.state.Attachments.length,
+      Reserved: session.state.Attachments.length + (files.value()?.Preparing.length ?? 0),
       FileLimit: environment.state.FileAttachmentLimit,
       PastedText: pastedText,
     });
-    const supplied = admitted.Accepted.length === 0 ? [] : await files.supply(admitted.Accepted);
-    if (supplied === undefined) {
-      session.addAttachments([], "Attachments aren't available right now. Try again.");
-      return;
+    const others = admitted.Accepted.filter((file) => file.Kind === "file");
+    const images = admitted.Accepted.filter((file) => file.Kind === "image");
+    // Images prepare for seconds, so other files are supplied first and show at once.
+    for (const group of [others, images]) {
+      if (group.length === 0) continue;
+      const supplied = await files.supply(group);
+      if (supplied === undefined) {
+        session.addAttachments([], "Attachments aren't available right now. Try again.");
+        return;
+      }
+      const pasted = pastedText ? supplied.Picked[0] : undefined;
+      session.addAttachments(
+        supplied.Picked,
+        supplied.Error ?? admitted.Error,
+        pasted === undefined
+          ? null
+          : `Large paste attached as ${pasted.Name} (${formatAttachmentSize(pasted.SizeBytes)}). Use ${
+              IS_MAC ? "⌘⇧V" : "Ctrl+Shift+V"
+            } to keep a large paste inline.`,
+      );
     }
-    const pasted = pastedText ? supplied[0] : undefined;
-    session.addAttachments(
-      supplied,
-      admitted.Error,
-      pasted === undefined
-        ? null
-        : `Large paste attached as ${pasted.Name} (${formatAttachmentSize(pasted.SizeBytes)}). Use ${
-            IS_MAC ? "⌘⇧V" : "Ctrl+Shift+V"
-          } to keep a large paste inline.`,
-    );
+    if (admitted.Accepted.length === 0) session.addAttachments([], admitted.Error);
   };
   const addFolders = (folders: File[]) => {
     const folder = folders.at(-1);
@@ -368,6 +426,8 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     answering() ? [] : held().Attachments.filter((file) => file.Kind === "image");
   const otherFiles = () =>
     answering() ? [] : held().Attachments.filter((file) => file.Kind === "file");
+  const preparing = () => (answering() ? [] : (files.value()?.Preparing ?? []));
+  const fileStatus = (id: string) => files.value()?.Status[id];
   const [pasteAsTextUntil, setPasteAsTextUntil] = createSignal(0);
   const noProvider = () => environment.state.Replica.Providers.length === 0;
   const placeholder = () => {
@@ -385,7 +445,9 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const isDraft = () => held().NewThreadProjectId !== null;
   const stopping = () => session.stopRequested() || stopInFlight();
   const clone = useProjectClone(() => session.projectId());
-  const blocked = () => cloneSendBlock(clone());
+  const blocked = () =>
+    cloneSendBlock(clone()) ??
+    ((files.value()?.Preparing.length ?? 0) > 0 ? "Waiting for images to finish preparing" : null);
   const canSend = () =>
     blocked() === null &&
     !sending() &&
@@ -613,7 +675,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
 
   return (
     <>
-      <Show when={blocked() !== null && clone()}>
+      <Show when={cloneSendBlock(clone()) !== null && clone()}>
         {(shown) => <ProjectCloneBanner clone={shown()} />}
       </Show>
       <form
@@ -663,7 +725,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             </Show>
           </div>
         </Show>
-        <Show when={images().length > 0}>
+        <Show when={images().length > 0 || preparing().length > 0}>
           <ul class={`m-0 flex list-none flex-wrap gap-2 px-3 pt-3 pb-0 ${HIDDEN_COLLAPSED}`}>
             <For each={images()}>
               {(file) => (
@@ -677,6 +739,12 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                       />
                     )}
                   </Show>
+                  <UploadStatus
+                    status={fileStatus(file.Id)}
+                    name={file.Name}
+                    tile
+                    onRetry={() => session.retryAttachment(file.Id)}
+                  />
                   <span class="absolute right-1 top-1 flex">
                     <Button
                       variant="media-close"
@@ -684,6 +752,26 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                       aria-label={`Remove ${file.Name}`}
                       data-tip={`Remove ${file.Name}`}
                       onClick={() => session.removeAttachment(file.Id)}
+                    >
+                      <X />
+                    </Button>
+                  </span>
+                </li>
+              )}
+            </For>
+            <For each={preparing()}>
+              {(image) => (
+                <li class="relative size-14 overflow-hidden rounded-xl bg-muted outline -outline-offset-1 outline-(--media-ring)">
+                  <span class="pointer-events-none absolute inset-x-0 bottom-0 bg-background/85 px-1 text-center text-3xs text-foreground">
+                    Preparing
+                  </span>
+                  <span class="absolute right-1 top-1 flex">
+                    <Button
+                      variant="media-close"
+                      size="icon-xs"
+                      aria-label={`Remove ${image.Name}`}
+                      data-tip={`Remove ${image.Name}`}
+                      onClick={() => session.removeAttachment(image.Id)}
                     >
                       <X />
                     </Button>
@@ -707,6 +795,11 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                   <span class="flex-none text-[12px] text-secondary-label">
                     {attachmentDetail(file.Name, file.SizeBytes, file.PastedText)}
                   </span>
+                  <UploadStatus
+                    status={fileStatus(file.Id)}
+                    name={file.Name}
+                    onRetry={() => session.retryAttachment(file.Id)}
+                  />
                   <Button
                     variant="ghost"
                     size="icon-xs"

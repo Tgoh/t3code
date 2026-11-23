@@ -675,6 +675,10 @@ export function* removeAttachment(draft: IThreadSession, id: string): IActionGen
   yield* start(storeFiles, draft);
 }
 
+export function* retryAttachment(draft: IThreadSession, id: string): IActionGenerator {
+  yield* resource(draft, "Composer/Files").retry(id);
+}
+
 function* uploadAndStart(
   files: IResourceHandle<"Composer/Files">,
   fileIds: string[],
@@ -1550,6 +1554,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     setRuntimeMode,
     addAttachments,
     removeAttachment,
+    retryAttachment,
     send,
     toggleKeepFullHistory,
     stopRun,
