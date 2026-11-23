@@ -259,13 +259,13 @@ These mirror `apps/web/src/components/ui`, with stock's variants, sizes and clas
 
 ## Running it
 
-Run everything from the repo root with `./dev-stack.ps1`. It starts the server on 13773 without its file watcher, because a watcher restart interrupts running turns, plus this client on 5734 and the stock UI on 5733, as hidden processes that outlive the terminal. `-Status` shows what's up and `-Stop` stops what it started. State and logs are in `G:\Sorted\Code\t3code-dev-home`.
+Run everything from the repo root with `./dev-stack.ps1`. It starts the server on 13773 without its file watcher, because a watcher restart interrupts running turns, plus this client on 5734 and the stock UI on 5733, as hidden processes that outlive the terminal. `-Status` shows what's up and `-Stop` stops what it started. State and logs are in `t3code-dev-home` beside the repo. It runs under PowerShell 7 or Windows PowerShell 5.1.
 
 This client runs as a production build served by `vp preview`, not the dev server: a cold start on a phone takes about a dozen requests instead of hundreds. It has no HMR, so a change reaches it only through `./dev-stack.ps1 -Restart -Only treflex`, which runs `scripts/driver-build.ps1` to build into `t3code-dev-home\dev-stack\treflex-next` and swaps that into `apps/treflex-web/dist` only when the build succeeds. A failed build exits 1 and leaves the running client and `dist` alone; its output is in `dev-stack\treflex-build.log`.
 
 Production builds register a service worker (`src/sw.ts`, which `vite.config.ts` writes to `dist/sw.js` with the build's file list). It precaches the shell, caches hashed assets as they load, and fetches `index.html` network-first, falling back to the cached copy offline or after three seconds. It handles only those files and page loads, never `/api`, `/ws`, `/oauth`, `/.well-known`, `/mcp` or another origin. A new build is used from the next launch or reload; the new worker installs in the background and drops the old cache. A page left open on an old build reloads itself if it needs a chunk the rebuild removed. The dev server never registers it.
 
-The server looks for a built web client in `apps/web/dist` once, at startup, and `claude mcp login` needs it for the approval page. Build it with `vp build` in `apps/web`, with no `VITE_HTTP_URL` or `VITE_WS_URL` set, and restart the server if a sign-in says no static directory is configured.
+The server looks for a built web client in `apps/web/dist` once, at startup, and `claude mcp login` needs it for the approval page. `./dev-stack.ps1` builds it before starting the server whenever it's missing, with no `VITE_HTTP_URL` or `VITE_WS_URL` set, and logs the build to `dev-stack\web-build.log`.
 
 Tailscale Serve exposes this client on the machine's tailnet address at port 8443 (port 5734) and that built stock client at `:8444` (the server on 13773). The stock one is Tam's fallback when this client is broken, since no change here can break it; don't remove it or rebuild `apps/web/dist` from a broken checkout.
 
@@ -317,7 +317,7 @@ Two folders sit side by side under `G:\Sorted\Code`, because `dev-stack.ps1` fin
 - `t3code`: this repo, on `treflex-main`.
 - `t3code-dev-home`: the driver's data (threads, settings, attachments, stored secrets, T3's worktrees). Copy it from the old machine with the stack stopped (`./dev-stack.ps1 -Stop`), or leave it out to start empty.
 
-Install Git, PowerShell 7, nvm-windows and Vite+ (`vp`), then the Node version in the root `package.json` `engines` field:
+Install Git, nvm-windows and Vite+ (`vp`), then the Node version in the root `package.json` `engines` field:
 
 ```powershell
 nvm install 26.13.1
@@ -341,6 +341,6 @@ git -C t3code remote add upstream https://github.com/pingdotgg/t3code.git
 git -C t3code remote set-url --push upstream no_push
 ```
 
-From `t3code`, run `vp i`, build the stock client with `vp build` in `apps/web`, and start the stack with `./dev-stack.ps1`, which builds this client as it starts it.
+From `t3code`, run `vp i`, then start the stack with `./dev-stack.ps1`, which builds this client and, the first time, the stock client.
 
 The Claude setup lives outside the repo: copy `~/.claude/CLAUDE.md`, `G:\Sorted\Code\CLAUDE.md`, and the `commit`, `build` and `syncupstream` skills from `~/.claude/skills`.

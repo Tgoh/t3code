@@ -125,11 +125,22 @@ if (-not $Status -and -not $Detached) {
   }
   if ($created.ReturnValue -ne 0) { throw "Couldn't start the detached copy: $($created.ReturnValue)" }
   $copy = Get-Process -Id $created.ProcessId -ErrorAction SilentlyContinue
+  $shown = 0
   if ($copy) {
     $null = $copy.Handle
-    $copy.WaitForExit()
+    while (-not $copy.WaitForExit(500)) {
+      if (-not (Test-Path $log)) { continue }
+      $text = Get-Content $log -Raw
+      if (-not $text) { continue }
+      # Only lines ending in a newline: the last may still be half written.
+      $lines = @($text.Substring(0, $text.LastIndexOf("`n") + 1) -split "\r?\n" | Select-Object -SkipLast 1)
+      if ($lines.Count -gt $shown) {
+        $lines[$shown..($lines.Count - 1)]
+        $shown = $lines.Count
+      }
+    }
   }
-  if (Test-Path $log) { Get-Content $log }
+  if (Test-Path $log) { @(Get-Content $log) | Select-Object -Skip $shown }
   if ($copy -and $copy.ExitCode -ne 0) { exit $copy.ExitCode }
   return
 }
@@ -201,8 +212,26 @@ if ($Restart) {
   }
 }
 
-if (-not (Test-Path (Join-Path $root "apps/web/dist/index.html"))) {
-  Write-Warning "apps/web/dist is missing, so outside agents can't sign in. Run 'vp build' in apps/web, then restart."
+$webDir = Join-Path $root "apps/web"
+if ($services.Name -contains "server" -and -not (Test-Path (Join-Path $webDir "dist/index.html"))) {
+  "web: building apps/web, which the server serves for sign-ins"
+  $webLog = Join-Path $stateDir "web-build.log"
+  Remove-Item Env:VITE_HTTP_URL, Env:VITE_WS_URL -ErrorAction SilentlyContinue
+  Push-Location $webDir
+  try {
+    # Windows PowerShell 5.1 turns a native command's redirected stderr into errors, which "Stop" would throw on.
+    $ErrorActionPreference = "Continue"
+    & $vp build *> $webLog
+    $code = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = "Stop"
+    Pop-Location
+  }
+  if ($code -ne 0) {
+    Write-Warning "web: build failed, so outside agents can't sign in until it's built. See $webLog"
+  } elseif (Test-Port 13773) {
+    Write-Warning "web: built, but the running server only looks for it at startup. Restart it with -Restart -Only server"
+  }
 }
 
 $hidden = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }
