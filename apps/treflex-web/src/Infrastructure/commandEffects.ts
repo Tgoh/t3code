@@ -349,6 +349,8 @@ interface IAssetUrlEffect extends IEffect {
 
 export interface IAssetUrl {
   Url: string;
+  /** When the server stops accepting `Url`, in epoch milliseconds. */
+  ExpiresAt: number;
   Size?: { Width: number; Height: number };
 }
 

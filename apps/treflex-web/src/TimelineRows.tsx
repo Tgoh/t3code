@@ -3,7 +3,8 @@ import {
   toolGroupAction,
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
-import { type IActionGenerator, type IAskId, type IEntity } from "treflex";
+import type { AssetResource } from "@t3tools/contracts";
+import type { IAskId } from "treflex";
 import { useComponentState, useInFlight } from "treflex-solid";
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
@@ -44,7 +45,8 @@ import { T3Mark } from "./brand";
 import { SubagentNotification, SubagentRow } from "./SubagentRows";
 import { notifiedSubagent } from "./subagents";
 import Environment from "./Environment";
-import { assetUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
+import type { IWireAttachment } from "./Infrastructure/commandEffects";
+import { EMPTY_MEDIA_URL, type IMediaUrl, loadMediaUrl, mediaFailed } from "./markdownImage";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { ItemRequestRow } from "./ItemRequestViews";
 import { Markdown } from "./Markdown";
@@ -82,7 +84,6 @@ import {
   steerLabel,
 } from "./userMessage";
 import { ImageDialog } from "./ImageDialog";
-import { serverError } from "./Infrastructure/serverError";
 import { singleToolCallLabel, workEntryDisplayLabel, workLogEntry } from "./workLog";
 import { useWorkspaceRoot } from "./workspaceRoot";
 
@@ -199,37 +200,18 @@ export function RowIcon(props: { type: string }) {
 
 type IWireCheckpoint = Extract<IWireTurnItem, { type: "checkpoint" }>;
 
-interface IAttachmentImage extends IEntity {
-  Url: string | null;
-  Failed: boolean;
-}
-
-function* loadAttachmentUrl(
-  draft: IAttachmentImage,
-  environmentId: string,
-  file: IWireAttachment,
-): IActionGenerator {
-  try {
-    const asset = yield* assetUrlEffect({
-      EnvironmentId: environmentId,
-      Resource: {
-        _tag: "attachment",
-        attachmentId: file.id,
-        ...(file.type === "image"
-          ? {}
-          : { fileName: file.name, mimeType: file.mimeType, disposition: "inline" }),
-      },
-    });
-    draft.Url = asset.Url;
-  } catch (error) {
-    serverError(error);
-    draft.Failed = true;
-  }
-}
+const attachmentResource = (file: IWireAttachment): AssetResource => ({
+  _tag: "attachment",
+  attachmentId: file.id,
+  ...(file.type === "image"
+    ? {}
+    : { fileName: file.name, mimeType: file.mimeType, disposition: "inline" as const }),
+});
 
 function UserAttachment(props: { environmentId: string; file: IWireAttachment; grouped: boolean }) {
-  const local = useComponentState<IAttachmentImage>(() => ({ Url: null, Failed: false }));
-  onMount(() => local.dispatch(loadAttachmentUrl, props.environmentId, props.file));
+  const local = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
+  const resource = attachmentResource(props.file);
+  onMount(() => local.dispatch(loadMediaUrl, props.environmentId, resource));
   return (
     <Show
       when={props.file.type === "image"}
@@ -240,7 +222,7 @@ function UserAttachment(props: { environmentId: string; file: IWireAttachment; g
         grouped={props.grouped}
         url={local.state.Url}
         failed={local.state.Failed}
-        onError={() => local.dispatch(markFailed)}
+        onError={() => local.dispatch(mediaFailed, props.environmentId, resource)}
       />
     </Show>
   );
@@ -335,10 +317,6 @@ function AttachmentImage(props: {
       </Show>
     </Show>
   );
-}
-
-function* markFailed(draft: IAttachmentImage): IActionGenerator {
-  draft.Failed = true;
 }
 
 function DiffCounts(props: { additions: number; deletions: number }) {

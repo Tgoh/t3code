@@ -548,13 +548,14 @@ export const turnItemImpl = implementation(turnItemEffect, async (input, action)
 });
 
 export const assetUrlImpl = implementation(assetUrlEffect, async (input, action) => {
-  const { relativeUrl, imageDimensions } = await inEnvironment(
+  const { relativeUrl, expiresAt, imageDimensions } = await inEnvironment(
     input.EnvironmentId,
     request(WS_METHODS.assetsCreateUrl, { resource: input.Resource }),
     action?.signal,
   );
   return {
     Url: relativeUrl,
+    ExpiresAt: expiresAt,
     ...(imageDimensions === undefined
       ? {}
       : { Size: { Width: imageDimensions.width, Height: imageDimensions.height } }),
