@@ -68,7 +68,8 @@ if ($Only) { $services = @($services | Where-Object { $_.Name -eq $Only }) }
 # "localhost", and the server listens on IPv4 only while Vite can listen on either.
 function Test-Port([int]$port) {
   foreach ($address in "127.0.0.1", "::1") {
-    $client = [System.Net.Sockets.TcpClient]::new()
+    # Windows PowerShell 5.1's parameterless TcpClient is IPv4-only, so it could never reach ::1.
+    $client = [System.Net.Sockets.TcpClient]::new([System.Net.IPAddress]::Parse($address).AddressFamily)
     try {
       if ($client.ConnectAsync($address, $port).Wait(500) -and $client.Connected) { return $true }
     } catch {
