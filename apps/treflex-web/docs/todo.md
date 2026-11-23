@@ -12,9 +12,6 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
   - `MiddleTruncate`, for branch and path names.
   - The timeline sender label, which stock replaces with an "Open thread" button in the message actions, and the sidebar's "Show more", which stock draws as a full row with a chevron.
   - Ports for components no treflex view uses yet: `NumberField`, `RadioGroup`, `Calendar`, `ColorPicker`, `Group`, `PreviewCard`, `QrCode`, `DiscoveryList`, `PanelTabCloseButton`, `Table`.
-- **Drift the visual check flags.** **In progress** on `treflex/drift-fixes`. `vp run drift` (see `bench/drift/README.md`) flags these against stock:
-  - Dark theme: stock's `[data-app-sidebar]` overrides are folded into the global `--sidebar-*` tokens, so the settings nav takes the app sidebar's colours (the current page `#f1f3f7` on white 7%, where stock's is neutral-100 on white 3%), and the app sidebar's groups, menu and footer inherit `#f1f3f7` where stock's inherit neutral-100. Scope the overrides to the app sidebar, as stock does.
-  - Phone: the sidebar sheet's toggle is 28px; stock's `SidebarTrigger` there is 32px.
 
 ## 2. Parity and polish
 
