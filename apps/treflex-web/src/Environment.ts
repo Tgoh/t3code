@@ -80,6 +80,7 @@ import {
   setProjectHidden,
   showMoreSettled,
   sidebarLayout,
+  sidebarStops,
   toggleFolder,
   toggleProjectScope,
   toggleShelf,
@@ -696,11 +697,8 @@ function* threadAfterSettling(
 ): IActionGenerator<{ ThreadId: string | null; ProjectId: string } | null> {
   const thread = draft.Replica.Shell.Threads[threadId];
   if (thread === undefined) return null;
-  const { Order, Sections } = yield* sidebarLayout(draft);
-  const parked = new Set<string>([
-    ...settling,
-    ...[...Sections.Settled, ...Sections.Snoozed].map((row) => row.id),
-  ]);
+  const { Order, Parked } = yield* select(sidebarStops);
+  const parked = new Set<string>([...settling, ...Parked]);
   const index = Order.indexOf(threadId);
   const next =
     index === -1

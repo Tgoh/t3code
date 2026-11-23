@@ -5,6 +5,7 @@ import {
   openResource,
   receiver,
   resource,
+  select,
   start,
 } from "treflex";
 
@@ -131,6 +132,17 @@ export function* sidebarLayout(draft: IEnvironment): ISelectorGenerator<ISidebar
     Inbox: workingShelfShown(draft.Local) ? yield* shellInbox(shell) : null,
     Shelves: draft.Local.Shelves,
   });
+}
+
+/** The sidebar's thread order, and the threads parked in its Settled and Snoozed shelves. */
+export function* sidebarStops(
+  _draft: IEnvironment,
+): ISelectorGenerator<{ Order: string[]; Parked: string[] }> {
+  const { Order, Sections } = yield* select(sidebarLayout);
+  return {
+    Order,
+    Parked: [...Sections.Settled, ...Sections.Snoozed].map((row) => row.id),
+  };
 }
 
 export function* projectSort(draft: IEnvironment): ISelectorGenerator<IProjectSort> {

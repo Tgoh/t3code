@@ -20,6 +20,7 @@ import {
   publishToNearest,
   receiver,
   resource,
+  select,
   start,
   startTimer,
   stopTimer,
@@ -193,6 +194,12 @@ function* selectedThreadId(draft: IShell): ISelectorGenerator<string | null> {
   return (yield* getData(draft, "Selection"))?.SelectedThreadId ?? null;
 }
 
+/** The selected thread, when no Settings or Usage page covers it. */
+function* shownThreadId(draft: IShell): ISelectorGenerator<string | null> {
+  const selection = yield* getData(draft, "Selection");
+  return selection === undefined || selection.View !== null ? null : selection.SelectedThreadId;
+}
+
 const lastVisit = (draft: IShell) =>
   transient(draft, "Shell/Visit", {
     ThreadId: null as string | null,
@@ -219,9 +226,7 @@ export interface IVisitOptions {
  * keeps a later mark-unread sticky.
  */
 export function* visitShown(draft: IShell, options: IVisitOptions = {}): IOpenGenerator {
-  const selection = yield* getData(draft, "Selection");
-  if (selection === undefined || selection.View !== null) return;
-  const threadId = selection.SelectedThreadId;
+  const threadId = yield* select(shownThreadId);
   const row = threadId === null ? undefined : draft.Threads[threadId];
   if (threadId === null || row === undefined) return;
   const visit = yield* lastVisit(draft);
@@ -272,11 +277,9 @@ function* visitIfDue(draft: IShell): IActionGenerator {
   // The server applied the visit even if its answer was lost, so a later mark-unread stays.
   if (sent !== null && echoed != null && Date.parse(echoed) >= Date.parse(sent.VisitedAt))
     visit.Unconfirmed = null;
-  const selected = yield* getData(draft, "Selection");
-  const row =
-    selected?.SelectedThreadId == null ? undefined : draft.Threads[selected.SelectedThreadId];
-  if (selected?.View === null && row !== undefined && needsVisit(row))
-    yield* start(visitShown, draft);
+  const shown = yield* select(shownThreadId);
+  const row = shown === null ? undefined : draft.Threads[shown];
+  if (row !== undefined && needsVisit(row)) yield* start(visitShown, draft);
 }
 
 const titleBatchesOf = (draft: IShell) =>
@@ -687,13 +690,17 @@ export const workingShelfShown = (selection: ISelection | undefined): boolean =>
   !selection.Preferences.GroupByProject &&
   (selection.ClientSettings?.sidebarWorkingShelfEnabled ?? true);
 
+function* inboxShown(draft: IShell): ISelectorGenerator<boolean> {
+  return workingShelfShown(yield* getData(draft, "Selection"));
+}
+
 const inboxOf = (draft: IShell) =>
   transient(draft, "Shell/Inbox", { Entries: {}, Returns: {} } as IInbox);
 
 export function* followInbox(draft: IShell): IActionGenerator {
-  const selection = yield* getData(draft, "Selection");
+  const shown = yield* select(inboxShown);
   const inbox = yield* inboxOf(draft);
-  if (!workingShelfShown(selection)) {
+  if (!shown) {
     if (Object.keys(inbox.Entries).length > 0) {
       inbox.Entries = {};
       inbox.Returns = {};
@@ -724,15 +731,17 @@ function* scheduleInbox(draft: IShell, inbox: IInbox, now: number): IActionGener
 // Follows startThreadNotifications in apps/web/src/components/ThreadNotificationCoordinator.tsx.
 const notifyGateOf = (draft: IShell) => transient(draft, "Shell/Notify", emptyNotifyGate());
 
+// Follows syncEnvironments in ThreadNotificationCoordinator.tsx: either setting keeps it watching.
+function* notifying(draft: IShell): ISelectorGenerator<boolean> {
+  const settings = (yield* getData(draft, "Selection"))?.ClientSettings;
+  return (
+    (settings?.notificationMode ?? "off") !== "off" || settings?.inAppNotificationsEnabled === true
+  );
+}
+
 export function* notifyChanges(draft: IShell): IActionGenerator {
-  const selection = yield* getData(draft, "Selection");
   const gate = yield* notifyGateOf(draft);
-  const settings = selection?.ClientSettings;
-  // Follows syncEnvironments in ThreadNotificationCoordinator.tsx: either setting keeps it watching.
-  if (
-    (settings?.notificationMode ?? "off") === "off" &&
-    settings?.inAppNotificationsEnabled !== true
-  ) {
+  if (!(yield* select(notifying))) {
     if (Object.keys(gate.Previous).length > 0) Object.assign(gate, emptyNotifyGate());
     yield* stopTimer(draft, "Shell/NotifyRelease");
     return;
