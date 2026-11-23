@@ -4,6 +4,7 @@ import {
   createRenderEffect,
   createSignal,
   createUniqueId,
+  flush,
   omit,
   Show,
   untrack,
@@ -83,6 +84,7 @@ export function CollapsiblePanel(
   const [height, setHeight] = createSignal("auto");
   const [panel, setPanel] = createSignal<HTMLDivElement>();
   let generation = 0;
+  // Call it once the style change is in the DOM: the transition it waits on starts only then.
   const after = (run: number, done: () => void) => {
     const element = untrack(panel);
     if (element === undefined) return done();
@@ -101,7 +103,7 @@ export function CollapsiblePanel(
       if (open) {
         if (untrack(ending)) {
           setEnding(false);
-          after(run, () => setHeight("auto"));
+          queueMicrotask(() => after(run, () => setHeight("auto")));
           return;
         }
         setStarting(true);
@@ -114,6 +116,7 @@ export function CollapsiblePanel(
           requestAnimationFrame(() => {
             if (run !== generation) return;
             setStarting(false);
+            flush();
             after(run, () => setHeight("auto"));
           });
         });
@@ -131,6 +134,7 @@ export function CollapsiblePanel(
         // The measured height must be the transition's start, so it's applied before the ending style.
         void element.offsetHeight;
         setEnding(true);
+        flush();
         after(run, () => {
           setEnding(false);
           setMounted(false);

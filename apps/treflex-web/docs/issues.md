@@ -44,6 +44,10 @@ The shell sends the same item for an archived and a deleted thread, and `thread.
 
 About 50 ms at 1,000 items and 1.1 s at 20,000. The bounded window keeps a socket snapshot near the low end, but it will be a visible pause if history pages have grown the thread and the socket reconnects past the replay limit.
 
+## Cost: `compactionCandidate` reads the whole thread
+
+The bench shows the selector tracking 166,726 reads in one run at 20,000 items, so any change to one of them re-runs all of it.
+
 ## Cost: stream items queue in treflex, not the socket
 
 `r.emit` resolves once a message is queued, not delivered, so the shell and thread streams read the socket with no backpressure from the receivers, and the cursor advances as each emit is queued. A receiver failure ends the stream with `receiver-failed` through `endOnReceiverFailure`.
@@ -75,7 +79,6 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - There's no public way to react to derived state (`watch` is internal to treflex), so `Shell.visitShown` has to be called from each event that can show a thread or complete one: `selectThread`, `openView(null)`, the shell receiver and its reconnect. A new way to change `SelectedThreadId` or `Local.View` has to join that list; a hand-written one first missed closing Settings. `startWatch` would replace the list.
 - `leading` goes by entity, which broke the visit: it ran on the Shell for any thread id, so a visit to thread B was dropped while thread A's visit was in flight, a real per-argument `leading` case.
 - Rows that belong to one ordered list with the parent's live rows can't be owned by the child. Moving loaded history pages onto the window entity split one sequence across two entities, so placement had to read and write both, and two ordering bugs followed. Lifetime fit the "results live and die with the window" case; order did not.
-- Action arguments land in `action:start` records with no way to redact them, so the secret or pairing code passed to `answerSecret` or `answerLink` would reach any future devtools tap. Treflex has `redact` for effects but not for action arguments.
 - A timer recurs, so every backoff tick starts with `stopTimer`. There's no one-shot timer.
 - Keeping an entity for a while after its view leaves has no mechanism of its own. Retaining a left thread composes one: close its stream, start an expiry timer on it, and on the tick publish to the parent, because an entity can't remove itself inside its own delivery.
 - The timeline's `<For>` iterates ids from the `timelineIds` selector, a plain `[...draft.Timeline]` copy. Each row-adding delta re-runs the copy, which reads every id through the view proxy: about 31 ms p50 at 20,000 rows. The history window keeps a cold open near 500 rows, so this doesn't show at real sizes. If it does, send treflex the size and the timing; they've said they'd make the whole-array copy cheaper inside treflex rather than add an API.
@@ -83,6 +86,12 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - Only `treflex-eslint`'s type-free rules are on, through an override in upstream's root `vite.config.ts`, because a `lint` block in this app's `vite.config.ts` replaces the root config instead of adding to it. The typed rules (`no-discarded-generator`, `no-edit-after-write`, `no-hidden-open`, `no-returned-promise`) throw under oxlint for lack of type information, so a forgotten `yield*` on the app's own generators goes unreported. Treflex's `require-yield-star` check, including a missing `yield*` before `someGen`, `filterGen` or `mapGen`, is a Biome plugin, which oxlint can't load.
 - "Do not create an entity only so that its removal closes a resource" sits against a resource being keyed by owner and key: each expanded command row's output needs an entity of its own (`ICommandOutputRow` on `ThreadSession`) only so several can be open on one session.
 - Persistence is whole-runtime only: a snapshot carries the whole tree, and nothing persists one slice, such as `Local`'s preferences, across a reload. Each kind of preference was persisted its own way until it converged on a read effect at creation plus a write effect per change (`Infrastructure/preferences.ts`, `draftMemory.ts`). A persisted slice, read before the first render and written per change, would replace those effects and the pre-paint read of the colour scheme in `index.tsx`.
+- The 0.2 to 0.3 upgrade notes don't mention third-party Solid 1 libraries. `lucide-solid` peers Solid 1 and has no Solid 2 release, so this client replaced it with its own icon component over `lucide`'s data.
+- The notes' test setup leaves out four things that cost time here. Setting `resolve.conditions` replaces Vite's defaults rather than adding to them. `@solidjs/vite-plugin` adds the `"solid"` condition itself, so an app can drop its own. The plugin inlines `solid-js` for tests only when the app sets no `test.server.deps.inline`. And the `"browser"` condition is needed by any Node-environment test that imports Solid, not only a component test.
+- A test that drives Solid signals with no treflex dispatch needs Solid's `flush()` before it reads, not `settled()`. The notes mention only `settled()`.
+- "Put an `<Errored>` at the root" changes what a view's throw does compared with 0.2's provider, which reported the throw and left the rest of the page running. A root `<Errored>` blanks the whole app. The notes could say so, and suggest boundaries lower in the tree for an app that wants the old behaviour.
+- "A rejection reaches an action as a copy" could say that `instanceof Error`, `TypeError` and `DOMException` still hold for the copy, and that `effect/class-rejection` checks only the thrown value, not its `cause`.
+- The notes leave Solid 2's own changes to Solid's notes, but one caused most of this migration's regressions and no diagnostic catches it: a read after a write in the same tick sees the old value until the flush, for memos and the DOM as well as the signal. Here it broke scroll-to-end memory, the folder picker, the command palette's search, the composer's focus on expand, the collapsible's animation and the timeline's scroll correction. `STRICT_READ_UNTRACKED` and `ownedWrite` say nothing about it. The notes could flag it, together with the other Solid 2 changes that cost time: boolean attributes render by presence (`aria-*` and `spellcheck` need `"true"`/`"false"` strings), `useContext` throws without a provider, `onCleanup` is refused in `onSettled`, effects and refs, `createMemo` has no initial-value argument, and a template's nodes aren't in the document when its refs run, so a ref that starts floating-ui throws.
 
 ## Differences from the immutable reducer
 
@@ -138,6 +147,10 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - Sidebar: no "Setting up" state for a thread launched from a draft before its first run lands. A title being regenerated dims, where stock runs a shimmer over it.
 
 - Sidebar: no pull requests button in the footer, because this client has no pull requests page.
+- At 390px wide, a row's "More actions" menu opened from the keyboard appears at the viewport's top-left corner instead of beside the row.
+- At 390px wide, Thread actions → Diff opens the "Open a surface" picker instead of the diff.
+- At 390px wide, the diff toolbar's scope select is cut to "C.." and the "+N -N" count overlaps the refresh icon.
+- Command palette: no "Open settings" or "Project settings" actions.
 - Sidebar: the active list uses stock's order key, but stock's inbox places a few threads differently (`ask me` here), and there's no working shelf.
 - Sidebar: snoozing the open thread, from a preset, Custom… or the bulk menu, leaves it open, where stock's `performSnooze` moves on to the next row as settling does.
 - Sidebar: no auto-settle toggle, no drag across rows from a Settle, Un-settle or Wake button to apply it to each (stock's sweep), and no Archived undo notice after an archive; the way back is Settings, Archived.

@@ -347,12 +347,13 @@ const ThreadConversation = ThreadSession.provider<{
   const lastStart = () => responses()?.Starts.at(-1);
   const reachedTop = () => timeline().First === 0;
   const growTo = (target: number, isStuck: boolean) => {
-    if (!isStuck) keepStill();
     setTimeline((held) => ({
       ...held,
       First: snap(held.Ids, target),
       Floor: isStuck ? Math.max(held.Floor, held.Ids.length - target) : held.Floor,
     }));
+    // After the write: its correction must queue behind the flush the write schedules.
+    if (!isStuck) keepStill();
   };
   const showAll = (forward: boolean) => {
     const boundary = head.nextElementSibling;
