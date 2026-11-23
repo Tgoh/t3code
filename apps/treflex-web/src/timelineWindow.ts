@@ -5,12 +5,17 @@ export function initialFirst(length: number): number {
   return Math.max(0, length - INITIAL_ROWS);
 }
 
+/** `anchor` is the row a returning reader was at, which the window opens far enough up to hold. */
 export function firstAfterChange(
   previous: readonly string[],
   next: readonly string[],
   first: number,
+  anchor: string | null = null,
 ): number {
-  if (previous.length === 0) return initialFirst(next.length);
+  if (previous.length === 0) {
+    const at = anchor === null ? -1 : next.indexOf(anchor);
+    return at < 0 ? initialFirst(next.length) : Math.min(at, initialFirst(next.length));
+  }
   if (first === 0) return 0;
   const top = previous[first];
   if (top !== undefined) {

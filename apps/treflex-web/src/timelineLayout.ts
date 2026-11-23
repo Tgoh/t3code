@@ -5,6 +5,7 @@ import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 
 import { isCompactPrompt } from "./compaction";
+import { embedOf } from "./embeds";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { workEntryIsVisibleInGroup, workLogEntryIsToolLike, workLogEntry } from "./workLog";
 
@@ -14,7 +15,17 @@ import { workEntryIsVisibleInGroup, workLogEntryIsToolLike, workLogEntry } from 
  */
 export interface IEntryFacts {
   Id: string;
-  Kind: "user" | "steer" | "assistant" | "sent" | "plan" | "event" | "checkpoint" | "work";
+  /** An `embed` is a page or app shown inline, which a fold never hides, as stock's never are. */
+  Kind:
+    | "user"
+    | "steer"
+    | "assistant"
+    | "sent"
+    | "embed"
+    | "plan"
+    | "event"
+    | "checkpoint"
+    | "work";
   Type: IWireTurnItem["type"];
   RunId: string | null;
   At: string;
@@ -115,6 +126,7 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
     case "dynamic_tool":
       if (item.status === "completed" && sentMessageFromToolItem(item) !== undefined)
         return { ...base, Kind: "sent" };
+      if (embedOf(item) !== null) return { ...base, Kind: "embed" };
       break;
     default:
       if (STANDALONE_EVENTS.has(item.type)) return { ...base, Kind: "event" };

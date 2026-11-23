@@ -17,20 +17,16 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **html-render and MCP app rows.** **In progress** on `treflex/timeline-polish`. Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
-- **Expired image URLs.** **In progress** on `treflex/timeline-polish`. Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
-- **Tool output.** **In progress** on `treflex/timeline-polish`. Fetch a tool row's output with `getTurnItem` when it's expanded, since the wire omits it. See "Tool output isn't fetched".
-- **Keep each thread's scroll position.** **In progress** on `treflex/timeline-polish`, after its three items. Swapping back to a thread scrolled up into its history returns to the same place; one left at the bottom, or within a small tolerance of it, returns to the bottom. Tam's ask (2026-11-23).
 - **Settings treflex ignores.** Of Tam's picks (2026-11-23), only the Archive confirmation is left: it waits for the archive action in the Sidebar item. In-app notifications go with Toasts, Tool calls in chat with Timeline rows, and Show skills in slash menu with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
 
 ## 3. Missing features
 
 Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
 
-- **Toasts.** Stock shows toasts (`apps/web/src/components/ui/toast.tsx`, about 176 uses) for git results, copy confirmations, errors and more; treflex has none and uses inline notices and icon swaps. Port stock's toast after the shared components, and move each place stock toasts onto it, including the "Could not…" errors that land in the sidebar today, and wire up the In-app notifications setting. Tam's call (2026-11-22).
+- **Toasts.** **In progress** on `treflex/toasts`. Stock shows toasts (`apps/web/src/components/ui/toast.tsx`, about 176 uses) for git results, copy confirmations, errors and more; treflex has none and uses inline notices and icon swaps. Port stock's toast after the shared components, and move each place stock toasts onto it, including the "Could not…" errors that land in the sidebar today, and wire up the In-app notifications setting. Tam's call (2026-11-22).
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **Held send:** Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
-  - **Side chats, subagents and linked threads open beside the thread or in its place,** chosen by a setting, with a modifier-click for the other. `@t3tools/client-runtime/side-thread` is importable.
+  - **Side chats, subagents and linked threads open beside the thread or in its place,** **In progress** on `treflex/side-chats`. Chosen by a setting, with a modifier-click for the other. `@t3tools/client-runtime/side-thread` is importable.
   - **A show/hide toggle on secret fields.**
   - **A thread error banner that can be dismissed and comes back.**
   - **Copy a chat table as HTML,** and **a copy button on file previews.**

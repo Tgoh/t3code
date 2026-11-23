@@ -41,11 +41,13 @@ import {
   EnvironmentId,
   MessageId,
   ORCHESTRATION_V2_WS_METHODS,
+  OrchestrationV2TurnItem,
   ProjectId,
   RunId,
   RuntimeRequestId,
   THREAD_SEARCH_QUERY_MAX_LENGTH,
   ThreadId,
+  TurnItemId,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -55,6 +57,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { implementation } from "treflex";
 
@@ -82,9 +85,12 @@ import {
   threadCommandEffect,
   threadDiffEffect,
   threadTitlesEffect,
+  turnItemEffect,
+  mcpAppEffect,
 } from "./commandEffects";
 import { preferredEditor } from "../editors";
 import { connectionRuntime } from "./connection";
+import { type IWireTurnItem, wireCodec } from "./wire";
 import { serverFailure, settle } from "./serverError";
 import { runCommand, sourceControl } from "./sourceControl";
 
@@ -528,14 +534,67 @@ export const threadDiffImpl = implementation(threadDiffEffect, async (input, act
   return turn.diff;
 });
 
+const encodeTurnItem = Schema.encodeSync(wireCodec(OrchestrationV2TurnItem));
+
+export const turnItemImpl = implementation(turnItemEffect, async (input, action) => {
+  const { item } = await inEnvironment(
+    input.EnvironmentId,
+    request(ORCHESTRATION_V2_WS_METHODS.getTurnItem, {
+      threadId: ThreadId.make(input.ThreadId),
+      itemId: TurnItemId.make(input.ItemId),
+    }),
+    action?.signal,
+  );
+  return item === null ? null : (encodeTurnItem(item) as IWireTurnItem);
+});
+
+export const mcpAppImpl = implementation(mcpAppEffect, async (input, action) => {
+  const target = { threadId: ThreadId.make(input.ThreadId), itemId: TurnItemId.make(input.ItemId) };
+  const ask = input.Request;
+  const run = <A, E>(
+    effect: Effect.Effect<
+      A,
+      E,
+      EnvironmentSupervisor.EnvironmentSupervisor | SecureRandom.SecureRandom
+    >,
+  ) => inEnvironment(input.EnvironmentId, effect, action?.signal);
+  switch (ask.Kind) {
+    case "toolInfo":
+      return run(request(WS_METHODS.mcpAppsToolInfo, { ...target, name: ask.Name }));
+    case "callTool":
+      return run(
+        request(WS_METHODS.mcpAppsCallTool, {
+          ...target,
+          name: ask.Name,
+          arguments: ask.Arguments,
+        }),
+      );
+    case "readResource":
+      return run(request(WS_METHODS.mcpAppsReadResource, { ...target, uri: ask.Uri }));
+    case "updateModelContext":
+      await run(
+        request(WS_METHODS.mcpAppsUpdateModelContext, {
+          ...target,
+          conversationThreadId: ThreadId.make(ask.ConversationThreadId),
+          ...(ask.Content === undefined ? {} : { content: ask.Content }),
+          ...(ask.StructuredContent === undefined
+            ? {}
+            : { structuredContent: ask.StructuredContent }),
+        }),
+      );
+      return null;
+  }
+});
+
 export const assetUrlImpl = implementation(assetUrlEffect, async (input, action) => {
-  const { relativeUrl, imageDimensions } = await inEnvironment(
+  const { relativeUrl, expiresAt, imageDimensions } = await inEnvironment(
     input.EnvironmentId,
     request(WS_METHODS.assetsCreateUrl, { resource: input.Resource }),
     action?.signal,
   );
   return {
     Url: relativeUrl,
+    ExpiresAt: expiresAt,
     ...(imageDimensions === undefined
       ? {}
       : { Size: { Width: imageDimensions.width, Height: imageDimensions.height } }),

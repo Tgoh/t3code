@@ -104,6 +104,7 @@ import type {
   IStopThread,
   IThreadCommand,
   IThreadDiff,
+  ITurnItemRequest,
   IWireModelSelection,
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
@@ -204,6 +205,7 @@ import {
   toggleDetails,
   toggleRightPanel,
   toggleRowExpanded,
+  sendAppMessage,
 } from "./ThreadSession";
 import { closeTerminal, endTerminal, openTerminal, TerminalReceiver } from "./Terminal";
 import { loadBranches } from "./ThreadDetails";
@@ -2467,6 +2469,33 @@ describe("writing to the server", () => {
     expect(session.Draft).toBe("");
     expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
     expect(server.thread().TurnItems).toEqual({});
+  });
+
+  it("an app's message queues as its own turn and leaves the draft alone", async () => {
+    const sent: IStartTurn[] = [];
+    const server = await connect(undefined, null, {
+      startTurn: (effect: IStartTurn) => {
+        if (effect.Text === "refused") throw serverFailure("server said no");
+        sent.push(effect);
+      },
+    });
+    await server.open();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "mine");
+    const reply = await server.runtime.dispatch(sendAppMessage, server.sessionId(), "from app");
+    expect(reply).toBeNull();
+    expect(sent).toMatchObject([
+      {
+        Text: "from app",
+        ThreadId: THREAD_ID,
+        Attachments: [],
+        DispatchMode: "queue",
+        NewThread: null,
+      },
+    ]);
+    expect(server.session().Draft).toBe("mine");
+    expect(await server.runtime.dispatch(sendAppMessage, server.sessionId(), "refused")).toBe(
+      "server said no",
+    );
   });
 
   it("a failed send keeps the draft and shows why", async () => {
@@ -4832,6 +4861,7 @@ describe("work started by events", () => {
 
     await server.runtime.dispatch(toggleRowExpanded, server.sessionId(), "cmd-1", {
       ThreadId: "source",
+      Fetch: "output",
     });
     await server.runtime.dispatch(toggleRowExpanded, server.sessionId(), "group-1");
     expect(outputs()).toMatchObject([{ ThreadId: "source", ItemId: "cmd-1" }]);
@@ -4847,6 +4877,41 @@ describe("work started by events", () => {
     await server.runtime.dispatch(toggleRowExpanded, server.sessionId(), "cmd-1");
     expect(outputs()).toEqual([]);
     expect(rows()).toEqual({});
+  });
+
+  it("expanding a tool row the wire left the output off fetches its item, and collapsing drops it", async () => {
+    const asked: ITurnItemRequest[] = [];
+    const full = { id: "tool-1", type: "dynamic_tool", output: { text: "found it" } };
+    const server = await connect(undefined, null, {
+      turnItem: (effect: ITurnItemRequest) => {
+        asked.push(effect);
+        if (effect.ItemId === "tool-3") throw serverFailure("offline");
+        return effect.ItemId === "tool-1" ? full : null;
+      },
+    });
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    const details = () => server.session().ToolDetails;
+    const expand = (id: string) =>
+      server.runtime.dispatch(toggleRowExpanded, server.sessionId(), id, {
+        ThreadId: "source",
+        Fetch: "detail",
+      });
+
+    await expand("tool-1");
+    await settled();
+    expect(asked).toEqual([
+      expect.objectContaining({ EnvironmentId: ENV, ThreadId: "source", ItemId: "tool-1" }),
+    ]);
+    expect(details()["tool-1"]).toMatchObject({ Item: full, Missing: false, Error: null });
+
+    await expand("tool-2");
+    await expand("tool-3");
+    await settled();
+    expect(details()["tool-2"]).toMatchObject({ Item: null, Missing: true });
+    expect(details()["tool-3"]).toMatchObject({ Item: null, Error: "offline" });
+
+    await server.runtime.dispatch(toggleRowExpanded, server.sessionId(), "tool-1");
+    expect(Object.keys(details())).toEqual(["tool-2", "tool-3"]);
   });
 
   it("leaving the thread or covering it with a page closes the details popover", async () => {

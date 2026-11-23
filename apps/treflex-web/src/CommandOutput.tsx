@@ -8,6 +8,7 @@ import { createEffect, createMemo, createSignal, Index, Show } from "solid-js";
 
 import Environment from "./Environment";
 import ThreadSession from "./ThreadSession";
+import type { IToolDetail } from "./ToolDetail";
 import { ERROR_TEXT } from "./ui/notice";
 
 const cssOf = (style: TerminalSpanStyle) => ({
@@ -23,6 +24,29 @@ export const WORK_PRE =
   "m-0 max-h-64 overflow-auto font-mono text-[11px] leading-[1.625] wrap-anywhere whitespace-pre-wrap text-secondary-label";
 
 const NOTE = "m-0 text-[12px] text-muted-foreground";
+
+// Follows useFetchedTurnItem in apps/web/src/components/chat/V2ItemInspector.tsx.
+export function ToolDetailNote(props: { detail: IToolDetail }) {
+  return (
+    <Show
+      when={props.detail.Error}
+      fallback={
+        <Show
+          when={props.detail.Missing}
+          fallback={
+            <Show when={props.detail.Item === null}>
+              <p class={NOTE}>Loading output…</p>
+            </Show>
+          }
+        >
+          <p class={NOTE}>Output is no longer available.</p>
+        </Show>
+      }
+    >
+      {(error) => <p class={ERROR_TEXT}>Couldn't load output: {error()}</p>}
+    </Show>
+  );
+}
 
 export function CommandOutput(props: { itemId: string }) {
   const environment = Environment.use();

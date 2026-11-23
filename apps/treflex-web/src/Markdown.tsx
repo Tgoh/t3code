@@ -46,7 +46,9 @@ import {
   type IMediaTarget,
   type IMediaUrl,
   imageSizeStyle,
+  EMPTY_MEDIA_URL,
   loadMediaUrl,
+  mediaFailed,
   markdownImageTarget,
   mediaLinkTarget,
   opensInEditor,
@@ -420,10 +422,14 @@ function ImageUnavailable(props: { alt: string; kind?: IMediaKind }) {
 
 function useMediaUrl(resource: AssetResource) {
   const environment = Environment.use();
-  const local = useComponentState<IMediaUrl>(() => ({ Url: null, Size: null, Failed: false }));
+  const local = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
   const load = () => local.dispatch(loadMediaUrl, environment.state.EnvironmentId, resource);
   onMount(load);
-  return { state: local.state, reload: load };
+  return {
+    state: local.state,
+    reload: load,
+    failed: () => void local.dispatch(mediaFailed, environment.state.EnvironmentId, resource),
+  };
 }
 
 const MEDIA_PLACEHOLDER = `rounded-lg ${IMAGE_BORDER} bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]`;
@@ -434,6 +440,7 @@ function ShownVideo(props: {
   sourceFailed: boolean;
   alt: string;
   onRetry: () => void;
+  onSourceError?: () => void;
 }) {
   const [erroredSrc, setErroredSrc] = createSignal<string | null>(null);
   const failed = () => props.sourceFailed || (props.src !== null && erroredSrc() === props.src);
@@ -481,7 +488,7 @@ function ShownVideo(props: {
               playsinline
               preload="metadata"
               onLoadedMetadata={(event) => prepareVideoFirstFrame(event.currentTarget)}
-              onError={() => setErroredSrc(src)}
+              onError={() => reportError(props.onSourceError, () => setErroredSrc(src))}
             />
           )}
         </Show>
@@ -490,8 +497,17 @@ function ShownVideo(props: {
   );
 }
 
+/** A signed source's owner decides whether its failure is final, since it may sign it again. */
+const reportError = (onSourceError: (() => void) | undefined, fail: () => void) =>
+  (onSourceError ?? fail)();
+
 // Follows InlineAudioPreview in apps/web/src/components/files/InlineAudioPreview.tsx.
-function ShownAudio(props: { src: string | null; sourceFailed: boolean; alt: string }) {
+function ShownAudio(props: {
+  src: string | null;
+  sourceFailed: boolean;
+  alt: string;
+  onSourceError?: () => void;
+}) {
   const [erroredSrc, setErroredSrc] = createSignal<string | null>(null);
   const failed = () => props.sourceFailed || (props.src !== null && erroredSrc() === props.src);
   return (
@@ -514,7 +530,7 @@ function ShownAudio(props: { src: string | null; sourceFailed: boolean; alt: str
             aria-label={props.alt || "Audio preview"}
             controls
             preload="metadata"
-            onError={() => setErroredSrc(src)}
+            onError={() => reportError(props.onSourceError, () => setErroredSrc(src))}
           />
         )}
       </Show>
@@ -537,13 +553,21 @@ function FileMedia(props: {
       fallback={
         <Show
           when={props.kind === "video"}
-          fallback={<ShownAudio src={src()} sourceFailed={media.state.Failed} alt={props.alt} />}
+          fallback={
+            <ShownAudio
+              src={src()}
+              sourceFailed={media.state.Failed}
+              alt={props.alt}
+              onSourceError={media.failed}
+            />
+          }
         >
           <ShownVideo
             src={src()}
             sourceFailed={media.state.Failed}
             alt={props.alt}
             onRetry={() => void media.reload()}
+            onSourceError={media.failed}
           />
         </Show>
       }
@@ -554,6 +578,7 @@ function FileMedia(props: {
         size={media.state.Size}
         alt={props.alt}
         standalone={props.standalone}
+        onSourceError={media.failed}
       />
     </Show>
   );
@@ -564,6 +589,7 @@ function ViewerContent(props: {
   src: string | null;
   failed: boolean;
   name: string;
+  onSourceError?: () => void;
 }) {
   const [erroredSrc, setErroredSrc] = createSignal<string | null>(null);
   const failed = () => props.failed || (props.src !== null && erroredSrc() === props.src);
@@ -598,14 +624,14 @@ function ViewerContent(props: {
               preload="metadata"
               onClick={keep}
               onLoadedMetadata={(event) => prepareVideoFirstFrame(event.currentTarget)}
-              onError={() => setErroredSrc(src)}
+              onError={() => reportError(props.onSourceError, () => setErroredSrc(src))}
             />
           ) : (
             <img
               class={MEDIA_DIALOG_FIT}
               src={src}
               alt={props.name}
-              onError={() => setErroredSrc(src)}
+              onError={() => reportError(props.onSourceError, () => setErroredSrc(src))}
             />
           )
         }
@@ -622,6 +648,7 @@ function FileViewerContent(props: { kind: IMediaKind; resource: AssetResource; n
       src={media.state.Url}
       failed={media.state.Failed}
       name={props.name}
+      onSourceError={media.failed}
     />
   );
 }
@@ -656,6 +683,7 @@ function ShownImage(props: {
   size: IAssetUrl["Size"] | null;
   alt: string;
   standalone: boolean;
+  onSourceError?: () => void;
 }) {
   const [loaded, setLoaded] = createSignal(false);
   const [errored, setErrored] = createSignal(false);
@@ -665,7 +693,7 @@ function ShownImage(props: {
   const style = () => imageSizeStyle(props.size);
   const events = {
     onLoad: () => setLoaded(true),
-    onError: () => setErrored(true),
+    onError: () => reportError(props.onSourceError, () => setErrored(true)),
   };
   const expand = (event: Event) => {
     if ((event.currentTarget as Element).closest("a")) return;

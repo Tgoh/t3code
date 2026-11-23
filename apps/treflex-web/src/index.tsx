@@ -44,6 +44,8 @@ import {
   projectCommandImpl,
   threadCommandImpl,
   threadDiffImpl,
+  turnItemImpl,
+  mcpAppImpl,
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
 import { delayImpl } from "./Infrastructure/delay";
@@ -121,6 +123,8 @@ runtime.registerImplementation(openInFileManagerImpl);
 runtime.registerImplementation(openInEditorImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
+runtime.registerImplementation(turnItemImpl);
+runtime.registerImplementation(mcpAppImpl);
 runtime.registerImplementation(assetUrlImpl);
 runtime.registerImplementation(closeTerminalImpl);
 runtime.registerImplementation(rememberedTerminalImpl);

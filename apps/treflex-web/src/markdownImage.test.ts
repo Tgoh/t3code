@@ -8,6 +8,7 @@ import type { IAssetUrl } from "./Infrastructure/commandEffects";
 import {
   type IMediaUrl,
   loadMediaUrl,
+  mediaFailed,
   markdownImageTarget,
   mediaLinkTarget,
   opensInEditor,
@@ -122,30 +123,39 @@ describe("opensInEditor", () => {
 
 describe("loadMediaUrl", () => {
   const resource: AssetResource = file("G:\\Sorted\\a.png").Resource as AssetResource;
+  const HOUR = 60 * 60_000;
 
-  async function load(reply: () => IAssetUrl, failed = false) {
+  function media(reply: () => IAssetUrl, held: Partial<IMediaUrl> = {}, now = 0) {
     const asked: unknown[] = [];
     const runtime = createTestRuntime<IMediaUrl>(
-      { $Id: "Media", Url: null, Size: null, Failed: failed },
+      { $Id: "Media", Url: null, Size: null, ExpiresAt: null, Failed: false, ...held },
       {
         assetUrl: (effect: { EnvironmentId: string; Resource: AssetResource }) => {
           asked.push([effect.EnvironmentId, effect.Resource]);
           return reply();
         },
+        clockNow: () => now,
       },
     );
+    return { runtime, asked };
+  }
+
+  async function load(reply: () => IAssetUrl, held: Partial<IMediaUrl> = {}) {
+    const { runtime, asked } = media(reply, held);
     await runtime.dispatch(loadMediaUrl, "Media", "env-1", resource);
     return { state: runtime.state, asked };
   }
 
-  it("asks the server to sign the file and keeps its size", async () => {
+  it("asks the server to sign the file and keeps its size and expiry", async () => {
     const { state, asked } = await load(() => ({
       Url: "/api/assets/signed",
+      ExpiresAt: HOUR,
       Size: { Width: 800, Height: 600 },
     }));
     expect(asked).toEqual([["env-1", resource]]);
     expect(state).toMatchObject({
       Url: "/api/assets/signed",
+      ExpiresAt: HOUR,
       Size: { Width: 800, Height: 600 },
       Failed: false,
     });
@@ -159,7 +169,36 @@ describe("loadMediaUrl", () => {
   });
 
   it("clears an earlier failure when a retry signs the file", async () => {
-    const { state } = await load(() => ({ Url: "/api/assets/again" }), true);
+    const { state } = await load(() => ({ Url: "/api/assets/again", ExpiresAt: HOUR }), {
+      Failed: true,
+    });
     expect(state).toMatchObject({ Url: "/api/assets/again", Failed: false });
+  });
+
+  it("signs the file again when a URL fails to load after it expired, and only once", async () => {
+    let minted = 0;
+    const { runtime, asked } = media(
+      () => ({ Url: `/api/assets/renewed-${(minted += 1)}`, ExpiresAt: 3 * HOUR }),
+      { Url: "/api/assets/old", ExpiresAt: HOUR },
+      2 * HOUR,
+    );
+    await runtime.dispatch(mediaFailed, "Media", "env-1", resource);
+    expect(asked).toHaveLength(1);
+    expect(runtime.state).toMatchObject({ Url: "/api/assets/renewed-1", Failed: false });
+
+    await runtime.dispatch(mediaFailed, "Media", "env-1", resource);
+    expect(asked).toHaveLength(1);
+    expect(runtime.state).toMatchObject({ Url: "/api/assets/renewed-1", Failed: true });
+  });
+
+  it("signs a URL again that fails within five minutes of its expiry", async () => {
+    const { runtime, asked } = media(
+      () => ({ Url: "/api/assets/renewed", ExpiresAt: 2 * HOUR }),
+      { Url: "/api/assets/old", ExpiresAt: HOUR },
+      HOUR - 4 * 60_000,
+    );
+    await runtime.dispatch(mediaFailed, "Media", "env-1", resource);
+    expect(asked).toHaveLength(1);
+    expect(runtime.state).toMatchObject({ Url: "/api/assets/renewed", Failed: false });
   });
 });

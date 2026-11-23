@@ -9,13 +9,21 @@ import type { IActionGenerator, IEntity } from "treflex";
 
 import type { IFileLink } from "./fileLinks";
 import { assetUrlEffect, type IAssetUrl } from "./Infrastructure/commandEffects";
+import { clockNowEffect } from "./Infrastructure/preferences";
 import { serverError } from "./Infrastructure/serverError";
 
 export interface IMediaUrl extends IEntity {
   Url: string | null;
   Size: IAssetUrl["Size"] | null;
+  /** When the server stops accepting `Url`, in epoch milliseconds. */
+  ExpiresAt: number | null;
   Failed: boolean;
 }
+
+export const EMPTY_MEDIA_URL = { Url: null, Size: null, ExpiresAt: null, Failed: false };
+
+// Follows KEEP_URL_MIN_LIFE_MS in packages/client-runtime/src/state/assets.ts.
+export const MIN_URL_LIFE_MS = 5 * 60_000;
 
 export function* loadMediaUrl(
   draft: IMediaUrl,
@@ -26,11 +34,30 @@ export function* loadMediaUrl(
   try {
     const asset = yield* assetUrlEffect({ EnvironmentId: environmentId, Resource: resource });
     draft.Url = asset.Url;
+    draft.ExpiresAt = asset.ExpiresAt;
     draft.Size = asset.Size ?? null;
   } catch (error) {
     serverError(error);
     draft.Failed = true;
   }
+}
+
+/**
+ * A lazy image, or a video seeking, loads from its URL long after it was signed. One that failed
+ * near or past its expiry is signed again; a fresh URL that fails is a missing file.
+ */
+export function* mediaFailed(
+  draft: IMediaUrl,
+  environmentId: string,
+  resource: AssetResource,
+): IActionGenerator {
+  const now = yield* clockNowEffect();
+  if (draft.ExpiresAt === null || draft.ExpiresAt - now > MIN_URL_LIFE_MS) {
+    draft.Failed = true;
+    return;
+  }
+  draft.Url = null;
+  yield* loadMediaUrl(draft, environmentId, resource);
 }
 
 export type IMediaKind = "image" | "video" | "audio";

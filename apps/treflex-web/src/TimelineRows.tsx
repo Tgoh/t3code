@@ -3,13 +3,16 @@ import {
   toolGroupAction,
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
-import { type IActionGenerator, type IAskId, type IEntity } from "treflex";
+import type { AssetResource } from "@t3tools/contracts";
+import { htmlRenderReferencesEqual } from "@t3tools/shared/htmlRender";
+import { mcpAppReferencesEqual } from "@t3tools/shared/mcpApp";
+import type { IAskId } from "treflex";
 import { useComponentState, useInFlight } from "treflex-solid";
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
 import { attachmentDetail } from "./attachmentIntake";
-import { CommandOutput, WORK_PRE } from "./CommandOutput";
+import { CommandOutput, ToolDetailNote, WORK_PRE } from "./CommandOutput";
 import { compactionLabel, compactionReason } from "./compaction";
 import { CopyButton } from "./CopyButton";
 import {
@@ -44,8 +47,12 @@ import { T3Mark } from "./brand";
 import { SubagentNotification, SubagentRow } from "./SubagentRows";
 import { notifiedSubagent } from "./subagents";
 import Environment from "./Environment";
-import { assetUrlEffect, type IWireAttachment } from "./Infrastructure/commandEffects";
+import type { IWireAttachment } from "./Infrastructure/commandEffects";
+import { EMPTY_MEDIA_URL, type IMediaUrl, loadMediaUrl, mediaFailed } from "./markdownImage";
 import type { IWireTurnItem } from "./Infrastructure/wire";
+import { embedOf } from "./embeds";
+import { HtmlRenderFrame } from "./HtmlRender";
+import { McpAppFrame } from "./McpApp";
 import { ItemRequestRow } from "./ItemRequestViews";
 import { Markdown } from "./Markdown";
 import OpenThread, {
@@ -82,7 +89,6 @@ import {
   steerLabel,
 } from "./userMessage";
 import { ImageDialog } from "./ImageDialog";
-import { serverError } from "./Infrastructure/serverError";
 import { singleToolCallLabel, workEntryDisplayLabel, workLogEntry } from "./workLog";
 import { useWorkspaceRoot } from "./workspaceRoot";
 
@@ -200,37 +206,18 @@ export function RowIcon(props: { type: string }) {
 
 type IWireCheckpoint = Extract<IWireTurnItem, { type: "checkpoint" }>;
 
-interface IAttachmentImage extends IEntity {
-  Url: string | null;
-  Failed: boolean;
-}
-
-function* loadAttachmentUrl(
-  draft: IAttachmentImage,
-  environmentId: string,
-  file: IWireAttachment,
-): IActionGenerator {
-  try {
-    const asset = yield* assetUrlEffect({
-      EnvironmentId: environmentId,
-      Resource: {
-        _tag: "attachment",
-        attachmentId: file.id,
-        ...(file.type === "image"
-          ? {}
-          : { fileName: file.name, mimeType: file.mimeType, disposition: "inline" }),
-      },
-    });
-    draft.Url = asset.Url;
-  } catch (error) {
-    serverError(error);
-    draft.Failed = true;
-  }
-}
+const attachmentResource = (file: IWireAttachment): AssetResource => ({
+  _tag: "attachment",
+  attachmentId: file.id,
+  ...(file.type === "image"
+    ? {}
+    : { fileName: file.name, mimeType: file.mimeType, disposition: "inline" as const }),
+});
 
 function UserAttachment(props: { environmentId: string; file: IWireAttachment; grouped: boolean }) {
-  const local = useComponentState<IAttachmentImage>(() => ({ Url: null, Failed: false }));
-  onMount(() => local.dispatch(loadAttachmentUrl, props.environmentId, props.file));
+  const local = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
+  const resource = attachmentResource(props.file);
+  onMount(() => local.dispatch(loadMediaUrl, props.environmentId, resource));
   return (
     <Show
       when={props.file.type === "image"}
@@ -241,7 +228,7 @@ function UserAttachment(props: { environmentId: string; file: IWireAttachment; g
         grouped={props.grouped}
         url={local.state.Url}
         failed={local.state.Failed}
-        onError={() => local.dispatch(markFailed)}
+        onError={() => local.dispatch(mediaFailed, props.environmentId, resource)}
       />
     </Show>
   );
@@ -336,10 +323,6 @@ function AttachmentImage(props: {
       </Show>
     </Show>
   );
-}
-
-function* markFailed(draft: IAttachmentImage): IActionGenerator {
-  draft.Failed = true;
 }
 
 function DiffCounts(props: { additions: number; deletions: number }) {
@@ -862,8 +845,13 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
       </Show>
     </>
   );
+  const detail = () => session.state.ToolDetails[props.id];
+  const bodyText = () => {
+    const fetched = detail()?.Item;
+    return fetched != null && fetched.type === item()?.type ? viewOf(fetched).Body : view()?.Body;
+  };
   const body = (pre?: string) => (
-    <Show when={view()?.Body}>
+    <Show when={bodyText()}>
       {(text) => <Body id={props.id} text={text()} format={view()?.Format ?? "text"} pre={pre} />}
     </Show>
   );
@@ -878,7 +866,7 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
       data-failed={view()?.Failed === true ? "" : undefined}
     >
       <Show
-        when={view()?.Collapsed && (view()?.Body || view()?.LiveOutput)}
+        when={view()?.Collapsed && (view()?.Body || view()?.LiveOutput || view()?.Detail)}
         fallback={
           <>
             <div class={`${workLine(tone())} group-data-action/row:pr-18`}>{label()}</div>
@@ -893,10 +881,19 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
           open={expanded()}
           onToggle={(event) => {
             if (event.currentTarget.open === expanded()) return;
-            const output = view()?.LiveOutput
-              ? { ThreadId: thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId }
-              : undefined;
-            session.toggleRowExpanded(props.id, output);
+            const fetch = view()?.LiveOutput
+              ? ("output" as const)
+              : view()?.Detail
+                ? ("detail" as const)
+                : null;
+            const source =
+              fetch === null
+                ? undefined
+                : {
+                    ThreadId: thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId,
+                    Fetch: fetch,
+                  };
+            session.toggleRowExpanded(props.id, source);
           }}
         >
           <summary
@@ -914,6 +911,7 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
             <Show when={view()?.LiveOutput && expanded()}>
               <CommandOutput itemId={props.id} />
             </Show>
+            <Show when={detail()}>{(held) => <ToolDetailNote detail={held()} />}</Show>
             {body()}
           </div>
         </details>
@@ -957,7 +955,70 @@ const ROWS: Record<string, Component<IRowProps & { meta: boolean }>> = {
   subagent: SubagentRow,
   notification: NotificationRow,
   asked: AskedRow,
+  "html-render": HtmlRenderRow,
+  "mcp-app": McpAppRow,
 };
+
+// Follows HtmlRenderTimelineRow in apps/web/src/components/chat/TimelineAssistantRows.tsx.
+function HtmlRenderRow(props: IRowProps) {
+  const { item } = useRow(props);
+  const embed = createMemo(
+    () => {
+      const held = item();
+      const found = held === undefined ? null : embedOf(held);
+      return found?.Kind === "html-render" ? found.HtmlRender : null;
+    },
+    null,
+    {
+      equals: (left, right) =>
+        left === right ||
+        (left !== null && right !== null && htmlRenderReferencesEqual(left, right)),
+    },
+  );
+  return (
+    <Show when={embed()} keyed>
+      {(htmlRender) => (
+        <div class="min-w-0 px-1">
+          <HtmlRenderFrame htmlRender={htmlRender} />
+        </div>
+      )}
+    </Show>
+  );
+}
+
+// Follows McpAppTimelineRow in apps/web/src/components/chat/TimelineAssistantRows.tsx.
+function McpAppRow(props: IRowProps) {
+  const { thread, item } = useRow(props);
+  const app = createMemo(
+    () => {
+      const held = item();
+      const found = held === undefined ? null : embedOf(held);
+      return found?.Kind === "mcp-app" ? found.App : null;
+    },
+    null,
+    {
+      equals: (left, right) =>
+        left === right || (left !== null && right !== null && mcpAppReferencesEqual(left, right)),
+    },
+  );
+  const row = () => thread.state.Rows[props.id];
+  return (
+    <>
+      <WorkRow id={props.id} />
+      <Show when={app()} keyed>
+        {(held) => (
+          <div class="min-w-0 px-1">
+            <McpAppFrame
+              app={held}
+              threadId={row()?.sourceThreadId ?? thread.state.ThreadId}
+              itemId={props.id}
+            />
+          </div>
+        )}
+      </Show>
+    </>
+  );
+}
 
 function AskedRow(props: IRowProps) {
   const { item } = useRow(props);
@@ -977,7 +1038,7 @@ function rowKind(item: IWireTurnItem): string | null {
     case "approval_request":
       return item.status === "waiting" ? null : "work";
     case "dynamic_tool":
-      return viewOf(item).Tone === "assistant" ? "message" : "work";
+      return embedOf(item)?.Kind ?? (viewOf(item).Tone === "assistant" ? "message" : "work");
     case "subagent":
     case "notification":
       return item.type;

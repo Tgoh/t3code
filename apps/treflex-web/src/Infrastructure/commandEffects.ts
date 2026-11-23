@@ -177,6 +177,16 @@ interface IThreadDiffEffect extends IEffect, IThreadDiff {
   Type: "threadDiff";
 }
 
+export interface ITurnItemRequest {
+  EnvironmentId: string;
+  ThreadId: string;
+  ItemId: string;
+}
+
+interface ITurnItemEffect extends IEffect, ITurnItemRequest {
+  Type: "turnItem";
+}
+
 export type IThreadCommand =
   | { Kind: "settle" }
   | { Kind: "unsettle" }
@@ -328,6 +338,32 @@ export const openInEditorEffect = defineEffect<IOpenInEditorEffect, string>("ope
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
 
+/** What an MCP app asks of the server, on behalf of the tool call that opened it. */
+export type IMcpAppRequest =
+  | { Kind: "toolInfo"; Name: string }
+  | { Kind: "callTool"; Name: string; Arguments: Record<string, unknown> }
+  | { Kind: "readResource"; Uri: string }
+  | {
+      Kind: "updateModelContext";
+      ConversationThreadId: string;
+      Content?: unknown[];
+      StructuredContent?: Record<string, unknown>;
+    };
+
+interface IMcpAppEffect extends IEffect {
+  Type: "mcpApp";
+  EnvironmentId: string;
+  ThreadId: string;
+  ItemId: string;
+  Request: IMcpAppRequest;
+}
+
+/** The server's answer: a tool's info or result, a resource's contents, or null. */
+export const mcpAppEffect = defineEffect<IMcpAppEffect, unknown>("mcpApp");
+
+/** The whole item, with the output and input the wire leaves out, or null once it's gone. */
+export const turnItemEffect = defineEffect<ITurnItemEffect, IWireTurnItem | null>("turnItem");
+
 interface IAssetUrlEffect extends IEffect {
   Type: "assetUrl";
   EnvironmentId: string;
@@ -336,6 +372,8 @@ interface IAssetUrlEffect extends IEffect {
 
 export interface IAssetUrl {
   Url: string;
+  /** When the server stops accepting `Url`, in epoch milliseconds. */
+  ExpiresAt: number;
   Size?: { Width: number; Height: number };
 }
 

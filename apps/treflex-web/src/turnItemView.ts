@@ -1,3 +1,8 @@
+import {
+  turnItemNeedsDetailFetch,
+  turnItemOutputText,
+} from "@t3tools/client-runtime/work-log/item-detail";
+import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
 import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 
 import type { IWireTurnItem } from "./Infrastructure/wire";
@@ -9,6 +14,8 @@ export interface ITurnItemView {
   Format: "markdown" | "text" | "code";
   Collapsed?: boolean;
   LiveOutput?: boolean;
+  /** The wire left out the output or cut the input, so an expanded row fetches the whole item. */
+  Detail?: boolean;
 }
 
 const json = (value: unknown): string | undefined =>
@@ -101,12 +108,14 @@ export function viewOf(
       const sent = item.status === "completed" ? sentMessageFromToolItem(item) : undefined;
       if (sent !== undefined)
         return { Tone: "assistant", Label: "Assistant", Body: sent, Format: "markdown" };
-      return tool(
-        `Tool: ${item.toolName ?? "unnamed"}`,
-        item.outputOmitted === true
-          ? lines(json(item.input), "Output not sent with the thread.")
-          : lines(json(item.input), json(item.output)),
-      );
+      const decoded = item as unknown as OrchestrationV2TurnItem;
+      return {
+        ...tool(
+          `Tool: ${item.toolName ?? "unnamed"}`,
+          lines(json(item.input), turnItemOutputText(decoded)),
+        ),
+        Detail: turnItemNeedsDetailFetch(decoded),
+      };
     }
     case "subagent":
       return tool(`Subagent (${item.driver})`, lines(item.prompt, item.progress, item.result));

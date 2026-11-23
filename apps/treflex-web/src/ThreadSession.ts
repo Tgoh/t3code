@@ -64,6 +64,7 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import { type IDiffPanel, type IDiffRequest, type IDiffScope, loadDiff } from "./Diff";
+import { type IToolDetail, loadToolDetail } from "./ToolDetail";
 import type { IGitWork } from "./GitWork";
 import type { IAddressView } from "./Infrastructure/address";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
@@ -234,8 +235,14 @@ export interface IThreadSession extends IEntity {
   Details: IThreadDetails | null;
   ExpandedRows: Record<string, true>;
   CommandOutputs: Record<string, ICommandOutputRow>;
+  ToolDetails: Record<string, IToolDetail>;
   /** Whether a code block the person toggled wraps, by block key; others follow Word wrap. */
   CodeWrap: Record<string, boolean>;
+  /**
+   * Where the reader left the timeline: the response row at the top of the view and how far its
+   * top sat from the view's top, or null at the end, which a return follows to the newest row.
+   */
+  Scroll: { RowId: string; Offset: number } | null;
 }
 
 export function getDefaultThreadSession(
@@ -262,7 +269,9 @@ export function getDefaultThreadSession(
     },
     ExpandedRows: {},
     CommandOutputs: {},
+    ToolDetails: {},
     CodeWrap: {},
+    Scroll: null,
     Details: null,
   };
 }
@@ -828,6 +837,36 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
 }
 leading(send);
 
+// Follows sendAppMessage in apps/web/src/components/ChatView.tsx.
+/** Sends what an MCP app asked to say, once the person approved it; answers why it failed. */
+export function* sendAppMessage(
+  draft: IThreadSession,
+  text: string,
+): IOpenGenerator<string | null> {
+  if (draft.NewThreadProjectId !== null) return "Messages from apps need a started thread.";
+  const runtimeMode = yield* select(effectiveRuntimeMode);
+  try {
+    yield* open(
+      startTurnEffect({
+        EnvironmentId: draft.EnvironmentId,
+        ThreadId: draft.ThreadId,
+        CommandId: yield* generateGuid(),
+        MessageId: yield* generateGuid(),
+        Text: text,
+        Attachments: [],
+        ModelSelection: null,
+        RuntimeMode: runtimeMode,
+        InteractionMode: "default",
+        DispatchMode: "queue",
+        NewThread: null,
+      }),
+    );
+  } catch (error) {
+    return serverError(error).message;
+  }
+  return null;
+}
+
 /** How long Stop stays disabled waiting for its run to end, as stock's `STOP_PENDING_MAX_MS`. */
 export const STOP_PENDING_MAX_MS = 10_000;
 
@@ -1383,21 +1422,36 @@ export function* settleQuestions(
   if (draft.Draft !== before) yield* storeDraft(draft);
 }
 
-/** `output` names the thread that ran a command row, whose output shows while it's expanded. */
+/**
+ * `source` names the thread that ran the row and what its expanded body needs: a command's live
+ * output, or the whole item of a tool whose output the wire leaves out.
+ */
 export function* toggleRowExpanded(
   draft: IThreadSession,
   rowId: string,
-  output?: { ThreadId: string },
+  source?: { ThreadId: string; Fetch: "output" | "detail" },
 ): IActionGenerator {
   if (draft.ExpandedRows[rowId]) {
     delete draft.ExpandedRows[rowId];
     delete draft.CommandOutputs[rowId];
+    delete draft.ToolDetails[rowId];
     return;
   }
   draft.ExpandedRows[rowId] = true;
-  if (output === undefined) return;
+  if (source === undefined) return;
+  if (source.Fetch === "detail") {
+    draft.ToolDetails[rowId] = yield* entity<IToolDetail>({
+      ThreadId: source.ThreadId,
+      ItemId: rowId,
+      Item: null,
+      Missing: false,
+      Error: null,
+    });
+    yield* start(loadToolDetail, draft.ToolDetails[rowId]!, draft.EnvironmentId);
+    return;
+  }
   draft.CommandOutputs[rowId] = yield* entity<ICommandOutputRow>({
-    ThreadId: output.ThreadId,
+    ThreadId: source.ThreadId,
     ItemId: rowId,
   });
   yield* openOutput(draft, draft.CommandOutputs[rowId]!);
@@ -1428,6 +1482,13 @@ export function* reattachThread(draft: IThreadSession): IActionGenerator {
   }
   yield* start(restoreTerminal, draft.Terminal);
   yield* followCheckout(draft);
+}
+
+export function* rememberScroll(
+  draft: IThreadSession,
+  scroll: IThreadSession["Scroll"],
+): IActionGenerator {
+  draft.Scroll = scroll;
 }
 
 // Follows MarkdownCodeBlock in apps/web/src/components/chat/MarkdownCodeBlock.tsx (`wrapOverride`).
@@ -1649,7 +1710,9 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     advanceQuestion,
     setQuestionIndex,
     toggleRowExpanded,
+    sendAppMessage,
     toggleCodeWrap,
+    rememberScroll,
     openDiff,
     closeDiff,
     toggleDetails,
