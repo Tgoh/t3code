@@ -29,6 +29,7 @@ import { clockNowEffect, type IVoiceDestination } from "./Infrastructure/prefere
 import { setPreferences } from "./Preferences";
 import { storedClientSettingsEffect } from "./Infrastructure/settings";
 import { serverError } from "./Infrastructure/serverError";
+import { toast } from "./Infrastructure/toasts";
 import { openView } from "./Settings";
 import { threadProjectId } from "./ThreadSession";
 import { cancelDownload, downloadModel, follow, loadModels, selectModel } from "./VoiceModels";
@@ -51,11 +52,10 @@ declare module "treflex" {
 export interface IDictation extends IEntity {
   Recording: IRecording;
   Models: IVoiceModel[] | null;
-  ModelsError: string | null;
 }
 
 export function getDefaultDictation(): Omit<IDictation, "$Id"> {
-  return { Recording: { ...IDLE }, Models: null, ModelsError: null };
+  return { Recording: { ...IDLE }, Models: null };
 }
 
 export interface IRecording {
@@ -157,7 +157,9 @@ export function* startDictation(draft: IEnvironment, threadId: string, text: IDi
   const dictation = draft.Local.Dictation;
   if (!read.ok) {
     const { message } = serverError(read.error);
-    if (stillPreparing(dictation, threadId)) fail(dictation, threadId, message, "retry");
+    if (!stillPreparing(dictation, threadId)) return;
+    Object.assign(dictation.Recording, IDLE);
+    yield* toast({ Kind: "error", Title: "Could not start voice input", Description: message });
     return;
   }
   const status = read.value;
@@ -167,7 +169,12 @@ export function* startDictation(draft: IEnvironment, threadId: string, text: IDi
   if (models !== null) yield* follow(dictation, models);
   if (!stillPreparing(dictation, threadId)) return;
   if (!status.supported) {
-    fail(dictation, threadId, status.reason, null);
+    Object.assign(dictation.Recording, IDLE);
+    yield* toast({
+      Kind: "error",
+      Title: "Voice input is not available",
+      Description: status.reason,
+    });
     return;
   }
   const missing =

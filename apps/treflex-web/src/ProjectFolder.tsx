@@ -1,7 +1,7 @@
 import { planProjectRemoval } from "@t3tools/client-runtime/state/projects";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { useInFlight } from "treflex-solid";
-import { createMemo, createSignal, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 
 import { ProjectBadge } from "./brand";
 import { copyText } from "./clipboard";
@@ -115,7 +115,6 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
   const environment = Environment.use();
   const removing = useInFlight(removeProject, () => environment.state);
   const shell = Shell.use();
-  const [failure, setFailure] = createSignal<string | null>(null);
   const copy = createMemo(() => {
     const environmentId = EnvironmentId.make(environment.state.EnvironmentId);
     const { confirmationMessage } = planProjectRemoval({
@@ -140,11 +139,17 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
     const [title = "", ...rest] = confirmationMessage.split("\n");
     return { Title: title, Description: rest.join("\n") };
   });
+  // Follows removeMembers in apps/web/src/components/settings/ProjectSettingsPanel.tsx.
   const confirm = async () => {
-    setFailure(null);
     const error = await environment.removeProject(props.project.id);
-    if (error === null) props.onClose();
-    else setFailure(`Failed to remove "${props.project.title}": ${error}`);
+    if (error !== null) {
+      toastManager.add({
+        type: "error",
+        title: `Failed to remove "${props.project.title}"`,
+        description: error,
+      });
+    }
+    props.onClose();
   };
   return (
     <AlertDialog onClose={props.onClose}>
@@ -156,13 +161,6 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
               <AlertDialogDescription class="whitespace-pre-line">
                 {description()}
               </AlertDialogDescription>
-            )}
-          </Show>
-          <Show when={failure()}>
-            {(text) => (
-              <p role="alert" class="text-sm text-destructive">
-                {text()}
-              </p>
             )}
           </Show>
         </AlertDialogHeader>

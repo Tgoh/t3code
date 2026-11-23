@@ -55,6 +55,10 @@ import Environment, { AddingProject } from "./Environment";
 import { serverError } from "./Infrastructure/serverError";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
+import { toastManager } from "./ui/toastStore";
+
+const failed = (title: string, description: string) =>
+  toastManager.add({ type: "error", title, description });
 import { browseFoldersEffect, type IFolderListing } from "./Infrastructure/commandEffects";
 import {
   CommandDialog,
@@ -70,8 +74,6 @@ const SUMMARY_TITLE = "truncate text-foreground text-sm";
 const SUMMARY_DETAIL = "truncate text-muted-foreground/85 text-xs";
 const DESCRIPTION = "min-w-0 text-muted-foreground/70 text-xs";
 const STATUS = "px-4 py-3 text-sm text-muted-foreground";
-const ERROR = "px-4 py-3 text-sm wrap-anywhere text-error-foreground";
-const WARNING = "px-4 py-3 text-sm wrap-anywhere text-warning-foreground";
 
 const UNKNOWN_SETTINGS: IAddProjectSettings = {
   BaseDirectory: "",
@@ -138,8 +140,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
   const view = () => stack().at(-1)!;
   const [query, setQuery] = createSignal("");
   const [highlight, setHighlight] = createSignal<number | null>(0);
-  const [error, setError] = createSignal<string | null>(null);
-  const [notice, setNotice] = createSignal<string | null>(null);
   const [input, setInput] = createSignal<HTMLInputElement>();
   const [list, setList] = createSignal<HTMLElement>();
 
@@ -160,8 +160,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     setStack(next);
     changeQuery(initialQuery(next.at(-1)!));
     setHighlight(next.at(-1)!.Kind === "sources" ? 0 : null);
-    setError(null);
-    setNotice(null);
     focusInput();
   };
   const push = (next: IView) => show([...stack(), next]);
@@ -286,15 +284,16 @@ export function AddProjectPalette(props: { onClose: () => void }) {
       platform: platform(),
       currentProjectCwd: cwd(),
     });
-    if (!resolved.ok) return setError(resolved.error);
-    setError(null);
     const current = view();
+    // Follows reportProjectFailure and the clone failures in apps/web/src/components/CommandPalette.tsx.
+    const title = current.Kind === "clone-dest" ? "Clone failed" : "Failed to add project";
+    if (!resolved.ok) return failed(title, resolved.error);
     const failure =
       current.Kind === "clone-dest"
         ? await environment.cloneProject(current.Remote, resolved.path)
         : await environment.addFolder(resolved.path);
     if (failure === null) props.onClose();
-    else if (failure !== undefined) setError(failure);
+    else if (failure !== undefined) failed(title, failure);
   };
 
   const continueClone = () => {
@@ -306,16 +305,20 @@ export function AddProjectPalette(props: { onClose: () => void }) {
   const submitNew = async () => {
     const created = newProjectName();
     if (created === "" || busy()) return;
-    setError(null);
-    setNotice(null);
     const outcome = await environment.newProject(created);
     if (outcome === undefined) return;
-    if ("Error" in outcome) return setError(outcome.Error);
-    if (outcome.CommitError === null) return props.onClose();
-    changeQuery("");
-    setNotice(
-      `Created ${created} without a first commit: ${outcome.CommitError} The project is in ${outcome.WorkspaceRoot}.`,
+    // Follows the toasts in apps/web/src/hooks/useNewProject.ts.
+    if ("Error" in outcome) return failed("Could not create the project", outcome.Error);
+    toastManager.add(
+      outcome.CommitError === null
+        ? { type: "success", title: `Created ${created}`, description: outcome.WorkspaceRoot }
+        : {
+            type: "warning",
+            title: `Created ${created} without a first commit`,
+            description: `${outcome.CommitError} The project is in ${outcome.WorkspaceRoot}.`,
+          },
     );
+    props.onClose();
   };
 
   const rowCount = () =>
@@ -445,7 +448,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
             onInput: (event) => {
               changeQuery(event.currentTarget.value);
               if (browsing()) setHighlight(null);
-              setError(null);
             },
             onKeyDown,
           }}
@@ -514,20 +516,6 @@ export function AddProjectPalette(props: { onClose: () => void }) {
                 )}
               </Match>
             </Switch>
-            <Show when={error()}>
-              {(shown) => (
-                <div role="alert" class={ERROR}>
-                  {shown()}
-                </div>
-              )}
-            </Show>
-            <Show when={notice()}>
-              {(shown) => (
-                <div role="status" class={WARNING}>
-                  {shown()}
-                </div>
-              )}
-            </Show>
             <Show when={listingError()}>
               {(failure) => (
                 <div role="alert" class={STATUS}>

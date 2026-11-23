@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { getDefaultDictation, type IDictation } from "./Dictation";
 import type { IVoiceModel } from "./Infrastructure/dictation";
 import { serverFailure } from "./Infrastructure/serverError";
+import type { IToastRequest } from "./Infrastructure/toasts";
 import {
   downloadModel,
   loadModels,
@@ -29,9 +30,13 @@ function rig(
 ) {
   const commands: ICommand[] = [];
   const failures: IFailureEvent[] = [];
+  const toasts: IToastRequest[] = [];
   const runtime = createTestRuntime<IDictation>(
     { $Id: ID, ...getDefaultDictation() },
     {
+      toast: ({ Type: _type, ...request }: IToastRequest & { Type: string }) => {
+        toasts.push(request);
+      },
       voiceModels: catalog,
       voiceModelCommand: async (effect: ICommand) => {
         commands.push({ Command: effect.Command, ModelId: effect.ModelId });
@@ -46,6 +51,7 @@ function rig(
   return {
     runtime,
     failures,
+    toasts,
     commands,
     polling: () => runtime.timers(ID).some((row) => row.Key === "Voice/Poll"),
     tick: () =>
@@ -129,9 +135,9 @@ describe("voice models", () => {
       { allowFailures: [selectModel] },
     );
     await voice.runtime.dispatch(selectModel, ID, "base");
-    expect(voice.runtime.state.ModelsError).toBe("Model not found.");
-    await voice.runtime.dispatch(loadModels, ID);
-    expect(voice.runtime.state.ModelsError).toBeNull();
+    expect(voice.toasts).toEqual([
+      { Kind: "error", Title: "Could not select the model", Description: "Model not found." },
+    ]);
 
     fail = new TypeError("models is undefined");
     await expect(voice.runtime.dispatch(selectModel, ID, "base")).rejects.toThrow(TypeError);

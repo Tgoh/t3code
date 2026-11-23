@@ -104,8 +104,7 @@ function ModelRow() {
       title="Model"
       description={
         <>
-          {voice.state.ModelsError ??
-            (chosen() === null ? "Loading models…" : modelState(chosen()!))}
+          {chosen() === null ? "Loading models…" : modelState(chosen()!)}
           <Show when={chosen()?.description}>
             {(text) => <span class="mt-1 block">{text()}</span>}
           </Show>

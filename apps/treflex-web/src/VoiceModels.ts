@@ -17,6 +17,7 @@ import {
   voiceModelsEffect,
 } from "./Infrastructure/dictation";
 import { serverError } from "./Infrastructure/serverError";
+import { toast } from "./Infrastructure/toasts";
 
 declare module "treflex" {
   interface ITimerRegistry {
@@ -34,19 +35,23 @@ export function* follow(draft: IDictation, models: IVoiceModel[]): IActionGenera
   if (models.some(busy)) yield* startTimer(draft, "Voice/Poll", VoiceModelsReceiver, POLL_MS);
 }
 
-export function* loadModels(draft: IDictation): IOpenGenerator {
+// Follows the failure toasts of the model list and its `run` actions in VoiceSettingsPanel.tsx.
+const failed = (title: string, error: unknown) =>
+  toast({ Kind: "error", Title: title, Description: serverError(error).message });
+
+/** The progress poll passes `quiet`, as stock's progress refresh shows no failure. */
+export function* loadModels(draft: IDictation, quiet = false): IOpenGenerator {
   try {
     yield* follow(draft, yield* open(voiceModelsEffect()));
-    draft.ModelsError = null;
   } catch (error) {
-    draft.ModelsError = serverError(error).message;
+    if (quiet) serverError(error);
+    else yield* failed("Could not load transcription models", error);
   }
 }
 latest(loadModels);
 
 /** A model just downloaded is put in use unless it already is, as stock's setup does. */
 export function* downloadModel(draft: IDictation, modelId: string): IOpenGenerator {
-  draft.ModelsError = null;
   yield* startTimer(draft, "Voice/Poll", VoiceModelsReceiver, POLL_MS);
   try {
     let result = yield* open(voiceModelCommandEffect({ Command: "download", ModelId: modelId }));
@@ -57,7 +62,7 @@ export function* downloadModel(draft: IDictation, modelId: string): IOpenGenerat
     }
     yield* follow(draft, result.Models);
   } catch (error) {
-    draft.ModelsError = serverError(error).message;
+    yield* failed("Could not download the model", error);
   }
 }
 leading(downloadModel);
@@ -73,20 +78,22 @@ export function* cancelDownload(draft: IDictation, modelId: string): IOpenGenera
 leading(cancelDownload);
 
 function* command(draft: IDictation, kind: "select" | "cancel", modelId: string): IOpenGenerator {
-  draft.ModelsError = null;
   try {
     yield* follow(
       draft,
       (yield* open(voiceModelCommandEffect({ Command: kind, ModelId: modelId }))).Models,
     );
   } catch (error) {
-    draft.ModelsError = serverError(error).message;
+    yield* failed(
+      kind === "select" ? "Could not select the model" : "Could not cancel the download",
+      error,
+    );
   }
 }
 
 export const VoiceModelsReceiver = receiver<IDictation>("VoiceModelsReceiver")({
   *"Voice/Poll"(draft) {
-    yield* loadModels(draft);
+    yield* loadModels(draft, true);
     if (draft.Models?.some(busy) === true || (yield* inFlight(downloadModel, draft))) return;
     yield* stopTimer(draft, "Voice/Poll");
   },
