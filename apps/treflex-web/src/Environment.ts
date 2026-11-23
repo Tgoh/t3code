@@ -31,13 +31,14 @@ import {
 import { createEntityFeature } from "treflex-solid";
 
 import { followActivity, reportActivity } from "./Activity";
-import { addressThread, addressView, setAddressThread } from "./Infrastructure/address";
+import { address, type IAddress } from "./Infrastructure/address";
 import type { IDeviceActivity } from "./Infrastructure/clientActivity";
 import {
   cloneControlEffect,
   type INewProject,
   type IProjectCommand,
   type IThreadCommand,
+  type IWireModelSelection,
   newProjectEffect,
   openInEditorEffect,
   openInFileManagerEffect,
@@ -55,7 +56,9 @@ import { rememberedModelsEffect } from "./Infrastructure/modelMemory";
 import { addProjectSettingsOf, type IAddProjectSettings } from "./addProjectPaths";
 import { editorChoices, type IEditors } from "./editors";
 import { getDefaultGitWork, type IGitWork } from "./GitWork";
+import { newThreadModelOverride } from "./newThreadDefaults";
 import {
+  clockNowEffect,
   type IPreferences,
   storedEditorEffect,
   storedPreferencesEffect,
@@ -90,6 +93,7 @@ import {
   autoRefreshLimits,
   openView,
   showView,
+  syncAddress,
   toggleModelFavorite,
   updateServerSettings,
   writeSetting,
@@ -131,6 +135,7 @@ declare module "treflex" {
   interface IResourceRegistry {
     "Project/Clones": { Type: "projectClones" };
     "Server/Config": { Type: "serverConfigStream" };
+    "Device/History": { Type: "addressHistory" };
   }
   interface ITimerRegistry {
     "Server/ConfigReopen": {};
@@ -235,10 +240,29 @@ export function* init(draft: IEnvironment): IActionGenerator {
   yield* openDictation(draft.Local.Dictation);
   // A restored address isn't an open, and its thread's row hasn't arrived yet: the shell
   // receiver visits a due completion once the row lands and no page covers it.
-  const selected = yield* addressThread();
-  if (selected !== null) yield* showThread(draft, selected);
-  const view = yield* addressView();
-  if (view !== null) yield* showView(draft, view);
+  const held = yield* address();
+  if (held.NewThreadIn !== null) {
+    yield* showThread(draft, yield* newThreadSession(draft, held.NewThreadIn));
+  } else if (held.Thread !== null) yield* showThread(draft, held.Thread);
+  if (held.View !== null) yield* showView(draft, held.View);
+  yield* syncAddress(draft, false);
+  yield* openResource(draft, "Device/History", EnvironmentReceiver, { Type: "addressHistory" });
+}
+
+function* followAddress(draft: IEnvironment, held: IAddress): IActionGenerator {
+  const threadId =
+    held.NewThreadIn !== null ? yield* newThreadSession(draft, held.NewThreadIn) : held.Thread;
+  if (held.View === null && threadId !== null) yield* selectThread(draft, threadId);
+  else {
+    const previous = draft.Local.SelectedThreadId;
+    if (threadId !== null && threadId !== previous) yield* showThread(draft, threadId);
+    if (threadId === null && previous !== null) {
+      draft.Local.SelectedThreadId = null;
+      yield* leaveThread(draft, previous);
+    }
+    yield* openView(draft, held.View);
+  }
+  yield* syncAddress(draft, false);
 }
 
 function* sessionOf(
@@ -301,7 +325,8 @@ export function* selectThread(
   if (covered) yield* showView(draft, null);
   const changed = draft.Local.SelectedThreadId !== threadId;
   if (changed) yield* showThread(draft, threadId);
-  else if (covered) {
+  yield* syncAddress(draft);
+  if (!changed && covered) {
     const session = draft.Local.ThreadSessions[threadId];
     if (session !== undefined) yield* start(followCheckout, session);
   }
@@ -315,15 +340,29 @@ function* showThread(draft: IEnvironment, threadId: string): IActionGenerator {
   const previous = draft.Local.SelectedThreadId;
   draft.Local.SelectedThreadId = threadId;
   if (previous !== null) yield* leaveThread(draft, previous);
-  if (draft.Local.ThreadSessions[threadId]?.NewThreadProjectId != null) {
-    yield* setAddressThread(null);
-    return;
-  }
+  if (draft.Local.ThreadSessions[threadId]?.NewThreadProjectId != null) return;
   yield* openThread(draft, threadId);
-  yield* setAddressThread(threadId);
 }
 
-export function* newThread(draft: IEnvironment, projectId: string): IActionGenerator {
+function carriedModel(draft: IEnvironment, destination: string): IWireModelSelection | null {
+  const source = draft.Local.SelectedThreadId;
+  if (source === null || source === destination) return null;
+  const session = draft.Local.ThreadSessions[source];
+  if (session?.ModelSelection != null) return session.ModelSelection;
+  if (session?.NewThreadProjectId != null) return session.SeededModel;
+  return (
+    draft.Replica.OpenThreads[source]?.Thread?.modelSelection ??
+    draft.Replica.Shell.Threads[source]?.modelSelection ??
+    null
+  );
+}
+
+/** `reseed` is the New thread action's; returning to a held draft keeps its seed, as stock's route does. */
+function* newThreadSession(
+  draft: IEnvironment,
+  projectId: string,
+  reseed = false,
+): IActionGenerator<string> {
   const existing = Object.values(draft.Local.ThreadSessions).find(
     (session) => session.NewThreadProjectId === projectId,
   );
@@ -331,17 +370,36 @@ export function* newThread(draft: IEnvironment, projectId: string): IActionGener
     existing?.ThreadId ??
     (yield* storedNewThreadEffect({ ProjectId: projectId })) ??
     (yield* generateGuid());
+  const carry = carriedModel(draft, threadId);
   const session = yield* sessionOf(draft, threadId, projectId);
-  if (existing === undefined && session.ModelSelection === null) {
-    const last = (yield* rememberedModelsEffect()).Last;
-    const offered = draft.Replica.Providers.some(
-      (provider) =>
-        provider.InstanceId === last?.instanceId &&
-        provider.Models.some((model) => model.Slug === last.model),
-    );
-    if (offered) session.ModelSelection = last;
-  }
-  yield* selectThread(draft, threadId);
+  if (session.ModelSelection !== null || (existing !== undefined && !reseed)) return threadId;
+  const last = (yield* rememberedModelsEffect()).Last;
+  const offered = draft.Replica.Providers.some(
+    (provider) =>
+      provider.InstanceId === last?.instanceId &&
+      provider.Models.some((model) => model.Slug === last.model),
+  );
+  const config = draft.Replica.Config;
+  const override =
+    config === null
+      ? carry
+      : newThreadModelOverride(
+          {
+            Config: config,
+            ProjectId: projectId,
+            Project: draft.Replica.Shell.Projects[projectId],
+            Now: yield* clockNowEffect(),
+          },
+          carry,
+          offered,
+        );
+  const chosen = override ?? (offered ? last : null);
+  session.SeededModel = chosen === null ? null : JSON.parse(JSON.stringify(chosen));
+  return threadId;
+}
+
+export function* newThread(draft: IEnvironment, projectId: string): IActionGenerator {
+  yield* selectThread(draft, yield* newThreadSession(draft, projectId, true));
 }
 
 /** Drops what only this client holds for a deleted thread; the streams remove its replica rows. */
@@ -353,7 +411,7 @@ function* forgetSession(draft: IEnvironment, threadId: string): IActionGenerator
   yield* rememberTerminalEffect({ ThreadId: threadId, Launch: null });
   if (draft.Local.SelectedThreadId === threadId) {
     draft.Local.SelectedThreadId = null;
-    yield* setAddressThread(null);
+    yield* syncAddress(draft, false);
   }
 }
 
@@ -698,6 +756,14 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
     delete draft.Replica.OpenThreads[ThreadId];
     yield* forgetSession(draft, ThreadId);
   },
+  // Follows ThreadRouteView in apps/web/src/components/ThreadRouteView.tsx, which leaves a
+  // missing thread for home, replacing its address.
+  *"Thread/Missing"(draft, { ThreadId }) {
+    yield* closeThread(draft, ThreadId);
+    if (draft.Local.SelectedThreadId !== ThreadId) return;
+    draft.Local.SelectedThreadId = null;
+    yield* syncAddress(draft, false);
+  },
   *"Thread/RequestsSettled"(draft, { ThreadId, PendingIds, UnansweredIds }) {
     const session = draft.Local.ThreadSessions[ThreadId];
     if (session !== undefined) yield* start(settleQuestions, session, PendingIds, UnansweredIds);
@@ -745,7 +811,10 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Thread/Started"(draft, { ThreadId }) {
     if (draft.Local.SelectedThreadId !== ThreadId) return;
     yield* openThread(draft, ThreadId);
-    yield* setAddressThread(ThreadId);
+    yield* syncAddress(draft, false);
+  },
+  *"Device/History"(draft, message) {
+    if (!isEnded(message)) yield* followAddress(draft, message.Address);
   },
 });
 

@@ -98,7 +98,6 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - History pages load older rows only, with no `throughEntryId` jump.
 - `ServerSettings`' `automaticGitFetchInterval` and `providerHealthRefreshInterval` sit in the tree as `{_tag: "Millis", value}`, which `Wire<T>` doesn't describe. No patch treflex builds carries them; one that does must send that shape, since `decodePatch` rejects a plain number.
 - The timeline window follows its top row when that row moves, so a top row moved far down (`placeRow` on an ordinal change) would collapse the window to the tail until the sentinel grows it back. No known server path moves an old row.
-- The address uses `replaceState`, so selecting threads adds no back-button history.
 - Tool output isn't fetched: the wire omits it, the row says so, and `getTurnItem` would fill it in.
 - A command row doesn't check the server's `commandOutputStreaming` capability, so an older server shows the subscription's error.
 - A secret card takes a typed value only. Stock offers answering from a configured secret provider, behind its `T3CODE_FEATURE_SECRETS` build flag, which the driver's stock web doesn't set.
@@ -108,11 +107,10 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - The queue popover has no keyboard shortcuts for send now or edit, and an edit changes only the text, not attachments. Stock has no reorder either.
 - The picker keeps a runtime-catalog driver's active model listed as Unavailable when the catalog drops it, but only for a provider that's ready.
 - A sent message appears when the stream delivers it, with no pending row in Local; the gap wasn't noticeable.
-- A new thread starts on the model and options last picked in this browser, else the project's default, else the first provider's default, which can be a paid one. The last pick and each model's options are kept in this port's `localStorage`, not stock's draft store, so the two clients remember picks separately.
-- A new thread's permission mode defaults to Full access, not the project's `defaultRuntimeMode` setting.
+- A new thread's last picked model and each model's options are kept in this port's `localStorage`, not stock's draft store, so the two clients remember picks separately. Its seeded model, from the project default, the thread it was started from or the last pick, isn't stored, so a reload seeds it again without the thread it was started from.
+- The address names a new thread by its project (`?new=`), not its draft. A back to an older entry for a draft that has since become a thread opens a fresh draft in that project, where stock's `/draft/<id>` route moves on to the thread.
 - A new thread asks the server to generate its title, which uses the server's title provider. On this machine that's Codex, which fails to spawn, so titles fall back to the text.
 - Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
-- A thread that doesn't exist retries its subscription with backoff rather than reporting missing.
 - One terminal per thread, `term-1`, with no tabs or splits.
 - A new-thread draft has no terminal until its thread exists.
 - An exited shell has no restart button: Hide and Terminal start a new one.

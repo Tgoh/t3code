@@ -116,6 +116,7 @@ import {
 } from "./questions";
 import { answerRequest, canAnswer, type IRuntimeRequest } from "./RuntimeRequest";
 import { minute } from "./Infrastructure/clock";
+import { draftModel, projectRuntimeMode } from "./newThreadDefaults";
 import { delay } from "./Infrastructure/delay";
 import type { IWireServerConfig } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
@@ -199,7 +200,9 @@ export interface IThreadSession extends IEntity {
   Attachments: IAttachmentDraft[];
   AttachmentError?: string;
   AttachmentNotice?: string;
+  /** Only a model the person picked; a new thread's reseeding leaves it alone. */
   ModelSelection: IWireModelSelection | null;
+  SeededModel: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode | null;
   /** The next send skips the compaction the composer offers. */
   KeepFullHistory: boolean;
@@ -237,6 +240,7 @@ export function getDefaultThreadSession(
     Draft: "",
     Attachments: [],
     ModelSelection: null,
+    SeededModel: null,
     RuntimeMode: null,
     KeepFullHistory: false,
     QuestionAnswers: {},
@@ -261,17 +265,15 @@ export function* effectiveModel(
   if (replica === undefined) return null;
   const thread = replica.OpenThreads[draft.ThreadId]?.Thread;
   if (thread != null) return thread.modelSelection;
+  if (draft.SeededModel !== null) return draft.SeededModel;
   const projectId = draft.NewThreadProjectId;
-  const projectDefault =
-    projectId == null ? null : replica.Shell.Projects[projectId]?.defaultModelSelection;
-  if (projectDefault != null) return projectDefault;
-  for (const provider of replica.Providers) {
-    const model = provider.Models.find((held) => held.IsDefault) ?? provider.Models[0];
-    if (model !== undefined) {
-      return { instanceId: provider.InstanceId, model: model.Slug } as IWireModelSelection;
-    }
-  }
-  return null;
+  if (projectId === null || replica.Config === null) return null;
+  return draftModel({
+    Config: replica.Config,
+    ProjectId: projectId,
+    Project: replica.Shell.Projects[projectId],
+    Now: yield* minute(),
+  });
 }
 
 export function modelDisplay(
@@ -392,9 +394,16 @@ function* threadRuntimeMode(draft: IThreadSession): ISelectorGenerator<IWireRunt
   return replica?.OpenThreads[draft.ThreadId]?.Thread?.runtimeMode ?? null;
 }
 
+function* defaultRuntimeMode(draft: IThreadSession): ISelectorGenerator<IWireRuntimeMode> {
+  const config = (yield* getData(draft, "Replica"))?.Config;
+  if (config == null) return DEFAULT_RUNTIME_MODE;
+  return projectRuntimeMode(config, yield* projectId(draft));
+}
+
 function* runtimeModeChoice(draft: IThreadSession) {
   const provider = yield* effectiveProvider(draft);
-  const held = draft.RuntimeMode ?? (yield* threadRuntimeMode(draft)) ?? DEFAULT_RUNTIME_MODE;
+  const held =
+    draft.RuntimeMode ?? (yield* threadRuntimeMode(draft)) ?? (yield* defaultRuntimeMode(draft));
   return compatibleRuntimeMode(held, provider?.SupportedRuntimeModes);
 }
 

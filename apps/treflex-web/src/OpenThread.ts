@@ -48,6 +48,7 @@ declare module "treflex" {
   }
   interface IMessageRegistry {
     "Thread/Deleted": { ThreadId: string };
+    "Thread/Missing": { ThreadId: string };
     "Thread/Expired": { ThreadId: string };
     "Thread/RewindProgress": { ThreadId: string };
     "Thread/CheckoutChanged": { ThreadId: string };
@@ -620,6 +621,10 @@ export const ThreadReceiver = receiver<IOpenThread>("ThreadReceiver")({
     if (isEnded(message)) {
       // A batch the receiver failed would fail again on every reopen.
       if (message.$Ended.Reason !== "receiver-failed") yield* reopenLater(draft);
+      return;
+    }
+    if ("Missing" in message) {
+      yield* publishToNearest(draft, "Thread/Missing", { ThreadId: draft.ThreadId });
       return;
     }
     if (!("Item" in message)) {

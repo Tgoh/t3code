@@ -1,65 +1,67 @@
-import { defineEffect, type IEffect, implementation } from "treflex";
-
-interface IAddressThreadEffect extends IEffect {
-  Type: "addressThread";
-}
-
-interface ISetAddressThreadEffect extends IEffect {
-  Type: "setAddressThread";
-  ThreadId: string | null;
-}
-
-export const addressThread = defineEffect<IAddressThreadEffect, string | null>("addressThread", {
-  settles: "sync",
-});
-
-const setAddress = defineEffect<ISetAddressThreadEffect, void>("setAddressThread");
-
-export const setAddressThread = (threadId: string | null) => setAddress({ ThreadId: threadId });
-
-export const addressThreadImpl = implementation(addressThread, () =>
-  new URL(location.href).searchParams.get("thread"),
-);
-
-export const setAddressThreadImpl = implementation(setAddress, (effect) => {
-  const url = new URL(location.href);
-  if (effect.ThreadId === null) url.searchParams.delete("thread");
-  else url.searchParams.set("thread", effect.ThreadId);
-  history.replaceState(null, "", url);
-});
+import { defineEffect, type IEffect, implementation, type IResourceImplementation } from "treflex";
 
 /** A page over the thread view; the thread stays in the address underneath it. */
 export type IAddressView = { Kind: "settings"; Page: string } | { Kind: "usage" };
 
-interface IAddressViewEffect extends IEffect {
-  Type: "addressView";
-}
-
-interface ISetAddressViewEffect extends IEffect {
-  Type: "setAddressView";
+/** What the address holds: the thread, or the project whose new thread is open, and the page over it. */
+export interface IAddress {
+  Thread: string | null;
+  NewThreadIn: string | null;
   View: IAddressView | null;
 }
 
-export const addressView = defineEffect<IAddressViewEffect, IAddressView | null>("addressView", {
-  settles: "sync",
-});
+declare module "treflex" {
+  interface IResourceTypeRegistry {
+    addressHistory: { Params: {}; Message: { Address: IAddress } };
+  }
+}
 
-const setView = defineEffect<ISetAddressViewEffect, void>("setAddressView");
+interface IAddressEffect extends IEffect {
+  Type: "address";
+}
 
-export const setAddressView = (view: IAddressView | null) => setView({ View: view });
+interface IWriteAddressEffect extends IEffect {
+  Type: "writeAddress";
+  Address: IAddress;
+  Push: boolean;
+}
 
-export const addressViewImpl = implementation(addressView, (): IAddressView | null => {
+export const address = defineEffect<IAddressEffect, IAddress>("address", { settles: "sync" });
+
+export const writeAddressEffect = defineEffect<IWriteAddressEffect, void>("writeAddress");
+
+const readAddress = (): IAddress => {
   const params = new URL(location.href).searchParams;
   const page = params.get("settings");
-  if (page !== null) return { Kind: "settings", Page: page };
-  return params.has("usage") ? { Kind: "usage" } : null;
+  return {
+    Thread: params.get("thread"),
+    NewThreadIn: params.get("new"),
+    View:
+      page !== null
+        ? { Kind: "settings", Page: page }
+        : params.has("usage")
+          ? { Kind: "usage" }
+          : null,
+  };
+};
+
+export const addressImpl = implementation(address, readAddress);
+
+export const writeAddressImpl = implementation(writeAddressEffect, ({ Address, Push }) => {
+  const url = new URL(location.href);
+  for (const key of ["thread", "new", "settings", "usage"]) url.searchParams.delete(key);
+  if (Address.Thread !== null) url.searchParams.set("thread", Address.Thread);
+  if (Address.NewThreadIn !== null) url.searchParams.set("new", Address.NewThreadIn);
+  if (Address.View?.Kind === "settings") url.searchParams.set("settings", Address.View.Page);
+  if (Address.View?.Kind === "usage") url.searchParams.set("usage", "");
+  if (url.href === location.href) return;
+  if (Push) history.pushState(null, "", url);
+  else history.replaceState(null, "", url);
 });
 
-export const setAddressViewImpl = implementation(setView, (effect) => {
-  const url = new URL(location.href);
-  url.searchParams.delete("settings");
-  url.searchParams.delete("usage");
-  if (effect.View?.Kind === "settings") url.searchParams.set("settings", effect.View.Page);
-  if (effect.View?.Kind === "usage") url.searchParams.set("usage", "");
-  history.replaceState(null, "", url);
-});
+/** Reports the address the back and forward buttons move to. */
+export const addressHistory: IResourceImplementation<"addressHistory"> = (_params, r) => {
+  const onPop = () => void r.emit({ Address: readAddress() });
+  window.addEventListener("popstate", onPop);
+  r.signal.addEventListener("abort", () => window.removeEventListener("popstate", onPop));
+};

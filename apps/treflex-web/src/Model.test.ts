@@ -1,9 +1,12 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
 import {
   DEFAULT_CLIENT_SETTINGS,
+  DEFAULT_SERVER_SETTINGS,
   type KeybindingCommand,
   type OrchestrationV2ThreadProjection,
+  ServerSettings,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
@@ -72,7 +75,7 @@ import {
   updateServerSettings,
   writeSetting,
 } from "./Settings";
-import type { IAddressView } from "./Infrastructure/address";
+import type { IAddress, IAddressView } from "./Infrastructure/address";
 import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type {
@@ -243,9 +246,14 @@ const wireProvider = (
 const replayProvider = (extra: Record<string, unknown> = {}) =>
   wireProvider("devReplay", [{ slug: "showcase", name: "Showcase", isDefault: true }], extra);
 
+const WIRE_SETTINGS = {
+  ...Schema.encodeSync(ServerSettings)(DEFAULT_SERVER_SETTINGS),
+  providerInstances: { devReplay: { driver: "devReplay", enabled: true } },
+};
+
 const configSnapshot = (
   providers: unknown[],
-  settings: Record<string, unknown> = { favorites: [] },
+  settings: Record<string, unknown> = { ...WIRE_SETTINGS, favorites: [] },
 ) => ({
   version: 1,
   type: "snapshot",
@@ -291,9 +299,21 @@ async function connect(
   preferences: IPreferences = storedPreferences,
   allowFailures?: ITestRuntimeOptions["allowFailures"],
 ) {
-  const address: { thread: string | null; view: IAddressView | null } = {
-    thread: initialAddress,
-    view: null,
+  const history = {
+    entries: [{ Thread: initialAddress, NewThreadIn: null, View: null }] as IAddress[],
+    index: 0,
+  };
+  const address = {
+    history,
+    get thread() {
+      return history.entries[history.index]!.Thread;
+    },
+    get newThreadIn() {
+      return history.entries[history.index]!.NewThreadIn;
+    },
+    get view() {
+      return history.entries[history.index]!.View;
+    },
   };
   const terminals = new Map<string, ITerminalLaunch>();
   const models: IRememberedModels = { Last: null, OptionsByModel: {} };
@@ -316,9 +336,15 @@ async function connect(
         FileAttachmentLimit: null,
       }),
       generateGuid: () => `guid-${(guid += 1)}`,
-      addressView: () => address.view,
-      setAddressView: (effect: { View: IAddressView | null }) => {
-        address.view = effect.View;
+      address: () => copy(history.entries[history.index]!),
+      writeAddress: (effect: { Address: IAddress; Push: boolean }) => {
+        const next = copy(effect.Address);
+        if (JSON.stringify(next) === JSON.stringify(history.entries[history.index])) return;
+        if (!effect.Push) history.entries[history.index] = next;
+        else {
+          history.entries.splice(history.index + 1, Infinity, next);
+          history.index += 1;
+        }
       },
       storedClientSettings: () => null,
       rememberedModels: () => models,
@@ -331,10 +357,6 @@ async function connect(
       reportActivity: () => {},
       ...commands,
       threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
-      addressThread: () => address.thread,
-      setAddressThread: (effect: { ThreadId: string | null }) => {
-        address.thread = effect.ThreadId;
-      },
       storedDraft: (effect: { ThreadId: string }) => stored.Drafts.get(effect.ThreadId) ?? null,
       storedNewThread: (effect: { ProjectId: string }) =>
         [...stored.Drafts].find(([, held]) => held.NewThreadProjectId === effect.ProjectId)?.[0] ??
@@ -412,11 +434,23 @@ async function connect(
   const envId = () => environment().$Id;
   const openId = () => thread().$Id;
   const shellId = () => environment().Replica.Shell.$Id;
+  /** Moves through the history as the back (-1) and forward (1) buttons do. */
+  const go = async (delta: number) => {
+    history.index += delta;
+    await runtime.dispatch(
+      EnvironmentReceiver.handle,
+      environment().$Id,
+      { Type: "Device/History", Address: copy(history.entries[history.index]!) },
+      { publisher: { Id: environment().$Id } },
+    );
+    await settled();
+  };
   return {
     runtime,
     takeFailures: () => failures.splice(0),
     clock,
     address,
+    go,
     terminals,
     models,
     device,
@@ -2139,6 +2173,70 @@ describe("selection", () => {
     expect(server.environment().Local.SelectedThreadId).toBe("from-address");
   });
 
+  it("each thread or page opened adds a history entry, and back and forward return to them", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
+    await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "general" });
+    expect(server.address.history.entries.map((entry) => [entry.Thread, entry.View?.Kind])).toEqual(
+      [
+        [null, undefined],
+        ["a", undefined],
+        ["b", undefined],
+        ["b", "settings"],
+      ],
+    );
+    await server.go(-1);
+    expect(server.environment().Local.View).toBeNull();
+    expect(server.environment().Local.SelectedThreadId).toBe("b");
+    await server.go(-1);
+    expect(server.environment().Local.SelectedThreadId).toBe("a");
+    expect(streams(server)).toEqual(["a"]);
+    await server.go(-1);
+    expect(server.environment().Local.SelectedThreadId).toBeNull();
+    expect(streams(server)).toEqual([]);
+    await server.go(3);
+    expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "general" });
+    expect(server.environment().Local.SelectedThreadId).toBe("b");
+    expect(server.address.history.entries).toHaveLength(4);
+  });
+
+  it("a new thread's draft is in the address, so back and a reload return to it", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
+    const draftId = server.environment().Local.SelectedThreadId!;
+    expect(server.address.newThreadIn).toBe("project-1");
+    expect(server.address.thread).toBeNull();
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.go(-1);
+    expect(server.environment().Local.SelectedThreadId).toBe(draftId);
+
+    const reloaded = await connect(undefined, null, {
+      address: () => ({ Thread: null, NewThreadIn: "project-1", View: null }),
+      storedNewThread: () => draftId,
+    });
+    expect(reloaded.environment().Local.SelectedThreadId).toBe(draftId);
+    expect(reloaded.session(draftId).NewThreadProjectId).toBe("project-1");
+  });
+
+  it("a thread the server doesn't have closes, and its address goes without a history entry", async () => {
+    const server = await connect(undefined, THREAD_ID);
+    const gone = server.disposed(server.openId());
+    await server.runtime.dispatch(
+      ThreadReceiver.handle,
+      server.openId(),
+      { Type: "Thread/Stream", Missing: true },
+      { publisher: { Id: server.openId() } },
+    );
+    await gone;
+    await settled();
+    expect(server.environment().Local.SelectedThreadId).toBeNull();
+    expect(server.environment().Replica.OpenThreads[THREAD_ID]).toBeUndefined();
+    expect(server.address.history.entries).toEqual([
+      { Thread: null, NewThreadIn: null, View: null },
+    ]);
+  });
+
   it("deleting the selected thread clears the selection and the address", async () => {
     const server = await connect(undefined, THREAD_ID);
     await server.sendThread(snapshotOf(emptyProjection(), 1));
@@ -2151,6 +2249,7 @@ describe("selection", () => {
     await gone;
     await settled();
     expect(server.address.thread).toBeNull();
+    expect(server.address.history.entries).toHaveLength(1);
     expect(server.environment().Local.SelectedThreadId).toBeNull();
   });
 });
@@ -2270,6 +2369,7 @@ describe("writing to the server", () => {
     expect(session.Draft).toBe("");
     await settled();
     expect(server.address.thread).toBe(threadId);
+    expect(server.address.history.entries).toHaveLength(2);
     expect(server.environment().Replica.OpenThreads[threadId]).toBeDefined();
   });
 
@@ -2283,6 +2383,75 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(newThread, server.envId(), "project-1");
     const draftId = server.environment().Local.SelectedThreadId!;
     expect(model(draftId)).toEqual({ instanceId: "devReplay", model: "showcase" });
+  });
+
+  const codex = (extra: Record<string, unknown> = {}) =>
+    wireProvider("codex", [{ slug: "gpt-5.4", name: "GPT-5.4", isDefault: true }], extra);
+  const replay = { instanceId: "devReplay", model: "showcase" };
+
+  it("a new thread starts on the first ready provider and the project's permission mode", async () => {
+    const server = await connect();
+    await server.sendConfig(
+      configSnapshot([codex({ status: "error" }), replayProvider()], {
+        ...WIRE_SETTINGS,
+        projectSettingsOverrides: { "project-1": { defaultRuntimeMode: "approval-required" } },
+      }),
+    );
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
+    const draft = () => server.session(server.environment().Local.SelectedThreadId!);
+    expect(server.runtime.processSelector(effectiveModel, draft)).toEqual(replay);
+    expect(server.runtime.processSelector(effectiveRuntimeMode, draft)).toBe("approval-required");
+  });
+
+  it("a new thread takes the project's default, else the open thread's model, over the last pick", async () => {
+    const server = await connect();
+    await server.sendConfig(
+      configSnapshot([codex(), replayProvider()], {
+        ...WIRE_SETTINGS,
+        projectSettingsOverrides: { "project-2": { defaultModelSelection: replay } },
+      }),
+    );
+    server.models.Last = replay as IWireModelSelection;
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
+    const selected = () => server.session(server.environment().Local.SelectedThreadId!);
+    expect(selected().SeededModel).toEqual({ instanceId: "codex", model: "gpt-5.4" });
+    server.models.Last = { instanceId: "codex", model: "gpt-5.4" } as IWireModelSelection;
+    await server.runtime.dispatch(newThread, server.envId(), "project-2");
+    expect(selected().SeededModel).toEqual(replay);
+  });
+
+  it("reopening a new thread without a pick seeds it again, and a pick is kept", async () => {
+    const server = await connect();
+    await server.sendConfig(configSnapshot([codex(), replayProvider()]));
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
+    const draftId = server.environment().Local.SelectedThreadId!;
+    expect(server.session(draftId).SeededModel).toEqual({ instanceId: "codex", model: "gpt-5.4" });
+    await server.runtime.dispatch(newThread, server.envId(), "project-2");
+    await server.runtime.dispatch(
+      setModelSelection,
+      server.sessionId(server.environment().Local.SelectedThreadId!),
+      replay as IWireModelSelection,
+    );
+    await server.go(-1);
+    expect(server.environment().Local.SelectedThreadId).toBe(draftId);
+    expect(server.session(draftId).SeededModel).toEqual({ instanceId: "codex", model: "gpt-5.4" });
+    await server.go(1);
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
+    expect(server.environment().Local.SelectedThreadId).toBe(draftId);
+    expect(server.session(draftId).SeededModel).toEqual(replay);
+    await server.runtime.dispatch(
+      setModelSelection,
+      server.sessionId(draftId),
+      replay as IWireModelSelection,
+    );
+    await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
+    await server.runtime.dispatch(newThread, server.envId(), "project-1");
+    expect(server.session(draftId).ModelSelection).toEqual(replay);
+    expect(server.session(draftId).SeededModel).toEqual(replay);
   });
 
   const codexWithEffort = configSnapshot([
@@ -2405,11 +2574,14 @@ describe("writing to the server", () => {
     server.models.Last = medium;
     await server.runtime.dispatch(newThread, server.envId(), "project-1");
     const draftId = server.environment().Local.SelectedThreadId!;
-    expect(server.session(draftId).ModelSelection).toEqual(medium);
-    server.models.Last = { instanceId: "gone", model: "x" } as IWireModelSelection;
-    await server.runtime.dispatch(newThread, server.envId(), "project-2");
-    const otherId = server.environment().Local.SelectedThreadId!;
-    expect(server.session(otherId).ModelSelection).toBeNull();
+    expect(server.session(draftId).SeededModel).toEqual(medium);
+
+    const fresh = await connect();
+    await fresh.sendConfig(codexWithEffort);
+    fresh.models.Last = { instanceId: "gone", model: "x" } as IWireModelSelection;
+    await fresh.runtime.dispatch(newThread, fresh.envId(), "project-2");
+    const otherId = fresh.environment().Local.SelectedThreadId!;
+    expect(fresh.session(otherId).SeededModel).toBeNull();
   });
 
   it("a failed new thread stays a draft with no stream", async () => {
@@ -4606,7 +4778,11 @@ describe("settings and usage", () => {
     const fake = settingsServer();
     const server = await connect(undefined, null, {
       ...fake.commands,
-      addressView: () => ({ Kind: "settings", Page: "providers" }),
+      address: () => ({
+        Thread: null,
+        NewThreadIn: null,
+        View: { Kind: "settings", Page: "providers" },
+      }),
     });
     await settled();
     expect(server.environment().Local.View).toEqual({ Kind: "settings", Page: "providers" });
