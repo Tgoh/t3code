@@ -27,8 +27,6 @@ From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its
 - **Back button.** **In progress** on `treflex/navigation-polish`. Push address history when the thread or view changes, so the browser's back button and the phone's back gesture work. See "The address uses `replaceState`".
 - **New-thread defaults.** **In progress** on `treflex/navigation-polish`. A new thread's permission mode should follow the project's `defaultRuntimeMode`, and its model shouldn't fall back to the first provider's default, which can be a paid one. Match stock's resolution. See "A new thread's permission mode…" and "A new thread starts on the model…".
 - **A missing thread.** **In progress** on `treflex/navigation-polish`. Report a thread that doesn't exist, as stock does, instead of retrying its subscription with backoff.
-- **The diff panel goes stale.** **In progress** on `treflex/live-state`. Refetch when a later checkpoint lands, not only on each open.
-- **Stop flickers back.** **In progress** on `treflex/live-state`. Hold "Stopping" until the shell stream delivers the stopped row. See "Open: Stop flickers back before the run ends".
 - **Settings treflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
 
 ## 3. Missing features

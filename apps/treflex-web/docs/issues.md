@@ -124,7 +124,6 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - The terminal has no links, search, clear button or font setting.
 - The terminal doesn't pass `providerInstanceId`, as stock's default launch doesn't.
 - Diffs render as a unified list with line numbers, not `@pierre/diffs`' diff view, with no syntax highlighting. Markdown code blocks use its highlighter.
-- A diff panel holds one fetched string in Local and refetches on each open. It doesn't refresh when a later checkpoint lands.
 - Restoring a checkpoint isn't offered.
 - The benchmark uses a generated fixture: `~/.t3` doesn't exist here and the dev home holds only a few short threads.
 - The benchmark calls the receiver directly, so it leaves out treflex's clone of each emitted message.
@@ -180,7 +179,7 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - Markdown: no run-in-terminal button, math or diagrams. A code block is highlighted once its fence closes, where stock highlights it line by line as it streams, and wrap defaults on rather than following a word-wrap setting.
 - File link chips open in the editor on click, where stock opens the in-app file panel and keeps the editor for Ctrl-click. They have no context menu (copy path, reveal, open in browser), no media preview, no lookup of a bare file name across the workspace and other projects, no size in the tooltip and no app-bundle icon, and they're offered whatever the connection's remote-open mode. A failed open shows in the sidebar's error line. Dart, Java, Lua, PHP and R files use Pierre's generic icon, not stock's own.
 - Changed files card: flat list, not a tree, and its rows don't open a single file's diff.
-- Composer: no stash, multi-model send or keyboard shortcuts. The `@` menu lists files only, with no thread items (nor machines or models), shows a generic file or folder icon where stock shows per-type icons, and inserts a plain markdown link rather than a chip. The `/` menu has no built-in `/model`, `/side`, `/btw` or `/clear`, and skills show no source badge. Commands and skills come from the provider list, without a project's workspace snapshot, so project-only skills are missing. Prompt history moves at the first or last line of the text, not the wrapped visual line.
+- Composer: no stash, multi-model send or keyboard shortcuts. The `@` menu lists files only, with no thread items (nor machines or models), shows a generic file or folder icon where stock shows per-type icons, and inserts a plain markdown link rather than a chip. The `/` menu has no built-in `/model`, `/side`, `/btw` or `/clear`, and skills show no source badge. Commands and skills come from the provider list, without a project's workspace snapshot, so project-only skills are missing. Prompt history moves at the first or last line of the text, not the wrapped visual line. Once a stop lands, the button that takes Stop's place doesn't ignore clicks for stock's 500 ms (`STOP_LANDED_CLICK_GUARD_MS`).
 - Model menu: no number-key jumps, provider setup or update notices, unavailable-provider state, custom models from settings, instance badges or New badges, and a fixed height rather than stock's fit to the tallest tab. Providers other than Claude and Codex show a letter, not their icon. A favorite toggle doesn't migrate favorites a stock browser kept locally before the server held them. A non-reasoning option such as an agent's mode opens its choices below its row, not in a side menu.
 - Model menu: a typed `ultrathink` doesn't take over the effort label or lock the levels, the effort shows as a word with no bars setting, and the provider's reported selection isn't shown.
 - Permissions: no overflow menu at narrow widths, and modes a managed policy forbids aren't disabled. A new thread's strip under the composer holds only the permissions chip, with no workspace or branch pickers.
@@ -223,10 +222,6 @@ Base UI's press-and-drag selection isn't built: pressing a menu trigger, draggin
 ## Open: reading `packages/` restarts the dev server on Windows
 
 `vp run dev` runs the server under `node --watch` over `src`, `packages` and `package.json`. On this machine a recursive `fs.watch` reports `change` on a directory that is only listed, with nothing written, so any tool that lists a directory under those paths restarts the server and interrupts a running turn. A probe watching `packages/` while the app's gates ran saw one `change` for every package during `tsc --noEmit`, directly or through `vp run typecheck`, and the server's process id changed, sometimes twice. `vp test run`, `vp lint` and `vp fmt` raised no events. A separate directory showed the same event from a plain `ls`, and none from reading a file. Avoid typechecking during a turn. Daily use needs a server run without `--watch`.
-
-## Open: Stop flickers back before the run ends
-
-After a Stop click, the composer's button reads "Stopping", then "Stop generation" for 10 to 20 ms, then the run ends. "Stopping" is the thread row's `latestRunStopRequested` or `stopRun` in flight, and the stop command's reply can land before the shell stream delivers the row with the flag set, so neither holds for that gap. Seen on the driver and on the `useInFlight` branch alike.
 
 ## Open: 502s on the environment descriptor
 

@@ -49,7 +49,6 @@ import ThreadSession, {
   DEFAULT_RUNTIME_MODE,
   editFromHere,
   send as sendAction,
-  stopRun,
 } from "./ThreadSession";
 import { Button, buttonVariants } from "./ui/Button";
 import { Spinner } from "./ui/Spinner";
@@ -354,7 +353,6 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const environment = Environment.use();
   const session = ThreadSession.use();
   const sending = useInFlight(sendAction, () => session.state);
-  const stopInFlight = useInFlight(stopRun, () => session.state);
   const rewinding = useInFlight(editFromHere, () => session.state);
   const held = () => session.state;
   const intake = useAttachmentIntake();
@@ -383,7 +381,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     );
   };
   const isDraft = () => held().NewThreadProjectId !== null;
-  const stopping = () => session.stopRequested() || stopInFlight();
+  const stopping = () => session.stoppingRun();
   const clone = useProjectClone(() => session.projectId());
   const blocked = () => cloneSendBlock(clone());
   const canSend = () =>
