@@ -1,4 +1,5 @@
 #!/usr/bin/env pwsh
+#Requires -Version 7.0
 #
 # Builds the treflex client beside the dist it serves and swaps it in, so a failed build leaves the
 # running client alone. dev-stack.ps1 calls it for the driver.
