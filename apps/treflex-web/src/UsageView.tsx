@@ -31,7 +31,7 @@ import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
 import { ChartNoAxesColumn, TriangleAlert, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
-import { limitPools, limitPresentations } from "./limits";
+import { type ILimitSources, limitPools, limitPresentations } from "./limits";
 import UsagePage, { getDefaultUsagePage, RefreshingUsage, useUsagePage } from "./UsagePage";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
@@ -262,7 +262,7 @@ export const UsageView = UsagePage.provider(() => {
         <div class="mx-auto flex max-w-6xl flex-col gap-8 px-6 pt-6 pb-12">
           <Show
             when={metric() !== "limits"}
-            fallback={<UsageLimits providers={environment.state.Replica.Config?.providers} />}
+            fallback={<UsageLimits config={environment.state.Replica.Config} />}
           >
             <Show when={merged()} fallback={<UsageSkeleton />}>
               {(usage) => (
@@ -829,15 +829,15 @@ const LIMIT_DRIVER_LABELS: Record<string, string> = Object.fromEntries(
   Object.values(PROVIDERS).map((entry) => [entry.Driver, entry.Label]),
 );
 
-function UsageLimits(props: { providers: readonly unknown[] | undefined }) {
+function UsageLimits(props: { config: ILimitSources | null }) {
   const environment = Environment.use();
   const now = clockNow();
   const presentations = () =>
-    limitPresentations(environment.state.EnvironmentId, environment.state.Label, props.providers);
+    limitPresentations(environment.state.EnvironmentId, environment.state.Label, props.config);
   const pools = createMemo(() => limitPools(presentations(), now));
   const notices = createMemo(() => collectLimitNotices(presentations()));
   return (
-    <Show when={props.providers} fallback={<p class={loading}>Reading limits…</p>}>
+    <Show when={props.config} fallback={<p class={loading}>Reading limits…</p>}>
       <div class="flex flex-col gap-8">
         <Show when={pools().length === 0 && notices().length === 0}>
           <p class={loading}>

@@ -3,7 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { limitPools, limitPresentations, limitTone, weeklyLimit, weeklyLimitTip } from "./limits";
 
-const NOW = Date.parse("2026-11-17T00:00:00.000Z");
+const NOW_ISO = "2026-11-17T00:00:00.000Z";
+const NOW = Date.parse(NOW_ISO);
 
 const claude = (windows: readonly object[]) =>
   ({
@@ -18,7 +19,7 @@ const claude = (windows: readonly object[]) =>
   }) as unknown as ServerProvider;
 
 const pools = (providers: readonly ServerProvider[]) =>
-  limitPools(limitPresentations("env", "Local", providers), NOW);
+  limitPools(limitPresentations("env", "Local", { providers }), NOW);
 
 const weekly = (usedPercent: number) => ({
   id: "seven_day",
@@ -60,7 +61,28 @@ describe("weekly limit ring", () => {
 
   it("is missing without a Claude weekly window or a config", () => {
     expect(weeklyLimit(pools([claude([fable])]))).toBeNull();
-    expect(weeklyLimit(limitPools(limitPresentations("env", "Local", undefined), NOW))).toBeNull();
+    expect(weeklyLimit(limitPools(limitPresentations("env", "Local", null), NOW))).toBeNull();
+  });
+
+  it("reads a usage-limit hub's accounts as well as the providers' own", () => {
+    const hub = {
+      id: "hub-1",
+      kind: "cliproxy",
+      label: "Hub",
+      checkedAt: NOW_ISO,
+      accounts: [
+        {
+          id: "max.json",
+          driver: "claudeAgent",
+          usageLimits: { checkedAt: NOW_ISO, windows: [weekly(30)] },
+        },
+      ],
+    };
+    const presentations = limitPresentations("env", "Local", {
+      providers: [],
+      usageLimitSources: [hub],
+    });
+    expect(weeklyLimit(limitPools(presentations, NOW))).toMatchObject({ UsedPercent: 30 });
   });
 
   it("tips the share left and the reset", () => {
