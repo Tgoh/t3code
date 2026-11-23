@@ -20,15 +20,15 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **html-render and MCP app rows.** Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
-- **Photos from the phone.** Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
-- **Expired image URLs.** Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
-- **Tool output.** Fetch a tool row's output with `getTurnItem` when it's expanded, since the wire omits it. See "Tool output isn't fetched".
-- **Back button.** Push address history when the thread or view changes, so the browser's back button and the phone's back gesture work. See "The address uses `replaceState`".
-- **New-thread defaults.** A new thread's permission mode should follow the project's `defaultRuntimeMode`, and its model shouldn't fall back to the first provider's default, which can be a paid one. Match stock's resolution. See "A new thread's permission mode…" and "A new thread starts on the model…".
-- **A missing thread.** Report a thread that doesn't exist, as stock does, instead of retrying its subscription with backoff.
-- **The diff panel goes stale.** Refetch when a later checkpoint lands, not only on each open.
-- **Stop flickers back.** Hold "Stopping" until the shell stream delivers the stopped row. See "Open: Stop flickers back before the run ends".
+- **html-render and MCP app rows.** **In progress** on `treflex/timeline-polish`. Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
+- **Photos from the phone.** **In progress** on `treflex/phone-photos`. Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
+- **Expired image URLs.** **In progress** on `treflex/timeline-polish`. Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
+- **Tool output.** **In progress** on `treflex/timeline-polish`. Fetch a tool row's output with `getTurnItem` when it's expanded, since the wire omits it. See "Tool output isn't fetched".
+- **Back button.** **In progress** on `treflex/navigation-polish`. Push address history when the thread or view changes, so the browser's back button and the phone's back gesture work. See "The address uses `replaceState`".
+- **New-thread defaults.** **In progress** on `treflex/navigation-polish`. A new thread's permission mode should follow the project's `defaultRuntimeMode`, and its model shouldn't fall back to the first provider's default, which can be a paid one. Match stock's resolution. See "A new thread's permission mode…" and "A new thread starts on the model…".
+- **A missing thread.** **In progress** on `treflex/navigation-polish`. Report a thread that doesn't exist, as stock does, instead of retrying its subscription with backoff.
+- **The diff panel goes stale.** **In progress** on `treflex/live-state`. Refetch when a later checkpoint lands, not only on each open.
+- **Stop flickers back.** **In progress** on `treflex/live-state`. Hold "Stopping" until the shell stream delivers the stopped row. See "Open: Stop flickers back before the run ends".
 - **Settings treflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
 
 ## 3. Missing features
