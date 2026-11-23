@@ -127,7 +127,13 @@ import type { IShell } from "./Shell";
 import type { INotificationMode } from "./threadNotifications";
 import { serverError, serverFailure } from "./Infrastructure/serverError";
 import { toast } from "./Infrastructure/toasts";
-import { detachTerminal, type ITerminal, openTerminal, restoreTerminal } from "./Terminal";
+import {
+  detachTerminal,
+  type ITerminal,
+  openTerminal,
+  restoreTerminal,
+  scriptTerminalId,
+} from "./Terminal";
 import {
   getDefaultThreadDetails,
   type IThreadDetails,
@@ -519,6 +525,8 @@ export interface IPanels {
   DiffOpen: boolean;
   RightPanelOpen: boolean;
   TerminalEntityId: string;
+  /** The focused shell's entity while the drawer is open, which split, new and close act on. */
+  ActiveShellId: string | null;
   SideChats: boolean;
 }
 
@@ -537,6 +545,9 @@ export function* panels(draft: IThreadSession): ISelectorGenerator<IPanels> {
       sideThreadKindOf(thread.Thread) === null &&
       replica?.Config?.environment?.capabilities.sideChats === true,
     TerminalEntityId: draft.Terminal.$Id,
+    ActiveShellId: draft.Terminal.Open
+      ? (draft.Terminal.Shells[draft.Terminal.Layout.ActiveTerminalId]?.$Id ?? null)
+      : null,
   };
 }
 
@@ -1755,7 +1766,7 @@ export function* runScript(draft: IThreadSession, script: ProjectScript): IOpenG
     EnvironmentId: held.EnvironmentId,
     Cwd: held.Cwd,
     ThreadId: held.ThreadId,
-    TerminalId: draft.Terminal.TerminalId,
+    TerminalId: scriptTerminalId(draft.Terminal),
     WorktreePath: held.WorktreePath,
     ProjectRoot: held.ProjectRoot,
     Command: script.command,

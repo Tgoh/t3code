@@ -81,7 +81,7 @@ import {
   writeSetting,
 } from "./Settings";
 import type { IAddress, IAddressView } from "./Infrastructure/address";
-import type { ITerminalLaunch } from "./Infrastructure/terminalMemory";
+import { type IRememberedTerminal, readRememberedTerminal } from "./Infrastructure/terminalMemory";
 import { threadHistoryPage } from "./Infrastructure/threadHistory";
 import type {
   IWireHistoryPage,
@@ -215,7 +215,16 @@ import {
   toggleRowExpanded,
   sendAppMessage,
 } from "./ThreadSession";
-import { closeTerminal, endTerminal, openTerminal, TerminalReceiver } from "./Terminal";
+import {
+  activateShell,
+  addTerminal,
+  closeTerminal,
+  endShell,
+  openTerminal,
+  restartShell,
+  setTerminalHeight,
+  TerminalShellReceiver,
+} from "./Terminal";
 import { loadBranches } from "./ThreadDetails";
 import {
   assistantItem,
@@ -331,7 +340,7 @@ async function connect(
       return history.entries[history.index]!.View;
     },
   };
-  const terminals = new Map<string, ITerminalLaunch>();
+  const terminals = new Map<string, IRememberedTerminal>();
   const toasts: IToastRequest[] = [];
   const models: IRememberedModels = { Last: null, OptionsByModel: {} };
   const device = {
@@ -404,9 +413,9 @@ async function connect(
         toasts.push(request);
       },
       rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
-      rememberTerminal: (effect: { ThreadId: string; Launch: ITerminalLaunch | null }) => {
-        if (effect.Launch === null) terminals.delete(effect.ThreadId);
-        else terminals.set(effect.ThreadId, effect.Launch);
+      rememberTerminal: (effect: { ThreadId: string; Terminal: IRememberedTerminal | null }) => {
+        if (effect.Terminal === null) terminals.delete(effect.ThreadId);
+        else terminals.set(effect.ThreadId, copy(effect.Terminal));
       },
     },
     {
@@ -494,6 +503,8 @@ async function connect(
     envId,
     sessionId: (threadId = THREAD_ID) => session(threadId).$Id,
     terminalId: (threadId = THREAD_ID) => session(threadId).Terminal.$Id,
+    terminalShellId: (terminalId = "term-1", threadId = THREAD_ID) =>
+      session(threadId).Terminal.Shells[terminalId]!.$Id,
     openId,
     shellId,
     open: () => runtime.dispatch(openThread, envId(), THREAD_ID),
@@ -4957,7 +4968,7 @@ describe("the terminal", () => {
       .filter((row) => row.Key === "Terminal/Session")
       .map((row) => row.Params as unknown as { ThreadId: string; TerminalId: string; Cwd: string });
 
-  it("runs in the worktree when the thread has one, otherwise the project root", async () => {
+  it("starts in the worktree when the thread has one, and a shell keeps where it started", async () => {
     const server = await connect();
     await server.open();
     await withProject(server, null);
@@ -4966,7 +4977,9 @@ describe("the terminal", () => {
     await server.runtime.dispatch(closeTerminal, server.terminalId());
     await withProject(server, "/root/wt");
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    expect(attached(server)[0]).toMatchObject({ Cwd: "/root/wt", WorktreePath: "/root/wt" });
+    expect(attached(server)[0]).toMatchObject({ Cwd: "/root", TerminalId: "term-1" });
+    await server.runtime.dispatch(addTerminal, server.terminalId(), null);
+    expect(attached(server)[1]).toMatchObject({ Cwd: "/root/wt", WorktreePath: "/root/wt" });
   });
 
   it("hiding detaches and keeps the terminal id, and asks the server to end nothing", async () => {
@@ -4980,15 +4993,46 @@ describe("the terminal", () => {
     await withProject(server, null);
     await server.runtime.dispatch(openTerminal, server.terminalId());
     expect(panel(server).Open).toBe(true);
+    await server.runtime.dispatch(addTerminal, server.terminalId(), null);
     await server.runtime.dispatch(closeTerminal, server.terminalId());
-    expect(panel(server)).toMatchObject({ Open: false, TerminalId: "term-1" });
+    expect(panel(server)).toMatchObject({
+      Open: false,
+      Layout: { TerminalIds: ["term-1", "term-2"] },
+    });
     expect(attached(server)).toEqual([]);
     expect(closes).toEqual([]);
+    expect(server.terminals.get(THREAD_ID)).toMatchObject({ Open: false });
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
+    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1", "term-2"]);
   });
 
-  it("ending the shell tells the server and hides the panel; a failure keeps it open", async () => {
+  it("opens new tabs and splits beside the active shell, each with its own shell", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, server.terminalId());
+    await server.runtime.dispatch(addTerminal, server.terminalId(), null);
+    await server.runtime.dispatch(addTerminal, server.terminalId(), "vertical");
+    expect(panel(server).Layout).toEqual({
+      TerminalIds: ["term-1", "term-2", "term-3"],
+      Groups: [
+        { Id: "group-term-1", TerminalIds: ["term-1"], SplitDirection: "horizontal" },
+        { Id: "group-term-2", TerminalIds: ["term-2", "term-3"], SplitDirection: "vertical" },
+      ],
+      ActiveTerminalId: "term-3",
+      ActiveGroupId: "group-term-2",
+    });
+    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1", "term-2", "term-3"]);
+    expect(panel(server).Shells["term-3"]).toMatchObject({ FocusOnMount: true });
+    await server.runtime.dispatch(activateShell, server.terminalId(), "term-1");
+    expect(server.terminals.get(THREAD_ID)).toMatchObject({
+      Open: true,
+      Layout: { ActiveTerminalId: "term-1", ActiveGroupId: "group-term-1" },
+      Launches: { "term-1": { Cwd: "/root" }, "term-3": { Cwd: "/root" } },
+    });
+  });
+
+  it("ending a shell tells the server and closes its tab; the last one hides the drawer", async () => {
     const closes: Array<{ TerminalId: string }> = [];
     let refuse = true;
     const server = await connect(undefined, null, {
@@ -5000,33 +5044,83 @@ describe("the terminal", () => {
     await server.open();
     await withProject(server, null);
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    await server.runtime.dispatch(endTerminal, server.terminalId());
-    expect(panel(server)).toMatchObject({ Open: true, Error: "server said no" });
-    expect(inFlightOf(server.runtime, endTerminal, () => server.session().Terminal)).toBe(false);
-    expect(attached(server)).toHaveLength(1);
+    await server.runtime.dispatch(addTerminal, server.terminalId(), "horizontal");
+    await server.runtime.dispatch(endShell, server.terminalShellId("term-2"));
+    expect(panel(server).Shells["term-2"]).toMatchObject({ Error: "server said no" });
+    expect(attached(server)).toHaveLength(2);
     refuse = false;
-    await server.runtime.dispatch(endTerminal, server.terminalId());
-    expect(closes.map((close) => close.TerminalId)).toEqual(["term-1"]);
+    await server.runtime.dispatch(endShell, server.terminalShellId("term-2"));
+    await settled();
+    expect(panel(server)).toMatchObject({
+      Open: true,
+      Layout: { TerminalIds: ["term-1"], ActiveTerminalId: "term-1" },
+    });
+    expect(Object.keys(panel(server).Shells)).toEqual(["term-1"]);
+    expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
+    await server.runtime.dispatch(endShell, server.terminalShellId("term-1"));
+    await settled();
+    expect(closes.map((close) => close.TerminalId)).toEqual(["term-2", "term-1"]);
     expect(panel(server).Open).toBe(false);
     expect(attached(server)).toEqual([]);
     expect(server.terminals.size).toBe(0);
   });
 
+  it("restarts an exited shell in its own tab", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, server.terminalId());
+    const shellId = server.terminalShellId();
+    await server.runtime.dispatch(
+      TerminalShellReceiver.handle,
+      shellId,
+      { Type: "Terminal/Session", Status: "exited", Error: "gone" } as never,
+      { publisher: { Id: shellId } },
+    );
+    const before = server.runtime.resources().find((row) => row.Key === "Terminal/Session");
+    await server.runtime.dispatch(restartShell, shellId);
+    const after = server.runtime.resources().find((row) => row.Key === "Terminal/Session");
+    expect(panel(server).Shells["term-1"]).toMatchObject({ Status: null, FocusOnMount: true });
+    expect(panel(server).Shells["term-1"]!.Error).toBeUndefined();
+    expect(after).toBeDefined();
+    expect(after).not.toBe(before);
+  });
+
+  it("keeps the drawer's height per thread", async () => {
+    const server = await connect();
+    await server.open();
+    await withProject(server, null);
+    await server.runtime.dispatch(openTerminal, server.terminalId());
+    await server.runtime.dispatch(setTerminalHeight, server.terminalId(), 412.4);
+    expect(panel(server).Height).toBe(412);
+    expect(server.terminals.get(THREAD_ID)).toMatchObject({ Height: 412 });
+  });
+
   it("detaches while another thread is selected, and a return or a reload reattaches", async () => {
     const launch = { Cwd: "/root", WorktreePath: null, ProjectRoot: "/root" };
     const server = await connect();
-    server.terminals.set("a", launch);
+    // A launch stored before tabs comes back as one open shell.
+    const held = readRememberedTerminal(launch)!;
+    server.terminals.set("a", {
+      ...held,
+      Height: 360,
+      Layout: { ...held.Layout, TerminalIds: ["term-1", "term-2", "term-9"] },
+      Launches: { ...held.Launches, "term-2": launch },
+    });
     await server.runtime.dispatch(selectThread, server.envId(), "a");
     await settled();
-    expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]);
-    expect(panel(server, "a").Open).toBe(true);
-    expect(panel(server, "a").FocusOnMount).toBe(false);
+    expect(attached(server).map((row) => [row.ThreadId, row.TerminalId])).toEqual([
+      ["a", "term-1"],
+      ["a", "term-2"],
+    ]);
+    expect(panel(server, "a")).toMatchObject({ Open: true, Height: 360 });
+    expect(panel(server, "a").Shells["term-1"]!.FocusOnMount).toBe(false);
     await server.runtime.dispatch(selectThread, server.envId(), "b");
     await settled();
     expect(attached(server)).toEqual([]);
     await server.runtime.dispatch(selectThread, server.envId(), "a");
     await settled();
-    expect(attached(server).map((row) => row.ThreadId)).toEqual(["a"]);
+    expect(attached(server)).toHaveLength(2);
   });
 
   it("deleting the thread disposes the attachment and forgets the launch", async () => {
@@ -5052,41 +5146,42 @@ describe("the terminal", () => {
     await server.open();
     await withProject(server, null);
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    const terminalId = server.terminalId();
+    const shellId = server.terminalShellId();
     const deliver = (message: object) =>
       server.runtime.dispatch(
-        TerminalReceiver.handle,
-        terminalId,
+        TerminalShellReceiver.handle,
+        shellId,
         { Type: "Terminal/Session", ...message } as never,
-        { publisher: { Id: terminalId } },
+        { publisher: { Id: shellId } },
       );
+    const shell = () => panel(server).Shells["term-1"]!;
     await deliver({ Status: "running", Error: null });
-    expect(panel(server).Status).toBe("running");
+    expect(shell().Status).toBe("running");
     await deliver({ Status: "exited", Error: null });
-    expect(panel(server).Status).toBe("exited");
+    expect(shell().Status).toBe("exited");
     await server.runtime.dispatch(closeThread, server.envId(), THREAD_ID);
     await settled();
-    expect(panel(server).Status).toBeNull();
+    expect(shell().Status).toBeNull();
   });
 
-  it("holds its attachment in the terminal's own plain fields", async () => {
+  it("holds its attachment in the shell's own plain fields", async () => {
     const server = await connect();
     await server.open();
     await withProject(server, null);
     await server.runtime.dispatch(openTerminal, server.terminalId());
-    const terminalId = server.terminalId();
+    const shellId = server.terminalShellId();
     await server.runtime.dispatch(
-      TerminalReceiver.handle,
-      terminalId,
+      TerminalShellReceiver.handle,
+      shellId,
       { Type: "Terminal/Session", Status: "running", Error: "lost a line" } as never,
-      { publisher: { Id: terminalId } },
+      { publisher: { Id: shellId } },
     );
-    expect(JSON.parse(JSON.stringify(panel(server)))).toEqual({
-      $Id: terminalId,
+    expect(JSON.parse(JSON.stringify(panel(server).Shells["term-1"]))).toEqual({
+      $Id: shellId,
       EnvironmentId: ENV,
       ThreadId: THREAD_ID,
       TerminalId: "term-1",
-      Open: true,
+      Launch: { Cwd: "/root", WorktreePath: null, ProjectRoot: "/root" },
       Error: "lost a line",
       Status: "running",
       FocusOnMount: true,
@@ -5114,7 +5209,10 @@ describe("the terminal", () => {
     await settled();
     expect(server.session().ScriptError).toBeUndefined();
     expect(ran).toMatchObject([{ TerminalId: "term-1", Command: "vp dev", Cwd: "/root" }]);
-    expect(panel(server)).toMatchObject({ Open: true, FocusOnMount: true });
+    expect(panel(server)).toMatchObject({
+      Open: true,
+      Shells: { "term-1": { FocusOnMount: true } },
+    });
     expect(attached(server).map((row) => row.TerminalId)).toEqual(["term-1"]);
     refuse = true;
     await server.runtime.dispatch(runScript, server.sessionId(), script as never);

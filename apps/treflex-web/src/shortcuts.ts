@@ -3,7 +3,7 @@ import type { IDispatch } from "treflex-solid";
 
 import type { IPanelShortcuts } from "./Environment";
 import type { IOverlayStack } from "./overlays";
-import { toggleTerminal } from "./Terminal";
+import { addTerminal, endShell, toggleTerminal } from "./Terminal";
 import {
   closeDiff,
   closeRightPanel,
@@ -82,6 +82,24 @@ export function runPanelShortcut(
     case "terminal.toggle":
       if (!panels.Terminal) return false;
       void dispatch(toggleTerminal, panels.TerminalEntityId);
+      return true;
+    case "terminal.split":
+    case "terminal.splitVertical":
+    case "terminal.new":
+      if (panels.ActiveShellId === null) return false;
+      void dispatch(
+        addTerminal,
+        panels.TerminalEntityId,
+        command === "terminal.new"
+          ? null
+          : command === "terminal.split"
+            ? "horizontal"
+            : "vertical",
+      );
+      return true;
+    case "terminal.close":
+      if (panels.ActiveShellId === null) return false;
+      void dispatch(endShell, panels.ActiveShellId);
       return true;
     case "rightPanel.toggle":
       void dispatch(toggleRightPanel, session);

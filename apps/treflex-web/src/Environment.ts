@@ -574,7 +574,7 @@ function* forgetSession(draft: IEnvironment, threadId: string): IActionGenerator
   for (const session of Object.values(draft.Local.ThreadSessions)) {
     if (session.Panels.Side?.ThreadId === threadId) session.Panels.Side = null;
   }
-  yield* rememberTerminalEffect({ ThreadId: threadId, Launch: null });
+  yield* rememberTerminalEffect({ ThreadId: threadId, Terminal: null });
   if (draft.Local.SelectedThreadId === threadId) {
     draft.Local.SelectedThreadId = null;
     yield* syncAddress(draft, false);

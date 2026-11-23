@@ -79,7 +79,7 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - A timer recurs, so every backoff tick starts with `stopTimer`. There's no one-shot timer.
 - Keeping an entity for a while after its view leaves has no mechanism of its own. Retaining a left thread composes one: close its stream, start an expiry timer on it, and on the tick publish to the parent, because an entity can't remove itself inside its own delivery.
 - The timeline's `<For>` iterates ids from the `timelineIds` selector, a plain `[...draft.Timeline]` copy. Each row-adding delta re-runs the copy, which reads every id through the view proxy: about 31 ms p50 at 20,000 rows. The history window keeps a cold open near 500 rows, so this doesn't show at real sizes. If it does, send treflex the size and the timing; they've said they'd make the whole-array copy cheaper inside treflex rather than add an API.
-- A resource has one `r.status` detail string, and the terminal's connection phase already uses it, so the shell process's status goes through `emit` into the terminal entity's `Status` field.
+- A resource has one `r.status` detail string, and the terminal's connection phase already uses it, so the shell process's status goes through `emit` into the shell entity's `Status` field.
 - Only `treflex-eslint`'s type-free rules are on, through an override in upstream's root `vite.config.ts`, because a `lint` block in this app's `vite.config.ts` replaces the root config instead of adding to it. The typed rules (`no-discarded-generator`, `no-edit-after-write`, `no-hidden-open`, `no-returned-promise`) throw under oxlint for lack of type information, so a forgotten `yield*` on the app's own generators goes unreported. Treflex's `require-yield-star` check, including a missing `yield*` before `someGen`, `filterGen` or `mapGen`, is a Biome plugin, which oxlint can't load.
 - "Do not create an entity only so that its removal closes a resource" sits against a resource being keyed by owner and key: each expanded command row's output needs an entity of its own (`ICommandOutputRow` on `ThreadSession`) only so several can be open on one session.
 - Persistence is whole-runtime only: a snapshot carries the whole tree, and nothing persists one slice, such as `Local`'s preferences, across a reload. Each kind of preference was persisted its own way until it converged on a read effect at creation plus a write effect per change (`Infrastructure/preferences.ts`, `draftMemory.ts`). A persisted slice, read before the first render and written per change, would replace those effects and the pre-paint read of the colour scheme in `index.tsx`.
@@ -111,15 +111,15 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - The address names a new thread by its project (`?new=`), not its draft. A back to an older entry for a draft that has since become a thread opens a fresh draft in that project, where stock's `/draft/<id>` route moves on to the thread.
 - A new thread asks the server to generate its title, which uses the server's title provider. On this machine that's Codex, which fails to spawn, so titles fall back to the text.
 - Assistant markdown is lexed whole on every delta, though only the changed block re-renders. A delta takes about 1 ms at 2 KB, 2.3 ms at 10 KB, 6 ms at 30 KB and 19 ms at 100 KB before layout, so only a very long message overruns a frame.
-- One terminal per thread, `term-1`, with no tabs or splits.
+- The drawer's tabs are only the ones this device opened. Stock also lists the thread's other server terminals from the terminal metadata stream (`reconcileThreadTerminalSessionIds` in `apps/web/src/terminalUiStateStore.ts`), such as shells another client or an agent opened, and drops tabs whose shell the server stopped reporting.
 - A new-thread draft has no terminal until its thread exists.
-- An exited shell has no restart button: Hide and Terminal start a new one.
-- A failed attach retries only on the next socket session or after Hide and Terminal.
-- A failed End shell shows the error, with no fallback to typing `exit`.
+- A failed attach retries on the next socket session, or from the shell's Restart button.
+- Closing a shell waits for the server and shows a failure on its pane, with no fallback to typing `exit`. Stock closes the tab at once and types `exit` if the close fails.
 - A second viewer's grid isn't followed: the server sizes the PTY to the smallest viewer, and this client still draws its own size.
-- A thread that gains a worktree keeps its remembered launch until Hide and Terminal.
-- A thread deleted elsewhere while closed keeps its remembered launch in `localStorage`, for the reason under `thread.removed`.
-- The terminal has no links, search, clear button or font setting.
+- A shell keeps the directory it started in; only a new tab follows a worktree the thread gains since.
+- A thread deleted elsewhere while closed keeps its remembered drawer in `localStorage`, for the reason under `thread.removed`.
+- Terminal links: a path is offered whether or not it exists (stock checks the filesystem before underlining it), and opens in the editor; a URL opens in a new browser tab, not stock's in-app preview. Both need Ctrl-click (Cmd-click on a Mac), as stock's do. No `file://` hostname check, and no hover tooltip.
+- The terminal has no clear button, font setting, close confirmation or "add selection to the composer" menu.
 - The terminal doesn't pass `providerInstanceId`, as stock's default launch doesn't.
 - Diffs render as a unified list with line numbers, not `@pierre/diffs`' diff view, with no syntax highlighting. Markdown code blocks use its highlighter.
 - Restoring a checkpoint isn't offered.
@@ -159,7 +159,7 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - Thread details, lineage: no side chats section, delegated-from row, workflow groups, stop-subagent button or disconnect menu, and the rows have a plain tip where stock has a subagent hover card and provider icons. A task delegated to a linked environment is listed but can't be opened from here.
 - Thread details, git: no progress phases or hook output while an action runs (the row says Working…), no View PR for a branch with an open pull request, no Publish repository dialog or Initialize Git, and no live branch sync for drafts. The commit dialog lists files without opening them in the editor. Changes counts come from status alone, not the diff preview stock reads, and status refreshes when the menu opens, not when the window regains focus.
 - Thread details, branches: the picker lists the first 100 refs with a server-side search, with no pull request checkout, worktree moves or context menu; a branch checked out in another worktree is refused.
-- Thread details, scripts: a script runs in the thread's one drawer terminal, where stock opens a new terminal. Scripts can be added but not edited or removed, and `t3.json` file scripts aren't imported. Scripts have no keyboard shortcuts, and `editor.openFavorite` isn't handled.
+- Thread details, scripts: a script runs in the drawer's active shell, busy or not, where stock reuses an idle drawer shell (`findReusableProjectScriptTerminal` in `apps/web/src/lib/projectScriptTerminal.ts`) and otherwise opens a new one. Scripts can be added but not edited or removed, and `t3.json` file scripts aren't imported. Scripts have no keyboard shortcuts, and `editor.openFavorite` isn't handled.
 - Right panel: the launcher opens Terminal (as the drawer) and Diff; Browser, Files, Pull request, Linked pull requests, Device and Side chat are listed but disabled. No tabs or maximize; one surface shows at a time.
 - Tooltips: the effort picker's level descriptions are as wide as other tips, where stock narrows them to 14rem. Moving between a message's link and file tips swaps the tip in place, where stock slides it to the next anchor.
 - Timeline: the fold and work groups leave out stock's superseded-attempt folds ("Superseded attempt"), the tool-call visibility setting (zen and hide-successful), hiding delegation rows that a subagent card replaces, compaction dividers and `/compact` turns, viewed-image strips, the "Waiting on N subagents" label and the timestamp setting. Resumed subagents fold with the response they appear in, not their original turn. Stock's tool icons and shimmer aren't copied, and an expanded group grows to a fixed height rather than by its open entries.
@@ -185,7 +185,7 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - Model menu: a typed `ultrathink` doesn't take over the effort label or lock the levels, the effort shows as a word with no bars setting, and the provider's reported selection isn't shown.
 - Permissions: no overflow menu at narrow widths, and modes a managed policy forbids aren't disabled. A new thread's strip under the composer holds only the permissions chip, with no workspace or branch pickers.
 - Diff panel: no tabs, split view, wrap, turn picker, file icons or collapsed unchanged-line markers.
-- Terminal drawer: fixed height with no resize, tabs or splits; the emulator is xterm, so glyph rendering differs from stock's.
+- Terminal drawer: the emulator is xterm, so glyph rendering differs from stock's. Treflex's toolbar adds Find and Hide to stock's split, new and close buttons.
 
 ## Unmatched: settings and usage
 

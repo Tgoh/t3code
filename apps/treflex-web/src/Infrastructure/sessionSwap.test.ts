@@ -25,6 +25,11 @@ vi.mock("@xterm/addon-fit", () => ({
     fit() {}
   },
 }));
+vi.mock("@xterm/addon-search", () => ({
+  SearchAddon: class {
+    onDidChangeResults() {}
+  },
+}));
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     options: Record<string, unknown> = {};
@@ -35,6 +40,7 @@ vi.mock("@xterm/xterm", () => ({
     onData() {}
     onResize() {}
     attachCustomKeyEventHandler() {}
+    registerLinkProvider() {}
     open(element: unknown) {
       this.element = element;
     }
@@ -189,7 +195,10 @@ describe("a session swap", () => {
     xterm.onWrite = resource.changed;
     try {
       await resource.until(() => resource.values.length > 0);
-      (resource.values[0] as { mount(element: unknown, focus: boolean): void }).mount({}, false);
+      (resource.values[0] as { mount(element: unknown, options: object): void }).mount(
+        {},
+        { focus: false },
+      );
       const first = sessions.current;
       expect(await first.opened(WS_METHODS.terminalAttach)).toMatchObject({
         restartIfNotRunning: true,
