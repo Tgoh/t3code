@@ -254,6 +254,50 @@ const VIEWS: ReadonlyArray<IView> = [
     },
   },
   {
+    // Both clients raise the same toasts from their own module, which needs both dev servers.
+    // The front toast sits over each client's own thread, so only the styles are compared.
+    Name: "toast",
+    PixelGate: false,
+    open: async (step) => {
+      await openThread(step);
+      await step.page.evaluate(async (client) => {
+        const path = client === "stock" ? "/src/components/ui/toast.tsx" : "/src/ui/toastStore.ts";
+        // The page's own copy, which a dev server serves under a `?t=` query after an edit.
+        const loaded = performance
+          .getEntriesByType("resource")
+          .map((entry) => entry.name)
+          .find((name) => new URL(name).pathname === path);
+        const { toastManager } = (await import(loaded ?? path)) as {
+          toastManager: { add: (options: object) => string; close: () => void };
+        };
+        // HIDE keeps stray toasts out of every other view; this one closes them and shows its own.
+        toastManager.close();
+        const shown = document.createElement("style");
+        shown.textContent =
+          "[data-slot=toast-portal] { display: block !important; } [data-slot=toast-viewport] { display: flex !important; }";
+        document.head.append(shown);
+        toastManager.add({
+          type: "success",
+          title: "Cloned details-git-demo",
+          description: "G:\\Sorted\\Test\\details-git-demo",
+          timeout: 0,
+          actionProps: { children: "Open project" },
+          data: { actionLayout: "stacked-end", hideCopyButton: true },
+        });
+        toastManager.add({ type: "info", title: "Your typed text was set aside", timeout: 0 });
+        toastManager.add({
+          type: "error",
+          title: "Action failed",
+          description: "nothing to commit, working tree clean",
+          timeout: 0,
+        });
+      }, step.client);
+      await settle(step.page);
+      // The viewport has no box of its own; its toasts are placed absolutely inside it.
+      return firstVisible(step.page, ["[data-slot=toast-viewport] > [role=dialog]"]);
+    },
+  },
+  {
     Name: "select",
     PixelGate: true,
     open: async (step) => {

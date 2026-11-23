@@ -9,6 +9,20 @@ Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) 
 - **Status:** reproduced on 2026-11-22: the Notes Main thread's turn finished at 18:35, and the 18:40 and 18:43 restarts lost its 19:30 compaction. Upstream has an open fix by a maintainer, pingdotgg/t3code#27926 (issue #27915). Its commits apply to current main with test-file conflicts only, but its ProjectionStore candidate test asserts a row order the query doesn't guarantee, and failed until switched to `sameDeepMembers`.
 - **Treflex:** the server is stock's, so affected until #27926 lands and a sync brings it in.
 
+## Thread details: a failed Open in editor shows nothing
+
+- **Where:** `apps/web/src/components/chat/OpenInPicker.tsx`, `openInEditor`. It runs `shellEnvironment.openInEditor` through `useAtomCommand`, which only logs a failure to the console (`runAtomCommand` in `packages/client-runtime/src/state/runtime.ts`).
+- **What goes wrong:** when the server can't open the editor, the click does nothing visible. Stock's file links toast "Unable to open file" for the same failure (`MarkdownFileLink.tsx`).
+- **Status:** found by reading the code, not reproduced.
+- **Treflex:** not affected. The details card's editor row toasts "Unable to open editor".
+
+## Git: the quick action's hint toast can't be reached
+
+- **Where:** `apps/web/src/components/GitActionsControl.tsx`, `runQuickAction`'s `show_hint` branch, and `resolveQuickAction` in `GitActionsControl.logic.ts`.
+- **What goes wrong:** every `show_hint` action `resolveQuickAction` returns is `disabled: true`, and the button is disabled when it is, so the info toast with the hint never shows. The hint reaches people only as the disabled button's tooltip.
+- **Status:** found by reading the code. Harmless dead code.
+- **Treflex:** shows the hint as the disabled row's tooltip, as stock does in practice.
+
 ## Connection: a replaced session's config stream never ends
 
 - **Where:** `packages/client-runtime/src/rpc/session.ts`, `serverConfigEvents` behind `RpcSession.subscribeServerConfig`.

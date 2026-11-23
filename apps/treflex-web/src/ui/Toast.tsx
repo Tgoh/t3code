@@ -166,7 +166,7 @@ function createToastRoot(
     measure();
     const element = root();
     if (!element) return;
-    const content = element.querySelector("[data-slot=toast-content]") ?? element;
+    const content = element.querySelector("[data-toast-content]") ?? element;
     const resize = new ResizeObserver(measure);
     const mutation = new MutationObserver(measure);
     resize.observe(content);
@@ -370,7 +370,7 @@ function CopyErrorButton(props: { text: string }) {
       aria-label={label()}
       data-tip={label()}
       data-tip-side="top"
-      class="rounded-md text-muted-foreground/80 [--control-icon-color:currentColor] hover:bg-transparent hover:text-muted-foreground"
+      class="rounded-md [--control-icon-color:currentColor] hover:bg-transparent"
       onClick={() => void copy()}
     >
       <Show when={copied()} fallback={<Copy class="size-3" />}>
@@ -875,7 +875,7 @@ function StackedToast(props: {
       <DismissOrb store={props.store} toast={toast()} />
       <div
         class={`${CONTENT} ${contentClass(toast())}${hideBehind() ? ` ${CONTENT_HIDDEN_BEHIND}` : ""}`}
-        data-slot="toast-content"
+        data-toast-content
         data-expanded={props.expanded() ? "" : undefined}
         data-behind={index() > 0 ? "" : undefined}
       >
@@ -964,13 +964,13 @@ function AnchoredToast(props: { store: ToastStore; toast: Accessor<IToast> }) {
         <Show
           when={!tooltipStyle()}
           fallback={
-            <div class="pointer-events-auto px-2 py-1" data-slot="toast-content">
+            <div class="pointer-events-auto px-2 py-1" data-toast-content>
               <h2 data-slot="toast-title">{toast().title}</h2>
             </div>
           }
         >
           <DismissOrb store={props.store} toast={toast()} />
-          <div class={`${ANCHORED_CONTENT} ${contentClass(toast())}`} data-slot="toast-content">
+          <div class={`${ANCHORED_CONTENT} ${contentClass(toast())}`} data-toast-content>
             <ToastBody toast={toast()} />
           </div>
         </Show>

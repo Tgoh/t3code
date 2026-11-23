@@ -19,6 +19,7 @@ It pairs a browser with a 5-minute token scoped to `orchestration:read` alone, s
 - the sidebar, an open thread and its composer
 - the General, Appearance, Chat, Keybindings, Threads and About settings pages
 - the command palette, the Projects page's scope menu, the Project order select, the remove-project confirm dialog and the model picker
+- a stack of toasts, raised from each client's own toast module, so it needs both dev servers
 
 ## How it decides
 
