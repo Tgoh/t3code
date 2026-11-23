@@ -7,6 +7,7 @@ import {
   createSignal,
   For,
   type JSX,
+  lazy,
   Match,
   on,
   onCleanup,
@@ -18,13 +19,12 @@ import {
 
 import { ProjectBadge, ProviderIcon } from "./brand";
 import { Composer, COMPOSER_LANE, COMPOSER_SURFACE, FileDropSection } from "./Composer";
-import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow, { loadEarlier } from "./HistoryWindow";
 import { type IThreadMenuItem, ThreadMenu, UsageRing } from "./HeaderActions";
 import { ArrowUpLeft, ChevronDown, Maximize2 } from "./icons";
 import { useNavigation } from "./navigation";
-import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
+import OpenThread, { timelineItem } from "./OpenThread";
 import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
 import { PanelHeader } from "./RightPanel";
 import { runStatus } from "./Shell";
@@ -55,6 +55,8 @@ import { Button } from "./ui/Button";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { SheetBackdrop, sheetPopupVariants } from "./ui/Sheet";
 import { createMediaQuery, enterPanel, PANEL_SHEET_QUERY } from "./viewport";
+
+const DiffPanel = lazy(() => import("./DiffPanel"));
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
 
@@ -690,7 +692,7 @@ const ThreadBody = ThreadSession.provider(() => {
       void session.closeLauncher();
       onTerminal(openTerminal);
     } else if (kind === "diff") {
-      void session.openDiff(latestDiffTurn(thread.state) === null ? "branch" : "thread", null);
+      void session.openDiff(null, null);
     } else if (kind === "sideChat") {
       void session.closeLauncher();
       void environment.startSideChat();

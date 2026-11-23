@@ -9,6 +9,11 @@ declare module "*.mp3" {
   export default url;
 }
 
+declare module "*?worker" {
+  const WorkerConstructor: new () => Worker;
+  export default WorkerConstructor;
+}
+
 declare module "*?worker&url" {
   const url: string;
   export default url;

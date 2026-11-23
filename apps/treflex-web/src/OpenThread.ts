@@ -1,5 +1,9 @@
 import { applyThreadPullRequestLinkUpdate } from "@t3tools/client-runtime/thread-pull-requests";
 import {
+  isRepositoryCheckpointScope,
+  threadChangedRepositories,
+} from "@t3tools/client-runtime/state/thread-repositories";
+import {
   isQueuedProviderThreadPlaceholder,
   type OrchestrationV2AppThread,
 } from "@t3tools/contracts";
@@ -728,14 +732,73 @@ function checkpointOfRun(draft: IOpenThread, runId: string | null) {
   return Object.values(draft.Checkpoints).find((checkpoint) => checkpoint.runId === runId);
 }
 
-// getTurnDiff refuses any other checkpoint: see CheckpointDiffQuery.ts in apps/server.
+const hasRepositories = (draft: IOpenThread) =>
+  Object.values(draft.CheckpointScopes).some(isRepositoryCheckpointScope);
+
+// getTurnDiff serves no other checkpoint: see CheckpointDiffQuery.ts in apps/server. A missing
+// one is a folder that isn't a repository, whose turn has a diff only for repositories inside it.
+// A run outside the loaded history window isn't held; it's offered, since most runs complete.
 function servableTurn(
   draft: IOpenThread,
   checkpoint: IWireProjection["checkpoints"][number] | undefined,
 ): number | null {
-  if (checkpoint === undefined || checkpoint.status !== "ready" || checkpoint.runId === null)
+  if (checkpoint === undefined || checkpoint.runId === null) return null;
+  if (checkpoint.status !== "ready" && (checkpoint.status !== "missing" || !hasRepositories(draft)))
     return null;
-  return draft.Runs[checkpoint.runId]?.status === "completed" ? checkpoint.appRunOrdinal : null;
+  const run = draft.Runs[checkpoint.runId];
+  return run === undefined || run.status === "completed" ? checkpoint.appRunOrdinal : null;
+}
+
+export interface IDiffTurn {
+  TurnCount: number;
+  RunId: string;
+  CompletedAt: string;
+}
+
+// Follows the ordering of turn diff summaries in apps/web/src/components/DiffPanel.tsx: newest first.
+export function diffTurns(draft: IOpenThread): IDiffTurn[] {
+  const turns: IDiffTurn[] = [];
+  for (const checkpoint of Object.values(draft.Checkpoints)) {
+    const turnCount = servableTurn(draft, checkpoint);
+    if (turnCount === null) continue;
+    turns.push({
+      TurnCount: turnCount,
+      RunId: checkpoint.runId!,
+      CompletedAt: checkpoint.capturedAt,
+    });
+  }
+  return turns.sort(
+    (left, right) =>
+      right.TurnCount - left.TurnCount || right.CompletedAt.localeCompare(left.CompletedAt),
+  );
+}
+
+// Stands in for stock's Git status check (`threadFolderIsRepo` in
+// apps/web/src/components/DiffPanel.tsx): a plain folder holding tracked repositories records its
+// own snapshots as missing.
+export function folderIsRepository(draft: IOpenThread): boolean {
+  if (!hasRepositories(draft)) return true;
+  const newest = diffTurns(draft)[0];
+  return newest === undefined || checkpointOfRun(draft, newest.RunId)?.status !== "missing";
+}
+
+export interface IGitRepository {
+  RepositoryPath: string;
+  Name: string;
+  Cwd: string;
+}
+
+// Follows `gitRepositories` in apps/web/src/components/DiffPanel.tsx, from the repositories the
+// thread changed, most recently changed first.
+export function gitRepositories(draft: IOpenThread): IGitRepository[] {
+  return threadChangedRepositories({
+    checkpoints: Object.values(draft.Checkpoints),
+    checkpointScopes: Object.values(draft.CheckpointScopes),
+  } as never).map((repository) => ({
+    RepositoryPath: repository.repositoryPath,
+    Name: repository.name,
+    Cwd: repository.cwd,
+  }));
 }
 
 // The turn a row's diff belongs to, which is the checkpoint's appRunOrdinal: what getTurnDiff counts.

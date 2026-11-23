@@ -108,12 +108,17 @@ export const pullImpl = implementation(pullEffect, async (input) => {
 export const branchDiffImpl = implementation(branchDiffEffect, async (input, action) => {
   const preview = await inEnvironment(
     input.EnvironmentId,
-    request(WS_METHODS.reviewGetDiffPreview, { cwd: input.Cwd, sourceKind: "branch-range" }),
+    request(WS_METHODS.reviewGetDiffPreview, {
+      cwd: input.Cwd,
+      sourceKind: input.Source,
+      ignoreWhitespace: input.IgnoreWhitespace,
+    }),
     action?.signal,
   );
-  const source = preview.sources.find((held) => held.kind === "branch-range") ?? null;
+  const source = preview.sources.find((held) => held.kind === input.Source) ?? null;
   return {
     Diff: source?.diff ?? "",
+    HeadRef: source?.headRef ?? null,
     BaseRef: source?.baseRef ?? null,
     Truncated: source?.truncated ?? false,
   };

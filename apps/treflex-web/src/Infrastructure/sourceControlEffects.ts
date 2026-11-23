@@ -81,12 +81,16 @@ export const pullEffect = defineEffect<
 
 export interface IBranchDiff {
   Diff: string;
+  HeadRef: string | null;
   BaseRef: string | null;
   Truncated: boolean;
 }
 
 interface IBranchDiffEffect extends IInCheckout {
   Type: "branchDiff";
+  /** The branch's changes against its base, or what isn't committed yet. */
+  Source: "branch-range" | "working-tree";
+  IgnoreWhitespace: boolean;
 }
 
 export const branchDiffEffect = defineEffect<IBranchDiffEffect, IBranchDiff>("branchDiff");

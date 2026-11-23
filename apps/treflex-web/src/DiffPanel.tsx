@@ -1,65 +1,58 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { turnDiffSections } from "@t3tools/client-runtime/state/thread-repositories";
+import { createMemo, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
 
 import type { IDiffPanel } from "./Diff";
-import { type IDiffFile, type IPatchRow, parseDiff, patchRows } from "./diffView";
+import DiffCodeView from "./DiffCodeView";
+import {
+  diffLineStat,
+  fileDiffEntries,
+  type IRenderablePatch,
+  renderablePatch,
+  renderablePatchSections,
+} from "./diffRendering";
 import Environment from "./Environment";
-import { ChevronRight, FileDiff } from "./icons";
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Columns2,
+  FileDiff,
+  Pilcrow,
+  Rows3,
+  TextWrap,
+} from "./icons";
+import OpenThread, { diffTurns } from "./OpenThread";
 import { PanelHeader } from "./RightPanel";
 import ThreadSession from "./ThreadSession";
+import { shortTimestamp } from "./timestamps";
 import { Button } from "./ui/Button";
-import { ERROR_TEXT } from "./ui/notice";
-import { Skeleton } from "./ui/Skeleton";
+import {
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  openMenuFromKeys,
+} from "./ui/Menu";
 import { ADDED_TEXT, DIFF_COUNTS, REMOVED_TEXT } from "./ui/notes";
+import { Presence } from "./ui/Presence";
+import { RefreshIcon } from "./ui/RefreshIcon";
+import { Skeleton } from "./ui/Skeleton";
+import { Toggle } from "./ui/Toggle";
+import { Toggle as GroupToggle, ToggleGroup } from "./ui/ToggleGroup";
 
-const LINE_CAP = 2000;
+// Follows apps/web/src/components/DiffPanel.tsx and DiffPanelShell.tsx. ThreadView loads this
+// module with the first diff, so Pierre's parser and viewer stay out of the main bundle.
 
-const ROW: Record<IPatchRow["Kind"], string> = {
-  added: "border-l-diff-addition bg-[color-mix(in_srgb,var(--diff-addition)_10%,transparent)]",
-  removed: "border-l-diff-deletion bg-[color-mix(in_srgb,var(--diff-deletion)_10%,transparent)]",
-  hunk: "border-l-transparent bg-accent text-[12px] text-muted-foreground",
-  context: "border-l-transparent",
-};
-
-const NUMBER: Record<IPatchRow["Kind"], string> = {
-  added: "text-diff-addition-foreground",
-  removed: "text-diff-deletion-foreground",
-  hunk: "text-muted-foreground",
-  context: "text-muted-foreground",
-};
-
-// Wrapping follows the Word wrap setting, as stock's DiffPanel.tsx does (`wordWrap`).
-function Patch(props: { patch: string }) {
-  const environment = Environment.use();
-  const rows = createMemo(() => patchRows(props.patch));
-  const [all, setAll] = createSignal(false);
-  const shown = () => (all() ? rows() : rows().slice(0, LINE_CAP));
-  return (
-    <>
-      <pre
-        class="group/patch m-0 overflow-x-auto bg-code text-[13px] leading-5 data-wrap:whitespace-pre-wrap data-wrap:wrap-break-word"
-        data-wrap={environment.wordWrap() ? "" : undefined}
-      >
-        <For each={shown()}>
-          {(row) => (
-            <span
-              class={`flex w-fit min-w-full border-l-3 group-data-wrap/patch:w-full ${ROW[row.Kind]}`}
-            >
-              <span class={`w-13 flex-none pr-3 text-right select-none ${NUMBER[row.Kind]}`}>
-                {row.Number}
-              </span>
-              <span class="min-w-0 flex-1 pr-3">{row.Text || " "}</span>
-            </span>
-          )}
-        </For>
-      </pre>
-      <Show when={!all() && rows().length > LINE_CAP}>
-        <Button variant="outline" size="sm" onClick={() => setAll(true)}>
-          Show all {rows().length} lines
-        </Button>
-      </Show>
-    </>
-  );
-}
+const ALL_REPOSITORIES = "__all_repositories__";
+const THREAD_FOLDER = "__thread_folder__";
+const EMPTY_STATE =
+  "flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70";
+const NOTICE =
+  "shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground";
+const PICKER_CHEVRON = "size-3.5 shrink-0 opacity-70";
 
 function Counts(props: { additions: number; deletions: number }) {
   return (
@@ -67,25 +60,6 @@ function Counts(props: { additions: number; deletions: number }) {
       <span class={ADDED_TEXT}>+{props.additions}</span>{" "}
       <span class={REMOVED_TEXT}>-{props.deletions}</span>
     </span>
-  );
-}
-
-function FileDiffRow(props: { file: IDiffFile; open: boolean; onToggle: (open: boolean) => void }) {
-  return (
-    <details
-      class="group border-b border-border"
-      open={props.open}
-      onToggle={(event) => props.onToggle(event.currentTarget.open)}
-    >
-      <summary class="sticky top-0 z-1 flex h-8 cursor-pointer list-none items-center gap-1.5 bg-background px-3 text-[12px] [&::-webkit-details-marker]:hidden">
-        <ChevronRight class="size-3.5 text-muted-foreground group-open:rotate-90" />
-        <span class="min-w-0 flex-1 font-medium wrap-anywhere">{props.file.Path}</span>
-        <Counts additions={props.file.Additions} deletions={props.file.Deletions} />
-      </summary>
-      <Show when={props.open}>
-        <Patch patch={props.file.Patch} />
-      </Show>
-    </details>
   );
 }
 
@@ -128,7 +102,7 @@ function DiffCodeLineSkeleton(props: { width: ISkeletonWidth }) {
   );
 }
 
-function DiffLoadingState(props: { label: string }) {
+export function DiffLoadingState(props: { label: string }) {
   return (
     <div
       class="min-h-0 flex-1 overflow-hidden bg-background"
@@ -154,16 +128,130 @@ function DiffLoadingState(props: { label: string }) {
   );
 }
 
+/** A header button that opens a menu below it. */
+function Picker(props: {
+  label: string;
+  ariaLabel: string;
+  variant: "secondary" | "ghost-muted";
+  class?: string;
+  children: (close: () => void) => JSX.Element;
+}) {
+  const [open, setOpen] = createSignal(false);
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement>();
+  return (
+    <>
+      <Button
+        ref={setTrigger}
+        size="xs"
+        variant={props.variant}
+        class={props.class}
+        aria-label={props.ariaLabel}
+        aria-haspopup="menu"
+        aria-expanded={open()}
+        onClick={() => setOpen(!open())}
+        onKeyDown={(event) => openMenuFromKeys(event, () => setOpen(true))}
+      >
+        <span class="truncate">{props.label}</span>
+        <ChevronDown class={PICKER_CHEVRON} />
+      </Button>
+      <Presence when={open() && trigger()}>
+        {(anchor) => (
+          <MenuPopup anchor={anchor()} align="start" onClose={() => setOpen(false)}>
+            {props.children(() => setOpen(false))}
+          </MenuPopup>
+        )}
+      </Presence>
+    </>
+  );
+}
+
 export function DiffPanel(props: { panel: IDiffPanel }) {
   const session = ThreadSession.use();
+  const thread = OpenThread.use();
+  const environment = Environment.use();
   const panel = () => props.panel;
-  const files = createMemo(() => parseDiff(panel().Text ?? ""));
-  const [opened, setOpened] = createSignal<Record<string, boolean>>({});
-  const title = () => {
+  const settings = () => session.diffSettings();
+  const turns = createMemo(() => diffTurns(thread.state));
+  const gitRepositories = () => session.diffGitRepositories();
+  const gitRepository = () =>
+    gitRepositories().Repositories.find(
+      (repository) => repository.RepositoryPath === panel().GitRepository,
+    ) ?? null;
+  const latestTurn = () => turns()[0]?.TurnCount ?? null;
+  const [wrapOverride, setWrapOverride] = createSignal<boolean | null>(null);
+  const wrap = () => wrapOverride() ?? environment.wordWrap();
+  const folderName = () => session.projectName() ?? "Project folder";
+
+  const sections = createMemo(() =>
+    panel().Scope === "turn" && panel().Text !== null
+      ? turnDiffSections(
+          { diff: panel().Text ?? "", repositories: panel().Repositories },
+          folderName(),
+        )
+      : [],
+  );
+  // Sections only matter when a repository changed; otherwise the turn has its one patch.
+  const repositorySections = () =>
+    sections().some((section) => section.repositoryPath !== null) ? sections() : [];
+  const selectedSection = () =>
+    repositorySections().find((section) => section.key === panel().Repository) ?? null;
+  const patch = createMemo((): IRenderablePatch | null => {
+    const cacheScope = `diff-panel:${environment.colorScheme()}`;
+    const shown = selectedSection() === null ? repositorySections() : [selectedSection()!];
+    if (shown.length > 0) {
+      return renderablePatchSections(
+        shown.map((section) => ({
+          Key: section.key,
+          RelativePath: section.relativePath,
+          Diff: section.diff,
+        })),
+        cacheScope,
+      );
+    }
+    return renderablePatch(panel().Text, cacheScope);
+  });
+  const entries = createMemo(() => {
+    const held = patch();
+    return held?.Kind === "files" ? fileDiffEntries(held.Files) : [];
+  });
+  const collapsedOf = (key: string) => panel().Collapsed[key] ?? settings().FilesCollapsed;
+  const shownFiles = createMemo(() =>
+    entries().map((entry) => ({ Entry: entry, Collapsed: collapsedOf(entry.Key) })),
+  );
+  const allCollapsed = () =>
+    shownFiles().length > 0 && shownFiles().every((file) => file.Collapsed);
+  const stat = createMemo(() => diffLineStat(entries().map((entry) => entry.FileDiff)));
+
+  const scopeLabel = () => {
     const held = panel();
-    if (held.Scope === "branch") return held.BaseRef == null ? "Uncommitted" : `vs ${held.BaseRef}`;
-    return held.Scope === "thread" ? "Whole thread" : `Turn ${held.ToTurnCount ?? ""}`;
+    if (held.Scope === "branch") return "Changes";
+    if (held.Scope === "unstaged") return "Uncommitted";
+    if (held.TurnCount !== null && held.TurnCount === latestTurn()) return "Latest turn";
+    return `Turn ${held.TurnCount ?? "?"}`;
   };
+  const scopeValue = () => {
+    const held = panel();
+    if (held.Scope !== "turn") return held.Scope;
+    return held.TurnCount === latestTurn() ? "latest" : `turn:${held.TurnCount}`;
+  };
+  const chooseScope = (value: string) => {
+    if (value === "branch" || value === "unstaged") void session.openDiff(value, null);
+    else if (value === "latest") void session.openDiff("turn", null);
+    else if (value.startsWith("turn:")) void session.openDiff("turn", Number(value.slice(5)));
+  };
+  const toggleFile = (key: string) => void session.setDiffFilesCollapsed([key], !collapsedOf(key));
+  const openFile = (path: string) => {
+    const root = session.fileSearchRoot();
+    if (root === null) return;
+    void environment.openInEditor(`${root.replace(/[\\/]+$/, "")}/${path}`, root);
+  };
+  // Follows `comparisonHeadRef` and `comparisonBaseRef` in stock's DiffPanel.tsx.
+  const headRef = () =>
+    panel().HeadRef ?? (gitRepository() === null ? thread.state.Thread?.branch : null) ?? "HEAD";
+  const baseRef = () => panel().BaseRef ?? "Automatic";
+  const loading = () => session.diffLoading();
+  const gitScope = () => panel().Scope !== "turn";
+
   return (
     <>
       <PanelHeader closeLabel="Close diff" onClose={() => session.closeDiff()}>
@@ -172,38 +260,300 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
           Diff
         </span>
       </PanelHeader>
-      <div class="flex h-10 flex-none items-center gap-2 border-b border-border pt-0 pr-3 pb-3 pl-2">
-        <span class="rounded-lg bg-muted px-2 text-[12px] leading-6 font-medium">{title()}</span>
-        <span class="flex-1" />
-        <Show when={files().length > 0}>
-          <Counts additions={sum(files(), "Additions")} deletions={sum(files(), "Deletions")} />
-        </Show>
+      <div
+        class="@container/diff-header flex h-10 min-h-10 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4"
+        data-surface-subheader
+      >
+        <div class="@container/diff-refs flex min-w-0 flex-1 items-center gap-3">
+          <Picker
+            label={scopeLabel()}
+            ariaLabel={`Diff scope: ${scopeLabel()}`}
+            variant="secondary"
+            class={repositorySections().length > 0 ? "max-w-full min-w-14 shrink" : "max-w-full"}
+          >
+            {(close) => (
+              <>
+                <MenuRadioGroup
+                  value={scopeValue()}
+                  onValueChange={(value) => {
+                    close();
+                    chooseScope(value);
+                  }}
+                >
+                  <MenuRadioItem value="branch">Changes</MenuRadioItem>
+                  <MenuRadioItem value="unstaged">Uncommitted</MenuRadioItem>
+                  <MenuRadioItem value="latest">Latest turn</MenuRadioItem>
+                </MenuRadioGroup>
+                <MenuSub>
+                  <MenuSubTrigger>Turn</MenuSubTrigger>
+                  <MenuSubPopup>
+                    <MenuRadioGroup
+                      value={panel().Scope === "turn" ? `turn:${panel().TurnCount}` : ""}
+                      onValueChange={(value) => {
+                        close();
+                        chooseScope(value);
+                      }}
+                    >
+                      <For each={turns()}>
+                        {(turn) => (
+                          <MenuRadioItem value={`turn:${turn.TurnCount}`}>
+                            <span class="flex items-center gap-2">
+                              <span>Turn {turn.TurnCount}</span>
+                              <span class="ml-auto text-xs text-muted-foreground tabular-nums">
+                                {shortTimestamp(turn.CompletedAt, environment.timestampFormat())}
+                              </span>
+                            </span>
+                          </MenuRadioItem>
+                        )}
+                      </For>
+                    </MenuRadioGroup>
+                  </MenuSubPopup>
+                </MenuSub>
+              </>
+            )}
+          </Picker>
+          <Show when={gitScope() && gitRepositories().Repositories.length > 0}>
+            <Picker
+              label={gitRepository()?.Name ?? folderName()}
+              ariaLabel={`Repository: ${gitRepository()?.Name ?? folderName()}`}
+              variant="ghost-muted"
+              class="max-w-48 min-w-14 shrink"
+            >
+              {(close) => (
+                <MenuRadioGroup
+                  value={gitRepository()?.RepositoryPath ?? THREAD_FOLDER}
+                  onValueChange={(value) => {
+                    close();
+                    void session.selectDiffGitRepository(value === THREAD_FOLDER ? null : value);
+                  }}
+                >
+                  <Show when={gitRepositories().FolderIsRepository}>
+                    <MenuRadioItem value={THREAD_FOLDER}>
+                      <span class="min-w-0 truncate">{folderName()}</span>
+                    </MenuRadioItem>
+                  </Show>
+                  <For each={gitRepositories().Repositories}>
+                    {(repository) => (
+                      <MenuRadioItem value={repository.RepositoryPath}>
+                        <span class="min-w-0 truncate">{repository.Name}</span>
+                      </MenuRadioItem>
+                    )}
+                  </For>
+                </MenuRadioGroup>
+              )}
+            </Picker>
+          </Show>
+          <Show when={repositorySections().length > 0}>
+            <Picker
+              label={selectedSection()?.name ?? "All repositories"}
+              ariaLabel={`Repository: ${selectedSection()?.name ?? "All repositories"}`}
+              variant="ghost-muted"
+              class="max-w-48 min-w-14 shrink"
+            >
+              {(close) => (
+                <MenuRadioGroup
+                  value={selectedSection()?.key ?? ALL_REPOSITORIES}
+                  onValueChange={(value) => {
+                    close();
+                    void session.selectDiffRepository(value === ALL_REPOSITORIES ? null : value);
+                  }}
+                >
+                  <MenuRadioItem value={ALL_REPOSITORIES}>All repositories</MenuRadioItem>
+                  <For each={repositorySections()}>
+                    {(section) => (
+                      <MenuRadioItem value={section.key}>
+                        <span class="flex min-w-0 items-center gap-3">
+                          <span class="min-w-0 truncate">{section.name}</span>
+                          <Show
+                            when={
+                              section.relativePath !== "" && section.relativePath !== section.name
+                            }
+                          >
+                            <span class="ml-auto min-w-0 truncate text-xs text-muted-foreground">
+                              {section.relativePath}
+                            </span>
+                          </Show>
+                        </span>
+                      </MenuRadioItem>
+                    )}
+                  </For>
+                </MenuRadioGroup>
+              )}
+            </Picker>
+          </Show>
+          <Show when={panel().Scope === "branch"}>
+            <span
+              class="flex max-w-full min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground"
+              aria-label={`Comparing ${headRef()} against ${baseRef()}`}
+              data-tip={`${headRef()} → ${baseRef()}`}
+            >
+              <span class="max-w-48 min-w-0 truncate @max-[20rem]/diff-refs:hidden">
+                {headRef()}
+              </span>
+              <ArrowRight class="size-3.5 shrink-0 opacity-70 @max-[20rem]/diff-refs:hidden" />
+              <span class="hidden @max-[20rem]/diff-refs:inline">vs</span>
+              <span class="max-w-48 min-w-0 truncate">{baseRef()}</span>
+            </span>
+          </Show>
+        </div>
+        <div class="flex shrink-0 items-center gap-1">
+          <Show when={shownFiles().length > 0}>
+            <span
+              class={
+                repositorySections().length > 0
+                  ? "contents @max-[30rem]/diff-header:hidden"
+                  : "contents"
+              }
+            >
+              <span class="mr-1 text-[10px]">
+                <Counts additions={stat().additions} deletions={stat().deletions} />
+              </span>
+            </span>
+          </Show>
+          <Show when={gitScope()}>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={loading() ? "Refreshing diff" : "Refresh diff"}
+              data-tip={loading() ? "Refreshing diff…" : "Refresh diff"}
+              onClick={() => session.refreshDiff()}
+            >
+              <RefreshIcon size="sm" refreshing={loading()} />
+            </Button>
+          </Show>
+          <Show when={shownFiles().length > 0}>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={allCollapsed() ? "Expand all files" : "Collapse all files"}
+              data-tip={allCollapsed() ? "Expand all files" : "Collapse all files"}
+              onClick={() =>
+                void session.setDiffFilesCollapsed(
+                  shownFiles().map((file) => file.Entry.Key),
+                  !allCollapsed(),
+                )
+              }
+            >
+              <Show when={allCollapsed()} fallback={<ChevronsDownUp class="size-3.5" />}>
+                <ChevronsUpDown class="size-3.5" />
+              </Show>
+            </Button>
+          </Show>
+          <span
+            class={
+              repositorySections().length > 0
+                ? "contents @max-[30rem]/diff-header:hidden"
+                : "contents"
+            }
+          >
+            <ToggleGroup
+              aria-label="Diff layout"
+              class="shrink-0"
+              variant="segmented"
+              value={[settings().Split ? "split" : "stacked"]}
+              onValueChange={(value) => {
+                const next = value[0];
+                if (next === "stacked" || next === "split") {
+                  void environment.writeSetting({ Store: "client", Patch: { diffLayout: next } });
+                }
+              }}
+            >
+              <GroupToggle aria-label="Stacked diff view" value="stacked">
+                <Rows3 class="size-3.5" />
+              </GroupToggle>
+              <GroupToggle aria-label="Split diff view" value="split">
+                <Columns2 class="size-3.5" />
+              </GroupToggle>
+            </ToggleGroup>
+          </span>
+          <Toggle
+            variant="ghost"
+            size="sm"
+            pressed={wrap()}
+            aria-label={wrap() ? "Disable diff line wrapping" : "Enable diff line wrapping"}
+            data-tip={wrap() ? "Disable line wrapping" : "Enable line wrapping"}
+            onClick={() => setWrapOverride(!wrap())}
+          >
+            <TextWrap class="size-3.5" />
+          </Toggle>
+          <Toggle
+            variant="ghost"
+            size="sm"
+            pressed={panel().IgnoreWhitespace}
+            aria-label={
+              panel().IgnoreWhitespace ? "Show whitespace changes" : "Hide whitespace changes"
+            }
+            data-tip={
+              panel().IgnoreWhitespace ? "Show whitespace changes" : "Hide whitespace changes"
+            }
+            onClick={() => session.toggleDiffWhitespace()}
+          >
+            <Pilcrow class="size-3.5" />
+          </Toggle>
+        </div>
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto">
-        <Show when={session.diffLoading()}>
-          <DiffLoadingState label="Loading diff…" />
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        <Show when={panel().Truncated === true}>
+          <p class={NOTICE}>This preview exceeds the size limit. Changes shown are incomplete.</p>
         </Show>
         <Show when={panel().Error}>
-          <p class={ERROR_TEXT}>Couldn't load the diff: {panel().Error}</p>
-        </Show>
-        <Show when={panel().Text === "" || (panel().Text != null && files().length === 0)}>
-          <div class="flex h-full items-center justify-center px-3 py-2 text-xs text-muted-foreground/70">
-            <p>No changes.</p>
+          <div class="px-3 pt-2">
+            <p class="mb-2 text-[11px] text-error/80">{panel().Error}</p>
           </div>
         </Show>
-        <For each={files()}>
-          {(file, index) => (
-            <FileDiffRow
-              file={file}
-              open={opened()[file.Path] ?? index() === 0}
-              onToggle={(open) => setOpened((held) => ({ ...held, [file.Path]: open }))}
+        <Switch>
+          <Match when={panel().Scope === "turn" && turns().length === 0 && panel().Text !== null}>
+            <div class={EMPTY_STATE}>No completed turns yet.</div>
+          </Match>
+          <Match when={patch()?.Kind === "files"}>
+            <div class="min-h-0 min-w-0 flex-1">
+              <DiffCodeView
+                files={shownFiles()}
+                split={settings().Split}
+                wrap={wrap()}
+                scheme={environment.colorScheme()}
+                onToggle={toggleFile}
+                onOpen={openFile}
+              />
+            </div>
+          </Match>
+          <Match when={patch()} keyed>
+            {(raw) =>
+              raw.Kind === "raw" ? (
+                <div class="min-h-0 flex-1 overflow-auto p-2">
+                  <div class="space-y-2">
+                    <p class="text-[11px] text-muted-foreground/75">{raw.Reason}</p>
+                    <pre
+                      class="max-h-[72vh] overflow-auto rounded-md border border-border/70 bg-background/70 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground/90 data-wrap:whitespace-pre-wrap data-wrap:wrap-break-word"
+                      data-wrap={wrap() ? "" : undefined}
+                    >
+                      {raw.Text}
+                    </pre>
+                  </div>
+                </div>
+              ) : null
+            }
+          </Match>
+          <Match when={panel().Text === null && panel().Error === undefined}>
+            <DiffLoadingState
+              label={
+                panel().Scope === "turn"
+                  ? "Loading checkpoint diff..."
+                  : panel().Scope === "unstaged"
+                    ? "Loading uncommitted changes..."
+                    : "Loading changes..."
+              }
             />
-          )}
-        </For>
+          </Match>
+          <Match when={panel().Text !== null}>
+            <div class={EMPTY_STATE}>
+              <p>No net changes in this selection.</p>
+            </div>
+          </Match>
+        </Switch>
       </div>
     </>
   );
 }
 
-const sum = (files: IDiffFile[], key: "Additions" | "Deletions"): number =>
-  files.reduce((total, file) => total + file[key], 0);
+export default DiffPanel;

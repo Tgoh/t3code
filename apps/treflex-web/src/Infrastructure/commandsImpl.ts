@@ -516,27 +516,33 @@ export const closeTerminalImpl = implementation(closeTerminalEffect, async (inpu
 
 export const threadDiffImpl = implementation(threadDiffEffect, async (input, action) => {
   const threadId = ThreadId.make(input.ThreadId);
-  if (input.Scope === "thread") {
-    const whole = await inEnvironment(
-      input.EnvironmentId,
-      request(ORCHESTRATION_V2_WS_METHODS.getFullThreadDiff, {
-        threadId,
-        toTurnCount: input.ToTurnCount,
-      }),
-      action?.signal,
-    );
-    return whole.diff;
-  }
-  const turn = await inEnvironment(
-    input.EnvironmentId,
-    request(ORCHESTRATION_V2_WS_METHODS.getTurnDiff, {
-      threadId,
-      fromTurnCount: Math.max(0, input.ToTurnCount - 1),
-      toTurnCount: input.ToTurnCount,
-    }),
-    action?.signal,
-  );
-  return turn.diff;
+  // Follows useCheckpointDiff in apps/web/src/state/queries.ts, which reads a range from the
+  // thread's start as the whole thread's diff.
+  const result =
+    input.FromTurnCount === 0
+      ? await inEnvironment(
+          input.EnvironmentId,
+          request(ORCHESTRATION_V2_WS_METHODS.getFullThreadDiff, {
+            threadId,
+            toTurnCount: input.ToTurnCount,
+            ignoreWhitespace: input.IgnoreWhitespace,
+          }),
+          action?.signal,
+        )
+      : await inEnvironment(
+          input.EnvironmentId,
+          request(ORCHESTRATION_V2_WS_METHODS.getTurnDiff, {
+            threadId,
+            fromTurnCount: input.FromTurnCount,
+            toTurnCount: input.ToTurnCount,
+            ignoreWhitespace: input.IgnoreWhitespace,
+          }),
+          action?.signal,
+        );
+  return {
+    Diff: result.diff,
+    Repositories: (result.repositories ?? []).map((repository) => ({ ...repository })),
+  };
 });
 
 const encodeTurnItem = Schema.encodeSync(wireCodec(OrchestrationV2TurnItem));

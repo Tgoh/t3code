@@ -1,35 +1,60 @@
 import { type IActionGenerator, type IEntity, latest } from "treflex";
 
-import { threadDiffEffect } from "./Infrastructure/commandEffects";
+import { type IRepositoryDiff, threadDiffEffect } from "./Infrastructure/commandEffects";
 import { serverError } from "./Infrastructure/serverError";
 import { branchDiffEffect } from "./Infrastructure/sourceControlEffects";
 
-export type IDiffScope = "turn" | "thread" | "branch";
+/** Stock's diff scopes: a turn, the branch's changes ("Changes"), or what isn't committed. */
+export type IDiffScope = "turn" | "branch" | "unstaged";
 
-/** The open diff panel. Opening another diff replaces it, which stops its load. */
+/** The open diff panel. Opening another scope replaces it, which stops its load. */
 export interface IDiffPanel extends IEntity {
   Scope: IDiffScope;
-  ToTurnCount: number | null;
+  TurnCount: number | null;
+  /** A turn scope that moves to each newer turn, as stock's "Latest turn" does while chosen. */
+  Latest: boolean;
+  /** The repository section a turn diff shows, by key; null shows them all. */
+  Repository: string | null;
+  /** The tracked repository the branch and working tree scopes read; null is the thread's folder. */
+  GitRepository: string | null;
+  IgnoreWhitespace: boolean;
+  /** Files collapsed or expanded by hand, by file key; the rest follow the setting. */
+  Collapsed: Record<string, boolean>;
   Text: string | null;
+  Repositories: IRepositoryDiff[];
+  HeadRef?: string | null;
   BaseRef?: string | null;
+  Truncated?: boolean;
   Error?: string;
 }
 
 export type IDiffRequest =
-  | { Scope: "turn" | "thread"; EnvironmentId: string; ThreadId: string; ToTurnCount: number }
-  | { Scope: "branch"; EnvironmentId: string; Cwd: string };
+  | { Scope: "turn"; EnvironmentId: string; ThreadId: string; ToTurnCount: number }
+  | { Scope: "branch" | "unstaged"; EnvironmentId: string; Cwd: string };
 
 export function* loadDiff(draft: IDiffPanel, request: IDiffRequest): IActionGenerator {
   try {
-    if (request.Scope === "branch") {
+    if (request.Scope === "turn") {
+      const diff = yield* threadDiffEffect({
+        EnvironmentId: request.EnvironmentId,
+        ThreadId: request.ThreadId,
+        FromTurnCount: Math.max(0, request.ToTurnCount - 1),
+        ToTurnCount: request.ToTurnCount,
+        IgnoreWhitespace: draft.IgnoreWhitespace,
+      });
+      draft.Text = diff.Diff;
+      draft.Repositories = diff.Repositories;
+    } else {
       const diff = yield* branchDiffEffect({
         EnvironmentId: request.EnvironmentId,
         Cwd: request.Cwd,
+        Source: request.Scope === "branch" ? "branch-range" : "working-tree",
+        IgnoreWhitespace: draft.IgnoreWhitespace,
       });
       draft.Text = diff.Diff;
+      draft.HeadRef = diff.HeadRef;
       draft.BaseRef = diff.BaseRef;
-    } else {
-      draft.Text = yield* threadDiffEffect(request);
+      draft.Truncated = diff.Truncated;
     }
     delete draft.Error;
   } catch (error) {

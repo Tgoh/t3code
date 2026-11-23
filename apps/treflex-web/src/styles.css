@@ -242,6 +242,23 @@
   --chat-content-max-width: 100%;
 }
 
+/* @pierre/diffs renders inside shadow roots, which inherit these custom properties. */
+:root {
+  --diffs-font-family: var(--font-mono);
+  --diffs-header-font-family: var(--font-sans);
+}
+
+.diff-render-surface diffs-container {
+  border: 0;
+  border-radius: 0;
+  overflow: clip;
+  --diffs-bg: var(--code-background) !important;
+  --diffs-light-bg: var(--code-background) !important;
+  --diffs-dark-bg: var(--code-background) !important;
+  background-color: var(--code-background) !important;
+  color: var(--code-foreground) !important;
+}
+
 [data-app-sidebar] {
   --background: var(--zinc-25);
   --foreground: var(--zinc-900);

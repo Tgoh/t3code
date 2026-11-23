@@ -92,7 +92,7 @@ export function runPanelShortcut(
       return true;
     case "diff.toggle":
       if (panels.DiffOpen) void dispatch(closeDiff, session);
-      else if (panels.Diff) void dispatch(openDiff, session, "thread", null);
+      else if (panels.Diff) void dispatch(openDiff, session, null, null);
       else return false;
       return true;
     default:

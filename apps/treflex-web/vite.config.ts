@@ -63,6 +63,8 @@ export default defineConfig(({ mode }) => ({
   // Pre-bundling would give the app a second copy of treflex's contexts.
   optimizeDeps: { exclude: ["treflex", "treflex-solid"] },
   build: { target: "esnext" },
+  // Pierre's diff worker splits its highlighter into chunks, which a classic worker can't load.
+  worker: { format: "es" },
   ...(mode === "bench" ? { define: { "import.meta.env.DEV": "false" } } : {}),
   // Solid's default Node export is its server build, which has no reactive runtime.
   resolve: { conditions: ["solid", "browser"] },

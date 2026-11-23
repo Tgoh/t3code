@@ -91,7 +91,6 @@ import type {
   IWireThreadItem,
   IWireTurnItem,
 } from "./Infrastructure/wire";
-import { parseDiff } from "./diffView";
 import type { Tokens } from "marked";
 
 import { assistantHtml, containsHtml, createMarkdownLexer } from "./markdownTokens";
@@ -132,6 +131,7 @@ import type { IAppearanceMode, IColorScheme } from "./colorScheme";
 import { type IShelves, layoutSidebar } from "./sidebarLayout";
 import {
   diffTurnOf,
+  diffTurns,
   fileChangeCounts,
   type IOpenThread,
   isRowVisible,
@@ -139,6 +139,8 @@ import {
   latestRun,
   pendingApprovalIds,
   RETAIN_MS,
+  folderIsRepository,
+  gitRepositories,
   requestItems,
   ThreadReceiver,
   threadSynchronized,
@@ -192,6 +194,9 @@ import {
   openDiff,
   queueAction,
   runScript,
+  selectDiffRepository,
+  setDiffFilesCollapsed,
+  toggleDiffWhitespace,
   heldSend,
   holdSend,
   removeAttachment,
@@ -4548,18 +4553,47 @@ describe("diffs", () => {
       } as never,
       1,
     );
+  // The Test project's shape: a plain folder, so its own snapshots are missing, holding a tracked
+  // repository whose scope records no turn of its own.
+  const folderWithRepository = (sequence: number) =>
+    snapshotOf(
+      {
+        ...emptyProjection(),
+        runs: [run("run-1", 1)],
+        checkpointScopes: [
+          { id: "scope-root", parentScopeId: null, cwd: "C:/test" },
+          {
+            id: "scope-demo",
+            parentScopeId: "scope-root",
+            cwd: "C:/test/demo",
+            repositoryPath: "C:/test/demo",
+            label: "demo",
+          },
+        ],
+        checkpoints: [
+          { ...checkpoint(1, "run-1"), scopeId: "scope-root", status: "missing" },
+          {
+            ...checkpoint(1, "run-1"),
+            id: "checkpoint-demo-1",
+            scopeId: "scope-demo",
+            appRunOrdinal: null,
+          },
+        ],
+      } as never,
+      sequence,
+    );
   const fileChange = {
     ...commandItem("change", "run-1", 1),
     type: "file_change",
     fileName: "C:\\work\\src\\hello.txt",
   } as unknown as Extract<IWireTurnItem, { type: "file_change" }>;
 
-  it("fetches one turn or the whole thread, and closes and reopens", async () => {
+  it("fetches one turn against the one before it, and closes and reopens on the latest", async () => {
     const asked: IThreadDiff[] = [];
     const server = await connect(undefined, null, {
       threadDiff: (effect: IThreadDiff) => {
         asked.push(effect);
-        return `patch for ${effect.Scope} ${effect.ToTurnCount}`;
+        return { Diff: `patch for turn ${effect.ToTurnCount}`, Repositories: [] };
       },
     });
     await server.open();
@@ -4567,23 +4601,140 @@ describe("diffs", () => {
     const panel = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
     await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     await settled();
-    expect(panel()).toMatchObject({ Scope: "turn", ToTurnCount: 1, Text: "patch for turn 1" });
+    expect(panel()).toMatchObject({
+      Scope: "turn",
+      TurnCount: 1,
+      Latest: false,
+      Text: "patch for turn 1",
+    });
     await server.runtime.dispatch(closeDiff, server.sessionId());
     expect(panel()).toBeNull();
-    await server.runtime.dispatch(openDiff, server.sessionId(), "thread", null);
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", null);
     await settled();
-    expect(panel()).toMatchObject({ Scope: "thread", Text: "patch for thread 2" });
-    expect(asked.map((ask) => [ask.Scope, ask.ToTurnCount])).toEqual([
-      ["turn", 1],
-      ["thread", 2],
+    expect(panel()).toMatchObject({ TurnCount: 2, Latest: true, Text: "patch for turn 2" });
+    expect(asked.map((ask) => [ask.FromTurnCount, ask.ToTurnCount, ask.IgnoreWhitespace])).toEqual([
+      [0, 1, true],
+      [1, 2, true],
     ]);
+  });
+
+  it("opens on the branch's changes, read from the latest changed repository where the thread folder isn't one", async () => {
+    const asked: string[] = [];
+    const server = await connect(undefined, null, {
+      branchDiff: (effect: { Source: string; Cwd: string }) => {
+        asked.push(`${effect.Source} ${effect.Cwd}`);
+        return { Diff: "", HeadRef: null, BaseRef: null, Truncated: false };
+      },
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/repo" }],
+        threads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.open();
+    await server.sendThread(withCheckpoints());
+    await server.runtime.dispatch(openDiff, server.sessionId(), null, null);
+    await settled();
+    expect(server.session().Panels.Diff).toMatchObject({ Scope: "branch" });
+    await server.runtime.dispatch(openDiff, server.sessionId(), "unstaged", null);
+    await settled();
+    expect(server.session().Panels.Diff).toMatchObject({ Scope: "unstaged" });
+    await server.runtime.dispatch(closeDiff, server.sessionId());
+
+    await server.sendThread(folderWithRepository(2));
+    await server.runtime.dispatch(openDiff, server.sessionId(), null, null);
+    await settled();
+    expect(server.session().Panels.Diff).toMatchObject({
+      Scope: "branch",
+      GitRepository: "C:/test/demo",
+    });
+    await server.runtime.dispatch(openDiff, server.sessionId(), "unstaged", null);
+    await settled();
+    expect(server.session().Panels.Diff).toMatchObject({ GitRepository: "C:/test/demo" });
+    expect(asked).toEqual([
+      "branch-range /repo",
+      "working-tree /repo",
+      "branch-range C:/test/demo",
+      "working-tree C:/test/demo",
+    ]);
+  });
+
+  it("serves a folder project's turns by repository, which its own missing snapshot doesn't hide", async () => {
+    const server = await connect(undefined, null, {
+      threadDiff: () => ({
+        Diff: "",
+        Repositories: [
+          { name: "demo", repositoryPath: "C:/test/demo", relativePath: "demo", diff: "patch" },
+        ],
+      }),
+    });
+    await server.open();
+    await server.sendThread(folderWithRepository(1));
+    expect(latestDiffTurn(server.thread())).toBe(1);
+    expect(diffTurns(server.thread()).map((turn) => turn.TurnCount)).toEqual([1]);
+    expect(folderIsRepository(server.thread())).toBe(false);
+    expect(gitRepositories(server.thread())).toEqual([
+      { RepositoryPath: "C:/test/demo", Name: "demo", Cwd: "C:/test/demo" },
+    ]);
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
+    await settled();
+    expect(server.session().Panels.Diff).toMatchObject({
+      Text: "",
+      Repositories: [{ name: "demo", relativePath: "demo", diff: "patch" }],
+    });
+    await server.runtime.dispatch(selectDiffRepository, server.sessionId(), "C:/test/demo");
+    expect(server.session().Panels.Diff).toMatchObject({ Repository: "C:/test/demo" });
+
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1)],
+          checkpoints: [{ ...checkpoint(1, "run-1"), status: "missing" }],
+        } as never,
+        3,
+      ),
+    );
+    expect(latestDiffTurn(server.thread())).toBeNull();
+  });
+
+  it("refetches with whitespace shown, and keeps each file's collapse until the scope changes", async () => {
+    const asked: boolean[] = [];
+    const server = await connect(undefined, null, {
+      threadDiff: (effect: IThreadDiff) => {
+        asked.push(effect.IgnoreWhitespace);
+        return { Diff: "patch", Repositories: [] };
+      },
+    });
+    await server.open();
+    await server.sendThread(withCheckpoints());
+    const panel = () => server.session().Panels.Diff;
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
+    await settled();
+    await server.runtime.dispatch(setDiffFilesCollapsed, server.sessionId(), ["a", "b"], false);
+    await server.runtime.dispatch(setDiffFilesCollapsed, server.sessionId(), ["b"], true);
+    expect(panel()!.Collapsed).toEqual({ a: false, b: true });
+    await server.runtime.dispatch(toggleDiffWhitespace, server.sessionId());
+    await settled();
+    expect(asked).toEqual([true, false]);
+    expect(panel()).toMatchObject({ IgnoreWhitespace: false, Text: "patch" });
+    expect(panel()!.Collapsed).toEqual({ a: false, b: true });
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 2);
+    await settled();
+    expect(asked).toEqual([true, false, false]);
+    expect(panel()!.Collapsed).toEqual({});
   });
 
   it("replaces the panel on reopen, so a diff for the one it moved on from lands nowhere", async () => {
     const replies = new Map<number, (text: string) => void>();
     const server = await connect(undefined, null, {
       threadDiff: (effect: IThreadDiff) =>
-        new Promise<string>((resolve) => replies.set(effect.ToTurnCount, resolve)),
+        new Promise((resolve) =>
+          replies.set(effect.ToTurnCount, (text) => resolve({ Diff: text, Repositories: [] })),
+        ),
     });
     await server.open();
     const panel = () => server.environment().Local.ThreadSessions[THREAD_ID]!.Panels.Diff;
@@ -4596,11 +4747,11 @@ describe("diffs", () => {
     expect(panel()!.$Id).not.toBe(stale);
     replies.get(1)!("stale");
     await settled();
-    expect(panel()).toMatchObject({ ToTurnCount: 2, Text: null });
+    expect(panel()).toMatchObject({ TurnCount: 2, Text: null });
     expect(loading()).toBe(true);
     replies.get(2)!("current");
     await settled();
-    expect(panel()).toMatchObject({ ToTurnCount: 2, Text: "current" });
+    expect(panel()).toMatchObject({ TurnCount: 2, Text: "current" });
     expect(loading()).toBe(false);
     await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     const closedGone = server.disposed(panel()!.$Id);
@@ -4612,17 +4763,19 @@ describe("diffs", () => {
     expect(panel()).toBeNull();
   });
 
-  it("refetches an open whole-thread or branch diff when the workspace changes, keeping the shown text meanwhile", async () => {
+  it("refetches an open latest-turn or branch diff when the workspace changes, keeping the shown text meanwhile", async () => {
     const asked: string[] = [];
     let replyTo: ((text: string) => void) | null = null;
     const server = await connect(undefined, null, {
       threadDiff: (effect: IThreadDiff) => {
-        asked.push(`${effect.Scope} ${effect.ToTurnCount}`);
-        return new Promise<string>((resolve) => (replyTo = resolve));
+        asked.push(`turn ${effect.ToTurnCount}`);
+        return new Promise((resolve) => {
+          replyTo = (text) => resolve({ Diff: text, Repositories: [] });
+        });
       },
       branchDiff: () => {
         asked.push("branch");
-        return { Diff: `branch ${asked.length}`, BaseRef: null, Truncated: false };
+        return { Diff: `branch ${asked.length}`, HeadRef: null, BaseRef: null, Truncated: false };
       },
     });
     await server.sendShell({
@@ -4646,7 +4799,7 @@ describe("diffs", () => {
     );
     const panel = () => server.session().Panels.Diff;
     const loading = () => server.runtime.processSelector(diffLoading, () => server.session());
-    await server.runtime.dispatch(openDiff, server.sessionId(), "thread", null);
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", null);
     replyTo!("through 1");
     await settled();
     await server.sendThread({
@@ -4660,12 +4813,12 @@ describe("diffs", () => {
       event: event("checkpoint.captured", checkpoint(2, "run-2")),
     } as IWireThreadItem);
     await settled();
-    expect(asked).toEqual(["thread 1", "thread 2"]);
-    expect(panel()).toMatchObject({ ToTurnCount: 2, Text: "through 1" });
+    expect(asked).toEqual(["turn 1", "turn 2"]);
+    expect(panel()).toMatchObject({ TurnCount: 2, Text: "through 1" });
     expect(loading()).toBe(false);
     replyTo!("through 2");
     await settled();
-    expect(panel()).toMatchObject({ ToTurnCount: 2, Text: "through 2" });
+    expect(panel()).toMatchObject({ TurnCount: 2, Text: "through 2" });
 
     await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
     replyTo!("turn 1");
@@ -4680,7 +4833,7 @@ describe("diffs", () => {
       event: event("run.updated", run("run-3", 3)),
     } as IWireThreadItem);
     await settled();
-    expect(asked).toEqual(["thread 1", "thread 2", "turn 1"]);
+    expect(asked).toEqual(["turn 1", "turn 2", "turn 1"]);
 
     await server.runtime.dispatch(openDiff, server.sessionId(), "branch", null);
     await settled();
@@ -4700,7 +4853,7 @@ describe("diffs", () => {
       event: event("turn-item.updated", commandItem("edit", "run-4", 1)),
     } as IWireThreadItem);
     await settled();
-    expect(asked).toEqual(["thread 1", "thread 2", "turn 1", "branch", "branch"]);
+    expect(asked).toEqual(["turn 1", "turn 2", "turn 1", "branch", "branch"]);
     expect(panel()).toMatchObject({ Scope: "branch", Text: "branch 5" });
 
     const settledWhileAway = { ...commandItem("away", "run-4", 2), status: "completed" };
@@ -4716,7 +4869,7 @@ describe("diffs", () => {
       ),
     );
     await settled();
-    expect(asked).toEqual(["thread 1", "thread 2", "turn 1", "branch", "branch", "branch"]);
+    expect(asked).toEqual(["turn 1", "turn 2", "turn 1", "branch", "branch", "branch"]);
   });
 
   it("shows a failed fetch and an empty turn", async () => {
@@ -4737,7 +4890,12 @@ describe("diffs", () => {
     const server = await connect(undefined, null, {
       branchDiff: (effect: { EnvironmentId: string; Cwd: string }) => {
         asked.push(effect.Cwd);
-        return { Diff: "branch patch", BaseRef: "origin/main", Truncated: false };
+        return {
+          Diff: "branch patch",
+          HeadRef: "feature",
+          BaseRef: "origin/main",
+          Truncated: false,
+        };
       },
     });
     await server.sendShell({
@@ -4881,46 +5039,13 @@ describe("diffs", () => {
       event: event("checkpoint.captured", { ...checkpoint(1, "run-1"), status: "failed" }),
     } as IWireThreadItem);
     expect(latestDiffTurn(server.thread())).toBeNull();
-  });
-
-  it("takes a path from the file headers when the name itself contains b/", () => {
-    const [file] = parseDiff(
-      [
-        "diff --git a/foo b/x.ts b/foo b/x.ts",
-        "--- a/foo b/x.ts",
-        "+++ b/foo b/x.ts",
-        "@@ -1 +1 @@",
-        "-old",
-        "+new",
-      ].join("\n"),
-    );
-    expect(file!.Path).toBe("foo b/x.ts");
-  });
-
-  it("parses a unified diff into files with counts, not counting its headers", () => {
-    const files = parseDiff(
-      [
-        "diff --git a/one.txt b/one.txt",
-        "--- a/one.txt",
-        "+++ b/one.txt",
-        "@@ -1,2 +1,2 @@",
-        "-old",
-        "+new",
-        "+more",
-        "diff --git a/dir/two.txt b/dir/two.txt",
-        "new file mode 100644",
-        "--- /dev/null",
-        "+++ b/dir/two.txt",
-        "@@ -0,0 +1 @@",
-        "+hello",
-        "",
-      ].join("\n"),
-    );
-    expect(files.map((file) => [file.Path, file.Additions, file.Deletions])).toEqual([
-      ["one.txt", 2, 1],
-      ["dir/two.txt", 1, 0],
-    ]);
-    expect(parseDiff("")).toEqual([]);
+    // A run older than the loaded history window isn't held, so nothing says it stopped.
+    await server.sendThread({
+      kind: "event",
+      sequence: 4,
+      event: event("checkpoint.captured", checkpoint(3, "run-outside-window")),
+    } as IWireThreadItem);
+    expect(diffTurns(server.thread()).map((turn) => turn.TurnCount)).toEqual([3]);
   });
 });
 

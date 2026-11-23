@@ -170,8 +170,24 @@ interface IRespondRequestEffect extends IEffect, IRespondRequest {
 export interface IThreadDiff {
   EnvironmentId: string;
   ThreadId: string;
-  Scope: "turn" | "thread";
+  FromTurnCount: number;
   ToTurnCount: number;
+  IgnoreWhitespace: boolean;
+}
+
+/** A tracked repository's patch for the range, with paths from the repository's own folder. */
+export interface IRepositoryDiff {
+  name: string;
+  repositoryPath: string;
+  /** The repository folder from the thread's folder, `/`-separated; may start with `../`. */
+  relativePath: string;
+  diff: string;
+}
+
+export interface ITurnDiff {
+  /** The thread folder's own patch; empty when that folder isn't a Git repository. */
+  Diff: string;
+  Repositories: IRepositoryDiff[];
 }
 
 interface IThreadDiffEffect extends IEffect, IThreadDiff {
@@ -337,7 +353,7 @@ interface IOpenInEditorEffect extends IEffect {
 /** Answers the editor it opened. */
 export const openInEditorEffect = defineEffect<IOpenInEditorEffect, string>("openInEditor");
 
-export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
+export const threadDiffEffect = defineEffect<IThreadDiffEffect, ITurnDiff>("threadDiff");
 
 /** What an MCP app asks of the server, on behalf of the tool call that opened it. */
 export type IMcpAppRequest =
