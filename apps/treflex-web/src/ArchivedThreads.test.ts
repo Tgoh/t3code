@@ -20,8 +20,10 @@ function open() {
     },
   );
   let page!: ReturnType<typeof useArchivedThreads>;
+  const outcome = { Done: true };
   const threadCommand = async (_threadId: string, command: IThreadCommand) => {
     calls.push({ Type: "threadCommand", Command: command });
+    return outcome.Done;
   };
   const Page = ArchivedThreads.provider(() => {
     page = useArchivedThreads("env-1", threadCommand);
@@ -40,7 +42,7 @@ function open() {
     return dispose;
   });
   flush();
-  return { runtime, calls, page: () => page, close };
+  return { runtime, calls, outcome, page: () => page, close };
 }
 
 describe("the archive page", () => {
@@ -55,7 +57,7 @@ describe("the archive page", () => {
     expect(archive.runtime.locate(held)).toBeUndefined();
   });
 
-  it("unarchives with stock's command and reads the archive again", async () => {
+  it("unarchives with stock's command and reads the archive again only when it's taken", async () => {
     const archive = open();
     await settled();
     archive.page().command("t-9", "unarchive");
@@ -64,6 +66,10 @@ describe("the archive page", () => {
       { Type: "threadCommand", Command: { Kind: "unarchive" } },
       { Type: "archivedShell", EnvironmentId: "env-1" },
     ]);
+    archive.outcome.Done = false;
+    archive.page().command("t-9", "delete");
+    await settled();
+    expect(archive.calls.at(-1)).toEqual({ Type: "threadCommand", Command: { Kind: "delete" } });
     archive.close();
   });
 });

@@ -27,14 +27,17 @@ export default ArchivedThreads;
 // Follows ArchivedThreadsPanel in apps/web/src/components/settings/ArchivedThreadsPanel.tsx.
 export function useArchivedThreads(
   environmentId: string,
-  threadCommand: (threadId: string, command: IThreadCommand) => Promise<unknown>,
+  threadCommand: (threadId: string, command: IThreadCommand) => Promise<boolean | undefined>,
 ) {
   const page = ArchivedThreads.use();
   onSettled(() => {
     void page.loadArchived(environmentId);
   });
+  // A failed dispatch was already reported by its boundary; the chained promise would report it again.
   const command = (threadId: string, kind: "unarchive" | "delete") =>
-    void threadCommand(threadId, { Kind: kind }).then(() => page.loadArchived(environmentId));
+    void threadCommand(threadId, { Kind: kind })
+      .then((done) => (done === true ? page.loadArchived(environmentId) : undefined))
+      .catch(() => undefined);
   return {
     get state() {
       return page.state;
