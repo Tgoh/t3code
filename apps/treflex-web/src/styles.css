@@ -461,11 +461,12 @@ body {
   background: var(--app-scrollbar-thumb-hover);
 }
 
-/* The home bar is behind an open keyboard, though iOS still reports its inset. data-keyboard comes
-   from trackVisualViewport in viewport.ts. */
+/* The home bar is behind an open keyboard, though iOS still reports its inset, and a gap would show
+   the conversation above Safari's form toolbar. data-keyboard comes from trackVisualViewport in
+   viewport.ts. */
 :root[data-keyboard="open"] {
   --safe-bottom: 0px;
-  --composer-gap: 8px;
+  --composer-gap: 0px;
 }
 
 /* A phone in landscape: SHORT_TOUCH_QUERY in viewport.ts. */

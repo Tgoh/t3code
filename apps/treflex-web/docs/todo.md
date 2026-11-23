@@ -17,7 +17,6 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **The composer floats above Safari's form toolbar on iPhone.** With the keyboard open, a strip of the conversation shows between the composer and the toolbar (the up/down/tick bar, which no web page can remove). The composer should sit directly on the keyboard area, as in stock's Safari client. **In progress** on `treflex/ios-composer-gap`. Needs Tam's iPhone to confirm. Tam's ask (2026-11-23).
 - **Settings treflex ignores.** Of Tam's picks (2026-11-23), only the Archive confirmation is left: it waits for the archive action in the Sidebar item. In-app notifications go with Toasts, Tool calls in chat with Timeline rows, and Show skills in slash menu with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
 
 ## 3. Missing features
