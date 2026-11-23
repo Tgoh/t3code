@@ -71,25 +71,41 @@ export interface IAttempt {
   CompletedAt: string | null;
 }
 
+export type IAttemptsByRoot = ReadonlyMap<string, IAttempt & { RunId: string }>;
+
+export function attemptsByRoot(open: Pick<IOpenThread, "Attempts">): IAttemptsByRoot {
+  return new Map(
+    Object.values(open.Attempts).map((attempt) => [
+      attempt.rootNodeId,
+      {
+        Id: attempt.id,
+        RunId: attempt.runId,
+        Status: attempt.status,
+        CompletedAt: attempt.completedAt ?? null,
+      },
+    ]),
+  );
+}
+
 /** Follows resolveAttempt in deriveTimelineEntriesFromVisibleTurnItems, apps/web/src/session-logic.ts. */
 export function attemptOf(
-  open: Pick<IOpenThread, "Attempts" | "Nodes">,
+  open: Pick<IOpenThread, "Nodes">,
+  byRoot: IAttemptsByRoot,
   item: IWireTurnItem,
 ): IAttempt | null {
   if (item.nodeId === null || item.runId === null) return null;
-  const byRoot = (nodeId: string) => {
-    for (const attempt of Object.values(open.Attempts))
-      if (attempt.rootNodeId === nodeId && attempt.runId === item.runId) return attempt;
-    return undefined;
+  const ofRun = (nodeId: string) => {
+    const attempt = byRoot.get(nodeId);
+    return attempt?.RunId === item.runId ? attempt : undefined;
   };
   const visited = new Set<string>();
   let nodeId: string | null = item.nodeId;
   while (nodeId !== null && !visited.has(nodeId)) {
     visited.add(nodeId);
     const node: IOpenThread["Nodes"][string] | undefined = open.Nodes[nodeId];
-    const attempt = byRoot(nodeId) ?? (node === undefined ? undefined : byRoot(node.rootNodeId));
+    const attempt = ofRun(nodeId) ?? (node === undefined ? undefined : ofRun(node.rootNodeId));
     if (attempt !== undefined)
-      return { Id: attempt.id, Status: attempt.status, CompletedAt: attempt.completedAt ?? null };
+      return { Id: attempt.Id, Status: attempt.Status, CompletedAt: attempt.CompletedAt };
     if (node === undefined) return null;
     nodeId = node.parentNodeId;
   }
@@ -267,6 +283,8 @@ export interface ILatestRun {
   Status: string;
   StartedAt: string | null;
   CompletedAt: string | null;
+  /** The run still counts as active, but its provider turn has ended, as when it waits on subagents. */
+  TurnEnded: boolean;
 }
 
 export interface IResponseInput {
@@ -560,8 +578,7 @@ function steerAnswerIds(entries: ReadonlyArray<IEntryFacts>): Set<string> {
   return ids;
 }
 
-// Follows retainedAssistantReplyEntryIds, without its check for deferred work, which this client
-// doesn't load.
+// Follows retainedAssistantReplyEntryIds.
 function retainedReplies(entries: ReadonlyArray<IEntryFacts>): Set<string> {
   const ids = new Set<string>();
   const lastOutput = new Map<string, IEntryFacts>();
@@ -629,8 +646,7 @@ function attemptFolds(
   return folds;
 }
 
-// Follows timelineRowEntries in MessagesTimeline.logic.ts. The response being answered is the
-// running one, so zen holds back all of its replies but a steer's answer.
+// Follows timelineRowEntries in MessagesTimeline.logic.ts.
 function shownEntries(
   entries: ReadonlyArray<IEntryFacts>,
   visibility: ToolCallVisibility,
@@ -670,7 +686,11 @@ const breaksGroup = (entry: IEntryFacts) => entry.Standalone || entry.Compaction
 export function layoutResponse(input: IResponseInput): ILayoutRow[] {
   const working = input.Working && input.Latest;
   const zen = input.Visibility === "zen";
-  const shown = shownEntries(input.Entries, input.Visibility, working);
+  const shown = shownEntries(
+    input.Entries,
+    input.Visibility,
+    working && input.LatestRun?.TurnEnded !== true,
+  );
   const latestIndex = input.Latest ? shown.length - 1 : -1;
   // A reasoning row that something followed has ended, whatever its status says.
   const entries = shown.map((entry, index) =>

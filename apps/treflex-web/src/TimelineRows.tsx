@@ -949,8 +949,7 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
   );
 }
 
-// Follows ContextCompactionTimelineRow in apps/web/src/components/chat/MessagesTimeline.tsx,
-// without its shimmer while it runs.
+// Follows ContextCompactionTimelineRow in apps/web/src/components/chat/MessagesTimeline.tsx.
 function CompactionDivider(props: { label: string; failure?: string | null; failed?: boolean }) {
   const line = "h-px flex-1 bg-border/70 group-data-failed/divider:bg-destructive/30";
   return (

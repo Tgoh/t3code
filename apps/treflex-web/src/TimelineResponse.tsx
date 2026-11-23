@@ -18,6 +18,7 @@ import {
   Switch,
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import { latestProviderTurnForAttempt } from "@t3tools/contracts";
 
 import Environment from "./Environment";
 import {
@@ -38,6 +39,7 @@ import { SubagentGroup } from "./SubagentRows";
 import ThreadSession from "./ThreadSession";
 import {
   attemptOf,
+  attemptsByRoot,
   entryFacts,
   type IEntryFacts,
   type ILatestRun,
@@ -68,7 +70,10 @@ const sameRun = (left: ILatestRun | null, right: ILatestRun | null) =>
     left.Id === right.Id &&
     left.Status === right.Status &&
     left.StartedAt === right.StartedAt &&
-    left.CompletedAt === right.CompletedAt);
+    left.CompletedAt === right.CompletedAt &&
+    left.TurnEnded === right.TurnEnded);
+
+const ACTIVITY_RUN_STATUSES = new Set(["preparing", "starting", "running", "waiting"]);
 
 const sameKeys = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every((key, index) => key === right[index]);
@@ -80,6 +85,7 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
   const session = ThreadSession.use();
   const environment = Environment.use();
   const owner = getOwner();
+  const byRoot = createMemo(() => attemptsByRoot(thread.state));
   const facts = new Map<string, Accessor<IEntryFacts | null>>();
   const factsOf = (id: string) => {
     let held = facts.get(id);
@@ -90,7 +96,7 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
             const item = timelineItem(thread.state, id);
             return item === undefined || !isRowVisible(thread.state, id)
               ? null
-              : entryFacts(item, attemptOf(thread.state, item));
+              : entryFacts(item, attemptOf(thread.state, byRoot(), item));
           },
           null,
           { equals: sameFacts },
@@ -103,14 +109,22 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
   const latestRun = createMemo<ILatestRun | null>(
     () => {
       const run = thread.latestRun();
-      return run === null
-        ? null
-        : {
-            Id: run.id,
-            Status: run.status,
-            StartedAt: run.startedAt ?? null,
-            CompletedAt: run.completedAt ?? null,
-          };
+      if (run === null) return null;
+      // Follows turnEnded in summarizeThreadRun, packages/client-runtime/src/state/threadExecution.ts.
+      const turn =
+        props.latest && ACTIVITY_RUN_STATUSES.has(run.status)
+          ? latestProviderTurnForAttempt(
+              Object.values(thread.state.ProviderTurns),
+              run.activeAttemptId as never,
+            )
+          : undefined;
+      return {
+        Id: run.id,
+        Status: run.status,
+        StartedAt: run.startedAt ?? null,
+        CompletedAt: run.completedAt ?? null,
+        TurnEnded: turn !== undefined && turn.status !== "pending" && turn.status !== "running",
+      };
     },
     null,
     { equals: sameRun },

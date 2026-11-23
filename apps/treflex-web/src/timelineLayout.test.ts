@@ -71,8 +71,15 @@ const settled: ILatestRun = {
   Status: "completed",
   StartedAt: at(0),
   CompletedAt: at(15),
+  TurnEnded: false,
 };
-const running: ILatestRun = { Id: "run-1", Status: "running", StartedAt: at(0), CompletedAt: null };
+const running: ILatestRun = {
+  Id: "run-1",
+  Status: "running",
+  StartedAt: at(0),
+  CompletedAt: null,
+  TurnEnded: false,
+};
 
 function layout(
   items: IWireTurnItem[],
@@ -361,9 +368,14 @@ describe("the tool calls in chat setting", () => {
     expect(shape(layout(zen, { visibility: "zen" }))).toEqual(["u", "e", "a2 +meta"]);
   });
 
-  it("in zen holds back the running turn's replies until it settles", () => {
+  it("in zen holds back the running turn's replies until its provider turn ends", () => {
     const live = [user("u", 0), command("c1", 1), reply("a", 2)];
     expect(shape(layout(live, { visibility: "zen", run: running, working: true }))).toEqual(["u"]);
+    const waiting = { ...running, TurnEnded: true };
+    expect(shape(layout(live, { visibility: "zen", run: waiting, working: true }))).toEqual([
+      "u",
+      "a",
+    ]);
   });
 });
 

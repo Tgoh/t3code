@@ -37,7 +37,6 @@ export const INSPECTED_TYPES = new Set<IWireTurnItem["type"]>([
 
 const MONO = "font-mono text-[11px] leading-relaxed wrap-anywhere whitespace-pre-wrap select-text";
 
-// Highlights once the grammar loads, showing the plain text until then, as stock's Suspense does.
 function HighlightedText(props: { text: string; language: string }) {
   const environment = Environment.use();
   const [loads, setLoads] = createSignal(0);
@@ -84,8 +83,7 @@ function StructuredValue(props: {
   );
 }
 
-// Follows ShellCommandBlock in apps/web/src/components/chat/ShellCommandBlock.tsx, without its
-// embedded-script grammars.
+// Follows ShellCommandBlock in apps/web/src/components/chat/ShellCommandBlock.tsx.
 function ShellCommand(props: { command: string }) {
   const code = () => withVisibleControlCharacters(props.command.trim());
   return (
@@ -188,8 +186,7 @@ const webHref = (url: string | undefined) =>
   url !== undefined && /^https?:\/\//iu.test(url) ? url : null;
 
 /**
- * Follows V2ItemInspector in apps/web/src/components/chat/V2ItemInspector.tsx. A file change's
- * diff opens from the row's View diff, so it has no Open diff of its own.
+ * Follows V2ItemInspector in apps/web/src/components/chat/V2ItemInspector.tsx.
  */
 export function ToolInspector(props: {
   id: string;
