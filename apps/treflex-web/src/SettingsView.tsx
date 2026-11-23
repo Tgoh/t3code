@@ -1018,7 +1018,12 @@ const ProjectsPage = Shell.provider(() => {
                     value={current.title}
                     onCommit={(next) => {
                       const title = next.trim();
-                      if (title && title !== current.title) {
+                      if (title === "") {
+                        toastManager.add({
+                          type: "warning",
+                          title: "Project title cannot be empty",
+                        });
+                      } else if (title !== current.title) {
                         void environment.projectCommand(current.id, {
                           Kind: "rename",
                           Title: title,

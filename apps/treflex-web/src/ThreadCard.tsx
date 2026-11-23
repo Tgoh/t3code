@@ -50,6 +50,7 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
 } from "./ui/Menu";
+import { toastManager } from "./ui/toastStore";
 import { hoverCard } from "./ui/Tooltip";
 import { longPress, useSidebarSheet } from "./viewport";
 
@@ -258,7 +259,10 @@ export function ThreadCard(props: {
   const renamed = (title: string | null) => {
     props.onRenameEnd();
     const trimmed = title?.trim();
-    if (trimmed && trimmed !== props.thread.title) {
+    // Follows the empty-title warning in apps/web/src/components/Sidebar.tsx.
+    if (trimmed === "")
+      toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
+    else if (trimmed && trimmed !== props.thread.title) {
       environment.threadCommand(props.thread.id, { Kind: "rename", Title: trimmed });
     }
   };
