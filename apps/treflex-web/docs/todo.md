@@ -18,6 +18,7 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
 - **Settings treflex ignores.** Of Tam's picks (2026-11-23), Show skills in slash menu goes with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
+- **A treflex paradigm review after Solid 2.** **In progress** on `treflex/paradigm-review`. Tam asked (2026-11-23) for a whole-client review of anything that breaks treflex's rules, in what lint can't see, and fixes for what it finds.
 - **Local error boundaries.** A view's throw reaches the root `<Errored>` (`index.tsx`, `ViewCrash.tsx`) and replaces the whole app, as stock's root `errorComponent` (`apps/web/src/routes/__root.tsx`) does. Stock also catches render errors locally with `RenderErrorBoundary` fallbacks around `ChatMarkdown`, `ShellCommandBlock`, `HighlightedSearchLine`, `V2ItemInspector`, `MarkdownMermaidCodeBlock` and `SnapShotAttachmentDetails`, so one bad row doesn't take the page down. Add matching `<Errored>` boundaries around the treflex equivalents (`Markdown.tsx`, `CommandOutput.tsx`, `Highlighted.tsx`, `ToolInspector.tsx`), with fallbacks like stock's. Treflex has no Mermaid block or SnapShot attachment yet.
 
 ## 3. Missing features
