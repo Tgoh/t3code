@@ -24,6 +24,12 @@ describe("the timeline window", () => {
     expect(firstAfterChange([], ids(0, 500), 0)).toBe(500 - INITIAL_ROWS);
   });
 
+  it("opens far enough up to hold a saved anchor, or on the tail when the anchor isn't loaded", () => {
+    expect(firstAfterChange([], ids(0, 500), 0, "r100")).toBe(100);
+    expect(firstAfterChange([], ids(0, 500), 0, "r480")).toBe(500 - INITIAL_ROWS);
+    expect(firstAfterChange([], ids(0, 500), 0, "gone")).toBe(500 - INITIAL_ROWS);
+  });
+
   it("keeps its top row through appends, inserts and removals", () => {
     const before = ids(0, 100);
     expect(firstAfterChange(before, ids(0, 101), 40)).toBe(40);

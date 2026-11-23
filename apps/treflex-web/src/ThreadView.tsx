@@ -30,7 +30,7 @@ import { closeTerminal, openTerminal, toggleTerminal } from "./Terminal";
 import { TerminalPanel } from "./TerminalPanel";
 import { DetailsSurface, ThreadDetailsCard } from "./ThreadDetailsPanel";
 import { detailsLayout } from "./threadDetailsLayout";
-import ThreadSession from "./ThreadSession";
+import ThreadSession, { type IThreadSession } from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
 import { TimelineResponse } from "./TimelineResponse";
 import { RewindDialog } from "./TimelineRows";
@@ -266,7 +266,8 @@ const ThreadBody = ThreadSession.provider(() => {
       Run: () => void environment.toggleViewportDebug(),
     },
   ];
-  const [stuck, setStuck] = createSignal(true);
+  const saved = untrack(() => session.state.Scroll);
+  const [stuck, setStuck] = createSignal(saved === null);
   const position = (): IScrollPosition => ({
     Top: scroller.scrollTop,
     Height: scroller.scrollHeight,
@@ -339,7 +340,7 @@ const ThreadBody = ThreadSession.provider(() => {
   createComputed(() => {
     const ids = thread.timelineIds();
     const held = untrack(timeline);
-    const moved = firstAfterChange(held.Ids, ids, held.First);
+    const moved = firstAfterChange(held.Ids, ids, held.First, saved?.RowId ?? null);
     const isStuck = untrack(stuck);
     const first = snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved);
     if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
@@ -382,9 +383,65 @@ const ThreadBody = ThreadSession.provider(() => {
       (target ?? scroller).focus();
     });
   };
+  // The response at the view's top, and how far its start sits above the view's top.
+  const readingAt = (): IThreadSession["Scroll"] => {
+    const top = scroller.getBoundingClientRect().top;
+    const markers = content.querySelectorAll<HTMLElement>("[data-response]");
+    let low = 0;
+    let high = markers.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (markers[middle]!.getBoundingClientRect().top > top) high = middle;
+      else low = middle + 1;
+    }
+    const marker = markers[Math.max(0, low - 1)];
+    return marker?.dataset.response === undefined
+      ? null
+      : {
+          RowId: marker.dataset.response,
+          Offset: Math.round(marker.getBoundingClientRect().top - top),
+        };
+  };
+  let remembered = saved;
+  const remember = () => {
+    const scroll = stuck() ? null : readingAt();
+    if (scroll?.RowId === remembered?.RowId && scroll?.Offset === remembered?.Offset) return;
+    remembered = scroll;
+    void session.rememberScroll(scroll);
+  };
+  // A return to a thread read up in its history puts that place back once its rows are shown.
+  // History pages the server sent before the thread expired aren't fetched again, so a place
+  // in them is gone and the return follows the end instead.
+  let restoring = saved !== null;
+  // Rows below the place can still be growing when it's put back, which clamps the scroll short,
+  // so it's put back again as they grow, until the reader scrolls.
+  let holding: HTMLElement | null = null;
+  const putBack = () => {
+    if (holding === null || saved === null || !holding.isConnected) return;
+    scroller.scrollBy(
+      0,
+      holding.getBoundingClientRect().top - scroller.getBoundingClientRect().top - saved.Offset,
+    );
+    lastPosition = position();
+  };
+  const release = () => (holding = null);
+  createEffect(() => {
+    if (!restoring || saved === null) return;
+    if (responses()?.Starts.includes(saved.RowId)) {
+      holding = content.querySelector(`[data-response="${CSS.escape(saved.RowId)}"]`);
+      if (holding === null) return;
+      restoring = false;
+      putBack();
+    } else if (thread.threadSynchronized() && timeline().Ids.length > 0) {
+      restoring = false;
+      setStuck(true);
+      scrollToEnd();
+    }
+  });
   onMount(() => {
     const observer = new ResizeObserver(() => {
       if (stuck()) scrollToEnd();
+      else putBack();
     });
     observer.observe(content);
     const laneObserver = new ResizeObserver(() => {
@@ -496,19 +553,26 @@ const ThreadBody = ThreadSession.provider(() => {
               if (follow === "stick") setStuck(true);
               else if (follow === "detach") setStuck(false);
               lastPosition = next;
+              if (!restoring) remember();
             }}
             onWheel={(event) => {
+              release();
               if (event.deltaY < 0 && scroller.scrollTop > 0) setStuck(false);
             }}
             onKeyDown={(event) => {
+              release();
               if (SCROLL_UP_KEYS.has(event.key) && scroller.scrollTop > 0) setStuck(false);
             }}
-            onTouchStart={() => (touching = true)}
+            onTouchStart={() => {
+              release();
+              touching = true;
+            }}
             onTouchEnd={() => (touching = false)}
             onTouchCancel={() => (touching = false)}
             onPointerDown={(event) => {
               // A press on the scroller itself, not on a row, is its scrollbar.
               if (event.target !== scroller) return;
+              release();
               dragging = true;
               document.addEventListener("pointerup", () => (dragging = false), { once: true });
             }}
@@ -535,10 +599,13 @@ const ThreadBody = ThreadSession.provider(() => {
               </div>
               <For each={responses()?.Starts}>
                 {(start) => (
-                  <TimelineResponse
-                    ids={responses()?.Segments[start] ?? []}
-                    latest={start === lastStart()}
-                  />
+                  <>
+                    <span class="block h-0" data-response={start} />
+                    <TimelineResponse
+                      ids={responses()?.Segments[start] ?? []}
+                      latest={start === lastStart()}
+                    />
+                  </>
                 )}
               </For>
               <For each={thread.pendingApprovalIds()}>

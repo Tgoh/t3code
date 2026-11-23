@@ -225,6 +225,11 @@ export interface IThreadSession extends IEntity {
   ToolDetails: Record<string, IToolDetail>;
   /** Code blocks the person turned wrapping off for, by block key. */
   UnwrappedCode: Record<string, true>;
+  /**
+   * Where the reader left the timeline: the response row at the top of the view and how far its
+   * top sat from the view's top, or null at the end, which a return follows to the newest row.
+   */
+  Scroll: { RowId: string; Offset: number } | null;
 }
 
 export function getDefaultThreadSession(
@@ -252,6 +257,7 @@ export function getDefaultThreadSession(
     CommandOutputs: {},
     ToolDetails: {},
     UnwrappedCode: {},
+    Scroll: null,
     Details: null,
   };
 }
@@ -1431,6 +1437,13 @@ export function* reattachThread(draft: IThreadSession): IActionGenerator {
 }
 
 /** Code blocks wrap their lines until the person turns it off. */
+export function* rememberScroll(
+  draft: IThreadSession,
+  scroll: IThreadSession["Scroll"],
+): IActionGenerator {
+  draft.Scroll = scroll;
+}
+
 export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActionGenerator {
   if (draft.UnwrappedCode[blockKey]) delete draft.UnwrappedCode[blockKey];
   else draft.UnwrappedCode[blockKey] = true;
@@ -1614,6 +1627,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     toggleRowExpanded,
     sendAppMessage,
     toggleCodeWrap,
+    rememberScroll,
     openDiff,
     closeDiff,
     toggleDetails,
