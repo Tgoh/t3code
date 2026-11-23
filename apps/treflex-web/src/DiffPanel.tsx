@@ -23,6 +23,7 @@ import {
   Columns2,
   FileDiff,
   Pilcrow,
+  Plus,
   Rows3,
   TextWrap,
 } from "./icons";
@@ -281,6 +282,15 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
           <FileDiff />
           Diff
         </span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Add panel surface"
+          data-tip="Add panel surface"
+          onClick={() => session.openLauncher()}
+        >
+          <Plus />
+        </Button>
       </PanelHeader>
       <div
         class="@container/diff-header flex h-10 min-h-10 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4"

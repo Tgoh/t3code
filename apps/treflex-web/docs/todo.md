@@ -30,14 +30,14 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
     - the side chat header's "Add to chat" and Delete;
     - `/side` and `/btw`;
     - the read-only bar's live status line (stock's `formatProviderSubagentStatus`), and the pane's "Subagent of" and "Context from" dividers;
-    - tabs, so several side threads stay open beside the diff;
-    - keeping the open side thread across a reload, as stock's `rightPanelStore` does;
+    - tabs and keeping the open side thread across a reload, under "Multi-surface right panel tabs";
     - forgetting the session of a side chat that was deleted unused, which stays until reload.
 - **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot with the Show skills in slash menu setting, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
 - **Timeline rows.** **In progress** on `treflex/timeline-rows`. Compaction dividers and `/compact` turns, superseded-attempt folds, the tool-call visibility setting, viewed-image strips, the "Waiting on N subagents" label and stock's per-tool detail in expanded rows. See the "Timeline" entries under "Unmatched against the stock UI".
 - **Sidebar.** **In progress** on `treflex/sidebar-features`, with the Archive confirmation. Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.
 - **Thread details and git.** Context and usage rows, environment and worktree pickers, git progress phases and hook output, View PR, Initialize Git and Publish repository. See "Thread details" and "Thread details, git".
-- **Diff panel.** The right panel's tabs and maximize, so the diff stays open beside a side chat. The Commits submenu, the base ref picker, the file tree, hide test files, lazy loading of large Git diffs, and the rewind dialog's "Revert repositories too". See the "Diff panel", "Right panel" and "Rewind" entries.
+- **Multi-surface right panel tabs.** Stock's tab strip (`RightPanelTabs.tsx`, `rightPanelStore.ts`): the diff, side threads and other surfaces open as tabs side by side, with "+", maximize and reordering, and the open tabs and side thread kept across a reload. See "Right panel: … No tabs or maximize".
+- **Diff panel.** The Commits submenu, the base ref picker, the file tree, hide test files and lazy loading of large Git diffs. See the "Diff panel" entries.
 - **Terminal.** **In progress** on `treflex/terminal`. Tabs and splits, a resizable drawer, links, search and a restart button for an exited shell. See the terminal entries under "Skipped for the prototype".
 - **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables. Tam picks the order. The file preview brings stock's copy button with it (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header); until a preview exists, a file attachment opens in a new browser tab.
 - **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.

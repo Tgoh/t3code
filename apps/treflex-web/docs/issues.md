@@ -187,7 +187,6 @@ The timeline doesn't hold every request's item. A bounded snapshot keeps a pendi
 - Diff panel: hiding whitespace is held per open panel and carried to the next scope, where stock holds one choice for the browser session. The turn picker lists turns whose checkpoints the loaded history window holds, so older turns appear once their history pages load.
 - Diff panel: picking Latest turn keeps following each newer turn as it lands, where stock pins the turn that was latest when picked.
 - Diff panel: the Git scopes can't expand the unchanged lines between hunks, since stock's `loadDiffFiles` (`reviewEnvironment.diffFileContents`) and `compactPartialHunkOffsets` aren't ported.
-- Rewind: the dialog has no "Revert repositories too" variant for a worktree thread whose project folder has no snapshot (`rewindFileRestore` in `packages/client-runtime/src/state/threadRepositories.ts`, with the task folder query in `ChatOverlayHosts.tsx`).
 - Terminal drawer: fixed height with no resize, tabs or splits; the emulator is xterm, so glyph rendering differs from stock's.
 
 ## Unmatched: settings and usage

@@ -649,7 +649,7 @@ const ThreadBody = ThreadSession.provider(() => {
     const held = session.state.Panels.Side;
     return held === null ? null : (environment.state.Replica.OpenThreads[held.ThreadId] ?? null);
   };
-  const launcherOpen = () => session.state.Panels.Launcher.Open && !diffOpen();
+  const launcherOpen = () => session.state.Panels.Launcher.Open;
   const rightPanelOpen = () => diffOpen() || side() !== null || launcherOpen();
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
   const [panelMotion, setPanelMotion] = createSignal(false);
@@ -824,7 +824,7 @@ const ThreadBody = ThreadSession.provider(() => {
               />
             }
           >
-            <Match when={session.state.Panels.Diff} keyed>
+            <Match when={!launcherOpen() && session.state.Panels.Diff} keyed>
               {(panel) => <DiffPanel panel={panel} />}
             </Match>
             <Match when={side()} keyed>

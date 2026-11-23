@@ -13,6 +13,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-workflows";
 import { COMPACT_COMMAND_PATTERN } from "@t3tools/client-runtime/state/context-window";
 import { sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
+import { rewindFileRestore } from "@t3tools/client-runtime/state/thread-repositories";
 import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS, type ProjectScript } from "@t3tools/contracts";
 import {
   answer,
@@ -62,6 +63,7 @@ import {
   rewindEffect,
   startTurnEffect,
   stopThreadEffect,
+  taskFolderEffect,
   threadCommandEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
@@ -1116,10 +1118,13 @@ const EMPTY_TARGETS: Record<string, number> = {};
 
 export type IRewindChoice = "keepChanges" | "restoreFiles";
 
+/** What "Revert files too" can restore on disk: every file, only the repositories, or nothing. */
+export type IFileRestore = "files" | "repositories" | null;
+
 export interface IRewindConfirm {
   Path: "Rewind/Confirm";
   TurnCount: number;
-  CanRestoreFiles: boolean;
+  FileRestore: IFileRestore;
 }
 
 interface IRewindLanding {
@@ -1163,11 +1168,34 @@ export function* revertTargets(draft: IThreadSession): ISelectorGenerator<Record
 }
 
 // Follows RevertConfirmHost in apps/web/src/components/chat/ChatOverlayHosts.tsx: the server
-// refuses file restore outside an isolated worktree.
-function* canRestoreFiles(draft: IThreadSession, turnCount: number): ISelectorGenerator<boolean> {
+// refuses file restore outside an isolated worktree, and only a missing snapshot needs the task
+// folder, whose repositories may still restore.
+function* taskFolderToCheck(
+  draft: IThreadSession,
+  turnCount: number,
+): ISelectorGenerator<string | null> {
   const thread = yield* openThreadOf(draft);
-  if (thread?.Thread == null || thread.Thread.worktreePath === null) return false;
-  return findRevertCheckpoint(thread, turnCount)?.status === "ready";
+  const worktreePath = thread?.Thread?.worktreePath ?? null;
+  if (thread === undefined || worktreePath === null) return null;
+  return findRevertCheckpoint(thread, turnCount)?.status === "missing" ? worktreePath : null;
+}
+
+function* fileRestore(
+  draft: IThreadSession,
+  turnCount: number,
+  projectIsWorktree: boolean | null | undefined,
+): ISelectorGenerator<IFileRestore> {
+  const thread = yield* openThreadOf(draft);
+  if (thread?.Thread == null || thread.Thread.worktreePath === null) return null;
+  return rewindFileRestore({
+    projection: {
+      checkpoints: Object.values(thread.Checkpoints),
+      checkpointScopes: Object.values(thread.CheckpointScopes),
+    } as never,
+    checkpoint: findRevertCheckpoint(thread, turnCount),
+    taskFolder:
+      projectIsWorktree == null ? projectIsWorktree : { projectIsWorktree: projectIsWorktree },
+  });
 }
 
 interface IRewindPlan {
@@ -1239,10 +1267,25 @@ export function* editFromHere(
     draft.RewindError = "Interrupt the current turn before reverting checkpoints.";
     return false;
   }
+  const taskFolderPath = yield* select((held: IThreadSession) =>
+    taskFolderToCheck(held, turnCount),
+  );
+  let projectIsWorktree: boolean | null | undefined;
+  if (taskFolderPath !== null) {
+    try {
+      projectIsWorktree = yield* open(
+        taskFolderEffect({ EnvironmentId: draft.EnvironmentId, WorktreePath: taskFolderPath }),
+      );
+    } catch (error) {
+      serverError(error);
+    }
+  }
   const confirm: IRewindConfirm = {
     Path: "Rewind/Confirm",
     TurnCount: turnCount,
-    CanRestoreFiles: yield* select((held: IThreadSession) => canRestoreFiles(held, turnCount)),
+    FileRestore: yield* select((held: IThreadSession) =>
+      fileRestore(held, turnCount, projectIsWorktree),
+    ),
   };
   const choice = yield* open(ask<IRewindChoice>(draft, confirm));
   if (choice === undefined) return false;
@@ -1860,12 +1903,18 @@ export function* toggleRightPanel(draft: IThreadSession): IActionGenerator {
   draft.Panels.Launcher.Open = !draft.Panels.Launcher.Open;
 }
 
+/** The diff header's "+", which shows the launcher over the diff, as stock's new tab does. */
+export function* openLauncher(draft: IThreadSession): IActionGenerator {
+  draft.Panels.Launcher.Open = true;
+}
+
 export function* closeLauncher(draft: IThreadSession): IActionGenerator {
   draft.Panels.Launcher.Open = false;
 }
 
 export function* closeRightPanel(draft: IThreadSession): IActionGenerator {
-  if (draft.Panels.Diff !== null) yield* closeDiff(draft);
+  if (draft.Panels.Launcher.Open) draft.Panels.Launcher.Open = false;
+  else if (draft.Panels.Diff !== null) yield* closeDiff(draft);
   else if (draft.Panels.Side !== null) yield* hideSide(draft, true);
   else draft.Panels.Launcher.Open = false;
 }
@@ -1957,6 +2006,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     fitDetails,
     toggleRightPanel,
     closeRightPanel,
+    openLauncher,
     closeLauncher,
     runScript,
     saveScripts,

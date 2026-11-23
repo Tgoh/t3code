@@ -682,18 +682,26 @@ export function RewindDialog() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Edit from here?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Rewind chat to before this message. Your prompt and attachments return to the
-                  composer. “Revert files too” also undoes your own edits.
+                  <Show
+                    when={entry().Request.FileRestore === "repositories"}
+                    fallback="Rewind chat to before this message. Your prompt and attachments return to the composer. “Revert files too” also undoes your own edits."
+                  >
+                    Rewind chat to before this message. Your prompt and attachments return to the
+                    composer. “Revert repositories too” also undoes your own edits in this thread’s
+                    repository worktrees. Files in the project folder itself stay as they are.
+                  </Show>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogClose variant="outline">Cancel</AlertDialogClose>
                 <Button
                   variant="destructive-outline"
-                  disabled={!entry().Request.CanRestoreFiles}
+                  disabled={entry().Request.FileRestore === null}
                   onClick={() => choose("restoreFiles")}
                 >
-                  Revert files too
+                  {entry().Request.FileRestore === "repositories"
+                    ? "Revert repositories too"
+                    : "Revert files too"}
                 </Button>
                 <Button onClick={() => choose("keepChanges")}>Revert and keep changes</Button>
               </AlertDialogFooter>

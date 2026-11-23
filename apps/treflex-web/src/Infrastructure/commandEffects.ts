@@ -355,6 +355,15 @@ export const openInEditorEffect = defineEffect<IOpenInEditorEffect, string>("ope
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, ITurnDiff>("threadDiff");
 
+interface ITaskFolderEffect extends IEffect {
+  Type: "taskFolder";
+  EnvironmentId: string;
+  WorktreePath: string;
+}
+
+/** Whether the task folder's project folder is itself a worktree; null with no task folder. */
+export const taskFolderEffect = defineEffect<ITaskFolderEffect, boolean | null>("taskFolder");
+
 /** What an MCP app asks of the server, on behalf of the tool call that opened it. */
 export type IMcpAppRequest =
   | { Kind: "toolInfo"; Name: string }

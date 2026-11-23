@@ -178,6 +178,8 @@ import {
   chooseRewind,
   closeDetailsPopover,
   closeDiff,
+  closeRightPanel,
+  openLauncher,
   editFromHere,
   forkFromRun,
   type IRewindChoice,
@@ -4931,6 +4933,12 @@ describe("diffs", () => {
       Text: "branch patch",
       BaseRef: "origin/main",
     });
+    // The diff header's "+" shows the launcher over the diff; closing it goes back to the diff.
+    await server.runtime.dispatch(openLauncher, server.sessionId());
+    expect(panels().Launcher.Open).toBe(true);
+    await server.runtime.dispatch(closeRightPanel, server.sessionId());
+    expect(panels().Launcher.Open).toBe(false);
+    expect(panels().Diff).not.toBeNull();
     await server.runtime.dispatch(toggleRightPanel, server.sessionId());
     expect(panels().Diff).toBeNull();
     expect(panels().Launcher.Open).toBe(false);
@@ -6003,7 +6011,7 @@ describe("rewinding and forking", () => {
     expect(rig.confirm()?.Request).toEqual({
       Path: "Rewind/Confirm",
       TurnCount: 1,
-      CanRestoreFiles: false,
+      FileRestore: null,
     });
     await rig.choose("keepChanges");
     expect(rig.rewinds).toMatchObject([
@@ -6083,6 +6091,54 @@ describe("rewinding and forking", () => {
     expect(session().RewindError).toBe(
       "This provider does not support reverting conversation history. Start a new thread instead.",
     );
+  });
+
+  it("offers to revert only the repositories of a task folder whose project folder has no snapshot", async () => {
+    const asked: string[] = [];
+    const rig = await rewindServer(undefined, {
+      taskFolder: (effect: { WorktreePath: string }) => {
+        asked.push(effect.WorktreePath);
+        return false;
+      },
+    });
+    await rig.deliver("thread.metadata-updated", {
+      ...rig.thread(),
+      worktreePath: "C:/tasks/one/project",
+    });
+    await rig.deliver("checkpoint.captured", {
+      id: "cp-1",
+      scopeId: "scope-1",
+      runId: "run-1",
+      appRunOrdinal: 1,
+      ordinalWithinScope: 1,
+      status: "missing",
+      files: [],
+    });
+    await rig.deliver("checkpoint-scope.created", {
+      id: "scope-repo",
+      parentScopeId: "scope-1",
+      cwd: "C:/tasks/one/repo",
+      repositoryPath: "C:/work/repo",
+    });
+    await rig.deliver("checkpoint.captured", {
+      id: "cp-repo-1",
+      scopeId: "scope-repo",
+      runId: "run-1",
+      appRunOrdinal: null,
+      ordinalWithinScope: 1,
+      status: "ready",
+      files: [],
+    });
+    const editing = rig.editFrom("user-2", 1);
+    await settled();
+    expect(asked).toEqual(["C:/tasks/one/project"]);
+    expect(rig.confirm()?.Request).toMatchObject({ FileRestore: "repositories" });
+    await rig.choose("restoreFiles");
+    expect(rig.rewinds).toMatchObject([
+      { RestoreFiles: true, Checkpoint: { Id: "cp-1", ScopeId: "scope-1" } },
+    ]);
+    await rig.land(rig.rewinds[0]!.CommandId);
+    expect(await editing).toBe(true);
   });
 
   it("fork from a response creates the fork and opens it", async () => {

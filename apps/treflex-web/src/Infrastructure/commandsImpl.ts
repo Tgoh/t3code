@@ -84,6 +84,7 @@ import {
   startTurnEffect,
   stopThreadEffect,
   threadCommandEffect,
+  taskFolderEffect,
   threadDiffEffect,
   threadTitlesEffect,
   turnItemEffect,
@@ -543,6 +544,15 @@ export const threadDiffImpl = implementation(threadDiffEffect, async (input, act
     Diff: result.diff,
     Repositories: (result.repositories ?? []).map((repository) => ({ ...repository })),
   };
+});
+
+export const taskFolderImpl = implementation(taskFolderEffect, async (input, action) => {
+  const { taskFolder } = await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.workspaceTaskFolder, { worktreePath: input.WorktreePath }),
+    action?.signal,
+  );
+  return taskFolder === null ? null : taskFolder.projectIsWorktree;
 });
 
 const encodeTurnItem = Schema.encodeSync(wireCodec(OrchestrationV2TurnItem));

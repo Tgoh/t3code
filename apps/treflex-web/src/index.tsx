@@ -43,6 +43,7 @@ import {
   stopThreadImpl,
   projectCommandImpl,
   threadCommandImpl,
+  taskFolderImpl,
   threadDiffImpl,
   turnItemImpl,
   mcpAppImpl,
@@ -124,6 +125,7 @@ runtime.registerImplementation(openInFileManagerImpl);
 runtime.registerImplementation(openInEditorImpl);
 runtime.registerImplementation(threadCommandImpl);
 runtime.registerImplementation(threadDiffImpl);
+runtime.registerImplementation(taskFolderImpl);
 runtime.registerImplementation(turnItemImpl);
 runtime.registerImplementation(mcpAppImpl);
 runtime.registerImplementation(assetUrlImpl);
