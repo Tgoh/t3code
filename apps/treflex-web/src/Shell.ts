@@ -32,7 +32,22 @@ import {
   threadCommandEffect,
   withCommandId,
 } from "./Infrastructure/commandEffects";
+import type { IShownNotification } from "./Infrastructure/notifications";
+import { clockNowEffect } from "./Infrastructure/preferences";
+import {
+  emptyNotifyGate,
+  type INotifyGate,
+  type IThreadNotification,
+  nextRelease,
+  notificationTitle,
+  observeNotifications,
+  pauseNotifications,
+  releaseNotifications,
+  threadNotificationTag,
+} from "./threadNotifications";
+import type { ISelection } from "./ThreadSession";
 import { serverError } from "./Infrastructure/serverError";
+import { expireInbox, type IInbox, type IInboxFacts, inboxDeadline, observeInbox } from "./inbox";
 import { faviconKey, faviconTarget, type IProjectFaviconTarget } from "./projectIcon";
 import type {
   IWireProject,
@@ -49,8 +64,12 @@ declare module "treflex" {
   }
   interface ITimerRegistry {
     "Shell/Reopen": {};
+    "Shell/InboxGrace": {};
+    "Shell/NotifyRelease": {};
   }
   interface IMessageRegistry {
+    /** Thread status changes that Thread notifications announce, for the environment to show. */
+    "Shell/Notify": { Notes: IShownNotification[] };
     /** Thread rows left the shell, so an open thread's lineage may need their titles looked up. */
     "Shell/ThreadsDropped": {};
     "Shell/ProjectsChanged": {};
@@ -295,17 +314,28 @@ const PROJECT_ITEMS = new Set<IWireShellItem["kind"]>([
   "project.removed",
 ]);
 
+const THREAD_ITEMS = new Set<IWireShellItem["kind"]>([
+  "snapshot",
+  "thread.updated",
+  "thread.removed",
+]);
+
 export const ShellReceiver = receiver<IShell>("ShellReceiver")({
   *"Shell/Stream"(draft, message) {
     if (isEnded(message)) {
       (yield* streamState(draft)).Synchronized = false;
+      yield* pauseNotify(draft);
       // A batch the receiver failed would fail again on every reopen.
       if (message.$Ended.Reason !== "receiver-failed") yield* reopenLater(draft);
       return;
     }
-    if (!("Item" in message)) (yield* streamState(draft)).Synchronized = false;
-    else if (message.Item.kind === "synchronized") {
+    if (!("Item" in message)) {
+      (yield* streamState(draft)).Synchronized = false;
+      yield* pauseNotify(draft);
+    } else if (message.Item.kind === "synchronized") {
       (yield* streamState(draft)).Synchronized = true;
+      yield* followInbox(draft);
+      yield* notifyChanges(draft);
       if ((yield* lastVisit(draft)).Unconfirmed !== null)
         yield* start(visitShown, draft, { Retry: true });
     } else {
@@ -318,12 +348,28 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
         yield* publishToNearest(draft, "Shell/ThreadsDropped");
       if (PROJECT_ITEMS.has(message.Item.kind))
         yield* publishToNearest(draft, "Shell/ProjectsChanged");
+      if (THREAD_ITEMS.has(message.Item.kind)) {
+        yield* followInbox(draft);
+        yield* notifyChanges(draft);
+      }
       yield* visitIfDue(draft);
     }
   },
   *"Shell/Reopen"(draft) {
     yield* stopTimer(draft, "Shell/Reopen");
     yield* openShellStream(draft);
+  },
+  *"Shell/NotifyRelease"(draft) {
+    const now = yield* clockNowEffect();
+    const gate = yield* notifyGateOf(draft);
+    yield* announce(draft, releaseNotifications(gate, now));
+    yield* scheduleNotify(draft, gate, now);
+  },
+  *"Shell/InboxGrace"(draft) {
+    const now = yield* clockNowEffect();
+    const inbox = yield* inboxOf(draft);
+    expireInbox(inbox, now);
+    yield* scheduleInbox(draft, inbox, now);
   },
 });
 
@@ -442,7 +488,7 @@ export function* subagentRequests(
   return Object.keys(requests).length === 0 ? NO_SUBAGENT_REQUESTS : requests;
 }
 
-function runCompletedAt(thread: IWireThreadShell): string | null {
+export function runCompletedAt(thread: IWireThreadShell): string | null {
   if (thread.latestRunCompletedAt !== undefined) return thread.latestRunCompletedAt;
   const status = thread.status;
   return status === "idle" ||
@@ -456,7 +502,7 @@ function runCompletedAt(thread: IWireThreadShell): string | null {
 }
 
 // Follows shellRuntime in packages/client-runtime/src/state/models.ts.
-function runtimeStatus(thread: IWireThreadShell): IWireThreadShell["status"] | null {
+export function runtimeStatus(thread: IWireThreadShell): IWireThreadShell["status"] | null {
   const parkAtIdle =
     backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) &&
     thread.status !== "failed";
@@ -525,8 +571,168 @@ export function sidebarStatus(
 export interface ISidebarSections {
   Pinned: IWireThreadShell[];
   Active: IWireThreadShell[];
+  /** Filled only while the Working section is on. */
+  Working: IWireThreadShell[];
   Snoozed: IWireThreadShell[];
   Settled: IWireThreadShell[];
+}
+
+const ACTIVE_RUN = new Set(["preparing", "queued", "starting", "running", "waiting"]);
+
+// Follows isThreadWorking in packages/client-runtime/src/state/threadInbox.ts.
+export function threadWorking(
+  thread: IWireThreadShell,
+  subagent: ISubagentRequest | undefined,
+): boolean {
+  const request = thread.pendingRuntimeRequest;
+  if (request !== null && request.kind !== "auth_refresh") return false;
+  if (subagent !== undefined) return false;
+  const runtime = runtimeStatus(thread);
+  if (runtime === null || (!ACTIVE_RUN.has(runtime) && runtime !== "idle")) return false;
+  const runSettled =
+    thread.latestRunId !== null &&
+    !ACTIVE_RUN.has(thread.status) &&
+    thread.activeRunId !== thread.latestRunId;
+  return !(thread.interactionMode === "plan" && thread.hasActionableProposedPlan && runSettled);
+}
+
+// Follows the `actionable`, `excluded` and `placement` checks of createInboxReturnTracker in
+// packages/client-runtime/src/state/threadInbox.ts.
+function inboxFacts(
+  thread: IWireThreadShell,
+  subagent: ISubagentRequest | undefined,
+  now: number,
+  wasWorking: boolean,
+): IInboxFacts {
+  const request = thread.pendingRuntimeRequest;
+  const ended = runCompletedAt(thread);
+  const endedAt = ended === null ? NaN : Date.parse(ended);
+  const working = threadWorking(thread, subagent);
+  return {
+    Id: thread.id,
+    Working: working,
+    Actionable:
+      (request !== null && request.kind !== "auth_refresh") ||
+      subagent !== undefined ||
+      (thread.pendingGuestMessageCount ?? 0) > 0 ||
+      (thread.interactionMode === "plan" && thread.hasActionableProposedPlan) ||
+      thread.lastError != null ||
+      (thread.latestRunId !== null && thread.status === "failed"),
+    Excluded:
+      thread.archivedAt != null ||
+      thread.deletedAt != null ||
+      thread.pinnedAt != null ||
+      thread.settledOverride === "settled" ||
+      isSnoozed(thread, now, subagent),
+    Placement:
+      working || wasWorking
+        ? JSON.stringify([
+            thread.archivedAt,
+            thread.deletedAt,
+            thread.pinnedAt,
+            thread.settledOverride,
+            thread.settledAt,
+            thread.snoozedAt,
+            thread.snoozedUntil,
+            thread.activeOrderKey,
+          ])
+        : null,
+    EndedAt: Number.isFinite(endedAt) ? endedAt : null,
+  };
+}
+
+/** Stock's Working section setting, which project folders turn off as its boring sidebar does. */
+export const workingShelfShown = (selection: ISelection | undefined): boolean =>
+  selection !== undefined &&
+  !selection.Preferences.GroupByProject &&
+  (selection.ClientSettings?.sidebarWorkingShelfEnabled ?? true);
+
+const inboxOf = (draft: IShell) =>
+  transient(draft, "Shell/Inbox", { Entries: {}, Returns: {} } as IInbox);
+
+export function* followInbox(draft: IShell): IActionGenerator {
+  const selection = yield* getData(draft, "Selection");
+  const inbox = yield* inboxOf(draft);
+  if (!workingShelfShown(selection)) {
+    if (Object.keys(inbox.Entries).length > 0) {
+      inbox.Entries = {};
+      inbox.Returns = {};
+      yield* stopTimer(draft, "Shell/InboxGrace");
+    }
+    return;
+  }
+  if (!(yield* streamState(draft)).Synchronized) return;
+  const now = yield* clockNowEffect();
+  const subagents = yield* subagentRequests(draft);
+  observeInbox(
+    inbox,
+    Object.values(draft.Threads).map((thread) =>
+      inboxFacts(thread, subagents[thread.id], now, inbox.Entries[thread.id]?.Working === true),
+    ),
+    now,
+  );
+  yield* scheduleInbox(draft, inbox, now);
+}
+
+function* scheduleInbox(draft: IShell, inbox: IInbox, now: number): IActionGenerator {
+  yield* stopTimer(draft, "Shell/InboxGrace");
+  const deadline = inboxDeadline(inbox);
+  if (deadline !== null)
+    yield* startTimer(draft, "Shell/InboxGrace", ShellReceiver, Math.max(0, deadline - now));
+}
+
+// Follows startThreadNotifications in apps/web/src/components/ThreadNotificationCoordinator.tsx.
+const notifyGateOf = (draft: IShell) => transient(draft, "Shell/Notify", emptyNotifyGate());
+
+export function* notifyChanges(draft: IShell): IActionGenerator {
+  const selection = yield* getData(draft, "Selection");
+  const gate = yield* notifyGateOf(draft);
+  if ((selection?.ClientSettings?.notificationMode ?? "off") === "off") {
+    if (Object.keys(gate.Previous).length > 0) Object.assign(gate, emptyNotifyGate());
+    yield* stopTimer(draft, "Shell/NotifyRelease");
+    return;
+  }
+  if (!(yield* streamState(draft)).Synchronized) return;
+  const now = yield* clockNowEffect();
+  const subagents = yield* subagentRequests(draft);
+  yield* announce(draft, observeNotifications(gate, Object.values(draft.Threads), subagents, now));
+  yield* scheduleNotify(draft, gate, now);
+}
+
+function* pauseNotify(draft: IShell): IActionGenerator {
+  pauseNotifications(yield* notifyGateOf(draft));
+  yield* stopTimer(draft, "Shell/NotifyRelease");
+}
+
+function* scheduleNotify(draft: IShell, gate: INotifyGate, now: number): IActionGenerator {
+  yield* stopTimer(draft, "Shell/NotifyRelease");
+  const due = nextRelease(gate);
+  if (due !== null)
+    yield* startTimer(draft, "Shell/NotifyRelease", ShellReceiver, Math.max(0, due - now));
+}
+
+function* announce(draft: IShell, notes: IThreadNotification[]): IActionGenerator {
+  if (notes.length === 0) return;
+  const subagents = yield* subagentRequests(draft);
+  const shown = notes.flatMap((note): IShownNotification[] => {
+    const thread = draft.Threads[note.ThreadId];
+    if (thread === undefined) return [];
+    return [
+      {
+        ThreadId: thread.id,
+        Kind: note.Kind,
+        Title: notificationTitle(note.Kind, thread, subagents[thread.id]),
+        Body: thread.title,
+        Tag: threadNotificationTag(draft.EnvironmentId, thread.id),
+      },
+    ];
+  });
+  if (shown.length > 0) yield* publishToNearest(draft, "Shell/Notify", { Notes: shown });
+}
+
+/** Which threads the Working section holds, with the exit grace stock gives them. */
+export function* shellInbox(draft: IShell): ISelectorGenerator<IInbox> {
+  return yield* inboxOf(draft);
 }
 
 function failureEdgeAt(thread: IWireThreadShell): string | null | undefined {
@@ -646,7 +852,13 @@ export function sidebarSections(
   now: number,
   subagents: Record<string, ISubagentRequest>,
 ): ISidebarSections {
-  const sections: ISidebarSections = { Pinned: [], Active: [], Snoozed: [], Settled: [] };
+  const sections: ISidebarSections = {
+    Pinned: [],
+    Active: [],
+    Working: [],
+    Snoozed: [],
+    Settled: [],
+  };
   for (const thread of threads) {
     if (isSnoozed(thread, now, subagents[thread.id])) sections.Snoozed.push(thread);
     else if (thread.settledOverride === "settled") sections.Settled.push(thread);

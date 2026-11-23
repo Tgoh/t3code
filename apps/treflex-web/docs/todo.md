@@ -17,7 +17,7 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Settings treflex ignores.** **In progress** on `treflex/settings-wiring`. Wire up Tam's picks (2026-11-23) of the settings marked "Not used here yet": Thread notifications, Send shortcut, Time format, Chat width, Word wrap, the Unpin, Archive and Delete confirmations, Working section and Project order. In-app notifications go with Toasts, Tool calls in chat with Timeline rows, and Show skills in slash menu with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
+- **Settings treflex ignores.** Of Tam's picks (2026-11-23), only the Archive confirmation is left: it waits for the archive action in the Sidebar item. In-app notifications go with Toasts, Tool calls in chat with Timeline rows, and Show skills in slash menu with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
 
 ## 3. Missing features
 
@@ -25,11 +25,18 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 - **Toasts: In-app notifications.** **In progress** on `treflex/toasts`. Wire up the In-app notifications setting: a toast with Open thread when another thread finishes, fails or needs input while the app has focus, as stock's `ThreadNotificationCoordinator.tsx` `present` does. It hangs off `treflex/settings-wiring`'s `threadNotifier` and waits for that branch to merge. Also left: stock's invalid-keybindings warning toast (`KeybindingsUpdateToast.tsx`), since nothing in treflex shows `config.issues` yet.
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
-  - **Held send:** Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
-  - **Side chats, subagents and linked threads open beside the thread or in its place,** **In progress** on `treflex/side-chats`. Chosen by a setting, with a modifier-click for the other. `@t3tools/client-runtime/side-thread` is importable.
-  - **A show/hide toggle on secret fields.**
-  - **A thread error banner that can be dismissed and comes back.**
-  - **Copy a chat table as HTML,** and **a copy button on file previews.**
+  - **Held send:** **In progress** on `treflex/stock-picks`. Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
+  - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:
+    - linked-environment threads, which need peer-link reads;
+    - the side chat header's "Add to chat" and Delete;
+    - `/side` and `/btw`;
+    - the read-only bar's live status line (stock's `formatProviderSubagentStatus`), and the pane's "Subagent of" and "Context from" dividers;
+    - tabs, so several side threads stay open beside the diff;
+    - keeping the open side thread across a reload, as stock's `rightPanelStore` does;
+    - forgetting the session of a side chat that was deleted unused, which stays until reload.
+  - **A show/hide toggle on secret fields.** **In progress** on `treflex/stock-picks`.
+  - **A thread error banner that can be dismissed and comes back.** **In progress** on `treflex/stock-picks`.
+  - **Copy a chat table as HTML,** and **a copy button on file previews.** **In progress** on `treflex/stock-picks`.
 - **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot with the Show skills in slash menu setting, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
 - **Timeline rows.** Compaction dividers and `/compact` turns, superseded-attempt folds, the tool-call visibility setting, viewed-image strips, the "Waiting on N subagents" label and stock's per-tool detail in expanded rows. See the "Timeline" entries under "Unmatched against the stock UI".
 - **Sidebar.** Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.

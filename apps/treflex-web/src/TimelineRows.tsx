@@ -148,9 +148,10 @@ function Body(props: {
 }
 
 export function MessageTime(props: { at: string; class?: string }) {
+  const environment = Environment.use();
   return (
-    <span class={props.class} data-tip={fullTimestamp(props.at)}>
-      {dayAwareTimestamp(props.at)}
+    <span class={props.class} data-tip={fullTimestamp(props.at, environment.timestampFormat())}>
+      {dayAwareTimestamp(props.at, environment.timestampFormat())}
     </span>
   );
 }
@@ -625,7 +626,7 @@ function EditFromHere(props: IRowProps) {
           const at = turn();
           if (at === undefined) return;
           void session.editFromHere(props.id, at).then((filled) => {
-            if (filled) focusComposerAtEnd();
+            if (filled) focusComposerAtEnd(session.state.ThreadId);
           });
         }}
       >

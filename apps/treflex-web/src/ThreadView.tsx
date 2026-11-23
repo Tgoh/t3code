@@ -1,3 +1,4 @@
+import { sideThreadComposer, sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
 import { useDispatch, useInFlight, useResource } from "treflex-solid";
 import {
   createComputed,
@@ -5,23 +6,27 @@ import {
   createMemo,
   createSignal,
   For,
+  type JSX,
+  Match,
   on,
   onCleanup,
   onMount,
   Show,
+  Switch,
   untrack,
 } from "solid-js";
 
-import { ProjectBadge } from "./brand";
-import { Composer, COMPOSER_LANE, FileDropSection } from "./Composer";
+import { ProjectBadge, ProviderIcon } from "./brand";
+import { Composer, COMPOSER_LANE, COMPOSER_SURFACE, FileDropSection } from "./Composer";
 import { DiffPanel } from "./DiffPanel";
 import Environment from "./Environment";
 import HistoryWindow, { loadEarlier } from "./HistoryWindow";
 import { type IThreadMenuItem, ThreadMenu, UsageRing } from "./HeaderActions";
-import { ChevronDown } from "./icons";
+import { ArrowUpLeft, ChevronDown, Maximize2 } from "./icons";
 import { useNavigation } from "./navigation";
 import OpenThread, { latestDiffTurn, timelineItem } from "./OpenThread";
 import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
+import { PanelHeader } from "./RightPanel";
 import { runStatus } from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { SurfaceLauncher } from "./SurfaceLauncher";
@@ -157,10 +162,57 @@ function TimelineSentinel(props: {
   );
 }
 
-const ThreadBody = ThreadSession.provider(() => {
+function useTurnState() {
+  const thread = OpenThread.use();
+  return () => {
+    const run = thread.latestRun();
+    const status = run === null ? null : runStatus(run.status);
+    return status === "running" || status === "waiting" ? status : null;
+  };
+}
+
+// Follows ProviderSubagentBar and ReadOnlyComposerBar in apps/web/src/components/chat.
+function ProviderSubagentBar() {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
   const environment = Environment.use();
+  const parentId = () => {
+    const parent = thread.state.Thread?.lineage.parentThreadId ?? null;
+    return parent === environment.state.Local.SelectedThreadId ? null : parent;
+  };
+  return (
+    <div class={COMPOSER_SURFACE}>
+      <div class="flex min-h-12 items-center gap-3 rounded-2xl py-2 ps-5 pe-2 text-sm">
+        <div class="flex min-w-0 flex-1 items-center gap-3">
+          <span class="flex min-w-0 max-w-full items-center gap-2">
+            <ProviderIcon driver={session.effectiveModelDriver()} size={16} />
+            <span class="min-w-0 truncate font-medium text-foreground">
+              {session.effectiveModelName() ?? "Subagent"}
+            </span>
+          </span>
+        </div>
+        <span class="shrink-0 text-muted-foreground">Runs on its own</span>
+        <Show when={parentId()}>
+          {(parent) => (
+            <Button size="sm" variant="ghost" onClick={() => environment.selectThread(parent())}>
+              <ArrowUpLeft />
+              Open parent
+            </Button>
+          )}
+        </Show>
+      </div>
+    </div>
+  );
+}
+
+const ThreadConversation = ThreadSession.provider<{
+  children?: JSX.Element;
+  stageClass?: Record<string, boolean>;
+  stageStyle?: JSX.CSSProperties;
+  onStageSize?: (size: { Width: number; Height: number }) => void;
+}>((props) => {
+  const thread = OpenThread.use();
+  const session = ThreadSession.use();
   const stream = useResource(() => thread.state, "Thread/Stream");
   const retrying = () => {
     const status = stream.status();
@@ -170,102 +222,17 @@ const ThreadBody = ThreadSession.provider(() => {
     const status = stream.status();
     return status.State === "ended" ? status.Reason : null;
   };
-  const turnState = () => {
-    const run = thread.latestRun();
-    const status = run === null ? null : runStatus(run.status);
-    return status === "running" || status === "waiting" ? status : null;
-  };
+  const turnState = useTurnState();
   const checklist = useChecklist(() => turnState() !== null);
-  const dispatch = useDispatch();
-  const onTerminal = (action: typeof openTerminal) =>
-    void dispatch(action, session.state.Terminal.$Id);
-  const terminalOpen = () => session.state.Terminal.Open;
-  const diffOpen = () => session.state.Panels.Diff !== null;
-  const launcherOpen = () => session.state.Panels.Launcher.Open && !diffOpen();
-  const rightPanelOpen = () => diffOpen() || launcherOpen();
-  const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
-  const [panelMotion, setPanelMotion] = createSignal(false);
-  // Late, so panels already open on a thread switch don't slide in again.
-  onMount(() => requestAnimationFrame(() => requestAnimationFrame(() => setPanelMotion(true))));
-  const closeTopSheet = () =>
-    rightPanelOpen() ? void session.closeRightPanel() : onTerminal(closeTerminal);
-  const [stageSize, setStageSize] = createSignal({ Width: 0, Height: 0 });
-  const details = () => session.state.Panels.Details;
-  const layout = createMemo(() =>
-    detailsLayout({
-      ...stageSize(),
-      Padding: 48,
-      MaxChatWidth: 736,
-      Open: environment.state.Local.Preferences.DetailsOpen,
-    }),
-  );
-  // The session toggles the card by whether it fits, which only this view can measure.
-  const measureStage = (size: { Width: number; Height: number }) => {
-    setStageSize(size);
-    if (layout().Inline !== details().Fits) void session.fitDetails(layout().Inline);
-  };
-  const detailsInline = () => layout().Inline && environment.state.Local.Preferences.DetailsOpen;
-  const detailsShown = () => detailsInline() || details().Popover;
-  const navigation = useNavigation();
-  const projectScripts = () => {
-    const projectId = thread.state.Thread?.projectId;
-    return projectId === undefined
-      ? []
-      : (environment.state.Replica.Shell.Projects[projectId]?.scripts ?? []);
-  };
-  const launcher = () =>
-    surfaceActions({
-      TerminalAvailable: session.panels().Terminal,
-      DiffAvailable: session.panels().Details,
-    });
-  const openSurface = (kind: ISurfaceKind) => {
-    if (kind === "terminal") {
-      void session.closeLauncher();
-      onTerminal(openTerminal);
-    } else if (kind === "diff") {
-      void session.openDiff(latestDiffTurn(thread.state) === null ? "branch" : "thread", null);
-    }
+  const readOnly = () => {
+    const kind = sideThreadKindOf(thread.state.Thread);
+    return kind !== null && sideThreadComposer(kind) === "read-only";
   };
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
   let head!: HTMLDivElement;
   let stage!: HTMLDivElement;
   let lane!: HTMLDivElement;
-  let menuButton: HTMLButtonElement | undefined;
-  const menuItems = (): IThreadMenuItem[] => [
-    ...(!session.panels().Details
-      ? []
-      : [
-          {
-            Label: "Details",
-            On: detailsShown(),
-            Shortcut: navigation.shortcut("threadPanel.toggle"),
-            Run: () => void session.toggleDetails(),
-          },
-        ]),
-    ...(!session.panels().Terminal
-      ? []
-      : [
-          {
-            Label: "Terminal",
-            On: terminalOpen(),
-            Shortcut: navigation.shortcut("terminal.toggle"),
-            Run: () => onTerminal(toggleTerminal),
-          },
-        ]),
-    {
-      Label: "Diff",
-      On: rightPanelOpen(),
-      Shortcut: navigation.shortcut("rightPanel.toggle"),
-      Run: () => void session.toggleRightPanel(),
-    },
-    {
-      Label: "Layout debug",
-      On: environment.state.Local.ViewportDebug,
-      Shortcut: null,
-      Run: () => void environment.toggleViewportDebug(),
-    },
-  ];
   const saved = untrack(() => session.state.Scroll);
   const [stuck, setStuck] = createSignal(saved === null);
   const position = (): IScrollPosition => ({
@@ -458,7 +425,7 @@ const ThreadBody = ThreadSession.provider(() => {
     laneObserver.observe(lane, { box: "border-box" });
     // The stage shrinks under an opening keyboard with no change to the content or the lane.
     const stageObserver = new ResizeObserver(() => {
-      measureStage({ Width: stage.clientWidth, Height: stage.clientHeight });
+      props.onStageSize?.({ Width: stage.clientWidth, Height: stage.clientHeight });
       if (stuck()) scrollToEnd();
     });
     stageObserver.observe(stage);
@@ -468,6 +435,289 @@ const ThreadBody = ThreadSession.provider(() => {
       stageObserver.disconnect();
     });
   });
+  return (
+    <>
+      <Show when={endedReason()}>
+        {(reason) => <p class={NOTICE}>This thread's stream ended: {reason()}</p>}
+      </Show>
+      <Show when={retrying()}>
+        <p class={NOTICE}>Can't load this thread right now. Retrying.</p>
+      </Show>
+      <div
+        class={CHAT_STAGE}
+        classList={props.stageClass}
+        data-checklist={checklist() === null ? undefined : ""}
+        ref={stage}
+        style={{ "--checklist-rows": statusRows(), ...props.stageStyle }}
+      >
+        {props.children}
+        <div
+          class="min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-x-hidden overflow-y-auto px-[calc(var(--gutter)-var(--app-scrollbar-width))] pt-2 pb-[calc(var(--composer-height,0px)+var(--turn-status-height))] [mask-image:linear-gradient(to_bottom,transparent_0,black_1.5rem)] focus-visible:outline-none"
+          ref={scroller}
+          data-timeline
+          data-tip-scroll-dismiss
+          tabIndex={-1}
+          onScroll={() => {
+            if (holding !== null) {
+              lastPosition = position();
+              return;
+            }
+            const next = position();
+            const follow = followAfterScroll(lastPosition, next, touching || dragging);
+            if (follow === "stick") setStuck(true);
+            else if (follow === "detach") setStuck(false);
+            lastPosition = next;
+            if (!restoring) remember();
+          }}
+          onWheel={(event) => {
+            release();
+            if (event.deltaY < 0 && scroller.scrollTop > 0) setStuck(false);
+          }}
+          onKeyDown={(event) => {
+            release();
+            if (SCROLL_UP_KEYS.has(event.key) && scroller.scrollTop > 0) setStuck(false);
+          }}
+          onTouchStart={() => {
+            release();
+            touching = true;
+          }}
+          onTouchEnd={() => (touching = false)}
+          onTouchCancel={() => (touching = false)}
+          onPointerDown={(event) => {
+            // A press on the scroller itself, not on a row, is its scrollbar.
+            if (event.target !== scroller) return;
+            release();
+            dragging = true;
+            document.addEventListener("pointerup", () => (dragging = false), { once: true });
+          }}
+        >
+          <div
+            class="mx-auto w-full max-w-(--chat-content-max-width) min-w-0 in-[.chat-stage.with-details]:max-w-[min(var(--chat-content-max-width),var(--details-lane,100%))] in-[.chat-stage.with-details]:translate-x-(--details-shift)"
+            ref={content}
+          >
+            <div ref={head}>
+              <Show
+                when={reachedTop()}
+                fallback={
+                  <TimelineSentinel
+                    root={scroller}
+                    onReach={() => growTo(grow(timeline().First))}
+                    onFocus={showAll}
+                  />
+                }
+              >
+                <Show when={thread.state.History} keyed>
+                  {(history) => <LoadEarlier state={history} />}
+                </Show>
+              </Show>
+            </div>
+            <For each={responses()?.Starts}>
+              {(start) => (
+                <>
+                  <span class="block h-0" data-response={start} />
+                  <TimelineResponse
+                    ids={responses()?.Segments[start] ?? []}
+                    latest={start === lastStart()}
+                  />
+                </>
+              )}
+            </For>
+            <For each={thread.pendingApprovalIds()}>
+              {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
+            </For>
+            <Show when={thread.state.Thread !== null && thread.state.Timeline.length === 0}>
+              <p class="py-12 text-center text-sm text-muted-foreground">
+                Send a message to start the conversation.
+              </p>
+            </Show>
+          </div>
+        </div>
+        <div class={COMPOSER_LANE} ref={lane}>
+          <Show when={!stuck()}>
+            <Button
+              variant="glass"
+              size="xs"
+              class="absolute bottom-[calc(100%+var(--turn-status-height)+4px)] left-1/2 z-30 -translate-x-1/2"
+              onClick={() => {
+                release();
+                scrollToEnd();
+              }}
+            >
+              <ChevronDown class="size-3.5" />
+              Scroll to end
+            </Button>
+          </Show>
+          <TurnStatus state={turnState()} checklist={checklist()} />
+          <For each={thread.pendingOtherIds()}>
+            {(id) => <UnansweredRequest state={thread.state.RuntimeRequests[id]!} />}
+          </For>
+          <Show when={!readOnly()} fallback={<ProviderSubagentBar />}>
+            <Show
+              when={thread.pendingQuestionIds()[0]}
+              keyed
+              fallback={<Composer active={turnState() !== null} onSend={onComposerSend} />}
+            >
+              {(id) => (
+                <PendingQuestion
+                  state={thread.state.RuntimeRequests[id]!}
+                  composer={(answering) => (
+                    <Composer
+                      active={turnState() !== null}
+                      onSend={onComposerSend}
+                      question={answering}
+                    />
+                  )}
+                />
+              )}
+            </Show>
+          </Show>
+          <RewindDialog />
+        </div>
+      </div>
+    </>
+  );
+});
+
+const SidePaneBody = ThreadSession.provider(() => {
+  const thread = OpenThread.use();
+  const session = ThreadSession.use();
+  const environment = Environment.use();
+  const title = () => thread.state.Thread?.title ?? "Loading thread…";
+  const kindLabel = () =>
+    sideThreadKindOf(thread.state.Thread) === "side-chat" ? "side chat" : "thread";
+  return (
+    <FileDropSection>
+      <PanelHeader
+        closeLabel={`Close ${kindLabel()}`}
+        onClose={() => void environment.closeSideThread()}
+      >
+        <h2 class={`${CRUMB_TITLE} min-w-0 pl-1`} data-tip={title()}>
+          {title()}
+        </h2>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Open in main view"
+          data-tip="Open in main view"
+          onClick={() => void environment.openSideThread(thread.state.ThreadId, "main")}
+        >
+          <Maximize2 />
+        </Button>
+      </PanelHeader>
+      <ThreadConversation state={session.state} />
+    </FileDropSection>
+  );
+});
+
+// Follows SideThreadPane in apps/web/src/components/chat/SideThreadPane.tsx.
+const SidePane = OpenThread.provider(() => {
+  const thread = OpenThread.use();
+  const environment = Environment.use();
+  return (
+    <Show when={environment.state.Local.ThreadSessions[thread.state.ThreadId]} keyed>
+      {(session) => <SidePaneBody state={session} />}
+    </Show>
+  );
+});
+
+const ThreadBody = ThreadSession.provider(() => {
+  const thread = OpenThread.use();
+  const session = ThreadSession.use();
+  const environment = Environment.use();
+  const turnState = useTurnState();
+  const dispatch = useDispatch();
+  const onTerminal = (action: typeof openTerminal) =>
+    void dispatch(action, session.state.Terminal.$Id);
+  const terminalOpen = () => session.state.Terminal.Open;
+  const diffOpen = () => session.state.Panels.Diff !== null;
+  const side = () => {
+    const held = session.state.Panels.Side;
+    return held === null ? null : (environment.state.Replica.OpenThreads[held.ThreadId] ?? null);
+  };
+  const launcherOpen = () => session.state.Panels.Launcher.Open && !diffOpen();
+  const rightPanelOpen = () => diffOpen() || side() !== null || launcherOpen();
+  const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
+  const [panelMotion, setPanelMotion] = createSignal(false);
+  // Late, so panels already open on a thread switch don't slide in again.
+  onMount(() => requestAnimationFrame(() => requestAnimationFrame(() => setPanelMotion(true))));
+  const closeTopSheet = () =>
+    rightPanelOpen() ? void session.closeRightPanel() : onTerminal(closeTerminal);
+  const [stageSize, setStageSize] = createSignal({ Width: 0, Height: 0 });
+  const details = () => session.state.Panels.Details;
+  const layout = createMemo(() =>
+    detailsLayout({
+      ...stageSize(),
+      Padding: 48,
+      MaxChatWidth: 736,
+      Open: environment.state.Local.Preferences.DetailsOpen,
+    }),
+  );
+  // The session toggles the card by whether it fits, which only this view can measure.
+  const measureStage = (size: { Width: number; Height: number }) => {
+    setStageSize(size);
+    if (layout().Inline !== details().Fits) void session.fitDetails(layout().Inline);
+  };
+  const detailsInline = () => layout().Inline && environment.state.Local.Preferences.DetailsOpen;
+  const detailsShown = () => detailsInline() || details().Popover;
+  const navigation = useNavigation();
+  const projectScripts = () => {
+    const projectId = thread.state.Thread?.projectId;
+    return projectId === undefined
+      ? []
+      : (environment.state.Replica.Shell.Projects[projectId]?.scripts ?? []);
+  };
+  const launcher = () =>
+    surfaceActions({
+      TerminalAvailable: session.panels().Terminal,
+      DiffAvailable: session.panels().Details,
+      SideChatAvailable: session.panels().SideChats,
+    });
+  const openSurface = (kind: ISurfaceKind) => {
+    if (kind === "terminal") {
+      void session.closeLauncher();
+      onTerminal(openTerminal);
+    } else if (kind === "diff") {
+      void session.openDiff(latestDiffTurn(thread.state) === null ? "branch" : "thread", null);
+    } else if (kind === "sideChat") {
+      void session.closeLauncher();
+      void environment.startSideChat();
+    }
+  };
+  let menuButton: HTMLButtonElement | undefined;
+  const menuItems = (): IThreadMenuItem[] => [
+    ...(!session.panels().Details
+      ? []
+      : [
+          {
+            Label: "Details",
+            On: detailsShown(),
+            Shortcut: navigation.shortcut("threadPanel.toggle"),
+            Run: () => void session.toggleDetails(),
+          },
+        ]),
+    ...(!session.panels().Terminal
+      ? []
+      : [
+          {
+            Label: "Terminal",
+            On: terminalOpen(),
+            Shortcut: navigation.shortcut("terminal.toggle"),
+            Run: () => onTerminal(toggleTerminal),
+          },
+        ]),
+    {
+      Label: "Diff",
+      On: rightPanelOpen(),
+      Shortcut: navigation.shortcut("rightPanel.toggle"),
+      Run: () => void session.toggleRightPanel(),
+    },
+    {
+      Label: "Layout debug",
+      On: environment.state.Local.ViewportDebug,
+      Shortcut: null,
+      Run: () => void environment.toggleViewportDebug(),
+    },
+  ];
   return (
     <div class="relative flex h-full" classList={{ "panel-motion": panelMotion() }}>
       <Show when={panelSheet() && (rightPanelOpen() || terminalOpen())}>
@@ -511,22 +761,14 @@ const ThreadBody = ThreadSession.provider(() => {
             <ThreadMenu ref={(button) => (menuButton = button)} items={menuItems()} />
           </div>
         </PageHeader>
-        <Show when={endedReason()}>
-          {(reason) => <p class={NOTICE}>This thread's stream ended: {reason()}</p>}
-        </Show>
-        <Show when={retrying()}>
-          <p class={NOTICE}>Can't load this thread right now. Retrying.</p>
-        </Show>
-        <div
-          class={CHAT_STAGE}
-          classList={{ "with-details": detailsInline() }}
-          data-checklist={checklist() === null ? undefined : ""}
-          ref={stage}
-          style={{
-            "--checklist-rows": statusRows(),
+        <ThreadConversation
+          state={session.state}
+          stageClass={{ "with-details": detailsInline() }}
+          stageStyle={{
             "--details-shift": `${layout().Shift}px`,
             "--details-lane": layout().LaneWidth === null ? undefined : `${layout().LaneWidth}px`,
           }}
+          onStageSize={measureStage}
         >
           <Show when={session.state.Details} keyed>
             {(details) => (
@@ -547,136 +789,18 @@ const ThreadBody = ThreadSession.provider(() => {
               </DetailsSurface>
             )}
           </Show>
-          <div
-            class="min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-x-hidden overflow-y-auto px-[calc(var(--gutter)-var(--app-scrollbar-width))] pt-2 pb-[calc(var(--composer-height,0px)+var(--turn-status-height))] [mask-image:linear-gradient(to_bottom,transparent_0,black_1.5rem)] focus-visible:outline-none"
-            ref={scroller}
-            data-timeline
-            data-tip-scroll-dismiss
-            tabIndex={-1}
-            onScroll={() => {
-              if (holding !== null) {
-                lastPosition = position();
-                return;
-              }
-              const next = position();
-              const follow = followAfterScroll(lastPosition, next, touching || dragging);
-              if (follow === "stick") setStuck(true);
-              else if (follow === "detach") setStuck(false);
-              lastPosition = next;
-              if (!restoring) remember();
-            }}
-            onWheel={(event) => {
-              release();
-              if (event.deltaY < 0 && scroller.scrollTop > 0) setStuck(false);
-            }}
-            onKeyDown={(event) => {
-              release();
-              if (SCROLL_UP_KEYS.has(event.key) && scroller.scrollTop > 0) setStuck(false);
-            }}
-            onTouchStart={() => {
-              release();
-              touching = true;
-            }}
-            onTouchEnd={() => (touching = false)}
-            onTouchCancel={() => (touching = false)}
-            onPointerDown={(event) => {
-              // A press on the scroller itself, not on a row, is its scrollbar.
-              if (event.target !== scroller) return;
-              release();
-              dragging = true;
-              document.addEventListener("pointerup", () => (dragging = false), { once: true });
-            }}
-          >
-            <div
-              class="mx-auto w-full max-w-(--chat-content-max-width) min-w-0 in-[.chat-stage.with-details]:max-w-[min(var(--chat-content-max-width),var(--details-lane,100%))] in-[.chat-stage.with-details]:translate-x-(--details-shift)"
-              ref={content}
-            >
-              <div ref={head}>
-                <Show
-                  when={reachedTop()}
-                  fallback={
-                    <TimelineSentinel
-                      root={scroller}
-                      onReach={() => growTo(grow(timeline().First))}
-                      onFocus={showAll}
-                    />
-                  }
-                >
-                  <Show when={thread.state.History} keyed>
-                    {(history) => <LoadEarlier state={history} />}
-                  </Show>
-                </Show>
-              </div>
-              <For each={responses()?.Starts}>
-                {(start) => (
-                  <>
-                    <span class="block h-0" data-response={start} />
-                    <TimelineResponse
-                      ids={responses()?.Segments[start] ?? []}
-                      latest={start === lastStart()}
-                    />
-                  </>
-                )}
-              </For>
-              <For each={thread.pendingApprovalIds()}>
-                {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
-              </For>
-              <Show when={thread.state.Thread !== null && thread.state.Timeline.length === 0}>
-                <p class="py-12 text-center text-sm text-muted-foreground">
-                  Send a message to start the conversation.
-                </p>
-              </Show>
-            </div>
-          </div>
-          <div class={COMPOSER_LANE} ref={lane}>
-            <Show when={!stuck()}>
-              <Button
-                variant="glass"
-                size="xs"
-                class="absolute bottom-[calc(100%+var(--turn-status-height)+4px)] left-1/2 z-30 -translate-x-1/2"
-                onClick={() => {
-                  release();
-                  scrollToEnd();
-                }}
-              >
-                <ChevronDown class="size-3.5" />
-                Scroll to end
-              </Button>
-            </Show>
-            <TurnStatus state={turnState()} checklist={checklist()} />
-            <For each={thread.pendingOtherIds()}>
-              {(id) => <UnansweredRequest state={thread.state.RuntimeRequests[id]!} />}
-            </For>
-            <Show
-              when={thread.pendingQuestionIds()[0]}
-              keyed
-              fallback={<Composer active={turnState() !== null} onSend={onComposerSend} />}
-            >
-              {(id) => (
-                <PendingQuestion
-                  state={thread.state.RuntimeRequests[id]!}
-                  composer={(answering) => (
-                    <Composer
-                      active={turnState() !== null}
-                      onSend={onComposerSend}
-                      question={answering}
-                    />
-                  )}
-                />
-              )}
-            </Show>
-            <RewindDialog />
-          </div>
-        </div>
+        </ThreadConversation>
         <Show when={terminalOpen()}>
           <TerminalPanel state={session.state.Terminal} />
         </Show>
       </FileDropSection>
       <Show when={rightPanelOpen()}>
-        <aside ref={enterPanel} class={panelSheet() ? RIGHT_PANEL_SHEET : RIGHT_PANEL_COLUMN}>
-          <Show
-            when={session.state.Panels.Diff}
-            keyed
+        <aside
+          ref={enterPanel}
+          class={panelSheet() ? RIGHT_PANEL_SHEET : RIGHT_PANEL_COLUMN}
+          data-side-pane={side() !== null && session.state.Panels.Diff === null ? "" : undefined}
+        >
+          <Switch
             fallback={
               <SurfaceLauncher
                 actions={launcher()}
@@ -685,8 +809,13 @@ const ThreadBody = ThreadSession.provider(() => {
               />
             }
           >
-            {(panel) => <DiffPanel panel={panel} />}
-          </Show>
+            <Match when={session.state.Panels.Diff} keyed>
+              {(panel) => <DiffPanel panel={panel} />}
+            </Match>
+            <Match when={side()} keyed>
+              {(held) => <SidePane state={held} />}
+            </Match>
+          </Switch>
         </aside>
       </Show>
     </div>

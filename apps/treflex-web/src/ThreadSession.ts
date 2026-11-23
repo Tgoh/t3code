@@ -12,6 +12,7 @@ import {
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
 import { COMPACT_COMMAND_PATTERN } from "@t3tools/client-runtime/state/context-window";
+import { sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
 import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS, type ProjectScript } from "@t3tools/contracts";
 import {
   answer,
@@ -122,6 +123,7 @@ import { draftModel, projectRuntimeMode } from "./newThreadDefaults";
 import { delay } from "./Infrastructure/delay";
 import type { IWireServerConfig } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
+import type { INotificationMode } from "./threadNotifications";
 import { serverError, serverFailure } from "./Infrastructure/serverError";
 import { toast } from "./Infrastructure/toasts";
 import { detachTerminal, type ITerminal, openTerminal, restoreTerminal } from "./Terminal";
@@ -149,6 +151,8 @@ declare module "treflex" {
     "Dictation/TranscriptRefused": { ThreadId: string };
     "Git/StatusFollowed": {};
     "Details/Pinned": { Open: boolean };
+    /** `Discard` deletes the side thread too when it's a side chat nobody has written in. */
+    "Side/Hidden": { ThreadId: string; Discard: boolean };
   }
   interface ITimerRegistry {
     "Rewind/Timeout": {};
@@ -175,9 +179,14 @@ export interface ISelection extends IEntity {
     AppearanceMode: IAppearanceMode;
     CompactionDismissed: string[];
     DetailsOpen: boolean;
+    GroupByProject: boolean;
   };
   SystemDark: boolean;
-  ClientSettings: { followUpBehavior: ActiveTurnComposerAction } | null;
+  ClientSettings: {
+    followUpBehavior: ActiveTurnComposerAction;
+    sidebarWorkingShelfEnabled: boolean;
+    notificationMode: INotificationMode;
+  } | null;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -215,10 +224,17 @@ export interface IThreadSession extends IEntity {
   StopRunId?: string;
   RewindError?: string;
   ForkError?: string;
+  SideChatError?: string;
   ScriptError?: string;
   QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
   QuestionIndex: Record<string, number>;
-  Panels: { Diff: IDiffPanel | null; Details: IDetailsPanel; Launcher: { Open: boolean } };
+  Panels: {
+    Diff: IDiffPanel | null;
+    Details: IDetailsPanel;
+    Launcher: { Open: boolean };
+    /** The thread shown beside this one in the right panel, which holds one surface at a time. */
+    Side: { ThreadId: string } | null;
+  };
   Terminal: ITerminal;
   Git: IGitWork;
   /** Present while the thread is shown and has a checkout, which is when its git status is open. */
@@ -226,8 +242,8 @@ export interface IThreadSession extends IEntity {
   ExpandedRows: Record<string, true>;
   CommandOutputs: Record<string, ICommandOutputRow>;
   ToolDetails: Record<string, IToolDetail>;
-  /** Code blocks the person turned wrapping off for, by block key. */
-  UnwrappedCode: Record<string, true>;
+  /** Whether a code block the person toggled wraps, by block key; others follow Word wrap. */
+  CodeWrap: Record<string, boolean>;
   /**
    * Where the reader left the timeline: the response row at the top of the view and how far its
    * top sat from the view's top, or null at the end, which a return follows to the newest row.
@@ -256,11 +272,12 @@ export function getDefaultThreadSession(
       Diff: null,
       Details: { Popover: false, Fits: false },
       Launcher: { Open: false },
+      Side: null,
     },
     ExpandedRows: {},
     CommandOutputs: {},
     ToolDetails: {},
-    UnwrappedCode: {},
+    CodeWrap: {},
     Scroll: null,
     Details: null,
   };
@@ -491,6 +508,7 @@ export interface IPanels {
   DiffOpen: boolean;
   RightPanelOpen: boolean;
   TerminalEntityId: string;
+  SideChats: boolean;
 }
 
 export function* panels(draft: IThreadSession): ISelectorGenerator<IPanels> {
@@ -502,7 +520,11 @@ export function* panels(draft: IThreadSession): ISelectorGenerator<IPanels> {
     Terminal: thread?.Thread != null,
     Diff: thread !== undefined && latestDiffTurn(thread) !== null,
     DiffOpen: diffOpen,
-    RightPanelOpen: diffOpen || draft.Panels.Launcher.Open,
+    RightPanelOpen: diffOpen || draft.Panels.Side !== null || draft.Panels.Launcher.Open,
+    SideChats:
+      thread?.Thread != null &&
+      sideThreadKindOf(thread.Thread) === null &&
+      replica?.Config?.environment?.capabilities.sideChats === true,
     TerminalEntityId: draft.Terminal.$Id,
   };
 }
@@ -1504,10 +1526,19 @@ export function* rememberScroll(
   draft.Scroll = scroll;
 }
 
-/** Code blocks wrap their lines until the person turns it off. */
-export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActionGenerator {
-  if (draft.UnwrappedCode[blockKey]) delete draft.UnwrappedCode[blockKey];
-  else draft.UnwrappedCode[blockKey] = true;
+// Follows MarkdownCodeBlock in apps/web/src/components/chat/MarkdownCodeBlock.tsx (`wrapOverride`).
+export const codeWrapped = (
+  held: Readonly<Record<string, boolean>>,
+  blockKey: string,
+  wordWrap: boolean,
+): boolean => held[blockKey] ?? wordWrap;
+
+export function* toggleCodeWrap(
+  draft: IThreadSession,
+  blockKey: string,
+  wrapped: boolean,
+): IActionGenerator {
+  draft.CodeWrap[blockKey] = !wrapped;
 }
 
 export function* openDiff(
@@ -1516,6 +1547,7 @@ export function* openDiff(
   turnCount: number | null,
 ): IActionGenerator {
   draft.Panels.Launcher.Open = false;
+  yield* hideSide(draft, true);
   let request: IDiffRequest | null = null;
   let panel: Omit<IDiffPanel, "$Id">;
   if (scope === "branch") {
@@ -1624,10 +1656,18 @@ export function* followCheckout(draft: IThreadSession): IActionGenerator {
   yield* publishToNearest(draft, "Git/StatusFollowed");
 }
 
+/** The environment retains the side thread's stream, and with `discard` deletes an unused side chat. */
+export function* hideSide(draft: IThreadSession, discard: boolean): IActionGenerator {
+  const held = draft.Panels.Side;
+  if (held === null) return;
+  draft.Panels.Side = null;
+  yield* publishToNearest(draft, "Side/Hidden", { ThreadId: held.ThreadId, Discard: discard });
+}
+
 /** The header's right-panel toggle: closes whichever surface is open, or shows the launcher. */
 export function* toggleRightPanel(draft: IThreadSession): IActionGenerator {
-  if (draft.Panels.Diff !== null) {
-    yield* closeDiff(draft);
+  if (draft.Panels.Diff !== null || draft.Panels.Side !== null) {
+    yield* closeRightPanel(draft);
     return;
   }
   draft.Panels.Launcher.Open = !draft.Panels.Launcher.Open;
@@ -1639,6 +1679,7 @@ export function* closeLauncher(draft: IThreadSession): IActionGenerator {
 
 export function* closeRightPanel(draft: IThreadSession): IActionGenerator {
   if (draft.Panels.Diff !== null) yield* closeDiff(draft);
+  else if (draft.Panels.Side !== null) yield* hideSide(draft, true);
   else draft.Panels.Launcher.Open = false;
 }
 

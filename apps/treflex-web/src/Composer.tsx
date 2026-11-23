@@ -58,7 +58,9 @@ import { toastManager } from "./ui/toastStore";
 import {
   COARSE_POINTER_QUERY,
   composerCollapses,
+  composerRequiresModifier,
   createMediaQuery,
+  enterIsAlternate,
   enterSends,
   nextFrame,
   PHONE_QUERY,
@@ -76,6 +78,12 @@ export const isAlternate = (event: MouseEvent | KeyboardEvent) =>
 export const COMPOSER_LANE =
   "composer-lane pointer-events-none absolute inset-x-0 bottom-0 z-20 mx-auto max-w-[calc(var(--chat-content-max-width)+2*var(--gutter))] px-(--gutter) pt-0 pb-[calc(var(--composer-gap,21px)+var(--safe-bottom))] *:pointer-events-auto in-[.chat-stage.with-details]:max-w-[calc(min(var(--chat-content-max-width),var(--details-lane,100vw))+2*var(--gutter))] in-[.chat-stage.with-details]:[translate:var(--details-shift)_0]";
 
+/** The right panel while it shows a side thread, whose composer is the second one on screen. */
+export const SIDE_PANE = "[data-side-pane]";
+
+export const COMPOSER_SURFACE =
+  "relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)";
+
 const ROUND_BUTTON =
   "relative isolate inline-flex size-8 flex-none cursor-pointer items-center justify-center overflow-hidden rounded-full border-0 p-0 text-white shadow-[0_1px_2px_rgb(0_0_0/24%)] disabled:cursor-default disabled:opacity-64 disabled:shadow-none";
 const HIDDEN_COLLAPSED = "in-data-collapsed:hidden";
@@ -85,10 +93,11 @@ const keepFocus = (event: MouseEvent) => event.preventDefault();
 const NOTE = "mx-4 my-1 text-[12px]";
 const ERROR = `${NOTE} text-error-foreground ${HIDDEN_COLLAPSED}`;
 
-function useFocusRequests(focus: () => void) {
+function useFocusRequests(focus: (threadId: string) => void) {
   onMount(() => {
-    window.addEventListener(FOCUS_COMPOSER_EVENT, focus);
-    onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, focus));
+    const onRequest = (event: Event) => focus((event as CustomEvent<string>).detail);
+    window.addEventListener(FOCUS_COMPOSER_EVENT, onRequest);
+    onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, onRequest));
   });
 }
 
@@ -138,6 +147,8 @@ function SendButton(props: {
   blocked: string | null;
   /** The tokens this send compacts first, already formatted. */
   compacts: string | null;
+  /** The Send shortcut asks for a modifier, which moves the alternate send to Shift with it. */
+  shiftAlternate: boolean;
   label?: string | undefined;
   class: string;
   onSend: (alternate: boolean) => void;
@@ -165,7 +176,7 @@ function SendButton(props: {
     (props.compacts !== null
       ? `Summarize ${props.compacts} tokens of history, then send`
       : props.running
-        ? `Click to ${props.followUp}, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to ${alternateAction()}`
+        ? `Click to ${props.followUp}, ${MOD_LABEL}-click or ${MOD_LABEL}+${props.shiftAlternate ? "Shift+" : ""}Enter to ${alternateAction()}`
         : undefined);
   return (
     <button
@@ -475,13 +486,19 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     });
   let form!: HTMLFormElement;
   let textarea!: HTMLTextAreaElement;
+  // Follows isInSideChatPane in stock: window-wide requests go to the side pane's composer only
+  // while focus is in that pane, and to the thread's own composer otherwise.
+  const owns = () =>
+    (form.closest(SIDE_PANE) !== null) === (document.activeElement?.closest(SIDE_PANE) != null);
   // Focuses within the tap, since iOS raises the keyboard only for focus inside a user gesture.
   const expand = () => {
     setFocused(true);
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   };
-  useFocusRequests(expand);
+  useFocusRequests((threadId) => {
+    if (threadId === held().ThreadId) expand();
+  });
   // A tap on a control would take focus from the prompt and drop the on-screen keyboard.
   const keepPromptFocus = (event: MouseEvent) => {
     if (phone() && event.target !== textarea) event.preventDefault();
@@ -496,6 +513,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const coarsePointer = createMediaQuery(COARSE_POINTER_QUERY);
   const alternateHeld = useAlternateHeld();
   const running = () => props.active === true;
+  const requiresModifier = () => composerRequiresModifier(environment.sendShortcut(), held().Draft);
   const compactTokens = () => (answering() ? null : session.compactionOffer());
   const compacts = () => {
     const tokens = compactTokens();
@@ -533,7 +551,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   };
   useDictationKeys(
     () => {
-      if (answering() || !voiceOffered()) return;
+      if (!owns() || answering() || !voiceOffered()) return;
       if (dictating()) {
         if (voice().Phase === "recording") void dictation.stopDictation();
       } else if (!voiceElsewhere()) startDictation();
@@ -665,7 +683,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     return true;
   };
   useTypedText((event, typed) => {
-    if (rewinding() || textarea.disabled || textarea.readOnly) return;
+    if (!owns() || rewinding() || textarea.disabled || textarea.readOnly) return;
     event.preventDefault();
     expand();
     const end = textarea.value.length;
@@ -688,7 +706,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       </Show>
       <form
         ref={form}
-        class="relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)"
+        class={COMPOSER_SURFACE}
         data-collapsed={collapsed() ? "" : undefined}
         inert={rewinding()}
         onSubmit={(event) => {
@@ -722,6 +740,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                   disabled={!canSend()}
                   blocked={null}
                   compacts={compacts()}
+                  shiftAlternate={requiresModifier()}
                   // The collapsed composer hides the compact toggle, so it opens rather than sends.
                   label={compacts() === null ? undefined : "Open composer to compact and send"}
                   class="ml-0"
@@ -852,9 +871,13 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               event.preventDefault();
               return;
             }
-            if (!enterSends(event, coarsePointer())) return;
+            const modifier = composerRequiresModifier(
+              environment.sendShortcut(),
+              event.currentTarget.value,
+            );
+            if (!enterSends(event, coarsePointer(), modifier, running())) return;
             event.preventDefault();
-            send(isAlternate(event));
+            send(enterIsAlternate(event, modifier, IS_MAC));
           }}
         />
         <Show when={held().SendError}>
@@ -868,6 +891,9 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         </Show>
         <Show when={held().ForkError}>
           <p class={ERROR}>Couldn't fork this response: {held().ForkError}</p>
+        </Show>
+        <Show when={held().SideChatError}>
+          <p class={ERROR}>Couldn't start a side chat: {held().SideChatError}</p>
         </Show>
         <Show when={ownsVoice()}>
           <DictationPreview />
@@ -931,6 +957,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               disabled={!canSend() && !(dictating() && voice().Phase !== "preparing")}
               blocked={blocked()}
               compacts={compacts()}
+              shiftAlternate={requiresModifier()}
               class="ml-[5px]"
               onSend={send}
             />

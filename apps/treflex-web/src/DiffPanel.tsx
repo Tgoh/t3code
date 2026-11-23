@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 
 import type { IDiffPanel } from "./Diff";
 import { type IDiffFile, type IPatchRow, parseDiff, patchRows } from "./diffView";
+import Environment from "./Environment";
 import { ChevronRight, FileDiff } from "./icons";
 import { PanelHeader } from "./RightPanel";
 import ThreadSession from "./ThreadSession";
@@ -26,20 +27,27 @@ const NUMBER: Record<IPatchRow["Kind"], string> = {
   context: "text-muted-foreground",
 };
 
+// Wrapping follows the Word wrap setting, as stock's DiffPanel.tsx does (`wordWrap`).
 function Patch(props: { patch: string }) {
+  const environment = Environment.use();
   const rows = createMemo(() => patchRows(props.patch));
   const [all, setAll] = createSignal(false);
   const shown = () => (all() ? rows() : rows().slice(0, LINE_CAP));
   return (
     <>
-      <pre class="m-0 overflow-x-auto bg-code text-[13px] leading-5">
+      <pre
+        class="group/patch m-0 overflow-x-auto bg-code text-[13px] leading-5 data-wrap:whitespace-pre-wrap data-wrap:wrap-break-word"
+        data-wrap={environment.wordWrap() ? "" : undefined}
+      >
         <For each={shown()}>
           {(row) => (
-            <span class={`flex w-fit min-w-full border-l-3 ${ROW[row.Kind]}`}>
+            <span
+              class={`flex w-fit min-w-full border-l-3 group-data-wrap/patch:w-full ${ROW[row.Kind]}`}
+            >
               <span class={`w-13 flex-none pr-3 text-right select-none ${NUMBER[row.Kind]}`}>
                 {row.Number}
               </span>
-              <span class="flex-1 pr-3">{row.Text || " "}</span>
+              <span class="min-w-0 flex-1 pr-3">{row.Text || " "}</span>
             </span>
           )}
         </For>

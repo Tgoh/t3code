@@ -2,6 +2,13 @@
 
 Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) while porting or comparing. Some may be worth reporting or fixing upstream. Each entry says where the bug is, what goes wrong, whether it was reproduced, and whether treflex has the same bug.
 
+## Settings: Archive confirmation describes a second click it doesn't ask for
+
+- **Where:** the Archive confirmation row in `GeneralSettingsPanel`, `apps/web/src/components/settings/SettingsPanels.tsx`.
+- **What goes wrong:** it says "Require a second click on the inline archive action before a thread is archived", but `confirmThreadArchive` opens an `Archive thread "…"?` dialog from the thread menu in `Sidebar.tsx` and `useThreadActionMenu.ts`. No inline archive action asks for a second click.
+- **Status:** found by reading the code on 2026-11-23, not run.
+- **Treflex:** copies the description in `settingsPages.ts`. Treflex has no archive action, so the setting does nothing yet.
+
 ## Server: a restart drops pending idle compactions
 
 - **Where:** `apps/server/src/orchestration-v2/IdleCompactionService.ts`. Timers live in memory, as its doc comment says.

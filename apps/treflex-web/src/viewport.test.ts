@@ -3,8 +3,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   composerCollapses,
+  composerRequiresModifier,
+  createKeyboardDetector,
   createMediaQuery,
   createSidebarSheet,
+  enterIsAlternate,
   enterSends,
   longPress,
 } from "./viewport";
@@ -147,6 +150,48 @@ describe("longPress", () => {
   });
 });
 
+describe("createKeyboardDetector", () => {
+  const phone = { width: 393, height: 760 };
+  const keyboardUp = { width: 393, height: 420 };
+  it("sees a keyboard that shrinks only the visual viewport", () => {
+    const open = createKeyboardDetector(() => true);
+    expect(open(phone, 760)).toBe(false);
+    expect(open(keyboardUp, 760)).toBe(true);
+  });
+  it("sees a keyboard that shrinks the layout viewport with it", () => {
+    const open = createKeyboardDetector(() => true);
+    expect(open(phone, 760)).toBe(false);
+    expect(open(keyboardUp, 420)).toBe(true);
+    expect(open(phone, 760)).toBe(false);
+  });
+  it("keeps the keyboard while focus moves between fields", () => {
+    const [typing, setTyping] = createSignal(true);
+    const open = createKeyboardDetector(typing);
+    expect(open(phone, 760)).toBe(false);
+    expect(open(keyboardUp, 420)).toBe(true);
+    setTyping(false);
+    expect(open(keyboardUp, 420)).toBe(true);
+    setTyping(true);
+    expect(open(keyboardUp, 420)).toBe(true);
+    setTyping(false);
+    expect(open(phone, 760)).toBe(false);
+    expect(open({ width: 393, height: 380 }, 380)).toBe(false);
+  });
+  it("takes a rotation for a new height, not a keyboard", () => {
+    const open = createKeyboardDetector(() => true);
+    expect(open(phone, 760)).toBe(false);
+    expect(open({ width: 852, height: 340 }, 340)).toBe(false);
+  });
+  it("takes a window made shorter, with nothing focused to type in, for a window", () => {
+    const [typing, setTyping] = createSignal(false);
+    const open = createKeyboardDetector(typing);
+    expect(open(phone, 760)).toBe(false);
+    expect(open({ width: 393, height: 380 }, 380)).toBe(false);
+    setTyping(true);
+    expect(open({ width: 393, height: 380 }, 380)).toBe(false);
+  });
+});
+
 describe("composerCollapses", () => {
   const idle = { Phone: true, Focused: false, Draft: "draft", HasAttachments: false };
   it.each([
@@ -179,5 +224,58 @@ describe("enterSends", () => {
     ["Shift+Cmd+Enter on a touch screen", { ...enter, shiftKey: true, metaKey: true }, true, false],
   ])("%s", (_label, event, coarse, expected) => {
     expect(enterSends(event, coarse)).toBe(expected);
+  });
+
+  const shiftCtrl = { ...enter, ctrlKey: true, shiftKey: true };
+  it.each([
+    ["Enter when Ctrl+Enter always sends", enter, "mod-enter", "x", false, false],
+    [
+      "Ctrl+Enter when Ctrl+Enter always sends",
+      { ...enter, ctrlKey: true },
+      "mod-enter",
+      "x",
+      false,
+      true,
+    ],
+    [
+      "Shift+Ctrl+Enter during a turn when Ctrl+Enter always sends",
+      shiftCtrl,
+      "mod-enter",
+      "x",
+      true,
+      true,
+    ],
+    [
+      "Shift+Ctrl+Enter between turns when Ctrl+Enter always sends",
+      shiftCtrl,
+      "mod-enter",
+      "x",
+      false,
+      false,
+    ],
+    ["Enter on one line, multiline mode", enter, "mod-enter-multiline", "x", false, true],
+    ["Enter on two lines, multiline mode", enter, "mod-enter-multiline", "x\ny", false, false],
+    [
+      "Cmd+Enter on two lines, multiline mode",
+      { ...enter, metaKey: true },
+      "mod-enter-multiline",
+      "x\ny",
+      false,
+      true,
+    ],
+  ] as const)("%s", (_label, event, shortcut, prompt, running, expected) => {
+    const requiresModifier = composerRequiresModifier(shortcut, prompt);
+    expect(enterSends(event, false, requiresModifier, running)).toBe(expected);
+  });
+});
+
+describe("enterIsAlternate", () => {
+  const enter = { key: "Enter", shiftKey: false, metaKey: false, ctrlKey: true };
+  it.each([
+    ["Ctrl+Enter", enter, false, true],
+    ["Ctrl+Enter when a modifier sends", enter, true, false],
+    ["Shift+Ctrl+Enter when a modifier sends", { ...enter, shiftKey: true }, true, true],
+  ])("%s", (_label, event, requiresModifier, expected) => {
+    expect(enterIsAlternate(event, requiresModifier, false)).toBe(expected);
   });
 });

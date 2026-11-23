@@ -22,6 +22,7 @@ import {
   openResource,
   receiver,
   registerDataSource,
+  resource,
   select,
   start,
   startTimer,
@@ -29,12 +30,18 @@ import {
   workTag,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
+import {
+  resolveSideThreadOpenTarget,
+  type SideThreadOpenIntent,
+  sideThreadKindOf,
+} from "@t3tools/client-runtime/side-thread";
 
 import { followActivity, reportActivity } from "./Activity";
 import { address, type IAddress } from "./Infrastructure/address";
 import type { IDeviceActivity } from "./Infrastructure/clientActivity";
 import {
   cloneControlEffect,
+  forkThreadEffect,
   type INewProject,
   type IProjectCommand,
   type IThreadCommand,
@@ -67,6 +74,7 @@ import {
 import {
   colorScheme,
   followDevice,
+  projectSort,
   setAppearanceMode,
   setPreferences,
   setProjectHidden,
@@ -90,12 +98,19 @@ import {
 } from "./OpenThread";
 import {
   applyConfigEvent,
+  applyNotificationMode,
   autoRefreshLimits,
+  chooseNotificationMode,
+  confirmThreadDelete,
+  confirmThreadUnpin,
   openView,
+  sendShortcut,
   showView,
   syncAddress,
+  timestampFormat,
   toggleModelFavorite,
   updateServerSettings,
+  wordWrap,
   writeSetting,
 } from "./Settings";
 import { compactionDismissalKey, dismissedIn } from "./compaction";
@@ -122,6 +137,7 @@ import {
   followCheckout,
   followWorkspace,
   getDefaultThreadSession,
+  hideSide,
   type IPanels,
   panels,
   type IReplica,
@@ -137,6 +153,7 @@ declare module "treflex" {
   interface IResourceRegistry {
     "Project/Clones": { Type: "projectClones" };
     "Server/Config": { Type: "serverConfigStream" };
+    "Notify/Device": { Type: "threadNotifier" };
     "Device/History": { Type: "addressHistory" };
   }
   interface ITimerRegistry {
@@ -185,7 +202,12 @@ export function* newEnvironment(
     View: null,
     ClientSettings: yield* storedClientSettingsEffect(),
     Preferences: yield* storedPreferencesEffect(),
-    Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: SETTLED_PAGE },
+    Shelves: {
+      WorkingOpen: false,
+      SnoozedOpen: false,
+      SettledOpen: false,
+      SettledShown: SETTLED_PAGE,
+    },
     SystemDark: false,
     Activity: { Visible: false, Focused: false, RecentlyInteracted: false },
     ViewportDebug: false,
@@ -229,6 +251,8 @@ export function* init(draft: IEnvironment): IActionGenerator {
   bind(draft, EnvironmentReceiver);
   yield* followDevice(draft);
   yield* followActivity(draft);
+  yield* openResource(draft, "Notify/Device", EnvironmentReceiver, { Type: "threadNotifier" });
+  yield* applyNotificationMode(draft);
   yield* openShellStream(draft.Replica.Shell);
   yield* openResource(draft, "Project/Clones", {
     Type: "projectClones",
@@ -304,12 +328,144 @@ export function* openThread(draft: IEnvironment, threadId: string): IActionGener
   yield* start(reattachThread, session.$Id);
 }
 
-function* leaveThread(draft: IEnvironment, threadId: string): IActionGenerator {
+/** `retain` is false for a thread that stays on screen beside the new selection. */
+function* leaveThread(draft: IEnvironment, threadId: string, retain = true): IActionGenerator {
   const held = draft.Replica.OpenThreads[threadId];
-  if (held !== undefined) yield* retainThread(held);
+  if (held !== undefined && retain) yield* retainThread(held);
   const session = draft.Local.ThreadSessions[threadId];
   if (session !== undefined) yield* start(detachThread, session);
+  yield* releaseSide(draft, session);
 }
+
+function* releaseSide(draft: IEnvironment, host: IThreadSession | undefined): IActionGenerator {
+  const side = host?.Panels.Side?.ThreadId;
+  if (side !== undefined && side !== draft.Local.SelectedThreadId) yield* leaveThread(draft, side);
+}
+
+function sideOfSelected(draft: IEnvironment): string | null {
+  const selected = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
+  return selected?.Panels.Side?.ThreadId ?? null;
+}
+
+// Follows openSideThread in apps/web/src/lib/sideChatPane.ts and the parent check in
+// onOpenThread in apps/web/src/components/chat/useThreadLifecycle.tsx.
+/** Opens a subagent or side chat beside the selected thread, or in its place, by the setting and `intent`. */
+export function* openSideThread(
+  draft: IEnvironment,
+  threadId: string,
+  intent: SideThreadOpenIntent,
+): IActionGenerator {
+  const hostId = draft.Local.SelectedThreadId;
+  const host = hostId === null ? undefined : draft.Local.ThreadSessions[hostId];
+  const parentId =
+    hostId === null
+      ? null
+      : (draft.Replica.OpenThreads[hostId]?.Thread?.lineage.parentThreadId ?? null);
+  const panelAvailable =
+    host !== undefined &&
+    host.NewThreadProjectId === null &&
+    threadId !== hostId &&
+    threadId !== parentId;
+  const target = resolveSideThreadOpenTarget({
+    preference: draft.Local.ClientSettings?.sideThreadOpenTarget ?? "panel",
+    intent,
+    panelAvailable,
+  });
+  if (target === "main" || host === undefined) {
+    if (host?.Panels.Side?.ThreadId === threadId) host.Panels.Side = null;
+    yield* selectThread(draft, threadId);
+    return;
+  }
+  yield* showSideThread(draft, host, threadId);
+}
+
+function* showSideThread(
+  draft: IEnvironment,
+  host: IThreadSession,
+  threadId: string,
+): IActionGenerator {
+  const held = host.Panels.Side?.ThreadId;
+  if (held === threadId) return;
+  host.Panels.Side = { ThreadId: threadId };
+  host.Panels.Diff = null;
+  host.Panels.Launcher.Open = false;
+  if (held !== undefined) yield* hideSideThread(draft, held, true);
+  if (host.ThreadId === draft.Local.SelectedThreadId) yield* openThread(draft, threadId);
+}
+
+function* hideSideThread(
+  draft: IEnvironment,
+  threadId: string,
+  discard: boolean,
+): IActionGenerator {
+  if (threadId !== draft.Local.SelectedThreadId) yield* leaveThread(draft, threadId);
+  if (!discard) return;
+  const thread =
+    draft.Replica.OpenThreads[threadId]?.Thread ?? draft.Replica.Shell.Threads[threadId];
+  if (sideThreadKindOf(thread) === "side-chat") yield* start(discardSideChat, draft, threadId);
+}
+
+function* discardSideChat(draft: IEnvironment, threadId: string): IOpenGenerator {
+  try {
+    yield* threadCommand(draft, threadId, { Kind: "delete", OnlyIfUnused: true });
+  } catch (error) {
+    serverError(error);
+  }
+}
+
+export function* closeSideThread(draft: IEnvironment): IActionGenerator {
+  const host = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
+  if (host !== undefined) yield* start(hideSide, host, true);
+}
+
+// Follows resolveThreadOpenRoute in apps/web/src/lib/sideChatPane.ts.
+/** A link to a thread opens it, or for a side chat, its parent with the side chat beside it. */
+export function* openThreadLink(draft: IEnvironment, threadId: string): IActionGenerator {
+  const lineage = draft.Replica.Shell.Threads[threadId]?.lineage;
+  const parentId = lineage?.sideChat === true ? lineage.parentThreadId : null;
+  yield* selectThread(draft, parentId ?? threadId);
+  const host = parentId === null ? undefined : draft.Local.ThreadSessions[parentId];
+  if (host !== undefined) yield* showSideThread(draft, host, threadId);
+}
+
+// Follows useSideChat in apps/web/src/components/chat/useSideChat.ts, which always opens the
+// side chat beside its thread.
+/** Forks the selected thread's latest stable point into a side chat, carrying the composer's picks. */
+export function* startSideChat(draft: IEnvironment): IOpenGenerator {
+  const hostId = draft.Local.SelectedThreadId;
+  const picked = hostId === null ? undefined : draft.Local.ThreadSessions[hostId];
+  if (hostId === null || picked === undefined) return;
+  delete picked.SideChatError;
+  const picks = JSON.parse(
+    JSON.stringify({ ModelSelection: picked.ModelSelection, RuntimeMode: picked.RuntimeMode }),
+  ) as Pick<IThreadSession, "ModelSelection" | "RuntimeMode">;
+  const targetThreadId = yield* generateGuid();
+  const environmentId = draft.EnvironmentId;
+  try {
+    yield* open(
+      withCommandId((commandId) =>
+        forkThreadEffect({
+          EnvironmentId: environmentId,
+          CommandId: commandId,
+          SourceThreadId: hostId,
+          TargetThreadId: targetThreadId,
+          RunId: null,
+          Title: "Side chat",
+        }),
+      ),
+    );
+  } catch (error) {
+    const held = draft.Local.ThreadSessions[hostId];
+    if (held !== undefined) held.SideChatError = serverError(error).message;
+    return;
+  }
+  const side = yield* sessionOf(draft, targetThreadId);
+  side.ModelSelection = picks.ModelSelection;
+  side.RuntimeMode = picks.RuntimeMode;
+  const host = draft.Local.ThreadSessions[hostId];
+  if (host !== undefined) yield* showSideThread(draft, host, targetThreadId);
+}
+leading(startSideChat);
 
 export function* closeThread(draft: IEnvironment, threadId: string): IActionGenerator {
   delete draft.Replica.OpenThreads[threadId];
@@ -341,9 +497,11 @@ export function* selectThread(
 function* showThread(draft: IEnvironment, threadId: string): IActionGenerator {
   const previous = draft.Local.SelectedThreadId;
   draft.Local.SelectedThreadId = threadId;
-  if (previous !== null) yield* leaveThread(draft, previous);
+  if (previous !== null) yield* leaveThread(draft, previous, previous !== sideOfSelected(draft));
   if (draft.Local.ThreadSessions[threadId]?.NewThreadProjectId != null) return;
   yield* openThread(draft, threadId);
+  const side = sideOfSelected(draft);
+  if (side !== null) yield* openThread(draft, side);
 }
 
 function carriedModel(draft: IEnvironment, destination: string): IWireModelSelection | null {
@@ -409,7 +567,12 @@ function* forgetSession(draft: IEnvironment, threadId: string): IActionGenerator
   yield* storeDraftEffect({ ThreadId: threadId, Draft: null });
   yield* storeDraftFilesEffect({ ThreadId: threadId, Files: [] });
   yield* dropDictation(draft.Local.Dictation, threadId);
+  if (draft.Local.SelectedThreadId === threadId)
+    yield* releaseSide(draft, draft.Local.ThreadSessions[threadId]);
   delete draft.Local.ThreadSessions[threadId];
+  for (const session of Object.values(draft.Local.ThreadSessions)) {
+    if (session.Panels.Side?.ThreadId === threadId) session.Panels.Side = null;
+  }
   yield* rememberTerminalEffect({ ThreadId: threadId, Launch: null });
   if (draft.Local.SelectedThreadId === threadId) {
     draft.Local.SelectedThreadId = null;
@@ -460,7 +623,8 @@ export function* threadCommand(
     return false;
   }
   // Only an open thread's stream reports a deletion; the shell doesn't say why a row left.
-  if (command.Kind === "delete") yield* forgetSession(draft, threadId);
+  if (command.Kind === "delete" && command.OnlyIfUnused !== true)
+    yield* forgetSession(draft, threadId);
   return true;
 }
 
@@ -832,6 +996,13 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
     yield* stopTimer(draft, "Server/ConfigReopen");
     yield* openConfigStream(draft);
   },
+  *"Shell/Notify"(draft, { Notes }) {
+    for (const note of Notes) yield* resource(draft, "Notify/Device").show(note);
+  },
+  *"Notify/Device"(draft, message) {
+    if (isEnded(message)) return;
+    yield* start(selectThread, draft, message.Opened);
+  },
   *"Thread/Deleted"(draft, { ThreadId }) {
     delete draft.Replica.OpenThreads[ThreadId];
     yield* forgetSession(draft, ThreadId);
@@ -839,7 +1010,12 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   // Follows ThreadRouteView in apps/web/src/components/ThreadRouteView.tsx, which leaves a
   // missing thread for home, replacing its address.
   *"Thread/Missing"(draft, { ThreadId }) {
+    if (draft.Local.SelectedThreadId === ThreadId)
+      yield* releaseSide(draft, draft.Local.ThreadSessions[ThreadId]);
     yield* closeThread(draft, ThreadId);
+    for (const session of Object.values(draft.Local.ThreadSessions)) {
+      if (session.Panels.Side?.ThreadId === ThreadId) session.Panels.Side = null;
+    }
     if (draft.Local.SelectedThreadId !== ThreadId) return;
     draft.Local.SelectedThreadId = null;
     yield* syncAddress(draft, false);
@@ -864,6 +1040,9 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Details/Pinned"(draft, { Open }) {
     yield* setPreferences(draft, { DetailsOpen: Open });
   },
+  *"Side/Hidden"(draft, { ThreadId, Discard }) {
+    yield* hideSideThread(draft, ThreadId, Discard);
+  },
   *"Git/StatusFollowed"(draft) {
     yield* start(reportActivity, draft);
   },
@@ -882,7 +1061,8 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
       yield* start(lookUpLineageTitles, thread);
   },
   *"Thread/Expired"(draft, { ThreadId }) {
-    if (draft.Local.SelectedThreadId !== ThreadId) yield* closeThread(draft, ThreadId);
+    if (draft.Local.SelectedThreadId !== ThreadId && sideOfSelected(draft) !== ThreadId)
+      yield* closeThread(draft, ThreadId);
   },
   *"Dictation/TranscriptRefused"(draft, { ThreadId }) {
     yield* start(refuseTranscript, draft.Local.Dictation, ThreadId);
@@ -905,6 +1085,10 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
 export default createEntityFeature<IEnvironment>("Environment")(
   {
     selectThread,
+    openSideThread,
+    openThreadLink,
+    closeSideThread,
+    startSideChat,
     newThread,
     threadCommand,
     reorderPin,
@@ -922,6 +1106,7 @@ export default createEntityFeature<IEnvironment>("Environment")(
     preferEditor,
     openView,
     writeSetting,
+    chooseNotificationMode,
     updateServerSettings,
     autoRefreshLimits,
     setPreferences,
@@ -937,6 +1122,7 @@ export default createEntityFeature<IEnvironment>("Environment")(
   },
   {
     sidebarLayout,
+    projectSort,
     minute,
     colorScheme,
     selectedOpenThread,
@@ -948,5 +1134,10 @@ export default createEntityFeature<IEnvironment>("Environment")(
     keybindings,
     addProjectSettings,
     editors,
+    timestampFormat,
+    wordWrap,
+    confirmThreadUnpin,
+    confirmThreadDelete,
+    sendShortcut,
   },
 );

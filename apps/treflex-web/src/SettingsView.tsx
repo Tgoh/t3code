@@ -48,6 +48,7 @@ import {
   type ISettingValue,
   SETTINGS_NAV,
   type ISettingsSearchItem,
+  rowDescription,
   searchSettings,
   SETTINGS_SECTIONS,
   settingsPageOf,
@@ -55,6 +56,8 @@ import {
 } from "./settingsPages";
 import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
+import { ThreadConfirmDialog } from "./ThreadCard";
+import { isNotificationMode } from "./threadNotifications";
 import { clockNow, relativeTime } from "./timestamps";
 import { Badge } from "./ui/Badge";
 import { Button, buttonVariants, InlineButton } from "./ui/Button";
@@ -79,15 +82,6 @@ import {
   openMenuFromKeys,
 } from "./ui/Menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from "./ui/AlertDialog";
 import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { SidebarInput, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "./ui/Sidebar";
@@ -426,8 +420,21 @@ function Sections(props: { sections: ISettingsSection[] }) {
 function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
   const environment = Environment.use();
   const value = () => props.row.Read(props.held);
-  const write = (next: ISettingValue) =>
-    void environment.writeSetting(props.row.Write(next, props.held));
+  // Follows NotificationSettings.tsx: a mode is saved only once the browser allows it.
+  const [notice, setNotice] = createSignal<string | null>(null);
+  const [requesting, setRequesting] = createSignal(false);
+  const chooseNotificationMode = async (next: ISettingValue) => {
+    if (!isNotificationMode(next)) return;
+    setNotice(null);
+    setRequesting(true);
+    const refused = await environment.chooseNotificationMode(next);
+    setRequesting(false);
+    setNotice(refused ?? null);
+  };
+  const write = (next: ISettingValue) => {
+    if (props.row.Id === "notificationMode") void chooseNotificationMode(next);
+    else void environment.writeSetting(props.row.Write(next, props.held));
+  };
   // Only availability rebuilds the control, so a change of value keeps its focus.
   const available = createMemo(() => value() !== null);
   const current = () => String(value());
@@ -441,7 +448,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
         );
       case "select":
         return (
-          <Select value={current()} onValueChange={write}>
+          <Select value={current()} disabled={requesting()} onValueChange={write}>
             <SelectTrigger size="sm" class={rowSelect} aria-label={props.row.Title}>
               <SelectValue>
                 {control.Options.find((option) => option.Value === current())?.Label ?? current()}
@@ -534,7 +541,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
           </Show>
         </>
       }
-      description={props.row.Description}
+      description={notice() ?? rowDescription(props.row, props.held)}
       settingId={props.row.Id}
       control={control()}
     >
@@ -1277,7 +1284,11 @@ const ArchivedPage = ArchivedThreads.provider(() => {
                             size="icon-sm"
                             aria-label="Delete"
                             data-tip="Delete"
-                            onClick={() => setDeleting(thread)}
+                            onClick={() =>
+                              environment.confirmThreadDelete()
+                                ? setDeleting(thread)
+                                : command(thread.id, "delete")
+                            }
                           >
                             <Icons.Trash2 class="size-3.5" />
                           </Button>
@@ -1293,28 +1304,12 @@ const ArchivedPage = ArchivedThreads.provider(() => {
             {(held) => {
               const thread = held();
               return (
-                <AlertDialog onClose={() => setDeleting(null)}>
-                  <AlertDialogPopup>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete thread "{thread.title}"?</AlertDialogTitle>
-                      <AlertDialogDescription class="whitespace-pre-line">
-                        This permanently clears conversation history for this thread.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogClose variant="outline">Cancel</AlertDialogClose>
-                      <Button
-                        variant="destructive"
-                        onClick={() => {
-                          setDeleting(null);
-                          command(thread.id, "delete");
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </AlertDialogFooter>
-                  </AlertDialogPopup>
-                </AlertDialog>
+                <ThreadConfirmDialog
+                  kind="delete"
+                  title={thread.title}
+                  onConfirm={() => command(thread.id, "delete")}
+                  onClose={() => setDeleting(null)}
+                />
               );
             }}
           </Presence>

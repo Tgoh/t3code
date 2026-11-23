@@ -12,6 +12,7 @@ import { Bot, ChevronDown, ChevronRight } from "./icons";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import type { ILineageAgent } from "./lineage";
 import OpenThread, { timelineItem } from "./OpenThread";
+import { createSideThreadTrigger } from "./sideThreadTrigger";
 import {
   groupTiming,
   type INotificationItem,
@@ -131,7 +132,9 @@ function SubagentCard(props: ICardProps) {
       <span class="shrink-0 text-xs text-muted-foreground tabular-nums">
         <Show when={props.event} fallback={<AgentElapsed agent={timing()} full />}>
           {(event) => (
-            <span data-tip={fullTimestamp(event().At)}>{shortTimestamp(event().At)}</span>
+            <span data-tip={fullTimestamp(event().At, environment.timestampFormat())}>
+              {shortTimestamp(event().At, environment.timestampFormat())}
+            </span>
           )}
         </Show>
       </span>
@@ -149,18 +152,28 @@ function SubagentCard(props: ICardProps) {
         </div>
       }
     >
-      {(childThreadId) => (
-        <button
-          type="button"
-          class={`${CARD} cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset`}
-          data-subagent
-          aria-label={`Open ${title()}`}
-          aria-description={statusLabel()}
-          onClick={() => void environment.selectThread(childThreadId())}
-        >
-          {content()}
-        </button>
-      )}
+      {(childThreadId) => {
+        const trigger = createSideThreadTrigger((intent) =>
+          remote() === undefined
+            ? void environment.openSideThread(childThreadId(), intent)
+            : void environment.selectThread(childThreadId()),
+        );
+        return (
+          <>
+            <button
+              type="button"
+              class={`${CARD} cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset`}
+              data-subagent
+              aria-label={`Open ${title()}`}
+              aria-description={statusLabel()}
+              {...trigger.handlers}
+            >
+              {content()}
+            </button>
+            {trigger.menu()}
+          </>
+        );
+      }}
     </Show>
   );
 }

@@ -59,7 +59,7 @@ import {
 import { assistantHtml, blockTokens, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } from "./sanitize";
-import ThreadSession from "./ThreadSession";
+import ThreadSession, { codeWrapped } from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { Presence } from "./ui/Presence";
 import { ScrollArea } from "./ui/ScrollArea";
@@ -300,7 +300,7 @@ function ThreadChip(props: { target: ILinkTarget }) {
             class={`${THREAD_LINK} group/link`}
             aria-label={`Thread, ${target().Title}`}
             data-tip="Open thread"
-            onClick={() => environment.selectThread(target().Ref.threadId)}
+            onClick={() => environment.openThreadLink(target().Ref.threadId)}
           >
             <Show when={project()} fallback={<MessagesSquare />}>
               {(held) => <ProjectBadge project={held()} />}
@@ -987,12 +987,14 @@ function CodeToken(props: ITokenProps) {
   });
   const key = useContext(CodeBlockKey)();
   const session = key === null ? null : ThreadSession.use();
-  const [unkeyedWrap, setUnkeyedWrap] = createSignal(true);
+  const [unkeyedWrap, setUnkeyedWrap] = createSignal<boolean | null>(null);
   const wrapped = () =>
-    key === null || session === null ? unkeyedWrap() : session.state.UnwrappedCode[key] !== true;
+    key === null || session === null
+      ? (unkeyedWrap() ?? environment.wordWrap())
+      : codeWrapped(session.state.CodeWrap, key, environment.wordWrap());
   const toggleWrap = () => {
-    if (key === null || session === null) setUnkeyedWrap((held) => !held);
-    else void session.toggleCodeWrap(key);
+    if (key === null || session === null) setUnkeyedWrap(!wrapped());
+    else void session.toggleCodeWrap(key, wrapped());
   };
   const wrapLabel = () => (wrapped() ? "Disable line wrap" : "Wrap lines");
   const wanted = createMemo(
@@ -1123,7 +1125,7 @@ export function Markdown(props: {
     if (href == null) return;
     const target = threadLinkTarget(href, null, environment.state.EnvironmentId, title);
     if (target !== null && "Ref" in target && target.Openable)
-      environment.selectThread(target.Ref.threadId);
+      environment.openThreadLink(target.Ref.threadId);
   };
   return (
     <MessageContext.Provider value={props.message ?? null}>

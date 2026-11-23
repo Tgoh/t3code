@@ -1,4 +1,6 @@
 // @effect-diagnostics globalTimers:off -- A view-only long-press delay, outside any Effect runtime.
+import type { ClientSettings } from "@t3tools/contracts/settings";
+import { isEditable } from "./keybindings";
 import {
   type Accessor,
   createComputed,
@@ -54,14 +56,36 @@ const KEYBOARD_SETTLE_MS = 1_000;
 const KEYBOARD_MIN_HEIGHT = 150;
 
 /**
- * Sizes the app to the visual viewport, which iOS Safari shrinks for the on-screen keyboard while
- * the layout viewport stays full height. Pinch zoom also shrinks it, so a zoomed page is left alone.
+ * While typing on a touch screen, or until a keyboard seen open closes, also compares with the
+ * tallest viewport seen at that width, since a layout viewport that shrinks with the keyboard hides
+ * it from `layoutHeight`. Focus passes through `<body>` between fields with the keyboard still up.
+ * Otherwise a window made shorter, on a desktop or in split screen, would count as a keyboard.
+ */
+export function createKeyboardDetector(typingOnTouch: () => boolean) {
+  const tallest = new Map<number, number>();
+  let open = false;
+  return (visual: { width: number; height: number }, layoutHeight: number): boolean => {
+    const width = Math.round(visual.width);
+    const full =
+      open || typingOnTouch() ? Math.max(layoutHeight, tallest.get(width) ?? 0) : layoutHeight;
+    open = full - visual.height > KEYBOARD_MIN_HEIGHT;
+    if (!open) tallest.set(width, Math.max(full, visual.height));
+    return open;
+  };
+}
+
+/**
+ * Pinch zoom shrinks the visual viewport too, so a zoomed page is left alone.
  * iOS can deliver the viewport's events late around a focus change or a rotation, so the size is
  * also polled for a moment then.
  */
 export function trackVisualViewport(target: HTMLElement) {
   const viewport = window.visualViewport;
   if (viewport == null) return;
+  const touch = window.matchMedia(COARSE_POINTER_QUERY);
+  const keyboardOpen = createKeyboardDetector(
+    () => touch.matches && isEditable(document.activeElement),
+  );
   const update = () => {
     if (Math.abs(viewport.scale - 1) > 0.01) {
       target.style.removeProperty("--viewport-height");
@@ -70,7 +94,7 @@ export function trackVisualViewport(target: HTMLElement) {
       return;
     }
     target.style.setProperty("--viewport-height", `${viewport.height}px`);
-    if (target.clientHeight - viewport.height > KEYBOARD_MIN_HEIGHT) {
+    if (keyboardOpen(viewport, target.clientHeight)) {
       target.dataset.keyboard = "open";
       target.style.setProperty("--viewport-top", `${viewport.offsetTop}px`);
       return;
@@ -136,13 +160,42 @@ export function nextFrame(): (run: () => void) => void {
 
 export const COARSE_POINTER_QUERY = "(pointer: coarse)";
 
-/** On a touch screen Enter adds a line and only the send button or a modifier sends. */
+// Follows composerRequiresModifier in apps/web/src/composer-logic.ts.
+export function composerRequiresModifier(
+  sendShortcut: ClientSettings["sendShortcut"],
+  prompt: string,
+): boolean {
+  return (
+    sendShortcut === "mod-enter" ||
+    (sendShortcut === "mod-enter-multiline" && /[\r\n]/.test(prompt))
+  );
+}
+
+/**
+ * On a touch screen Enter adds a line and only the send button or a modifier sends. When the Send
+ * shortcut asks for a modifier, plain Enter adds a line, and Shift with the modifier is the
+ * alternate send during a turn, as stock's `shortcutForContext` moves it there.
+ */
 export function enterSends(
   event: Pick<KeyboardEvent, "key" | "shiftKey" | "isComposing" | "metaKey" | "ctrlKey">,
   coarsePointer: boolean,
+  requiresModifier = false,
+  running = false,
 ): boolean {
-  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
-  return !coarsePointer || event.metaKey || event.ctrlKey;
+  if (event.key !== "Enter" || event.isComposing) return false;
+  const modifier = event.metaKey || event.ctrlKey;
+  if (requiresModifier) return modifier && (!event.shiftKey || running);
+  if (event.shiftKey) return false;
+  return !coarsePointer || modifier;
+}
+
+export function enterIsAlternate(
+  event: Pick<KeyboardEvent, "shiftKey" | "metaKey" | "ctrlKey">,
+  requiresModifier: boolean,
+  mac: boolean,
+): boolean {
+  const mod = mac ? event.metaKey : event.ctrlKey;
+  return mod && event.shiftKey === requiresModifier;
 }
 
 const LONG_PRESS_MS = 500;

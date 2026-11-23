@@ -37,7 +37,7 @@ import { modelDisplay } from "./ThreadSession";
 import { FolderOpen, FolderPlus, MessageSquare, PenLine, Search, SquarePen } from "./icons";
 import type { IWireThreadShell } from "./Infrastructure/wire";
 import { useMessageSearch } from "./messageSearch";
-import { toSortableThread } from "./projectOrder";
+import { orderProjects, toSortableThread } from "./projectOrder";
 import { type IPaletteView, useNavigation } from "./navigation";
 import Shell, { activityAt, isSnoozed, sidebarStatus } from "./Shell";
 import { rankMessages, threadSubject } from "./threadSearch";
@@ -69,7 +69,12 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   const close = () => navigation.setPalette(null);
 
   const projects = createMemo(() =>
-    environment.activeProjects().toSorted((left, right) => left.title.localeCompare(right.title)),
+    orderProjects(
+      environment.activeProjects(),
+      environment.projectSort(),
+      environment.state.Local.Preferences.ProjectOrder,
+      shell.sidebarThreads(),
+    ),
   );
   const projectTitle = (projectId: string) => shell.state.Projects[projectId]?.title ?? null;
   const threads = createMemo(() =>

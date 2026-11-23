@@ -94,7 +94,8 @@ export interface IForkThread {
   CommandId: string;
   SourceThreadId: string;
   TargetThreadId: string;
-  RunId: string;
+  /** Null forks the latest stable point into a side chat. */
+  RunId: string | null;
   Title: string;
 }
 
@@ -199,7 +200,7 @@ export type IThreadCommand =
   | { Kind: "visit"; VisitedAt: string; Opened?: true; SearchQuery?: string }
   | { Kind: "markUnread" }
   | { Kind: "unarchive" }
-  | { Kind: "delete" }
+  | { Kind: "delete"; OnlyIfUnused?: true }
   | { Kind: "modelSelection"; Selection: IWireModelSelection }
   | { Kind: "runtimeMode"; Mode: IWireRuntimeMode }
   | { Kind: "branch"; Branch: string | null };

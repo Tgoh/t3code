@@ -67,7 +67,7 @@ const rowsOf = (
 ) => rows.map((row) => [row.ThreadId, row.Relation, row.Title]);
 
 describe("threadLineage", () => {
-  it("lists the parent first, then forks newest first, leaving out side chats", () => {
+  it("lists the parent first, then forks newest first, with side chats in their own group", () => {
     const current = shell("current", "parent", "2026-06-20T00:00:00.000Z", { Run: true });
     const result = lineage({
       thread: current as never,
@@ -84,6 +84,7 @@ describe("threadLineage", () => {
       ["newer-fork", "fork", "Thread newer-fork"],
       ["older-fork", "fork", "Thread older-fork"],
     ]);
+    expect(rowsOf(result.SideChats)).toEqual([["side", "sideChat", "Thread side"]]);
     expect(result.Related[0]?.MergeTarget).toBe(true);
     expect(result.Related[1]?.MergeTarget).toBe(false);
   });

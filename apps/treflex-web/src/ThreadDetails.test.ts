@@ -305,7 +305,11 @@ describe("detailsLayout", () => {
 });
 
 describe("surface launcher shortcuts", () => {
-  const actions = surfaceActions({ TerminalAvailable: true, DiffAvailable: false });
+  const actions = surfaceActions({
+    TerminalAvailable: true,
+    DiffAvailable: false,
+    SideChatAvailable: false,
+  });
   const key = (value: string, extra: Partial<KeyboardEvent> = {}) => ({
     key: value,
     defaultPrevented: false,
