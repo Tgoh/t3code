@@ -101,6 +101,7 @@ import {
   applyNotificationMode,
   autoRefreshLimits,
   chooseNotificationMode,
+  confirmThreadArchive,
   confirmThreadDelete,
   confirmThreadUnpin,
   openView,
@@ -129,7 +130,13 @@ import { serverError } from "./Infrastructure/serverError";
 import { toast } from "./Infrastructure/toasts";
 import { lookUpLineageTitles } from "./lineageTitles";
 import { toSortableThread } from "./projectOrder";
-import { getDefaultShell, type IShell, openShellStream, visitShown } from "./Shell";
+import {
+  getDefaultShell,
+  type IShell,
+  openShellStream,
+  trackTitleRegenerations,
+  visitShown,
+} from "./Shell";
 import {
   applyTranscript,
   checkRewind,
@@ -592,7 +599,9 @@ const COMMAND_FAILURES: Partial<Record<IThreadCommand["Kind"], string>> = {
   unpin: "Failed to unpin thread",
   reorderPin: "Failed to reorder pinned threads",
   rename: "Failed to rename thread",
+  regenerateTitle: "Failed to regenerate thread title",
   markUnread: "Failed to mark thread unread",
+  archive: "Failed to archive thread",
   unarchive: "Failed to unarchive thread",
   delete: "Failed to delete thread",
 };
@@ -652,28 +661,71 @@ export function* reorderPin(
 // Follows attemptSettle and planForwardNavigation in apps/web/src/components/Sidebar.tsx.
 /** Settles a thread and, when it's the open one, moves on to the next unparked row or a new thread. */
 export function* settleThread(draft: IEnvironment, threadId: string): IOpenGenerator {
+  yield* settleThreads(draft, [threadId]);
+}
+
+// Follows settleThreads in apps/web/src/components/Sidebar.tsx, whose co-settling threads the
+// open one's move skips.
+export function* settleThreads(draft: IEnvironment, threadIds: string[]): IOpenGenerator {
+  const unsettled = threadIds.filter(
+    (id) => draft.Replica.Shell.Threads[id]?.settledOverride !== "settled",
+  );
+  const openId = draft.Local.SelectedThreadId;
   const advance =
-    draft.Local.SelectedThreadId === threadId ? yield* threadAfterSettling(draft, threadId) : null;
-  const settled = yield* threadCommand(draft, threadId, { Kind: "settle" });
-  if (!settled || advance === null || draft.Local.SelectedThreadId !== threadId) return;
-  if (advance.ThreadId !== null) yield* selectThread(draft, advance.ThreadId);
-  else yield* newThread(draft, advance.ProjectId);
+    openId !== null && unsettled.includes(openId)
+      ? yield* threadAfterSettling(draft, openId, new Set(unsettled))
+      : null;
+  for (const threadId of unsettled) {
+    const settled = yield* threadCommand(draft, threadId, { Kind: "settle" });
+    if (threadId !== openId || !settled || advance === null) continue;
+    if (draft.Local.SelectedThreadId !== threadId) continue;
+    if (advance.ThreadId !== null) yield* selectThread(draft, advance.ThreadId);
+    else yield* newThread(draft, advance.ProjectId);
+  }
 }
 
 function* threadAfterSettling(
   draft: IEnvironment,
   threadId: string,
+  settling: ReadonlySet<string>,
 ): IActionGenerator<{ ThreadId: string | null; ProjectId: string } | null> {
   const thread = draft.Replica.Shell.Threads[threadId];
   if (thread === undefined) return null;
   const { Order, Sections } = yield* sidebarLayout(draft);
-  const parked = new Set<string>([...Sections.Settled, ...Sections.Snoozed].map((row) => row.id));
+  const parked = new Set<string>([
+    ...settling,
+    ...[...Sections.Settled, ...Sections.Snoozed].map((row) => row.id),
+  ]);
   const index = Order.indexOf(threadId);
   const next =
     index === -1
       ? undefined
       : [...Order.slice(index + 1), ...Order.slice(0, index)].find((id) => !parked.has(id));
   return { ThreadId: next ?? null, ProjectId: thread.projectId };
+}
+
+// Follows archiveThread in apps/web/src/hooks/useThreadActions.ts.
+/** Archives a thread; the open one gives way to a new thread in its project. */
+export function* archiveThread(draft: IEnvironment, threadId: string): IOpenGenerator {
+  const projectId = draft.Replica.Shell.Threads[threadId]?.projectId;
+  const wasOpen = draft.Local.SelectedThreadId === threadId;
+  if (!(yield* threadCommand(draft, threadId, { Kind: "archive" }))) return;
+  if (wasOpen && projectId !== undefined && draft.Local.SelectedThreadId === threadId)
+    yield* newThread(draft, projectId);
+}
+
+// Follows the regenerate-title actions in apps/web/src/components/Sidebar.tsx and
+// useThreadActionMenu.ts, which skip a thread whose title is already regenerating.
+export function* regenerateTitles(draft: IEnvironment, threadIds: string[]): IOpenGenerator {
+  const sent: Array<{ ThreadId: string; RequestId: string }> = [];
+  for (const threadId of threadIds) {
+    const row = draft.Replica.Shell.Threads[threadId];
+    if (row === undefined || row.titleRegeneration != null) continue;
+    const requestId = yield* generateGuid();
+    if (yield* threadCommand(draft, threadId, { Kind: "regenerateTitle", RequestId: requestId }))
+      sent.push({ ThreadId: threadId, RequestId: requestId });
+  }
+  if (sent.length > 0) yield* start(trackTitleRegenerations, draft.Replica.Shell, sent);
 }
 
 /** The shortcut's toggle: un-settles the open thread when it's settled, else settles and moves on. */
@@ -1098,6 +1150,9 @@ export default createEntityFeature<IEnvironment>("Environment")(
     threadCommand,
     reorderPin,
     settleThread,
+    settleThreads,
+    archiveThread,
+    regenerateTitles,
     toggleSettleOpenThread,
     projectCommand,
     addFolder,
@@ -1142,6 +1197,7 @@ export default createEntityFeature<IEnvironment>("Environment")(
     timestampFormat,
     wordWrap,
     confirmThreadUnpin,
+    confirmThreadArchive,
     confirmThreadDelete,
     sendShortcut,
   },

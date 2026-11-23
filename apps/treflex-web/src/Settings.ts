@@ -214,6 +214,10 @@ export function* confirmThreadUnpin(draft: IEnvironment): ISelectorGenerator<boo
   return draft.Local.ClientSettings?.confirmThreadUnpin ?? false;
 }
 
+export function* confirmThreadArchive(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return draft.Local.ClientSettings?.confirmThreadArchive ?? false;
+}
+
 export function* confirmThreadDelete(draft: IEnvironment): ISelectorGenerator<boolean> {
   return draft.Local.ClientSettings?.confirmThreadDelete ?? true;
 }

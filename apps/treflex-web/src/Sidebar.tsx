@@ -1,5 +1,6 @@
 // @effect-diagnostics globalDate:off globalTimers:off -- A view-only tick for working timers, outside any Effect runtime.
 import type { ShownOrder } from "@t3tools/client-runtime/state/thread-search";
+import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useResource } from "treflex-solid";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, splitProps } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -31,12 +32,21 @@ import Shell, { isBusy, sidebarStatus } from "./Shell";
 import { SidebarFooter } from "./SidebarFooter";
 import { StageArt } from "./StageArt";
 import {
+  BulkThreadMenu,
   type ICardSection,
   type IThreadConfirmation,
   ThreadCard,
   ThreadConfirmDialog,
   ThreadMenu,
 } from "./ThreadCard";
+import { CustomSnoozeDialog } from "./CustomSnoozeDialog";
+import {
+  EMPTY_SELECTION,
+  type IThreadSelection,
+  keepSelected,
+  rangeSelectTo,
+  toggleSelected,
+} from "./threadSelection";
 import { modelDisplay } from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { CollapsibleSectionHeader } from "./ui/CollapsibleSectionHeader";
@@ -248,9 +258,41 @@ export const Sidebar = Shell.provider(() => {
   };
   const [removingProject, setRemovingProject] = createSignal<string | null>(null);
   const [confirming, setConfirming] = createSignal<{
-    Id: string;
+    Ids: string[];
     Kind: IThreadConfirmation;
+    Bulk: boolean;
   } | null>(null);
+  const [customSnooze, setCustomSnooze] = createSignal<{ Ids: string[]; Bulk: boolean } | null>(
+    null,
+  );
+  const [picked, setPicked] = createSignal<IThreadSelection>(EMPTY_SELECTION);
+  const selection = createMemo(() => keepSelected(picked(), (id) => id in shell.state.Threads));
+  const clearPicked = () => setPicked(EMPTY_SELECTION);
+  const [bulkMenu, setBulkMenu] = createSignal<{ X: number; Y: number } | null>(null);
+  const bulkThreads = () =>
+    [...selection().Ids].flatMap((id) => {
+      const thread = shell.state.Threads[id];
+      return thread === undefined ? [] : [thread];
+    });
+  // Follows handleThreadClick and navigateToThread in apps/web/src/components/Sidebar.tsx.
+  const selectionClick = (threadId: string, event: MouseEvent): boolean => {
+    if (isMacPlatform(navigator.platform) ? event.metaKey : event.ctrlKey) {
+      event.preventDefault();
+      setPicked(toggleSelected(selection(), threadId));
+      return true;
+    }
+    if (event.shiftKey) {
+      event.preventDefault();
+      setPicked(rangeSelectTo(selection(), threadId, layout().Order));
+      return true;
+    }
+    setPicked({ Ids: new Set(), Anchor: threadId });
+    return false;
+  };
+  const openMenu = (threadId: string, x: number, y: number) => {
+    if (selection().Ids.has(threadId)) setBulkMenu({ X: x, Y: y });
+    else setMenu({ Id: threadId, X: x, Y: y });
+  };
   const [renamingProject, setRenamingProject] = createSignal<string | null>(null);
   const [projectMenu, setProjectMenu] = createSignal<{ Id: string; X: number; Y: number } | null>(
     null,
@@ -315,6 +357,7 @@ export const Sidebar = Shell.provider(() => {
   };
   const chooseResult = (threadId: string) => {
     clearSearch();
+    setPicked({ Ids: new Set(), Anchor: threadId });
     navigation.goToThread(threadId);
   };
   const onSearchKey = (event: KeyboardEvent) => {
@@ -372,13 +415,19 @@ export const Sidebar = Shell.provider(() => {
           onHover: () => setHighlightId(thread.id),
         }
       }
+      multiSelected={search === undefined && selection().Ids.has(thread.id)}
+      onSelectionClick={
+        search === undefined ? (event) => selectionClick(thread.id, event) : undefined
+      }
       thread={thread}
       section={section}
       compact={compact}
       showProvider={mixedProviders()}
       renaming={renaming() === thread.id}
       second={second()}
-      onMenu={(x, y) => setMenu({ Id: thread.id, X: x, Y: y })}
+      onMenu={(x, y) =>
+        search === undefined ? openMenu(thread.id, x, y) : setMenu({ Id: thread.id, X: x, Y: y })
+      }
       onRenameEnd={() => setRenaming(null)}
     />
   );
@@ -415,7 +464,10 @@ export const Sidebar = Shell.provider(() => {
               <MenuCheckboxItem
                 checked={scope().size === 0}
                 closeOnClick
-                onClick={() => void environment.toggleProjectScope(null)}
+                onClick={() => {
+                  clearPicked();
+                  void environment.toggleProjectScope(null);
+                }}
               >
                 All projects
               </MenuCheckboxItem>
@@ -430,7 +482,10 @@ export const Sidebar = Shell.provider(() => {
                 {(project) => (
                   <MenuCheckboxItem
                     checked={scope().has(project.id)}
-                    onClick={() => void environment.toggleProjectScope(project.id)}
+                    onClick={() => {
+                      clearPicked();
+                      void environment.toggleProjectScope(project.id);
+                    }}
                   >
                     {project.title}
                   </MenuCheckboxItem>
@@ -835,11 +890,41 @@ export const Sidebar = Shell.provider(() => {
                 x={at.X}
                 y={at.Y}
                 onRename={() => setRenaming(thread.id)}
-                onConfirm={(kind) => setConfirming({ Id: thread.id, Kind: kind })}
+                onConfirm={(kind) => setConfirming({ Ids: [thread.id], Kind: kind, Bulk: false })}
+                onCustomSnooze={() => setCustomSnooze({ Ids: [thread.id], Bulk: false })}
                 onClose={() => setMenu(null)}
               />
             );
           }}
+        </Presence>
+        <Presence when={bulkThreads().length > 0 ? bulkMenu() : undefined} keyed>
+          {(held) => (
+            <BulkThreadMenu
+              threads={bulkThreads()}
+              x={held().X}
+              y={held().Y}
+              onDelete={() =>
+                setConfirming({ Ids: [...selection().Ids], Kind: "delete", Bulk: true })
+              }
+              onCustomSnooze={() => setCustomSnooze({ Ids: [...selection().Ids], Bulk: true })}
+              onDone={clearPicked}
+              onClose={() => setBulkMenu(null)}
+            />
+          )}
+        </Presence>
+        <Presence when={customSnooze()} keyed>
+          {(held) => (
+            <Portal>
+              <CustomSnoozeDialog
+                onSnooze={(until) => {
+                  for (const id of held().Ids)
+                    void environment.threadCommand(id, { Kind: "snooze", Until: until });
+                  if (held().Bulk) clearPicked();
+                }}
+                onClose={() => setCustomSnooze(null)}
+              />
+            </Portal>
+          )}
         </Presence>
         <Presence when={menuProject() === undefined ? undefined : projectMenu()} keyed>
           {(held) => {
@@ -867,13 +952,23 @@ export const Sidebar = Shell.provider(() => {
         </Presence>
         <Presence when={confirming()} keyed>
           {(held) => {
-            const { Id: threadId, Kind: kind } = held();
+            const { Ids: threadIds, Kind: kind, Bulk: bulk } = held();
             return (
               <Portal>
                 <ThreadConfirmDialog
                   kind={kind}
-                  title={shell.state.Threads[threadId]?.title ?? "this thread"}
-                  onConfirm={() => void environment.threadCommand(threadId, { Kind: kind })}
+                  title={
+                    bulk
+                      ? threadIds.length
+                      : (shell.state.Threads[threadIds[0]!]?.title ?? "this thread")
+                  }
+                  onConfirm={() => {
+                    if (bulk) clearPicked();
+                    for (const threadId of threadIds) {
+                      if (kind === "archive") void environment.archiveThread(threadId);
+                      else void environment.threadCommand(threadId, { Kind: kind });
+                    }
+                  }}
                   onClose={() => setConfirming(null)}
                 />
               </Portal>

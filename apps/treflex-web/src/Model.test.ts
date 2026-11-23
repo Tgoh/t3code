@@ -32,6 +32,7 @@ import { describe, expect, it, onTestFinished } from "vite-plus/test";
 import {
   addFolder,
   addProjectSettings,
+  archiveThread,
   cloneProject,
   closeSideThread,
   closeThread,
@@ -47,10 +48,12 @@ import {
   panelShortcuts,
   preferEditor,
   projectCommand,
+  regenerateTitles,
   removeProject,
   reorderPin,
   selectThread,
   settleThread,
+  settleThreads,
   startSideChat,
   threadCommand,
   toggleSettleOpenThread,
@@ -2051,6 +2054,139 @@ describe("the sidebar", () => {
     await server.runtime.dispatch(toggleSettleOpenThread, envId);
     expect(take()).toEqual([["only", "settle"]]);
     expect(server.environment().Local.ThreadSessions[selected()!]?.NewThreadProjectId).toBe("lone");
+  });
+
+  it("settles several threads at once, moving the open one past the others being settled", async () => {
+    const commands: { ThreadId: string; Command: { Kind: string } }[] = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+        if (effect.Command.Kind !== "visit") commands.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [
+          row("a1", "a", "2026-01-04T00:00:00.000Z"),
+          row("a2", "a", "2026-01-03T00:00:00.000Z"),
+          row("a3", "a", "2026-01-02T00:00:00.000Z"),
+          row("done", "a", at, { settledOverride: "settled", settledAt: at }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const envId = server.envId();
+    await server.runtime.dispatch(selectThread, envId, "a1");
+    await server.runtime.dispatch(settleThreads, envId, ["a1", "a2", "done"]);
+    expect(commands.map((sent) => [sent.ThreadId, sent.Command.Kind])).toEqual([
+      ["a1", "settle"],
+      ["a2", "settle"],
+    ]);
+    expect(server.environment().Local.SelectedThreadId).toBe("a3");
+  });
+
+  it("archives a thread, opening a new thread in its project when it was the open one", async () => {
+    const commands: { ThreadId: string; Command: { Kind: string } }[] = [];
+    let refusal: string | null = null;
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: { Kind: string } }) => {
+        if (effect.Command.Kind === "visit") return;
+        if (refusal !== null) throw serverFailure(refusal);
+        commands.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [row("a1", "a", at), row("a2", "a", at)],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    const envId = server.envId();
+    const selected = () => server.environment().Local.SelectedThreadId;
+    await server.runtime.dispatch(selectThread, envId, "a1");
+
+    await server.runtime.dispatch(archiveThread, envId, "a2");
+    expect(selected()).toBe("a1");
+    await server.runtime.dispatch(archiveThread, envId, "a1");
+    expect(commands.map((sent) => [sent.ThreadId, sent.Command.Kind])).toEqual([
+      ["a2", "archive"],
+      ["a1", "archive"],
+    ]);
+    expect(server.environment().Local.ThreadSessions[selected()!]?.NewThreadProjectId).toBe("a");
+
+    await server.runtime.dispatch(selectThread, envId, "a2");
+    refusal = "Cannot archive while the provider is active.";
+    await server.runtime.dispatch(archiveThread, envId, "a2");
+    expect(selected()).toBe("a2");
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to archive thread", Description: refusal },
+    ]);
+  });
+
+  it("regenerates titles under their own request ids, and toasts once the rows report them all", async () => {
+    const sent: { ThreadId: string; CommandId: string; Command: IThreadCommand }[] = [];
+    let refusal: string | null = null;
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; CommandId: string; Command: IThreadCommand }) => {
+        if (effect.Command.Kind === "visit") return;
+        if (refusal !== null && effect.ThreadId === "c") throw serverFailure(refusal);
+        sent.push(effect);
+      },
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    const busy = { requestId: "earlier", startedAt: at };
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "a", title: "Alpha", workspaceRoot: "/a" }],
+        threads: [
+          row("a", "a", at),
+          row("b", "a", at),
+          row("c", "a", at),
+          row("busy", "a", at, { titleRegeneration: busy }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    refusal = "server said no";
+    await server.runtime.dispatch(regenerateTitles, server.envId(), ["a", "b", "c", "busy"]);
+    expect(sent.map((held) => held.ThreadId)).toEqual(["a", "b"]);
+    for (const held of sent) {
+      expect(held.Command).toEqual({ Kind: "regenerateTitle", RequestId: expect.any(String) });
+    }
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to regenerate thread title", Description: refusal },
+    ]);
+    const requestOf = (id: string) =>
+      (sent.find((held) => held.ThreadId === id)!.Command as { RequestId: string }).RequestId;
+    const report = (sequence: number, id: string, status: string) =>
+      server.sendShell({
+        kind: "thread.updated",
+        sequence,
+        location: "active",
+        thread: row(id, "a", at, {
+          titleRegeneration: null,
+          lastTitleRegeneration: { requestId: requestOf(id), status, completedAt: at },
+        }),
+      } as unknown as IWireShellItem);
+    await report(2, "a", "unchanged");
+    expect(server.takeToasts()).toEqual([]);
+    await report(3, "b", "renamed");
+    expect(server.takeToasts()).toEqual([
+      {
+        Kind: "info",
+        Title: "Kept 1 of 2 titles",
+        Description: "Those titles already fit their threads.",
+      },
+    ]);
   });
 
   it("folds working threads into the Working section, which holds a finished one for two seconds", async () => {

@@ -202,6 +202,13 @@ const EnvironmentView = Environment.provider(() => {
         if (environment.state.Local.SelectedThreadId === null) return false;
         void environment.toggleSettleOpenThread();
         return true;
+      case "thread.regenerateTitle": {
+        const threadId = environment.state.Local.SelectedThreadId;
+        if (threadId === null || environment.state.Replica.Shell.Threads[threadId] === undefined)
+          return false;
+        void environment.regenerateTitles([threadId]);
+        return true;
+      }
       default:
         return runPanelShortcut(command, environment.panelShortcuts(), dispatch);
     }
