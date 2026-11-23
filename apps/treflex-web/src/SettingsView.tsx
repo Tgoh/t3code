@@ -48,6 +48,7 @@ import {
   type ISettingValue,
   SETTINGS_NAV,
   type ISettingsSearchItem,
+  rowDescription,
   searchSettings,
   SETTINGS_SECTIONS,
   settingsPageOf,
@@ -538,7 +539,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
           </Show>
         </>
       }
-      description={notice() ?? props.row.Description}
+      description={notice() ?? rowDescription(props.row, props.held)}
       settingId={props.row.Id}
       control={control()}
     >

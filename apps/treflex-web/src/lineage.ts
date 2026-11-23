@@ -19,7 +19,8 @@ export type ILineageRelation =
   | "fork"
   | "transfer"
   | "subagent"
-  | "remote";
+  | "remote"
+  | "sideChat";
 
 export interface ILineageAgent {
   Status: string;
@@ -48,6 +49,7 @@ export interface ILineage {
   Active: ILineageRow[];
   /** Finished subagents, under stock's "Previous agents". */
   Previous: ILineageRow[];
+  SideChats: ILineageRow[];
   Running: number;
   /** Related threads the shell doesn't carry, whose titles the server has to look up. */
   Lookup: string[];
@@ -120,8 +122,8 @@ const byPinThenNewest = (left: ILineageRow, right: ILineageRow) =>
 
 /**
  * The threads related to this one, grouped as ThreadRelationshipsPanel in
- * apps/web/src/components/chat/ThreadRelationshipsControl.tsx groups them, leaving out side chats,
- * workflow groups and the delegated-from row.
+ * apps/web/src/components/chat/ThreadRelationshipsControl.tsx groups them, leaving out workflow
+ * groups and the delegated-from row.
  */
 export function threadLineage(input: ILineageInput): ILineage {
   const threadId = input.thread.id as ThreadId;
@@ -146,7 +148,7 @@ export function threadLineage(input: ILineageInput): ILineage {
   const toRow = ({ threadId: relatedId, edge }: ThreadRelationshipWalkRow): ILineageRow | null => {
     const shell = shells.get(relatedId);
     const parent = isParentThreadRelationship(edge, threadId);
-    if (!parent && shell?.lineage.sideChat === true) return null;
+    const sideChat = !parent && shell?.lineage.sideChat === true;
     const agent = edge.kind === "subagent" && !parent ? agentsByChild.get(relatedId) : undefined;
     const ownTitle = agent === undefined ? null : (agent.title ?? promptTitle(agent.prompt));
     if (shell === undefined && (edge.kind !== "subagent" || ownTitle === null)) {
@@ -162,13 +164,15 @@ export function threadLineage(input: ILineageInput): ILineage {
     return {
       ThreadId: relatedId,
       Title: title !== null && edge.kind === "subagent" ? formatSubagentDisplayTitle(title) : title,
-      Relation: parent
-        ? edge.kind === "subagent"
-          ? "parentAgent"
-          : "parent"
-        : edge.kind === "parent"
-          ? "fork"
-          : edge.kind,
+      Relation: sideChat
+        ? "sideChat"
+        : parent
+          ? edge.kind === "subagent"
+            ? "parentAgent"
+            : "parent"
+          : edge.kind === "parent"
+            ? "fork"
+            : edge.kind,
       Status: threadRelationshipRowStatus(graph, { threadId: relatedId, edge }),
       CreatedAt: shell?.createdAt ?? null,
       MergeTarget: relatedId === mergeTarget,
@@ -183,8 +187,10 @@ export function threadLineage(input: ILineageInput): ILineage {
   const related: ILineageRow[] = [];
   const active: ILineageRow[] = [];
   const previous: ILineageRow[] = [];
+  const sideChats: ILineageRow[] = [];
   for (const row of rows) {
-    if (row.Relation !== "subagent") related.push(row);
+    if (row.Relation === "sideChat") sideChats.push(row);
+    else if (row.Relation !== "subagent") related.push(row);
     else (isFinishedAgentStatus(row.Status) ? previous : active).push(row);
   }
   for (const agent of input.subagents) {
@@ -205,7 +211,14 @@ export function threadLineage(input: ILineageInput): ILineage {
     input.subagents.filter((agent) => agent.childThreadId === null && agent.status === "running")
       .length +
     active.filter((row) => row.Relation === "subagent" && row.Status === "running").length;
-  return { Related: related, Active: active, Previous: previous, Running: running, Lookup: lookup };
+  return {
+    Related: related,
+    Active: active,
+    Previous: previous,
+    SideChats: sideChats,
+    Running: running,
+    Lookup: lookup,
+  };
 }
 
 // Follows formatCompactElapsedSeconds in apps/web/src/components/chat/AgentElapsed.tsx.

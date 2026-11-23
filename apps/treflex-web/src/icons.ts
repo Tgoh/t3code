@@ -4,6 +4,7 @@ export { default as ArchiveX } from "lucide-solid/icons/archive-x";
 export { default as ArrowDown } from "lucide-solid/icons/arrow-down";
 export { default as ArrowLeft } from "lucide-solid/icons/arrow-left";
 export { default as ArrowRight } from "lucide-solid/icons/arrow-right";
+export { default as ArrowUpLeft } from "lucide-solid/icons/arrow-up-left";
 export { default as ArrowRightLeft } from "lucide-solid/icons/arrow-right-left";
 export { default as ArrowUp } from "lucide-solid/icons/arrow-up";
 export { default as ArrowUpDown } from "lucide-solid/icons/arrow-up-down";

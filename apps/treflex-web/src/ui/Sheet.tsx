@@ -13,7 +13,8 @@ export function SheetBackdrop(props: {
   return (
     <div
       ref={(element) => props.ref?.(element)}
-      class={`${props.contained === true ? "absolute" : "fixed"} ${BACKDROP} data-ending-style:pointer-events-none`}
+      // iOS Safari fires no click on a plain div for a delegated handler unless it looks clickable.
+      class={`${props.contained === true ? "absolute" : "fixed"} ${BACKDROP} pointer-coarse:cursor-pointer data-ending-style:pointer-events-none`}
       aria-hidden="true"
       data-slot="sheet-backdrop"
       onClick={() => props.onClick()}

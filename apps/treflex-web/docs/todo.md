@@ -25,7 +25,14 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 - **Toasts.** **In progress** on `treflex/toasts`. Stock shows toasts (`apps/web/src/components/ui/toast.tsx`, about 176 uses) for git results, copy confirmations, errors and more; treflex has none and uses inline notices and icon swaps. Port stock's toast after the shared components, and move each place stock toasts onto it, including the "Could not…" errors that land in the sidebar today, and wire up the In-app notifications setting. Tam's call (2026-11-22).
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
-  - **Side chats, subagents and linked threads open beside the thread or in its place,** **In progress** on `treflex/side-chats`. Chosen by a setting, with a modifier-click for the other. `@t3tools/client-runtime/side-thread` is importable.
+  - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:
+    - linked-environment threads, which need peer-link reads;
+    - the side chat header's "Add to chat" and Delete;
+    - `/side` and `/btw`;
+    - the read-only bar's live status line (stock's `formatProviderSubagentStatus`), and the pane's "Subagent of" and "Context from" dividers;
+    - tabs, so several side threads stay open beside the diff;
+    - keeping the open side thread across a reload, as stock's `rightPanelStore` does;
+    - forgetting the session of a side chat that was deleted unused, which stays until reload.
 - **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot with the Show skills in slash menu setting, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
 - **Timeline rows.** Compaction dividers and `/compact` turns, superseded-attempt folds, the tool-call visibility setting, viewed-image strips, the "Waiting on N subagents" label and stock's per-tool detail in expanded rows. See the "Timeline" entries under "Unmatched against the stock UI".
 - **Sidebar.** Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.

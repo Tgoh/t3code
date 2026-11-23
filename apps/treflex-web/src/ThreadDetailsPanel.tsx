@@ -46,11 +46,13 @@ import {
   GitFork,
   GitMerge,
   Info,
+  MessagesSquare,
   Play,
   Plus,
   Server,
   X,
 } from "./icons";
+import { createSideThreadTrigger } from "./sideThreadTrigger";
 import GitWork, { GitRunning, type IActionContext, type IDefaultBranchChoice } from "./GitWork";
 import {
   type ILineage,
@@ -431,7 +433,11 @@ const RELATIONS: Record<ILineageRelation, { Icon: Component; Name: string; Untit
   transfer: { Icon: GitFork, Name: "context transfer", Untitled: "Context transfer" },
   subagent: { Icon: Bot, Name: "subagent", Untitled: "Subagent" },
   remote: { Icon: Bot, Name: "subagent", Untitled: "Subagent" },
+  sideChat: { Icon: MessagesSquare, Name: "side chat", Untitled: "Side chat" },
 };
+
+const SUB_HEADING =
+  "m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none";
 
 const LINEAGE_INITIAL_COUNT = 6;
 const LINEAGE_PAGE_COUNT = 12;
@@ -455,6 +461,13 @@ function LineageRow(props: {
     return held !== null && !isFailed(props.row.Status) && held.StartedAt !== null ? held : null;
   };
   const canMerge = () => session.mergeBackRunId() !== null;
+  const side = props.row.Relation === "subagent" || props.row.Relation === "sideChat";
+  const trigger = createSideThreadTrigger(
+    (intent) => void environment.openSideThread(props.row.ThreadId, intent),
+  );
+  const open = () => {
+    if (remote() === null) void environment.selectThread(props.row.ThreadId);
+  };
   return (
     <li
       class="group/lineage flex items-center"
@@ -468,9 +481,7 @@ function LineageRow(props: {
             ? `${title()}: runs on ${remote()}`
             : `Open ${relation().Name}: ${title()}`
         }
-        onClick={() => {
-          if (remote() === null) void environment.selectThread(props.row.ThreadId);
-        }}
+        {...(side ? trigger.handlers : { onClick: open })}
       >
         <Dynamic component={relation().Icon} />
         <span class={LABEL}>{title()}</span>
@@ -516,6 +527,7 @@ function LineageRow(props: {
           </>
         )}
       </Show>
+      {side ? trigger.menu() : null}
     </li>
   );
 }
@@ -587,6 +599,9 @@ function LineageGroups(props: { lineage: ILineage }) {
   );
 }
 
+const sideChatsRunning = (lineage: ILineage) =>
+  lineage.SideChats.filter((row) => row.Status === "running").length;
+
 function LineageSection(props: { threadId: string }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
@@ -621,6 +636,7 @@ function LineageSection(props: { threadId: string }) {
       (held.Related.length > 0 ||
         held.Active.length > 0 ||
         held.Previous.length > 0 ||
+        held.SideChats.length > 0 ||
         held.Running > 0)
     );
   };
@@ -633,7 +649,7 @@ function LineageSection(props: { threadId: string }) {
         >
           {/* A lone "Previous agents" row names itself, as stock's does. */}
           <Show when={held().Running > 0 || held().Related.length > 0 || held().Active.length > 0}>
-            <h3 class="m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none">
+            <h3 class={SUB_HEADING}>
               {held().Running > 0 ? `Lineage · ${held().Running} running` : "Lineage"}
             </h3>
           </Show>
@@ -642,6 +658,14 @@ function LineageSection(props: { threadId: string }) {
           </Show>
           <Show when={props.threadId} keyed>
             {(_threadId: string) => <LineageGroups lineage={held()} />}
+          </Show>
+          <Show when={held().SideChats.length > 0}>
+            <h3 class={SUB_HEADING}>
+              {sideChatsRunning(held()) > 0
+                ? `Side chats · ${sideChatsRunning(held())} running`
+                : "Side chats"}
+            </h3>
+            <LineageList rows={held().SideChats} label="Side chats" />
           </Show>
         </section>
       )}

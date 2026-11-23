@@ -9,6 +9,7 @@ import {
   deleteThread,
   dismissThreadUserInput,
   editQueuedRun,
+  forkSideChat,
   forkThreadFromRun,
   interruptThreadTurn,
   markThreadUnread,
@@ -211,15 +212,17 @@ export const rewindImpl = implementation(rewindEffect, async (input) => {
 });
 
 export const forkThreadImpl = implementation(forkThreadEffect, async (input) => {
+  const common = {
+    commandId: CommandId.make(input.CommandId),
+    sourceThreadId: ThreadId.make(input.SourceThreadId),
+    targetThreadId: ThreadId.make(input.TargetThreadId),
+    title: input.Title,
+  };
   await inEnvironment(
     input.EnvironmentId,
-    forkThreadFromRun({
-      commandId: CommandId.make(input.CommandId),
-      sourceThreadId: ThreadId.make(input.SourceThreadId),
-      targetThreadId: ThreadId.make(input.TargetThreadId),
-      runId: RunId.make(input.RunId),
-      title: input.Title,
-    }),
+    input.RunId === null
+      ? forkSideChat(common)
+      : forkThreadFromRun({ ...common, runId: RunId.make(input.RunId) }),
   );
 });
 
@@ -342,7 +345,9 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
     case "unarchive":
       return void (await run(unarchiveThread(common)));
     case "delete":
-      return void (await run(deleteThread(common)));
+      return void (await run(
+        deleteThread(command.OnlyIfUnused ? { ...common, onlyIfUnused: true } : common),
+      ));
     case "modelSelection":
       return void (await run(
         updateThreadMetadata({ ...common, modelSelection: command.Selection as never }),

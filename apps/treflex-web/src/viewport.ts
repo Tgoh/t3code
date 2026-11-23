@@ -1,5 +1,6 @@
 // @effect-diagnostics globalTimers:off -- A view-only long-press delay, outside any Effect runtime.
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { isEditable } from "./keybindings";
 import {
   type Accessor,
   createComputed,
@@ -55,14 +56,36 @@ const KEYBOARD_SETTLE_MS = 1_000;
 const KEYBOARD_MIN_HEIGHT = 150;
 
 /**
- * Sizes the app to the visual viewport, which iOS Safari shrinks for the on-screen keyboard while
- * the layout viewport stays full height. Pinch zoom also shrinks it, so a zoomed page is left alone.
+ * While typing on a touch screen, or until a keyboard seen open closes, also compares with the
+ * tallest viewport seen at that width, since a layout viewport that shrinks with the keyboard hides
+ * it from `layoutHeight`. Focus passes through `<body>` between fields with the keyboard still up.
+ * Otherwise a window made shorter, on a desktop or in split screen, would count as a keyboard.
+ */
+export function createKeyboardDetector(typingOnTouch: () => boolean) {
+  const tallest = new Map<number, number>();
+  let open = false;
+  return (visual: { width: number; height: number }, layoutHeight: number): boolean => {
+    const width = Math.round(visual.width);
+    const full =
+      open || typingOnTouch() ? Math.max(layoutHeight, tallest.get(width) ?? 0) : layoutHeight;
+    open = full - visual.height > KEYBOARD_MIN_HEIGHT;
+    if (!open) tallest.set(width, Math.max(full, visual.height));
+    return open;
+  };
+}
+
+/**
+ * Pinch zoom shrinks the visual viewport too, so a zoomed page is left alone.
  * iOS can deliver the viewport's events late around a focus change or a rotation, so the size is
  * also polled for a moment then.
  */
 export function trackVisualViewport(target: HTMLElement) {
   const viewport = window.visualViewport;
   if (viewport == null) return;
+  const touch = window.matchMedia(COARSE_POINTER_QUERY);
+  const keyboardOpen = createKeyboardDetector(
+    () => touch.matches && isEditable(document.activeElement),
+  );
   const update = () => {
     if (Math.abs(viewport.scale - 1) > 0.01) {
       target.style.removeProperty("--viewport-height");
@@ -71,7 +94,7 @@ export function trackVisualViewport(target: HTMLElement) {
       return;
     }
     target.style.setProperty("--viewport-height", `${viewport.height}px`);
-    if (target.clientHeight - viewport.height > KEYBOARD_MIN_HEIGHT) {
+    if (keyboardOpen(viewport, target.clientHeight)) {
       target.dataset.keyboard = "open";
       target.style.setProperty("--viewport-top", `${viewport.offsetTop}px`);
       return;

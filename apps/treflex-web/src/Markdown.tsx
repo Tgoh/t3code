@@ -301,7 +301,7 @@ function ThreadChip(props: { target: ILinkTarget }) {
             class={`${THREAD_LINK} group/link`}
             aria-label={`Thread, ${target().Title}`}
             data-tip="Open thread"
-            onClick={() => environment.selectThread(target().Ref.threadId)}
+            onClick={() => environment.openThreadLink(target().Ref.threadId)}
           >
             <Show when={project()} fallback={<MessagesSquare />}>
               {(held) => <ProjectBadge project={held()} />}
@@ -1128,7 +1128,7 @@ export function Markdown(props: {
     if (href == null) return;
     const target = threadLinkTarget(href, null, environment.state.EnvironmentId, title);
     if (target !== null && "Ref" in target && target.Openable)
-      environment.selectThread(target.Ref.threadId);
+      environment.openThreadLink(target.Ref.threadId);
   };
   return (
     <MessageContext.Provider value={props.message ?? null}>
