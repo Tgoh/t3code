@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show, untrack } from "solid-js";
 
 import Environment from "./Environment";
 import { ChartNoAxesColumn, Ellipsis } from "./icons";
@@ -102,7 +102,7 @@ export function UsageRing() {
       <Presence when={open() !== null && button()}>
         {(anchor) => {
           // Read once, so the popover keeps its figures while it fades out.
-          const now = open() ?? 0;
+          const now = untrack(open) ?? 0;
           return (
             <PopoverPopup
               label="Usage limits"

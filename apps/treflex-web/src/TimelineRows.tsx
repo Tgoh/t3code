@@ -10,7 +10,7 @@ import { mcpAppReferencesEqual } from "@t3tools/shared/mcpApp";
 import type { IAskId } from "treflex";
 import { useComponentState, useInFlight } from "treflex-solid";
 import { Dynamic } from "@solidjs/web";
-import { type Component, createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { type Component, createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
 
 import { attachmentDetail } from "./attachmentIntake";
 import { CommandOutput, ToolDetailNote, WORK_PRE } from "./CommandOutput";
@@ -218,7 +218,7 @@ const attachmentResource = (file: IWireAttachment): AssetResource => ({
 
 function UserAttachment(props: { environmentId: string; file: IWireAttachment; grouped: boolean }) {
   const local = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
-  const resource = attachmentResource(props.file);
+  const resource = untrack(() => attachmentResource(props.file));
   onSettled(() => {
     local.dispatch(loadMediaUrl, props.environmentId, resource);
   });

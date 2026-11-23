@@ -1,6 +1,6 @@
 import { useComponentState } from "treflex-solid";
 import { Dynamic } from "@solidjs/web";
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 
 import {
   fileItems,
@@ -38,7 +38,7 @@ export function useComposerMenu(text: () => string, cursor: () => number) {
   };
   createEffect(trigger, (held) => {
     setHighlight(0);
-    if (held === null || held.rangeStart !== dismissedAt()) setDismissedAt(null);
+    if (held === null || held.rangeStart !== untrack(dismissedAt)) setDismissedAt(null);
   });
   const files = useComponentState<IFileSearch>(() => ({ Query: null, Root: null, Entries: [] }));
   const searching = () => {

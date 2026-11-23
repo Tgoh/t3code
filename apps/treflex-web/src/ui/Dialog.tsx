@@ -9,6 +9,7 @@ import {
   onCleanup,
   type Setter,
   Show,
+  untrack,
   useContext,
 } from "solid-js";
 
@@ -47,8 +48,11 @@ function useDialogRoot(): IDialogRoot {
 }
 
 export function DialogRoot(props: { alert: boolean; onClose: () => void; children: JSX.Element }) {
-  const [titleId, setTitleId] = createSignal<string>();
-  const [descriptionId, setDescriptionId] = createSignal<string>();
+  // The title and description set these from their component bodies as they mount.
+  const [titleId, setTitleId] = createSignal<string | undefined>(undefined, { ownedWrite: true });
+  const [descriptionId, setDescriptionId] = createSignal<string | undefined>(undefined, {
+    ownedWrite: true,
+  });
   const presence = usePresence();
   const root: IDialogRoot = {
     close: () => {
@@ -151,9 +155,9 @@ export function DialogSurface(
   };
   let leaveStack: (() => void) | null = overlays.push(overlay);
   const returnFocus = () => {
-    const element = dialog();
+    const element = untrack(dialog);
     const active = document.activeElement;
-    const target = opener();
+    const target = untrack(opener);
     const lost = active === null || active === document.body || element?.contains(active);
     if (lost !== true) return;
     if (target?.isConnected === true) target.focus({ preventScroll: true });
@@ -193,7 +197,7 @@ export function DialogSurface(
   createRenderEffect(
     presence.exiting,
     (exiting, was) => {
-      const element = dialog();
+      const element = untrack(dialog);
       if (element === undefined || !element.open) return;
       if (exiting) return leave(element);
       if (was !== true) return;
@@ -214,8 +218,9 @@ export function DialogSurface(
     return target instanceof Node && element !== undefined && !element.contains(target);
   };
   const open = (element: HTMLDialogElement) => {
-    const surface = popup();
-    if (!element.isConnected || element.open || surface === undefined || presence.exiting()) return;
+    const surface = untrack(popup);
+    if (!element.isConnected || element.open || surface === undefined || untrack(presence.exiting))
+      return;
     const opened = returnTarget();
     if (opened !== undefined) setOpener(opened);
     element.showModal();

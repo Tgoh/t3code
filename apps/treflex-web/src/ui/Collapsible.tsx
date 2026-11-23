@@ -6,6 +6,7 @@ import {
   createUniqueId,
   omit,
   Show,
+  untrack,
   useContext,
 } from "solid-js";
 
@@ -76,14 +77,14 @@ export function CollapsiblePanel(
   const collapsible = useCollapsible();
   const rest = omit(props, "animate", "class", "children");
   const animate = () => props.animate ?? true;
-  const [mounted, setMounted] = createSignal(collapsible.open());
+  const [mounted, setMounted] = createSignal(untrack(collapsible.open));
   const [starting, setStarting] = createSignal(false);
   const [ending, setEnding] = createSignal(false);
   const [height, setHeight] = createSignal("auto");
   const [panel, setPanel] = createSignal<HTMLDivElement>();
   let generation = 0;
   const after = (run: number, done: () => void) => {
-    const element = panel();
+    const element = untrack(panel);
     if (element === undefined) return done();
     void settled(element).then(() => {
       if (run === generation) done();
@@ -93,12 +94,12 @@ export function CollapsiblePanel(
     collapsible.open,
     (open) => {
       const run = ++generation;
-      if (!animate()) {
+      if (!untrack(animate)) {
         setMounted(open);
         return;
       }
       if (open) {
-        if (ending()) {
+        if (untrack(ending)) {
           setEnding(false);
           after(run, () => setHeight("auto"));
           return;
@@ -118,8 +119,8 @@ export function CollapsiblePanel(
         });
         return;
       }
-      const element = panel();
-      if (!mounted() || element === undefined) {
+      const element = untrack(panel);
+      if (!untrack(mounted) || element === undefined) {
         setMounted(false);
         return;
       }

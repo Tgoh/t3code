@@ -9,6 +9,7 @@ import {
   onCleanup,
   Show,
   Switch as SolidSwitch,
+  untrack,
 } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 
@@ -1205,7 +1206,10 @@ type IArchivedThread = IWireArchivedShell["threads"][number];
 
 const ArchivedPage = ArchivedThreads.provider(() => {
   const environment = Environment.use();
-  const page = useArchivedThreads(environment.state.EnvironmentId, environment.threadCommand);
+  const page = useArchivedThreads(
+    untrack(() => environment.state.EnvironmentId),
+    environment.threadCommand,
+  );
   const command = page.command;
   const groups = createMemo(() => {
     const archived = page.state.Archived;

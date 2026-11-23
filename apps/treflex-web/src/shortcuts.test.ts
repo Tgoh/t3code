@@ -1,5 +1,5 @@
 import type { KeybindingCommand } from "@t3tools/contracts";
-import { createRoot } from "solid-js";
+import { createRoot, flush } from "solid-js";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createOverlayStack } from "./overlays";
@@ -59,9 +59,11 @@ describe("the key dispatcher", () => {
       const keys = setup("terminal.toggle");
       expect(keys.press("j")).toBe(true);
       const release = keys.overlays.push(dialog);
+      flush();
       expect(keys.press("j")).toBe(false);
       release();
       keys.overlays.push(menu);
+      flush();
       expect(keys.press("j")).toBe(true);
       expect(keys.press("j", true)).toBe(true);
       expect(keys.ran).toEqual(["terminal.toggle", "terminal.toggle"]);
@@ -87,6 +89,7 @@ describe("the key dispatcher", () => {
       keys.state.sheet = true;
       const closed: string[] = [];
       keys.overlays.push({ close: () => closed.push("menu"), contains: () => false });
+      flush();
       expect(keys.press("Escape")).toBe(true);
       expect(closed).toEqual(["menu"]);
       expect(keys.state.sheet).toBe(true);
@@ -106,8 +109,10 @@ describe("the key dispatcher", () => {
       expect(keys.press("t")).toBe(true);
       expect(keys.press("x")).toBe(true);
       const close = keys.overlays.push(menu);
+      flush();
       expect(keys.press("d")).toBe(false);
       close();
+      flush();
       keys.state.palette = true;
       expect(keys.press("d")).toBe(false);
       keys.state.palette = false;

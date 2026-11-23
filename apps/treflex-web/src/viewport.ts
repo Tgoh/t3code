@@ -272,9 +272,14 @@ export function createSidebarSheet(
     },
     { defer: true },
   );
-  createRenderEffect(sheet, (isSheet) => {
-    if (!isSheet) setOpen(false);
-  });
+  // Deferred: `open` starts false, and a render effect's first run writes in its creator's scope.
+  createRenderEffect(
+    sheet,
+    (isSheet) => {
+      if (!isSheet) setOpen(false);
+    },
+    { defer: true },
+  );
   return {
     sheet,
     open: () => sheet() && open(),
@@ -282,8 +287,9 @@ export function createSidebarSheet(
     collapsed: () => !sheet() && collapsed(),
     toggle: () => {
       if (sheet()) return setOpen(!open());
-      setCollapsed(!collapsed());
-      collapse.onChange(collapsed());
+      const next = !collapsed();
+      setCollapsed(next);
+      collapse.onChange(next);
     },
     choseThread: () => setOpen(false),
   } satisfies ISidebarSheet;

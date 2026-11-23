@@ -15,6 +15,7 @@ import {
   onSettled,
   Show,
   Switch,
+  untrack,
 } from "solid-js";
 
 import { editorIcon } from "./editorIcons";
@@ -457,7 +458,9 @@ function LineageRow(props: {
     return held !== null && !isFailed(props.row.Status) && held.StartedAt !== null ? held : null;
   };
   const canMerge = () => session.mergeBackRunId() !== null;
-  const side = props.row.Relation === "subagent" || props.row.Relation === "sideChat";
+  const side = untrack(
+    () => props.row.Relation === "subagent" || props.row.Relation === "sideChat",
+  );
   const trigger = createSideThreadTrigger(
     (intent) => void environment.openSideThread(props.row.ThreadId, intent),
   );
@@ -1254,7 +1257,7 @@ export function DetailsSurface(props: {
     () => (props.inline || !props.shown ? null : { Anchor: props.anchor }),
     (open) => {
       if (open === null) return;
-      measure();
+      untrack(measure);
       return overlays.push({
         close: () => props.onDismiss(),
         contains: (node) =>

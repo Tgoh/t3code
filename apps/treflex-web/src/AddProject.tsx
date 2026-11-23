@@ -20,6 +20,7 @@ import {
   Match,
   Show,
   Switch,
+  untrack,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
 
@@ -204,7 +205,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     browseDirectory();
   };
   // The folder view's target depends on the platform the config reports, which can arrive late.
-  createEffect(platform, () => browseDirectory(), { defer: true });
+  createEffect(platform, () => untrack(browseDirectory), { defer: true });
   const listed = () => picker.state.Path === directory();
   const listing = () => (listed() ? picker.state.Listing : null);
   const listingError = () => (listed() ? picker.state.Error : null);
@@ -322,12 +323,12 @@ export function AddProjectPalette(props: { onClose: () => void }) {
 
   const rowCount = () =>
     view().Kind === "sources" ? sources().length : browsing() ? rows().length : 0;
-  createEffect(sources, () => {
-    if (view().Kind === "sources") setHighlight(sources().length === 0 ? null : 0);
+  createEffect(sources, (listed) => {
+    if (untrack(view).Kind === "sources") setHighlight(listed.length === 0 ? null : 0);
   });
   createEffect(highlight, (held) => {
     if (held === null) return;
-    list()?.querySelector(`[data-row="${held}"]`)?.scrollIntoView({ block: "nearest" });
+    untrack(list)?.querySelector(`[data-row="${held}"]`)?.scrollIntoView({ block: "nearest" });
   });
 
   const onKeyDown = (event: KeyboardEvent) => {

@@ -11,7 +11,7 @@ import {
   size,
   type VirtualElement,
 } from "@floating-ui/dom";
-import { createRenderEffect, onCleanup, onSettled } from "solid-js";
+import { createRenderEffect, onCleanup, onSettled, untrack } from "solid-js";
 
 import { type ICloseReason, useOverlays } from "../overlays";
 import { usePresence } from "./Presence";
@@ -350,10 +350,11 @@ export function createPopup(options: {
   // Presence keeps the same children when it reopens mid-exit, so this opens again too.
   createRenderEffect(
     presence.exiting,
-    (exiting) => {
-      if (exiting) hide();
-      else show(true);
-    },
+    (exiting) =>
+      untrack(() => {
+        if (exiting) hide();
+        else show(true);
+      }),
     { defer: true },
   );
   onCleanup(hide);

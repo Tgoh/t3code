@@ -1,4 +1,4 @@
-import { createRoot, createSignal } from "solid-js";
+import { createRoot, createSignal, flush } from "solid-js";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -36,74 +36,90 @@ function fakeMedia(initial: boolean) {
 describe("createMediaQuery", () => {
   it("follows the media list and stops listening on disposal", () => {
     const media = fakeMedia(false);
-    createRoot((dispose) => {
-      const matches = createMediaQuery("(max-width: 767px)", media.matchMedia);
-      expect(matches()).toBe(false);
-      media.set(true);
-      expect(matches()).toBe(true);
-      dispose();
-    });
+    const { matches, dispose } = createRoot((dispose) => ({
+      matches: createMediaQuery("(max-width: 767px)", media.matchMedia),
+      dispose,
+    }));
+    expect(matches()).toBe(false);
+    media.set(true);
+    flush();
+    expect(matches()).toBe(true);
+    dispose();
     expect(media.listening()).toBe(false);
   });
 });
 
 describe("createSidebarSheet", () => {
   it("closes on selection, and leaving the sheet layout forgets it was open", () => {
-    createRoot((dispose) => {
-      const [sheet, setSheet] = createSignal(true);
-      const [selection, setSelection] = createSignal<string | null>(null);
-      const sidebar = createSidebarSheet(sheet, selection);
-      expect(sidebar.open()).toBe(false);
+    const [sheet, setSheet] = createSignal(true);
+    const [selection, setSelection] = createSignal<string | null>(null);
+    const { sidebar, dispose } = createRoot((dispose) => ({
+      sidebar: createSidebarSheet(sheet, selection),
+      dispose,
+    }));
+    expect(sidebar.open()).toBe(false);
 
-      sidebar.setOpen(true);
-      expect(sidebar.open()).toBe(true);
-      setSelection("thread-1");
-      expect(sidebar.open()).toBe(false);
+    sidebar.setOpen(true);
+    flush();
+    expect(sidebar.open()).toBe(true);
+    setSelection("thread-1");
+    flush();
+    expect(sidebar.open()).toBe(false);
 
-      sidebar.setOpen(true);
-      setSheet(false);
-      expect(sidebar.open()).toBe(false);
-      setSheet(true);
-      expect(sidebar.open()).toBe(false);
-      dispose();
-    });
+    sidebar.setOpen(true);
+    setSheet(false);
+    flush();
+    expect(sidebar.open()).toBe(false);
+    setSheet(true);
+    flush();
+    expect(sidebar.open()).toBe(false);
+    dispose();
   });
 
   it("closes when the already selected thread is picked again", () => {
-    createRoot((dispose) => {
-      const [selection] = createSignal<string | null>("thread-1");
-      const sidebar = createSidebarSheet(() => true, selection);
-      sidebar.setOpen(true);
-      sidebar.choseThread();
-      expect(sidebar.open()).toBe(false);
-      dispose();
-    });
+    const [selection] = createSignal<string | null>("thread-1");
+    const { sidebar, dispose } = createRoot((dispose) => ({
+      sidebar: createSidebarSheet(() => true, selection),
+      dispose,
+    }));
+    sidebar.setOpen(true);
+    flush();
+    sidebar.choseThread();
+    flush();
+    expect(sidebar.open()).toBe(false);
+    dispose();
   });
 
   it("toggles the sheet on a narrow layout and the column's collapse on a wide one", () => {
-    createRoot((dispose) => {
-      const [sheet, setSheet] = createSignal(false);
-      const saved: boolean[] = [];
-      const sidebar = createSidebarSheet(sheet, () => null, {
+    const [sheet, setSheet] = createSignal(false);
+    const saved: boolean[] = [];
+    const { sidebar, dispose } = createRoot((dispose) => ({
+      sidebar: createSidebarSheet(sheet, () => null, {
         initial: true,
         onChange: (collapsed) => saved.push(collapsed),
-      });
-      expect(sidebar.collapsed()).toBe(true);
+      }),
+      dispose,
+    }));
+    expect(sidebar.collapsed()).toBe(true);
 
-      sidebar.toggle();
-      expect(sidebar.collapsed()).toBe(false);
-      sidebar.toggle();
-      expect(saved).toEqual([false, true]);
+    sidebar.toggle();
+    flush();
+    expect(sidebar.collapsed()).toBe(false);
+    sidebar.toggle();
+    flush();
+    expect(saved).toEqual([false, true]);
 
-      setSheet(true);
-      expect(sidebar.collapsed()).toBe(false);
-      sidebar.toggle();
-      expect(sidebar.open()).toBe(true);
-      expect(saved).toEqual([false, true]);
-      setSheet(false);
-      expect(sidebar.collapsed()).toBe(true);
-      dispose();
-    });
+    setSheet(true);
+    flush();
+    expect(sidebar.collapsed()).toBe(false);
+    sidebar.toggle();
+    flush();
+    expect(sidebar.open()).toBe(true);
+    expect(saved).toEqual([false, true]);
+    setSheet(false);
+    flush();
+    expect(sidebar.collapsed()).toBe(true);
+    dispose();
   });
 });
 
@@ -170,10 +186,13 @@ describe("createKeyboardDetector", () => {
     expect(open(phone, 760)).toBe(false);
     expect(open(keyboardUp, 420)).toBe(true);
     setTyping(false);
+    flush();
     expect(open(keyboardUp, 420)).toBe(true);
     setTyping(true);
+    flush();
     expect(open(keyboardUp, 420)).toBe(true);
     setTyping(false);
+    flush();
     expect(open(phone, 760)).toBe(false);
     expect(open({ width: 393, height: 380 }, 380)).toBe(false);
   });
@@ -188,6 +207,7 @@ describe("createKeyboardDetector", () => {
     expect(open(phone, 760)).toBe(false);
     expect(open({ width: 393, height: 380 }, 380)).toBe(false);
     setTyping(true);
+    flush();
     expect(open({ width: 393, height: 380 }, 380)).toBe(false);
   });
 });

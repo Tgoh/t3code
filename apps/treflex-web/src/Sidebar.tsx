@@ -3,7 +3,16 @@ import type { ShownOrder } from "@t3tools/client-runtime/state/thread-search";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useResource } from "treflex-solid";
 import { Portal } from "@solidjs/web";
-import { createEffect, createMemo, createSignal, For, omit, onCleanup, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  omit,
+  onCleanup,
+  Show,
+  untrack,
+} from "solid-js";
 
 import { T3Mark } from "./brand";
 import Environment from "./Environment";
@@ -883,7 +892,7 @@ export const Sidebar = Shell.provider(() => {
         <Presence when={menuThread() === undefined ? undefined : menu()} keyed>
           {(held) => {
             const at = held();
-            const thread = shell.state.Threads[at.Id]!;
+            const thread = untrack(() => shell.state.Threads[at.Id]!);
             return (
               <ThreadMenu
                 thread={thread}
@@ -929,7 +938,7 @@ export const Sidebar = Shell.provider(() => {
         <Presence when={menuProject() === undefined ? undefined : projectMenu()} keyed>
           {(held) => {
             const at = held();
-            const project = shell.state.Projects[at.Id]!;
+            const project = untrack(() => shell.state.Projects[at.Id]!);
             return (
               <ProjectMenu
                 project={project}

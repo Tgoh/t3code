@@ -7,6 +7,7 @@ import {
   omit,
   onCleanup,
   Show,
+  untrack,
   useContext,
 } from "solid-js";
 
@@ -291,7 +292,7 @@ function menuNavigation(props: ISurface) {
 }
 
 function MenuSurface(props: ISurface & { children: JSX.Element }) {
-  const navigation = menuNavigation(props);
+  const navigation = untrack(() => menuNavigation(props));
   return (
     <MenuContext value={navigation.level}>
       <Portal>
@@ -371,8 +372,8 @@ export function MenuPopup(props: IPopupProps) {
     "class",
     "children",
   );
-  const anchor = props.anchor;
-  const trigger = props.trigger ?? (anchor instanceof HTMLElement ? anchor : null);
+  const anchor = untrack(() => props.anchor);
+  const trigger = untrack(() => props.trigger) ?? (anchor instanceof HTMLElement ? anchor : null);
   return (
     <MenuSurface
       anchor={anchor}

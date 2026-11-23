@@ -100,7 +100,7 @@ export function WizardSteps(props: {
                     ? `${step}, step ${index() + 1}`
                     : `${step}, step ${index() + 1}, ${summary(index())}`
                 }
-                onClick={button() ? () => props.onStepChange?.(index()) : undefined}
+                onClick={() => props.onStepChange?.(index())}
               >
                 <span
                   class={`${MARKER} ${

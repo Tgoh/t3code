@@ -5,7 +5,7 @@ import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { useInFlight } from "treflex-solid";
 import type { JSX } from "@solidjs/web";
-import { type Accessor, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { type Accessor, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 
 import { SECOND, useTick } from "./AgentElapsed";
 import {
@@ -216,7 +216,7 @@ function ChecklistPopover(props: {
   onClose: () => void;
 }) {
   // An emptied list unmounts the popover, and the next one shouldn't reopen it.
-  onCleanup(props.onClose);
+  onCleanup(untrack(() => props.onClose));
   return (
     <StatusPopover label="To-do list" toggle={props.toggle} onClose={props.onClose}>
       <ChecklistSteps
@@ -380,7 +380,7 @@ function QueuedPopover(props: {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
   const queueing = useInFlight(queueAction, () => session.state);
-  onCleanup(props.onClose);
+  onCleanup(untrack(() => props.onClose));
   return (
     <StatusPopover label="Queued messages" toggle={props.toggle} onClose={props.onClose}>
       <div class={BANNER_TITLE}>

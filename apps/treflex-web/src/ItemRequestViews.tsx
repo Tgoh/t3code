@@ -16,7 +16,7 @@ import {
 import { AuthMcpClientAccess } from "@t3tools/contracts";
 import { useInFlight } from "treflex-solid";
 import { Dynamic, type JSX } from "@solidjs/web";
-import { type Component, createSignal, createUniqueId, For, Show } from "solid-js";
+import { type Component, createSignal, createUniqueId, For, Show, untrack } from "solid-js";
 
 import { RUNTIME_MODE_CONFIG } from "./ComposerMenus";
 import { Check, ExternalLink, Eye, EyeOff, Link, Lock, Minus, ShieldCheck, X } from "./icons";
@@ -417,14 +417,23 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
   const request = ItemRequest.use();
   const busy = useInFlight([answerLink], () => request.state);
   const formId = createUniqueId();
-  const pickMachine = picksMachine(props.item);
-  const target = linkRequestTarget(props.item, [], pickMachine ? ANOTHER_ADDRESS : null);
-  const targetName = target.kind === "machine" ? target.label : linkRequestTargetName(props.item);
-  const asksAddress = props.item.url === undefined;
+  const { pickMachine, target, targetName, asksAddress, url, defaultAccess } = untrack(() => {
+    const item = props.item;
+    const machine = picksMachine(item);
+    const picked = linkRequestTarget(item, [], machine ? ANOTHER_ADDRESS : null);
+    return {
+      pickMachine: machine,
+      target: picked,
+      targetName: picked.kind === "machine" ? picked.label : linkRequestTargetName(item),
+      asksAddress: item.url === undefined,
+      url: item.url,
+      defaultAccess: linkRequestDefaultAccess(item),
+    };
+  });
   const steps: ILinkStep[] = asksAddress ? ["machine", "access"] : ["access"];
   const [step, setStep] = createSignal<ILinkStep>(steps[0]!);
-  const [address, setAddress] = createSignal(props.item.url ?? "");
-  const [access, setAccess] = createSignal(linkRequestDefaultAccess(props.item));
+  const [address, setAddress] = createSignal(url ?? "");
+  const [access, setAccess] = createSignal(defaultAccess);
   const [pairingCode, setPairingCode] = createSignal("");
   const [attempted, setAttempted] = createSignal(false);
   const machineReady = () => target.kind !== "none" && address().trim().length > 0;

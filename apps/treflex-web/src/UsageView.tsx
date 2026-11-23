@@ -25,7 +25,7 @@ import {
   mergeUsage,
 } from "@t3tools/shared/usageMerge";
 import { useInFlight } from "treflex-solid";
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show, untrack } from "solid-js";
 
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
@@ -116,13 +116,13 @@ const metricField = (metric: "cost" | "tokens"): "costUsd" | "totalTokens" =>
 
 export const UsageView = UsagePage.provider(() => {
   const environment = Environment.use();
-  const environmentId = environment.state.EnvironmentId;
+  const environmentId = untrack(() => environment.state.EnvironmentId);
   const metric = () => shownMetric(environment.state.Local.Preferences.Usage.Metric);
   const days = () => shownDays(environment.state.Local.Preferences.Usage.Days);
-  const { page, input, load } = useUsagePage(environmentId, {
-    Days: days(),
-    Limits: metric() === "limits",
-  });
+  const { page, input, load } = useUsagePage(
+    environmentId,
+    untrack(() => ({ Days: days(), Limits: metric() === "limits" })),
+  );
   const refreshing = useInFlight(RefreshingUsage, () => page.state);
   const choose = (nextMetric: IMetric, nextDays: number) => {
     const daysChanged = nextDays !== days();

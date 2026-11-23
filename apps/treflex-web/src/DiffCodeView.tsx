@@ -95,7 +95,7 @@ export default function DiffCodeView(props: {
   onToggle: (key: string) => void;
   onOpen: (path: string) => void;
 }) {
-  const workers = acquireDiffWorkers(props.scheme);
+  const workers = acquireDiffWorkers(untrack(() => props.scheme));
   const options = (): CodeViewOptions<undefined, undefined> => ({
     diffStyle: props.split ? "split" : "unified",
     lineDiffType: "none",
@@ -126,7 +126,7 @@ export default function DiffCodeView(props: {
       if ((next.collapsed === true) !== (_item.collapsed === true)) props.onToggle(next.id);
     },
   });
-  const view = new CodeView<undefined, undefined>(options(), workers.pool);
+  const view = new CodeView<undefined, undefined>(untrack(options), workers.pool);
   // Captured, so a header's click is handled before Pierre's own handlers inside its shadow root.
   const onClick = (event: MouseEvent) => {
     const action = headerClick(event);
@@ -147,7 +147,7 @@ export default function DiffCodeView(props: {
   createEffect(
     () => [props.split, props.wrap, props.scheme],
     () => {
-      view.setOptions(options());
+      view.setOptions(untrack(options));
       view.render(true);
     },
     { defer: true },

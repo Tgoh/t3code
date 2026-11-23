@@ -10,6 +10,7 @@ import {
   For,
   onSettled,
   Show,
+  untrack,
   useContext,
 } from "solid-js";
 import { Dynamic } from "@solidjs/web";
@@ -202,12 +203,14 @@ function ProseText(props: { text: string }) {
   return (
     <Show when={parts().length > 1} fallback={props.text}>
       <For each={parts()} keyed={false}>
-        {(part) => {
-          const held = part();
-          if (typeof held === "string") return held;
-          const link = fileLinkFromHref(held.Path, files.cwd());
-          return link === null ? held.Path : <FileChip link={link} />;
-        }}
+        {(part) =>
+          untrack(() => {
+            const held = part();
+            if (typeof held === "string") return held;
+            const link = fileLinkFromHref(held.Path, files.cwd());
+            return link === null ? held.Path : <FileChip link={link} />;
+          })
+        }
       </For>
     </Show>
   );
@@ -1125,7 +1128,7 @@ function TopBlock(props: { token: Token; fromUser: boolean; key: string | null }
       ? sanitizeHtml(assistantHtml([props.token]))
       : null,
   );
-  const blockKey = props.key;
+  const blockKey = untrack(() => props.key);
   let codeBlocks = 0;
   const nextCodeKey = () => (blockKey === null ? null : `${blockKey}:${codeBlocks++}`);
   return (

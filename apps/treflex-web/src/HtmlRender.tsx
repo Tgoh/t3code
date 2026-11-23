@@ -260,13 +260,13 @@ function HtmlRenderDocument(props: {
   createEffect(
     () => [frame(), theme()],
     () => {
-      postTheme();
+      untrack(postTheme);
     },
   );
   createEffect(
     () => [frame(), shortcuts()],
     () => {
-      postShortcuts();
+      untrack(postShortcuts);
     },
   );
   // Pages can forge key and code pairs: a pair matching another binding is refused, and a named

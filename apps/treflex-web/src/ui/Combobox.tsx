@@ -1,5 +1,13 @@
 import { type JSX, Portal } from "@solidjs/web";
-import { createContext, createUniqueId, omit, onCleanup, onSettled, useContext } from "solid-js";
+import {
+  createContext,
+  createUniqueId,
+  omit,
+  onCleanup,
+  onSettled,
+  untrack,
+  useContext,
+} from "solid-js";
 
 import { Search } from "../icons";
 import { createPopup, type IAlign, type IAnchor, inFloating, type ISide } from "./floating";
@@ -356,9 +364,10 @@ export function ComboboxPopup(props: {
 }) {
   const root = useRoot();
   const fallback = pendingOpenHighlight;
-  const trigger = props.trigger ?? (props.anchor instanceof HTMLElement ? props.anchor : null);
+  const anchor = untrack(() => props.anchor);
+  const trigger = untrack(() => props.trigger) ?? (anchor instanceof HTMLElement ? anchor : null);
   const popup = createPopup({
-    anchor: props.anchor,
+    anchor,
     trigger,
     placement: () => ({
       side: props.side ?? "bottom",
@@ -505,7 +514,12 @@ export function ComboboxItem(
     <div
       id={id}
       {...rest}
-      ref={(element) => itemValues.set(element, props.value)}
+      ref={(element) =>
+        itemValues.set(
+          element,
+          untrack(() => props.value),
+        )
+      }
       class={classes()}
       role="option"
       aria-selected={selected() ? "true" : "false"}

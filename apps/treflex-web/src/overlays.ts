@@ -27,7 +27,8 @@ export interface IOverlayStack {
 }
 
 export function createOverlayStack(): IOverlayStack {
-  const [stack, setStack] = createSignal<readonly IOverlay[]>([]);
+  // Components push from their body as they mount.
+  const [stack, setStack] = createSignal<readonly IOverlay[]>([], { ownedWrite: true });
   return {
     open: () => stack().length > 0,
     modal: () => stack().some((overlay) => overlay.modal === true),

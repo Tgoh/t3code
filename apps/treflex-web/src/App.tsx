@@ -14,6 +14,7 @@ import {
   runWithOwner,
   Show,
   Switch,
+  untrack,
 } from "solid-js";
 
 import { AddProjectPalette } from "./AddProject";
@@ -103,7 +104,7 @@ const EnvironmentView = Environment.provider(() => {
     createMediaQuery(SIDEBAR_SHEET_QUERY),
     () => environment.state.Local.SelectedThreadId,
     {
-      initial: environment.state.Local.Preferences.SidebarCollapsed,
+      initial: untrack(() => environment.state.Local.Preferences.SidebarCollapsed),
       onChange: (collapsed) => void environment.setPreferences({ SidebarCollapsed: collapsed }),
     },
   );

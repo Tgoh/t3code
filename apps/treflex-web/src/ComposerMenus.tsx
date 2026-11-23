@@ -1,6 +1,6 @@
 import { selectableProviderOptionChoices } from "@t3tools/client-runtime/model-traits";
 import { Dynamic } from "@solidjs/web";
-import { type Component, createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { type Component, createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
 
 import { hasProviderIcon, ProviderIcon } from "./brand";
 import { formatContextTokens } from "./compaction";
@@ -427,16 +427,23 @@ function PickerContent(props: { traits: ITraits | null }) {
   const favorites = () => environment.state.Replica.ModelFavorites;
   const selection = () => session.effectiveModel();
   const [tab, setTab] = createSignal(
-    initialPickerTab({
-      Providers: providers(),
-      Favorites: favorites(),
-      ActiveInstanceId: selection()?.instanceId ?? null,
-      Started: session.modelSwitch().Started,
-    }),
+    untrack(() =>
+      initialPickerTab({
+        Providers: providers(),
+        Favorites: favorites(),
+        ActiveInstanceId: selection()?.instanceId ?? null,
+        Started: session.modelSwitch().Started,
+      }),
+    ),
   );
   const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(
-    new Set(
-      legacyStartsExpanded(providers(), favorites(), selection()) ? [selection()!.instanceId] : [],
+    untrack(
+      () =>
+        new Set(
+          legacyStartsExpanded(providers(), favorites(), selection())
+            ? [selection()!.instanceId]
+            : [],
+        ),
     ),
   );
   const [query, setQuery] = createSignal("");

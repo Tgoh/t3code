@@ -35,5 +35,10 @@ export function useArchivedThreads(
   });
   const command = (threadId: string, kind: "unarchive" | "delete") =>
     void threadCommand(threadId, { Kind: kind }).then(() => page.loadArchived(environmentId));
-  return { state: page.state, command };
+  return {
+    get state() {
+      return page.state;
+    },
+    command,
+  };
 }

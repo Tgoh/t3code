@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { createSignal, omit, onCleanup } from "solid-js";
+import { createSignal, omit, onCleanup, untrack } from "solid-js";
 
 import { cleanupRef } from "./cleanupRef";
 import { overrides } from "./merge";
@@ -126,7 +126,7 @@ export function ScrollArea(
     <div {...rest} class={scrollAreaClass({ radius: props.radius, class: props.class })}>
       <div
         ref={cleanupRef((element: HTMLDivElement) =>
-          trackScrollOverflow(element, { tabIndex: props.viewportTabIndex }),
+          trackScrollOverflow(element, { tabIndex: untrack(() => props.viewportTabIndex) }),
         )}
         class={scrollAreaViewportClass(props)}
         data-slot="scroll-area-viewport"

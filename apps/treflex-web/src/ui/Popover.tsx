@@ -1,5 +1,5 @@
 import { type JSX, Portal } from "@solidjs/web";
-import { createSignal, omit, Show } from "solid-js";
+import { createSignal, omit, Show, untrack } from "solid-js";
 
 import {
   createPopup,
@@ -138,9 +138,10 @@ export function PopoverPopup(
   );
   const variant = () => props.variant ?? "default";
   const [popupElement, setPopupElement] = createSignal<HTMLDivElement>();
-  const trigger = props.trigger ?? (props.anchor instanceof HTMLElement ? props.anchor : null);
+  const anchor = untrack(() => props.anchor);
+  const trigger = untrack(() => props.trigger) ?? (anchor instanceof HTMLElement ? anchor : null);
   const popup = createPopup({
-    anchor: props.anchor,
+    anchor,
     placement: () => ({
       side: props.side ?? "bottom",
       align: props.align ?? "center",

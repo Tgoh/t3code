@@ -1,6 +1,6 @@
 import { useInFlight } from "treflex-solid";
 import type { JSX } from "@solidjs/web";
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
 
 import { ChevronDown, ShieldQuestion, X } from "./icons";
 import type { IApprovalDecision } from "./Infrastructure/commandEffects";
@@ -134,7 +134,7 @@ export const PendingQuestion = RuntimeRequest.provider<{
   const session = ThreadSession.use();
   const request = RuntimeRequest.use();
   const responding = useInFlight(Responding, () => request.state);
-  const requestId = request.state.id;
+  const requestId = untrack(() => request.state.id);
   const item = createMemo(() => {
     const held = thread.requestItems()[requestId];
     return held?.type === "user_input_request" ? held : null;

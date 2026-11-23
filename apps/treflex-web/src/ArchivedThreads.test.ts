@@ -1,4 +1,4 @@
-import { createComponent, createRoot } from "solid-js";
+import { children, createComponent, createRenderEffect, createRoot, flush } from "solid-js";
 import { createTestRuntime, type IEntity, settled } from "treflex";
 import { TreflexProvider } from "treflex-solid";
 import { describe, expect, it } from "vite-plus/test";
@@ -28,14 +28,18 @@ function open() {
     return null;
   }, getDefaultArchivedThreads);
   const close = createRoot((dispose) => {
-    createComponent(TreflexProvider, {
-      value: runtime,
-      get children() {
-        return createComponent(Page, {});
-      },
-    });
+    const view = children(() =>
+      createComponent(TreflexProvider, {
+        value: runtime,
+        get children() {
+          return createComponent(Page, {});
+        },
+      }),
+    );
+    createRenderEffect(view, () => {});
     return dispose;
   });
+  flush();
   return { runtime, calls, page: () => page, close };
 }
 

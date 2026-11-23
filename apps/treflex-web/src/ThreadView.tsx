@@ -302,20 +302,29 @@ const ThreadConversation = ThreadSession.provider<{
     while (at > 0 && !startsAt(ids[at]!)) at -= 1;
     return at;
   };
-  const [timeline, setTimeline] = createSignal({
-    Ids: [] as readonly string[],
-    First: 0,
-    Floor: INITIAL_ROWS,
-  });
+  interface ITimelineWindow {
+    Ids: readonly string[];
+    First: number;
+    Floor: number;
+  }
+  const placed = (held: ITimelineWindow, ids: readonly string[], isStuck: boolean) => {
+    const moved = firstAfterChange(held.Ids, ids, held.First, saved?.RowId ?? null);
+    return { moved, first: snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved) };
+  };
+  const [timeline, setTimeline] = createSignal<ITimelineWindow>(
+    untrack(() => {
+      const empty = { Ids: [], First: 0, Floor: INITIAL_ROWS };
+      const ids = thread.timelineIds();
+      return { ...empty, Ids: ids, First: placed(empty, ids, stuck()).first };
+    }),
+  );
   createRenderEffect(
     () => thread.timelineIds(),
     (ids) => {
       const held = untrack(timeline);
-      const moved = firstAfterChange(held.Ids, ids, held.First, saved?.RowId ?? null);
       const isStuck = untrack(stuck);
-      const first = snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved);
+      const { moved, first } = placed(held, ids, isStuck);
       if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
-      // A retained thread has rows before the scroller mounts, and there's no scroll to keep then.
       const trimmed = held.Ids.length > 0 && first !== moved;
       const before = trimmed ? scroller.scrollTop : 0;
       setTimeline({ ...held, Ids: ids, First: first });
@@ -326,6 +335,7 @@ const ThreadConversation = ThreadSession.provider<{
           lastPosition = { ...lastPosition, Top: lastPosition.Top + scroller.scrollTop - before };
         });
     },
+    { defer: true },
   );
   const windowIds = createMemo(() => {
     const held = timeline();
@@ -337,11 +347,12 @@ const ThreadConversation = ThreadSession.provider<{
   const lastStart = () => responses()?.Starts.at(-1);
   const reachedTop = () => timeline().First === 0;
   const growTo = (target: number) => {
-    if (!stuck()) keepStill();
+    const isStuck = untrack(stuck);
+    if (!isStuck) keepStill();
     setTimeline((held) => ({
       ...held,
       First: snap(held.Ids, target),
-      Floor: stuck() ? Math.max(held.Floor, held.Ids.length - target) : held.Floor,
+      Floor: isStuck ? Math.max(held.Floor, held.Ids.length - target) : held.Floor,
     }));
   };
   const showAll = (forward: boolean) => {

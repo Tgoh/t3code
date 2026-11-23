@@ -9,6 +9,7 @@ import {
   onCleanup,
   onSettled,
   Show,
+  untrack,
 } from "solid-js";
 
 import { copyText } from "../clipboard";
@@ -930,7 +931,7 @@ function AnchoredToast(props: { store: ToastStore; toast: Accessor<IToast> }) {
   const root = createToastRoot(props.store, props.toast, element, []);
   const toast = props.toast;
   const placeAt = cleanupRef((positioner: HTMLElement) => {
-    const anchor = toast().positionerProps?.anchor;
+    const anchor = untrack(toast).positionerProps?.anchor;
     if (!anchor) return undefined;
     return follow(
       positioner,

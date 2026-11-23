@@ -36,24 +36,28 @@ export function Presence<T>(props: {
   keyed?: boolean;
   children: (value: Accessor<NonNullable<T>>) => JSX.Element;
 }) {
-  const [held, setHeld] = createSignal<NonNullable<T>>();
+  // The render effect's first run is synchronous, inside this body's owner, and writes both.
+  const [held, setHeld] = createSignal<NonNullable<T> | undefined>(undefined, {
+    ownedWrite: true,
+  });
   const elements = new Set<HTMLElement>();
-  const [ending, setEnding] = createSignal(false);
+  const [ending, setEnding] = createSignal(false, { ownedWrite: true });
   let generation = 0;
   createRenderEffect(
     () => props.when,
     (when) => {
       const run = ++generation;
       if (when) {
+        const wasEnding = untrack(ending);
         for (const element of elements) {
           if (!element.isConnected) elements.delete(element);
-          else if (ending()) element.removeAttribute(ENDING);
+          else if (wasEnding) element.removeAttribute(ENDING);
         }
         setEnding(false);
         setHeld(() => when as NonNullable<T>);
         return;
       }
-      if (held() === undefined) return;
+      if (untrack(held) === undefined) return;
       setEnding(true);
       for (const element of elements) {
         element.removeAttribute(STARTING);

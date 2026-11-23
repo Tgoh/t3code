@@ -9,6 +9,7 @@ import {
   onCleanup,
   onSettled,
   Show,
+  untrack,
   useContext,
 } from "solid-js";
 
@@ -228,7 +229,7 @@ function triggerHandlers(root: IRoot) {
       event.preventDefault();
       const opening = !root.open();
       toggle("pointer");
-      if (opening && root.open() && event.currentTarget instanceof HTMLElement) {
+      if (opening && !root.disabled() && event.currentTarget instanceof HTMLElement) {
         cancelOnRelease(event.currentTarget);
       }
     },
@@ -562,7 +563,7 @@ function selectSurface(root: IRoot, props: IPopupProps & { trigger: HTMLButtonEl
 
 function SelectSurface(props: IPopupProps & { trigger: HTMLButtonElement }) {
   const root = useRoot();
-  const surface = selectSurface(root, props);
+  const surface = untrack(() => selectSurface(root, props));
   return (
     <Portal>
       <div
@@ -670,7 +671,12 @@ export function SelectItem(props: { value: string; disabled?: boolean; children:
   const selected = () => root.value() === props.value;
   return (
     <div
-      ref={(element) => itemValues.set(element, props.value)}
+      ref={(element) =>
+        itemValues.set(
+          element,
+          untrack(() => props.value),
+        )
+      }
       class={ITEM}
       role="option"
       tabindex={-1}

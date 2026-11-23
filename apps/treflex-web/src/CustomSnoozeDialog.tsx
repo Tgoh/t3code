@@ -5,7 +5,7 @@ import {
   localSnoozeTime,
   resolveCustomSnooze,
 } from "@t3tools/client-runtime/state/thread-settled";
-import { createSignal, createUniqueId, Show } from "solid-js";
+import { createSignal, createUniqueId, Show, untrack } from "solid-js";
 
 import Environment from "./Environment";
 import { Button } from "./ui/Button";
@@ -36,7 +36,7 @@ export function CustomSnoozeDialog(props: {
   const environment = Environment.use();
   const id = createUniqueId();
   const today = () => localSnoozeDate(new Date(environment.minute()));
-  const initial = new Date(environment.minute() + 3_600_000);
+  const initial = new Date(untrack(environment.minute) + 3_600_000);
   const [mode, setMode] = createSignal<CustomSnoozeInput["mode"]>("date");
   const [date, setDate] = createSignal(localSnoozeDate(initial));
   const [time, setTime] = createSignal(localSnoozeTime(initial));

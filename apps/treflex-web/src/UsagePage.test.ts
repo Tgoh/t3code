@@ -1,5 +1,5 @@
 import * as Cause from "effect/Cause";
-import { createComponent, createRoot } from "solid-js";
+import { children, createComponent, createRenderEffect, createRoot, flush } from "solid-js";
 import { createTestRuntime, type IActionContext, type IEntity, settled } from "treflex";
 import { TreflexProvider } from "treflex-solid";
 import { describe, expect, it } from "vite-plus/test";
@@ -55,21 +55,25 @@ function page(fake = usageServer()) {
 
 function open(opening: { Days: number; Limits: boolean }, fake = usageServer()) {
   const runtime = createTestRuntime<IEntity>({ $Id: "Root" }, fake.commands);
-  let held!: IUsagePage;
+  let held!: { state: IUsagePage };
   const Page = UsagePage.provider(() => {
-    held = useUsagePage("env-1", opening).page.state;
+    held = useUsagePage("env-1", opening).page;
     return null;
   }, getDefaultUsagePage);
   const close = createRoot((dispose) => {
-    createComponent(TreflexProvider, {
-      value: runtime,
-      get children() {
-        return createComponent(Page, {});
-      },
-    });
+    const view = children(() =>
+      createComponent(TreflexProvider, {
+        value: runtime,
+        get children() {
+          return createComponent(Page, {});
+        },
+      }),
+    );
+    createRenderEffect(view, () => {});
     return dispose;
   });
-  return { runtime, ...fake, state: () => held, close };
+  flush();
+  return { runtime, ...fake, state: () => held.state, close };
 }
 
 describe("the usage page", () => {
