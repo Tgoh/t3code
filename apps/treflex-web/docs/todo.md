@@ -2,7 +2,12 @@
 
 Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead. The long-term goal is full parity with stock, so `issues.md`'s gaps move in here a few at a time.
 
-**On hold until treflex 0.3.0 ships:** finish the items already in progress, and start nothing new (Tam, 2026-11-23).
+**Next: move to treflex 0.3.0 and Solid 2,** on `treflex/treflex-0.3`, starting once the diff panel merges. Nothing else starts until it lands. Follow the reflex repo's `docs/upgrading.md` ("From 0.2 to 0.3"):
+- Toolchain: `@solidjs/vite-plugin` in place of `vite-plugin-solid`, `@solidjs/web`, and `jsxImportSource` set to `@solidjs/web`.
+- Solid 2's renamed and removed APIs: `splitProps`/`mergeProps`, `onMount`, `createEffect`'s two phases, `<Index>`, `createComputed`, `batch` and `classList`.
+- `lucide-solid` still needs Solid 1, so it's replaced by a small icon component over `lucide`'s icon data behind `src/icons.ts`.
+- The quiet changes: a rejection reaches an action as a copy (check each `instanceof` on a caught value), taps hear a step before its effects, and an `<Errored>` at the root.
+- Re-vendor `treflex-eslint` 0.3.0, and mark token-carrying actions with `redactArgs`.
 
 ## 1. Style parity
 
