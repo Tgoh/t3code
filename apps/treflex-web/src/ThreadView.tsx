@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off -- The timeline's touch settle timer, outside any Effect runtime.
 import { sideThreadComposer, sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
 import { useDispatch, useInFlight, useResource } from "treflex-solid";
 import type { JSX } from "@solidjs/web";
@@ -57,6 +58,8 @@ import { createMediaQuery, enterPanel, PANEL_SHEET_QUERY } from "./viewport";
 const DiffPanel = lazy(() => import("./DiffPanel"));
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
+
+const MOMENTUM_QUIET_MS = 150;
 
 /** `chat-stage` and `with-details` have no rule: the timeline and the composer lane key on them. */
 export const CHAT_STAGE =
@@ -247,7 +250,11 @@ const ThreadConversation = ThreadSession.provider<{
   let lastPosition: IScrollPosition = { Top: 0, Height: 0, ClientHeight: 0 };
   let touching = false;
   let dragging = false;
+  let touchSettle: ReturnType<typeof setTimeout> | undefined;
+  let heldShift = 0;
   const scrollToEnd = () => {
+    heldShift = 0;
+    content.style.transform = "";
     scroller.scrollTop = scroller.scrollHeight;
   };
   const statusRows = createMemo(() => checklistRows(checklist()));
@@ -278,6 +285,21 @@ const ThreadConversation = ThreadSession.provider<{
     const found = children[low] ?? null;
     return found === head ? head.nextElementSibling : found;
   };
+  // iOS Safari drops a scroll change made while a finger is down and stops momentum at one made
+  // during it, so a touch scroll holds the correction as a transform and scrolls once it ends.
+  const commitShift = () => {
+    if (heldShift === 0) return;
+    content.style.transform = "";
+    scroller.scrollBy(0, heldShift);
+    heldShift = 0;
+  };
+  const settleTouchSoon = () => {
+    clearTimeout(touchSettle);
+    touchSettle = setTimeout(() => {
+      touchSettle = undefined;
+      commitShift();
+    }, MOMENTUM_QUIET_MS);
+  };
   let correcting = false;
   const keepStill = () => {
     if (correcting) return;
@@ -288,7 +310,15 @@ const ThreadConversation = ThreadSession.provider<{
     // Measured after the patch, so native anchoring has applied; the difference is 0 where it did.
     queueMicrotask(() => {
       correcting = false;
-      if (anchor.isConnected) scroller.scrollBy(0, anchor.getBoundingClientRect().top - before);
+      if (!anchor.isConnected) return;
+      const shift = anchor.getBoundingClientRect().top - before;
+      if (shift === 0) return;
+      if (!touching && touchSettle === undefined) {
+        scroller.scrollBy(0, shift);
+        return;
+      }
+      heldShift += shift;
+      content.style.transform = `translateY(${-heldShift}px)`;
     });
   };
 
@@ -457,6 +487,7 @@ const ThreadConversation = ThreadSession.provider<{
     });
     stageObserver.observe(stage);
     return () => {
+      clearTimeout(touchSettle);
       observer.disconnect();
       laneObserver.disconnect();
       stageObserver.disconnect();
@@ -496,6 +527,7 @@ const ThreadConversation = ThreadSession.provider<{
           data-tip-scroll-dismiss
           tabindex={-1}
           onScroll={() => {
+            if (touchSettle !== undefined) settleTouchSoon();
             if (holding !== null) {
               lastPosition = position();
               return;
@@ -515,12 +547,23 @@ const ThreadConversation = ThreadSession.provider<{
             release();
             if (SCROLL_UP_KEYS.has(event.key) && scroller.scrollTop > 0) setStuck(false);
           }}
-          onTouchStart={() => {
+          onTouchStart={(event) => {
             release();
             touching = true;
+            clearTimeout(touchSettle);
+            touchSettle = undefined;
+            // A touch ends on the element it started on, which a re-render can take out of the scroller.
+            const started = event.target instanceof Element ? event.target : scroller;
+            const done = new AbortController();
+            const end = (ended: Event) => {
+              if (ended instanceof TouchEvent && ended.touches.length > 0) return;
+              done.abort();
+              touching = false;
+              settleTouchSoon();
+            };
+            started.addEventListener("touchend", end, { signal: done.signal });
+            started.addEventListener("touchcancel", end, { signal: done.signal });
           }}
-          onTouchEnd={() => (touching = false)}
-          onTouchCancel={() => (touching = false)}
           onPointerDown={(event) => {
             // A press on the scroller itself, not on a row, is its scrollbar.
             if (event.target !== scroller) return;
