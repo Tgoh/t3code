@@ -205,7 +205,6 @@ function ProviderSubagentBar() {
   );
 }
 
-/** The timeline and its composer, which the thread view and the side panel both show. */
 const ThreadConversation = ThreadSession.provider<{
   children?: JSX.Element;
   stageClass?: Record<string, boolean>;
@@ -796,7 +795,11 @@ const ThreadBody = ThreadSession.provider(() => {
         </Show>
       </FileDropSection>
       <Show when={rightPanelOpen()}>
-        <aside ref={enterPanel} class={panelSheet() ? RIGHT_PANEL_SHEET : RIGHT_PANEL_COLUMN}>
+        <aside
+          ref={enterPanel}
+          class={panelSheet() ? RIGHT_PANEL_SHEET : RIGHT_PANEL_COLUMN}
+          data-side-pane={side() !== null && session.state.Panels.Diff === null ? "" : undefined}
+        >
           <Switch
             fallback={
               <SurfaceLauncher

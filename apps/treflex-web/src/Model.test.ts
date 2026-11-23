@@ -2271,6 +2271,46 @@ describe("selection", () => {
     expect(server.environment().Replica.OpenThreads["s"]).toBeDefined();
   });
 
+  it("deleting or losing a thread retains the side thread beside it", async () => {
+    const server = await connect();
+    const expiring = (threadId: string) =>
+      server.runtime.timers(server.environment().Replica.OpenThreads[threadId]!.$Id);
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(openSideThread, server.envId(), "s", "primary");
+    await server.runtime.dispatch(threadCommand, server.envId(), "a", { Kind: "delete" });
+    expect(streams(server)).not.toContain("s");
+    expect(expiring("s")).toMatchObject([{ Key: "Thread/Expire" }]);
+
+    await server.runtime.dispatch(selectThread, server.envId(), "c");
+    await server.runtime.dispatch(openSideThread, server.envId(), "t", "primary");
+    await server.runtime.dispatch(
+      EnvironmentReceiver.handle,
+      server.envId(),
+      { Type: "Thread/Missing", ThreadId: "c" },
+      { publisher: { Id: server.envId() } },
+    );
+    expect(streams(server)).not.toContain("t");
+    expect(expiring("t")).toMatchObject([{ Key: "Thread/Expire" }]);
+  });
+
+  it("a side chat started just before leaving its thread is beside it on return", async () => {
+    let release = () => {};
+    const server = await connect(undefined, null, {
+      forkThread: () => new Promise<void>((resolve) => (release = resolve)),
+    });
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    const started = server.runtime.dispatch(startSideChat, server.envId());
+    await settled();
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
+    release();
+    await started;
+    const sideId = server.session("a").Panels.Side?.ThreadId;
+    expect(sideId).toBeDefined();
+    expect(streams(server)).toEqual(["b"]);
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    expect(streams(server)).toEqual(["a", sideId]);
+  });
+
   it("opening the diff replaces the side thread, and an unused side chat is deleted when it goes", async () => {
     const commands: Array<{ ThreadId: string; Command: unknown }> = [];
     const server = await connect(undefined, null, {

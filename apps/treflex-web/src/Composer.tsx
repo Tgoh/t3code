@@ -75,6 +75,9 @@ export const isAlternate = (event: MouseEvent | KeyboardEvent) =>
 export const COMPOSER_LANE =
   "composer-lane pointer-events-none absolute inset-x-0 bottom-0 z-20 mx-auto max-w-[calc(var(--chat-content-max-width)+2*var(--gutter))] px-(--gutter) pt-0 pb-[calc(var(--composer-gap,21px)+var(--safe-bottom))] *:pointer-events-auto in-[.chat-stage.with-details]:max-w-[calc(min(var(--chat-content-max-width),var(--details-lane,100vw))+2*var(--gutter))] in-[.chat-stage.with-details]:[translate:var(--details-shift)_0]";
 
+/** The right panel while it shows a side thread, whose composer is the second one on screen. */
+export const SIDE_PANE = "[data-side-pane]";
+
 export const COMPOSER_SURFACE =
   "relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)";
 
@@ -87,10 +90,11 @@ const keepFocus = (event: MouseEvent) => event.preventDefault();
 const NOTE = "mx-4 my-1 text-[12px]";
 const ERROR = `${NOTE} text-error-foreground ${HIDDEN_COLLAPSED}`;
 
-function useFocusRequests(focus: () => void) {
+function useFocusRequests(focus: (threadId: string) => void) {
   onMount(() => {
-    window.addEventListener(FOCUS_COMPOSER_EVENT, focus);
-    onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, focus));
+    const onRequest = (event: Event) => focus((event as CustomEvent<string>).detail);
+    window.addEventListener(FOCUS_COMPOSER_EVENT, onRequest);
+    onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, onRequest));
   });
 }
 
@@ -474,13 +478,19 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     });
   let form!: HTMLFormElement;
   let textarea!: HTMLTextAreaElement;
+  // Follows isInSideChatPane in stock: window-wide requests go to the side pane's composer only
+  // while focus is in that pane, and to the thread's own composer otherwise.
+  const owns = () =>
+    (form.closest(SIDE_PANE) !== null) === (document.activeElement?.closest(SIDE_PANE) != null);
   // Focuses within the tap, since iOS raises the keyboard only for focus inside a user gesture.
   const expand = () => {
     setFocused(true);
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   };
-  useFocusRequests(expand);
+  useFocusRequests((threadId) => {
+    if (threadId === held().ThreadId) expand();
+  });
   // A tap on a control would take focus from the prompt and drop the on-screen keyboard.
   const keepPromptFocus = (event: MouseEvent) => {
     if (phone() && event.target !== textarea) event.preventDefault();
@@ -532,7 +542,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   };
   useDictationKeys(
     () => {
-      if (answering() || !voiceOffered()) return;
+      if (!owns() || answering() || !voiceOffered()) return;
       if (dictating()) {
         if (voice().Phase === "recording") void dictation.stopDictation();
       } else if (!voiceElsewhere()) startDictation();
@@ -658,7 +668,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     return true;
   };
   useTypedText((event, typed) => {
-    if (rewinding() || textarea.disabled || textarea.readOnly) return;
+    if (!owns() || rewinding() || textarea.disabled || textarea.readOnly) return;
     event.preventDefault();
     expand();
     const end = textarea.value.length;

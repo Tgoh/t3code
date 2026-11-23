@@ -32,7 +32,8 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
     - `/side` and `/btw`;
     - the read-only bar's live status line (stock's `formatProviderSubagentStatus`), and the pane's "Subagent of" and "Context from" dividers;
     - tabs, so several side threads stay open beside the diff;
-    - keeping the open side thread across a reload, as stock's `rightPanelStore` does.
+    - keeping the open side thread across a reload, as stock's `rightPanelStore` does;
+    - forgetting the session of a side chat that was deleted unused, which stays until reload.
   - **A show/hide toggle on secret fields.**
   - **A thread error banner that can be dismissed and comes back.**
   - **Copy a chat table as HTML,** and **a copy button on file previews.**

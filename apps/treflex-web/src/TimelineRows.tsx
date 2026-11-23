@@ -625,7 +625,7 @@ function EditFromHere(props: IRowProps) {
           const at = turn();
           if (at === undefined) return;
           void session.editFromHere(props.id, at).then((filled) => {
-            if (filled) focusComposerAtEnd();
+            if (filled) focusComposerAtEnd(session.state.ThreadId);
           });
         }}
       >

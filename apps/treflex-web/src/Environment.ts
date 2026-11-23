@@ -310,12 +310,17 @@ export function* openThread(draft: IEnvironment, threadId: string): IActionGener
   yield* start(reattachThread, session.$Id);
 }
 
-function* leaveThread(draft: IEnvironment, threadId: string): IActionGenerator {
+/** `retain` is false for a thread that stays on screen beside the new selection. */
+function* leaveThread(draft: IEnvironment, threadId: string, retain = true): IActionGenerator {
   const held = draft.Replica.OpenThreads[threadId];
-  if (held !== undefined) yield* retainThread(held);
+  if (held !== undefined && retain) yield* retainThread(held);
   const session = draft.Local.ThreadSessions[threadId];
   if (session !== undefined) yield* start(detachThread, session);
-  const side = session?.Panels.Side?.ThreadId;
+  yield* releaseSide(draft, session);
+}
+
+function* releaseSide(draft: IEnvironment, host: IThreadSession | undefined): IActionGenerator {
+  const side = host?.Panels.Side?.ThreadId;
   if (side !== undefined && side !== draft.Local.SelectedThreadId) yield* leaveThread(draft, side);
 }
 
@@ -367,7 +372,7 @@ function* showSideThread(
   host.Panels.Diff = null;
   host.Panels.Launcher.Open = false;
   if (held !== undefined) yield* hideSideThread(draft, held, true);
-  yield* openThread(draft, threadId);
+  if (host.ThreadId === draft.Local.SelectedThreadId) yield* openThread(draft, threadId);
 }
 
 function* hideSideThread(
@@ -440,8 +445,7 @@ export function* startSideChat(draft: IEnvironment): IOpenGenerator {
   side.ModelSelection = picks.ModelSelection;
   side.RuntimeMode = picks.RuntimeMode;
   const host = draft.Local.ThreadSessions[hostId];
-  if (draft.Local.SelectedThreadId !== hostId || host === undefined) return;
-  yield* showSideThread(draft, host, targetThreadId);
+  if (host !== undefined) yield* showSideThread(draft, host, targetThreadId);
 }
 leading(startSideChat);
 
@@ -475,7 +479,7 @@ export function* selectThread(
 function* showThread(draft: IEnvironment, threadId: string): IActionGenerator {
   const previous = draft.Local.SelectedThreadId;
   draft.Local.SelectedThreadId = threadId;
-  if (previous !== null) yield* leaveThread(draft, previous);
+  if (previous !== null) yield* leaveThread(draft, previous, previous !== sideOfSelected(draft));
   if (draft.Local.ThreadSessions[threadId]?.NewThreadProjectId != null) return;
   yield* openThread(draft, threadId);
   const side = sideOfSelected(draft);
@@ -545,6 +549,8 @@ function* forgetSession(draft: IEnvironment, threadId: string): IActionGenerator
   yield* storeDraftEffect({ ThreadId: threadId, Draft: null });
   yield* storeDraftFilesEffect({ ThreadId: threadId, Files: [] });
   yield* dropDictation(draft.Local.Dictation, threadId);
+  if (draft.Local.SelectedThreadId === threadId)
+    yield* releaseSide(draft, draft.Local.ThreadSessions[threadId]);
   delete draft.Local.ThreadSessions[threadId];
   for (const session of Object.values(draft.Local.ThreadSessions)) {
     if (session.Panels.Side?.ThreadId === threadId) session.Panels.Side = null;
@@ -901,6 +907,8 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   // Follows ThreadRouteView in apps/web/src/components/ThreadRouteView.tsx, which leaves a
   // missing thread for home, replacing its address.
   *"Thread/Missing"(draft, { ThreadId }) {
+    if (draft.Local.SelectedThreadId === ThreadId)
+      yield* releaseSide(draft, draft.Local.ThreadSessions[ThreadId]);
     yield* closeThread(draft, ThreadId);
     for (const session of Object.values(draft.Local.ThreadSessions)) {
       if (session.Panels.Side?.ThreadId === ThreadId) session.Panels.Side = null;

@@ -461,7 +461,6 @@ function LineageRow(props: {
     return held !== null && !isFailed(props.row.Status) && held.StartedAt !== null ? held : null;
   };
   const canMerge = () => session.mergeBackRunId() !== null;
-  // A subagent or side chat of this thread opens beside it or in its place, as the click asks.
   const side = props.row.Relation === "subagent" || props.row.Relation === "sideChat";
   const trigger = createSideThreadTrigger(
     (intent) => void environment.openSideThread(props.row.ThreadId, intent),

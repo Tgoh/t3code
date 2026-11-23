@@ -18,10 +18,7 @@ export interface ISurfaceAction {
 
 const NOT_HERE_YET = "Not in this client yet.";
 
-/**
- * Follows RightPanelEmptyState in apps/web/src/components/RightPanelTabs.tsx. Terminal, Diff and
- * Side chat open what this client has; the rest are listed, disabled, until it has them.
- */
+/** Follows RightPanelEmptyState in apps/web/src/components/RightPanelTabs.tsx. */
 export function surfaceActions(input: {
   TerminalAvailable: boolean;
   DiffAvailable: boolean;

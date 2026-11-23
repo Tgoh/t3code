@@ -506,7 +506,6 @@ export interface IPanels {
   DiffOpen: boolean;
   RightPanelOpen: boolean;
   TerminalEntityId: string;
-  /** The thread isn't itself a side chat or subagent, and the server makes side chats. */
   SideChats: boolean;
 }
 
