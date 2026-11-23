@@ -2,6 +2,8 @@
 
 Everything in the pipeline for the treflex client, in the order to do it. Within a stage, the items can run in parallel threads unless an item says otherwise. An item being worked on is marked **In progress** with its branch. Gaps against stock that nobody has asked for yet go in [issues.md](./issues.md) instead. The long-term goal is full parity with stock, so `issues.md`'s gaps move in here a few at a time.
 
+**On hold until treflex 0.3.0 ships:** finish the items already in progress, and start nothing new (Tam, 2026-11-23).
+
 ## 1. Style parity
 
 Nothing hand-rolled that stock already has. Before parity and the missing features, so new work uses the shared components.
