@@ -12,7 +12,7 @@ export function raiseViewCrash(error: unknown): void {
   void Promise.reject(error);
 }
 
-/** The root `<Errored>`'s fallback. Solid swaps it back for the app once the throwing view recovers. */
+/** The root `<Errored>`'s fallback. */
 export function ViewCrash(props: { error: unknown }) {
   return (
     <StandalonePage>
