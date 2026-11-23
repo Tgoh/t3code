@@ -26,7 +26,7 @@ export function Spinner(
   return (
     <LoaderCircle
       aria-label="Loading"
-      ref={observeVisibleAnimation}
+      ref={observeVisibleAnimation()}
       role="status"
       {...rest}
       class={[

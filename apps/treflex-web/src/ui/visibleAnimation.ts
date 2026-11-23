@@ -1,4 +1,4 @@
-import { onCleanup } from "solid-js";
+import { type Accessor, createEffect, createSignal, onCleanup } from "solid-js";
 
 interface IObservedAnimation {
   element: HTMLElement | SVGElement;
@@ -23,11 +23,7 @@ function updateAnimations() {
   for (const animation of animations.values()) updateAnimation(animation);
 }
 
-/**
- * Runs the element's `visible-animate-*` animation only while it is on screen, the tab is visible
- * and motion isn't reduced. Call it from a ref inside a component; it stops with that owner.
- */
-export function observeVisibleAnimation(element: HTMLElement | SVGElement) {
+function observe(element: HTMLElement | SVGElement) {
   element.style.setProperty("--visible-animation-state", "paused");
   element.style.setProperty("--visible-animation-will-change", "auto");
   if (typeof IntersectionObserver === "undefined") return;
@@ -51,7 +47,7 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement) {
   animations.set(element, animation);
   observer.observe(element);
 
-  onCleanup(() => {
+  return () => {
     if (animations.get(element) !== animation) return;
     animations.delete(element);
     observer?.unobserve(element);
@@ -64,5 +60,28 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement) {
       reducedMotion = null;
       document.removeEventListener("visibilitychange", updateAnimations);
     }
-  });
+  };
+}
+
+/**
+ * Runs the element's `visible-animate-*` animation only while it is on screen, the tab is visible
+ * and motion isn't reduced, and while `active` holds if given. Call it in a component body and pass
+ * the returned ref to the element; it stops with that component.
+ */
+export function observeVisibleAnimation(active?: Accessor<boolean>) {
+  if (active === undefined) {
+    let stop: (() => void) | undefined;
+    onCleanup(() => stop?.());
+    return (element: HTMLElement | SVGElement) => {
+      stop = observe(element);
+    };
+  }
+  const [element, setElement] = createSignal<HTMLElement | SVGElement>();
+  createEffect(
+    () => (active() ? element() : undefined),
+    (held) => (held === undefined ? undefined : observe(held)),
+  );
+  return (held: HTMLElement | SVGElement) => {
+    setElement(() => held);
+  };
 }

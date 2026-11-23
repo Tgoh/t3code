@@ -1,6 +1,6 @@
 // @effect-diagnostics globalTimers:off -- A view-only height animation, outside any Effect runtime.
 import { Dynamic, type JSX } from "@solidjs/web";
-import { createSignal, createTrackedEffect, For, omit, onCleanup, Show, untrack } from "solid-js";
+import { createEffect, createSignal, For, omit, Show, untrack } from "solid-js";
 
 import { Check } from "../icons";
 import {
@@ -141,42 +141,49 @@ function AnimatedHeight(props: { holdHeight: boolean; children: JSX.Element }) {
   const [content, setContent] = createSignal<HTMLDivElement>();
   const [height, setHeight] = createSignal<number | null>(null);
   const [clipping, setClipping] = createSignal(false);
-  createTrackedEffect(() => {
-    height();
-    if (!clipping()) return;
-    const timer = setTimeout(() => setClipping(false), HEIGHT_TRANSITION_FALLBACK_MS);
-    onCleanup(() => clearTimeout(timer));
-  });
-  createTrackedEffect(() => {
-    const element = content();
-    if (props.holdHeight || element === undefined) return;
-    const frames: number[] = [];
-    const update = () => {
-      const next = Math.ceil(element.scrollHeight || element.getBoundingClientRect().height);
-      const previous = untrack(height);
-      if (previous === next) return;
-      setClipping(previous !== null);
-      setHeight(next);
-    };
-    const cancel = () => frames.splice(0).forEach((frame) => cancelAnimationFrame(frame));
-    const updateAfterPaint = () => {
-      cancel();
-      update();
-      frames.push(
-        requestAnimationFrame(() => {
-          update();
-          frames.push(requestAnimationFrame(update));
-        }),
-      );
-    };
-    updateAfterPaint();
-    const observer = new ResizeObserver(updateAfterPaint);
-    observer.observe(element);
-    onCleanup(() => {
-      observer.disconnect();
-      cancel();
-    });
-  });
+  createEffect(
+    () => {
+      height();
+      return clipping();
+    },
+    (isClipping) => {
+      if (!isClipping) return;
+      const timer = setTimeout(() => setClipping(false), HEIGHT_TRANSITION_FALLBACK_MS);
+      return () => clearTimeout(timer);
+    },
+  );
+  createEffect(
+    () => ({ element: content(), hold: props.holdHeight }),
+    ({ element, hold }) => {
+      if (hold || element === undefined) return;
+      const frames: number[] = [];
+      const update = () => {
+        const next = Math.ceil(element.scrollHeight || element.getBoundingClientRect().height);
+        const previous = untrack(height);
+        if (previous === next) return;
+        setClipping(previous !== null);
+        setHeight(next);
+      };
+      const cancel = () => frames.splice(0).forEach((frame) => cancelAnimationFrame(frame));
+      const updateAfterPaint = () => {
+        cancel();
+        update();
+        frames.push(
+          requestAnimationFrame(() => {
+            update();
+            frames.push(requestAnimationFrame(update));
+          }),
+        );
+      };
+      updateAfterPaint();
+      const observer = new ResizeObserver(updateAfterPaint);
+      observer.observe(element);
+      return () => {
+        observer.disconnect();
+        cancel();
+      };
+    },
+  );
   return (
     <div
       data-slot="animated-height"

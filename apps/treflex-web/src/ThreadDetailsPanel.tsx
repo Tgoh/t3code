@@ -8,12 +8,10 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  createTrackedEffect,
   createUniqueId,
   For,
   Match,
   omit,
-  onCleanup,
   onSettled,
   Show,
   Switch,
@@ -1252,17 +1250,18 @@ export function DetailsSurface(props: {
   };
   const [card, setCard] = createSignal<HTMLElement>();
   const overlays = useOverlays();
-  createTrackedEffect(() => {
-    if (props.inline || !props.shown) return;
-    measure();
-    onCleanup(
-      overlays.push({
+  createEffect(
+    () => (props.inline || !props.shown ? null : { Anchor: props.anchor }),
+    (open) => {
+      if (open === null) return;
+      measure();
+      return overlays.push({
         close: () => props.onDismiss(),
         contains: (node) =>
           card()?.contains(node) === true || props.anchor?.contains(node) === true,
-      }),
-    );
-  });
+      });
+    },
+  );
   onSettled(() => {
     measure();
     window.addEventListener("resize", measure);

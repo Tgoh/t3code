@@ -96,9 +96,13 @@ export function RawHtml(props: {
   const [element, setElement] = createSignal<HTMLDivElement>();
   const [tables, setTables] = createSignal<ITableMount[]>([]);
   createRenderEffect(
-    () => [element(), props.markup] as const,
-    ([container, markup]) => {
-      if (container === undefined) return;
+    () => {
+      const container = element();
+      return container === undefined ? undefined : ([container, props.markup] as const);
+    },
+    (held) => {
+      if (held === undefined) return;
+      const [container, markup] = held;
       container.innerHTML = markup;
       setTables(wrapTables(container));
     },

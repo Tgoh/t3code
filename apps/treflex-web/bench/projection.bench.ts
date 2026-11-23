@@ -4,7 +4,7 @@ import {
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { createMemo, createRoot, createTrackedEffect, mapArray } from "solid-js";
+import { createEffect, createMemo, createRoot, mapArray } from "solid-js";
 import { createTestRuntime, guids, settled } from "treflex";
 import { expect, it } from "vite-plus/test";
 
@@ -136,14 +136,20 @@ it("per-delta cost", async () => {
     const { send, thread } = await connected(projection);
     const reruns = { selector: 0, otherItem: 0 };
     const dispose = createRoot((disposeRoot) => {
-      createTrackedEffect(() => {
-        reruns.selector += 1;
-        timelineEntries(thread());
-      });
-      createTrackedEffect(() => {
-        reruns.otherItem += 1;
-        void (thread().TurnItems[projection.turnItems[0]!.id] as { text?: string }).text;
-      });
+      createEffect(
+        () => {
+          reruns.selector += 1;
+          timelineEntries(thread());
+        },
+        () => {},
+      );
+      createEffect(
+        () => {
+          reruns.otherItem += 1;
+          void (thread().TurnItems[projection.turnItems[0]!.id] as { text?: string }).text;
+        },
+        () => {},
+      );
       return disposeRoot;
     });
     await Promise.resolve();
@@ -180,10 +186,13 @@ it("a delta that adds a row", async () => {
   const measure = async (size: number, wholeListSelector: boolean) => {
     const { send, thread } = await connected(longThread(size));
     const dispose = createRoot((disposeRoot) => {
-      createTrackedEffect(() => {
-        if (wholeListSelector) timelineEntries(thread());
-        else void thread().Timeline.length;
-      });
+      createEffect(
+        () => {
+          if (wholeListSelector) timelineEntries(thread());
+          else void thread().Timeline.length;
+        },
+        () => {},
+      );
       return disposeRoot;
     });
     await Promise.resolve();
@@ -219,7 +228,10 @@ it("a row-adding delta through <For>'s mapping", async () => {
         ? createMemo(() => runtime.processSelector(timelineIds, thread))
         : () => thread().Timeline;
       const rows = mapArray(ids, (id) => id);
-      createTrackedEffect(() => void rows());
+      createEffect(
+        () => void rows(),
+        () => {},
+      );
       return disposeRoot;
     });
     await Promise.resolve();
@@ -294,9 +306,12 @@ it("a keystroke while compaction is offered", async () => {
     );
     let offered: number | null = null;
     const dispose = createRoot((disposeRoot) => {
-      createTrackedEffect(() => {
-        offered = runtime.processSelector(compactionOffer, session);
-      });
+      createEffect(
+        () => {
+          offered = runtime.processSelector(compactionOffer, session);
+        },
+        () => {},
+      );
       return disposeRoot;
     });
     await Promise.resolve();
@@ -341,10 +356,22 @@ it("a row-adding delta while a request is pending", async () => {
       selects.push(await timed(() => runtime.processSelector(requestItems, thread)));
     }
     const dispose = createRoot((disposeRoot) => {
-      createTrackedEffect(() => void runtime.processSelector(pendingApprovalIds, thread));
-      createTrackedEffect(() => void runtime.processSelector(pendingQuestionIds, thread));
-      createTrackedEffect(() => void runtime.processSelector(pendingOtherIds, thread));
-      createTrackedEffect(() => void runtime.processSelector(requestItems, thread)["r-0"]);
+      createEffect(
+        () => void runtime.processSelector(pendingApprovalIds, thread),
+        () => {},
+      );
+      createEffect(
+        () => void runtime.processSelector(pendingQuestionIds, thread),
+        () => {},
+      );
+      createEffect(
+        () => void runtime.processSelector(pendingOtherIds, thread),
+        () => {},
+      );
+      createEffect(
+        () => void runtime.processSelector(requestItems, thread)["r-0"],
+        () => {},
+      );
       return disposeRoot;
     });
     await Promise.resolve();

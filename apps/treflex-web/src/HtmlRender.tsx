@@ -32,15 +32,7 @@ import {
   T3_CODE_LIGHT_THEME_COLORS,
 } from "@t3tools/shared/themePalettes";
 import { useComponentState } from "treflex-solid";
-import {
-  createMemo,
-  createSignal,
-  createTrackedEffect,
-  onCleanup,
-  onSettled,
-  Show,
-  untrack,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, onSettled, Show, untrack } from "solid-js";
 
 import type { IColorScheme } from "./colorScheme";
 import Environment from "./Environment";
@@ -49,6 +41,7 @@ import { ImageDialog } from "./ImageDialog";
 import { clockNow } from "./timestamps";
 import { EMPTY_MEDIA_URL, type IMediaUrl, loadMediaUrl, MIN_URL_LIFE_MS } from "./markdownImage";
 import { Button } from "./ui/Button";
+import { cleanupRef } from "./ui/cleanupRef";
 import { Dialog, DialogPopup, DialogTitle } from "./ui/Dialog";
 import { ERROR_TEXT } from "./ui/notice";
 import { Presence } from "./ui/Presence";
@@ -95,14 +88,15 @@ const shortcutKey = (shortcut: HtmlRenderShortcut) =>
     shortcut.altKey ? "alt" : "",
   ].join("|");
 
-const observeWidth = (box: HTMLElement, set: (width: number) => void) => {
-  set(box.clientWidth);
-  const observer = new ResizeObserver(([entry]) => {
-    if (entry) set(Math.round(entry.contentRect.width));
+const observeWidth = (set: (width: number) => void) =>
+  cleanupRef((box: HTMLElement) => {
+    set(box.clientWidth);
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) set(Math.round(entry.contentRect.width));
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
   });
-  observer.observe(box);
-  onCleanup(() => observer.disconnect());
-};
 
 const MAX_MEASURED_CONTENT_HEIGHTS = 200;
 
@@ -153,7 +147,7 @@ export function HtmlRenderFrame(props: { htmlRender: HtmlRenderReference }) {
   return (
     <div>
       <div
-        ref={(box) => observeWidth(box, setWidth)}
+        ref={observeWidth(setWidth)}
         class="group/html-render relative"
         style={{ height: `${height()}px` }}
       >
@@ -263,12 +257,18 @@ function HtmlRenderDocument(props: {
   const postTheme = () => post(htmlRenderThemeMessage(theme()));
   const postShortcuts = () =>
     post(htmlRenderShortcutsMessage(shortcuts().allowed, shortcuts().blocked));
-  createTrackedEffect(() => {
-    postTheme();
-  });
-  createTrackedEffect(() => {
-    postShortcuts();
-  });
+  createEffect(
+    () => [frame(), theme()],
+    () => {
+      postTheme();
+    },
+  );
+  createEffect(
+    () => [frame(), shortcuts()],
+    () => {
+      postShortcuts();
+    },
+  );
   // Pages can forge key and code pairs: a pair matching another binding is refused, and a named
   // key must match the shortcut.
   const isShortcut = (key: NonNullable<ReturnType<typeof readHtmlRenderKeyDown>>) => {
@@ -311,14 +311,14 @@ function HtmlRenderDocument(props: {
     if (request !== undefined) setImage(request.images[request.index] ?? null);
   };
   // Listens from the ref, before the first load, since a fast page posts its height at once.
-  const attach = (element: HTMLIFrameElement) => {
+  const attach = cleanupRef((element: HTMLIFrameElement) => {
     setFrame(element);
     const listener = (event: MessageEvent) => {
       if (event.source === element.contentWindow) onMessage(element, event);
     };
     window.addEventListener("message", listener);
-    onCleanup(() => window.removeEventListener("message", listener));
-  };
+    return () => window.removeEventListener("message", listener);
+  });
   return (
     <>
       <iframe
@@ -383,7 +383,7 @@ function HtmlRenderDialog(props: {
             <X />
           </Button>
           <div class="max-h-[min(86vh,calc(100vh-160px))] overflow-y-auto overscroll-contain rounded-lg bg-background p-4 shadow-2xl ring-1 ring-border/70">
-            <div ref={(box) => observeWidth(box, setWidth)}>
+            <div ref={observeWidth(setWidth)}>
               <div style={{ zoom: zoom(), height: `${height()}px` }}>
                 <HtmlRenderDocument
                   src={props.src}

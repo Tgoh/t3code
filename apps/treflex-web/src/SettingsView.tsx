@@ -487,7 +487,7 @@ function SettingRowView(props: { row: ISettingRow; held: ISettingsHeld }) {
             class="w-full sm:w-72"
             aria-label={props.row.Title}
             placeholder={control.Placeholder}
-            spellcheck={false}
+            spellcheck="false"
             value={current()}
             onCommit={write}
           />
@@ -750,7 +750,7 @@ function ProvidersPage() {
                             class="w-56 max-w-full"
                             placeholder="Filter models"
                             aria-label="Filter models"
-                            spellcheck={false}
+                            spellcheck="false"
                             value={modelFilter()}
                             onInput={(event) => setModelFilter(event.currentTarget.value)}
                           />

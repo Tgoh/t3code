@@ -21,9 +21,9 @@ import {
 import { type IOpenGenerator, open } from "treflex";
 import { useComponentState } from "treflex-solid";
 import {
+  createEffect,
   createMemo,
   createSignal,
-  createTrackedEffect,
   onCleanup,
   onSettled,
   Show,
@@ -226,8 +226,8 @@ export function McpAppFrame(props: {
   const src = () => page().Src;
 
   // An approval goes inline so it stays above the app.
-  createTrackedEffect(() => {
-    if (awaitingUser()) setDisplayMode("inline");
+  createEffect(awaitingUser, (waiting) => {
+    if (waiting) setDisplayMode("inline");
   });
 
   const ask = (message: string) => {
@@ -278,178 +278,203 @@ export function McpAppFrame(props: {
   });
 
   // The host belongs to this frame element, which a reopened document replaces.
-  const attachFrame = (element: HTMLIFrameElement) => {
-    setFrame(element);
-    // Navigation keeps the frame's window, so a second load is refused: the new page could pose
-    // as the app.
-    let loads = 0;
-    element.addEventListener("load", () => {
-      loads += 1;
-      if (loads > 1) {
-        made.dispose();
-        setNavigatedAway(true);
-      }
-    });
-    const made = makeMcpAppHost({
-      app,
-      hostVersion: HOST_VERSION,
-      // Opaque origins need "*"; the window reference keeps delivery to this frame.
-      post: (message) => element.contentWindow?.postMessage(message, "*"),
-      hostContext: () => untrack(hostContext),
-      callTool: async ({ name, arguments: args }) => {
-        const info = (await request({ Kind: "toolInfo", Name: name })) as {
-          callable: boolean;
-          readOnly: boolean;
-          title?: string;
-        };
-        if (!info.callable) throw refuse("This app cannot call that tool.");
-        if (!info.readOnly) {
-          const approved = await ask(
-            `Allow ${app.server} to run ${info.title ?? name}?\n${JSON.stringify(args, null, 2)}`,
-          );
+  const attachFrame = () => {
+    let detach: (() => void) | undefined;
+    onCleanup(() => detach?.());
+    return (element: HTMLIFrameElement) => {
+      setFrame(element);
+      // Navigation keeps the frame's window, so a second load is refused: the new page could pose
+      // as the app.
+      let loads = 0;
+      element.addEventListener("load", () => {
+        loads += 1;
+        if (loads > 1) {
+          made.dispose();
+          setNavigatedAway(true);
+        }
+      });
+      const made = makeMcpAppHost({
+        app,
+        hostVersion: HOST_VERSION,
+        // Opaque origins need "*"; the window reference keeps delivery to this frame.
+        post: (message) => element.contentWindow?.postMessage(message, "*"),
+        hostContext: () => untrack(hostContext),
+        callTool: async ({ name, arguments: args }) => {
+          const info = (await request({ Kind: "toolInfo", Name: name })) as {
+            callable: boolean;
+            readOnly: boolean;
+            title?: string;
+          };
+          if (!info.callable) throw refuse("This app cannot call that tool.");
+          if (!info.readOnly) {
+            const approved = await ask(
+              `Allow ${app.server} to run ${info.title ?? name}?\n${JSON.stringify(args, null, 2)}`,
+            );
+            if (!approved) throw refuse("Declined by the user.");
+          }
+          return (await request({
+            Kind: "callTool",
+            Name: name,
+            Arguments: args,
+          })) as McpAppCallToolResult;
+        },
+        readResource: ({ uri }) => request({ Kind: "readResource", Uri: uri }),
+        openLink: async (url) => {
+          if (document.activeElement !== element || !navigator.userActivation?.isActive) {
+            throw refuse("Links open only from a click in the app.");
+          }
+          window.open(url, "_blank", "noopener,noreferrer");
+        },
+        sendMessage: async (text) => {
+          const approved = await ask(`Send this message from ${app.server}?\n${text}`);
           if (!approved) throw refuse("Declined by the user.");
-        }
-        return (await request({
-          Kind: "callTool",
-          Name: name,
-          Arguments: args,
-        })) as McpAppCallToolResult;
-      },
-      readResource: ({ uri }) => request({ Kind: "readResource", Uri: uri }),
-      openLink: async (url) => {
-        if (document.activeElement !== element || !navigator.userActivation?.isActive) {
-          throw refuse("Links open only from a click in the app.");
-        }
-        window.open(url, "_blank", "noopener,noreferrer");
-      },
-      sendMessage: async (text) => {
-        const approved = await ask(`Send this message from ${app.server}?\n${text}`);
-        if (!approved) throw refuse("Declined by the user.");
-        const failed = await session.sendAppMessage(text);
-        if (failed) throw refuse(failed);
-      },
-      updateModelContext: async (context) => {
-        await request({
-          Kind: "updateModelContext",
-          ConversationThreadId: session.state.ThreadId,
-          ...(context.content === undefined ? {} : { Content: [...context.content] }),
-          ...(context.structuredContent === undefined
-            ? {}
-            : { StructuredContent: context.structuredContent }),
-        });
-      },
-      requestDisplayMode: async (mode) => {
-        const other = document.querySelector("[data-mcp-app-fullscreen]");
-        if (
-          mode === "fullscreen" &&
-          (!fullscreenSupported ||
-            document.activeElement !== element ||
-            !navigator.userActivation?.isActive ||
-            performance.now() - lastPageInputAt < PAGE_ACTIVATION_MS ||
-            untrack(awaitingUser) ||
-            untrack(asking) !== undefined ||
-            (other !== null && other !== box()))
-        ) {
-          return untrack(displayMode);
-        }
-        setDisplayMode(mode);
-        return mode;
-      },
-      downloadFile: async (files) => {
-        const names = files.map((file) => file.name).join(", ");
-        if (!(await ask(`Save ${names} from ${app.server}?`))) {
-          throw refuse("Declined by the user.");
-        }
-        for (const file of files) {
-          let bytes: Uint8Array | undefined;
-          let mimeType = file.mimeType ?? "application/octet-stream";
-          if (file._tag === "embedded") {
-            bytes = file.bytes;
-          } else {
-            const read = (await request({ Kind: "readResource", Uri: file.uri })) as {
-              contents: unknown[];
-            };
-            const content = read.contents[0];
-            bytes = mcpResourceBytes(content);
-            const declared = (content as { mimeType?: unknown } | undefined)?.mimeType;
-            if (typeof declared === "string") mimeType = declared;
+          const failed = await session.sendAppMessage(text);
+          if (failed) throw refuse(failed);
+        },
+        updateModelContext: async (context) => {
+          await request({
+            Kind: "updateModelContext",
+            ConversationThreadId: session.state.ThreadId,
+            ...(context.content === undefined ? {} : { Content: [...context.content] }),
+            ...(context.structuredContent === undefined
+              ? {}
+              : { StructuredContent: context.structuredContent }),
+          });
+        },
+        requestDisplayMode: async (mode) => {
+          const other = document.querySelector("[data-mcp-app-fullscreen]");
+          if (
+            mode === "fullscreen" &&
+            (!fullscreenSupported ||
+              document.activeElement !== element ||
+              !navigator.userActivation?.isActive ||
+              performance.now() - lastPageInputAt < PAGE_ACTIVATION_MS ||
+              untrack(awaitingUser) ||
+              untrack(asking) !== undefined ||
+              (other !== null && other !== box()))
+          ) {
+            return untrack(displayMode);
           }
-          if (bytes === undefined) throw refuse(`${file.name} has no contents.`);
-          if (bytes.byteLength > MAX_DOWNLOAD_BYTES) {
-            throw refuse(`${file.name} is too large to save.`);
+          setDisplayMode(mode);
+          return mode;
+        },
+        downloadFile: async (files) => {
+          const names = files.map((file) => file.name).join(", ");
+          if (!(await ask(`Save ${names} from ${app.server}?`))) {
+            throw refuse("Declined by the user.");
           }
-          saveBlob(new Blob([bytes.slice()], { type: mimeType }), file.name);
-        }
-      },
-      onRequestTeardown: () => {
-        if (untrack(displayMode) === "fullscreen") {
-          setDisplayMode("inline");
-          return;
-        }
-        // A replacement document may have mounted while this one wound down.
-        void made.teardown().then(() => {
-          if (untrack(host) === made) setClosed(true);
-        });
-      },
-      onSizeChanged: (size) => {
-        // Full screen reports the viewport's height, which inline sizing ignores.
-        if (untrack(displayMode) === "fullscreen") return;
-        if (size.height !== undefined) setHeight(clampMcpAppHeight(size.height));
-      },
-    });
-    setHost(made);
-    const receive = (event: MessageEvent) => {
-      if (event.source !== null && event.source === element.contentWindow) made.receive(event.data);
+          for (const file of files) {
+            let bytes: Uint8Array | undefined;
+            let mimeType = file.mimeType ?? "application/octet-stream";
+            if (file._tag === "embedded") {
+              bytes = file.bytes;
+            } else {
+              const read = (await request({ Kind: "readResource", Uri: file.uri })) as {
+                contents: unknown[];
+              };
+              const content = read.contents[0];
+              bytes = mcpResourceBytes(content);
+              const declared = (content as { mimeType?: unknown } | undefined)?.mimeType;
+              if (typeof declared === "string") mimeType = declared;
+            }
+            if (bytes === undefined) throw refuse(`${file.name} has no contents.`);
+            if (bytes.byteLength > MAX_DOWNLOAD_BYTES) {
+              throw refuse(`${file.name} is too large to save.`);
+            }
+            saveBlob(new Blob([bytes.slice()], { type: mimeType }), file.name);
+          }
+        },
+        onRequestTeardown: () => {
+          if (untrack(displayMode) === "fullscreen") {
+            setDisplayMode("inline");
+            return;
+          }
+          // A replacement document may have mounted while this one wound down.
+          void made.teardown().then(() => {
+            if (untrack(host) === made) setClosed(true);
+          });
+        },
+        onSizeChanged: (size) => {
+          // Full screen reports the viewport's height, which inline sizing ignores.
+          if (untrack(displayMode) === "fullscreen") return;
+          if (size.height !== undefined) setHeight(clampMcpAppHeight(size.height));
+        },
+      });
+      setHost(made);
+      const receive = (event: MessageEvent) => {
+        if (event.source !== null && event.source === element.contentWindow)
+          made.receive(event.data);
+      };
+      window.addEventListener("message", receive);
+      detach = () => {
+        window.removeEventListener("message", receive);
+        void made.teardown();
+        if (untrack(host) === made) setHost(null);
+        if (untrack(frame) === element) setFrame(undefined);
+      };
     };
-    window.addEventListener("message", receive);
-    onCleanup(() => {
-      window.removeEventListener("message", receive);
-      void made.teardown();
-      if (untrack(host) === made) setHost(null);
-      if (untrack(frame) === element) setFrame(undefined);
-    });
   };
 
-  createTrackedEffect(() => {
-    theme();
-    width();
-    displayMode();
-    void local.state.ToolDefinition;
-    host()?.updateHostContext();
-  });
+  createEffect(
+    () => {
+      theme();
+      width();
+      displayMode();
+      void local.state.ToolDefinition;
+      return host();
+    },
+    (held) => {
+      held?.updateHostContext();
+    },
+  );
   // Each new document needs the call again.
-  createTrackedEffect(() => {
-    const call = local.state.ToolCall;
-    src();
-    if (call !== null) {
-      host()?.setToolCall({ arguments: plain(call.Arguments), result: plain(call.Result) });
-    }
-  });
+  createEffect(
+    () => {
+      const call = local.state.ToolCall;
+      src();
+      if (call === null) return null;
+      return {
+        host: host(),
+        call: { arguments: plain(call.Arguments), result: plain(call.Result) },
+      };
+    },
+    (held) => {
+      held?.host?.setToolCall(held.call);
+    },
+  );
 
-  const attachBox = (element: HTMLDivElement) => {
-    setBox(element);
-    setWidth(element.clientWidth);
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) setWidth(Math.round(entry.contentRect.width));
-      // Full screen reports the viewport, which can change height alone.
-      if (fullscreenSupported && element.matches(":popover-open"))
-        untrack(host)?.updateHostContext();
-    });
-    observer.observe(element);
-    onCleanup(() => {
-      observer.disconnect();
-      if (untrack(box) === element) setBox(undefined);
-    });
+  const attachBox = () => {
+    let detach: (() => void) | undefined;
+    onCleanup(() => detach?.());
+    return (element: HTMLDivElement) => {
+      setBox(element);
+      setWidth(element.clientWidth);
+      const observer = new ResizeObserver(([entry]) => {
+        if (entry) setWidth(Math.round(entry.contentRect.width));
+        // Full screen reports the viewport, which can change height alone.
+        if (fullscreenSupported && element.matches(":popover-open"))
+          untrack(host)?.updateHostContext();
+      });
+      observer.observe(element);
+      detach = () => {
+        observer.disconnect();
+        if (untrack(box) === element) setBox(undefined);
+      };
+    };
   };
   // The box is in the top layer exactly while its full-screen chrome is mounted, so every way
   // out of full screen closes the popover.
-  const attachFullscreenChrome = (chrome: HTMLDivElement) => {
-    const parent = chrome.parentElement;
-    if (parent === null) return;
-    if (!parent.matches(":popover-open")) parent.showPopover();
-    onCleanup(() => {
-      if (parent.matches(":popover-open")) parent.hidePopover();
-    });
+  const attachFullscreenChrome = () => {
+    let detach: (() => void) | undefined;
+    onCleanup(() => detach?.());
+    return (chrome: HTMLDivElement) => {
+      const parent = chrome.parentElement;
+      if (parent === null) return;
+      if (!parent.matches(":popover-open")) parent.showPopover();
+      detach = () => {
+        if (parent.matches(":popover-open")) parent.hidePopover();
+      };
+    };
   };
   const fullscreen = () => displayMode() === "fullscreen";
 
@@ -479,7 +504,7 @@ export function McpAppFrame(props: {
         {/* Keeps the inline height during full screen, so the timeline doesn't jump. */}
         <div style={{ height: `${height()}px` }}>
           <div
-            ref={attachBox}
+            ref={attachBox()}
             // Keeps the frame's parent, which would reload it; the top layer escapes the timeline.
             popover={fullscreenSupported ? "auto" : undefined}
             onToggle={(event) => {
@@ -502,7 +527,7 @@ export function McpAppFrame(props: {
           >
             <Show when={fullscreen()}>
               <div
-                ref={attachFullscreenChrome}
+                ref={attachFullscreenChrome()}
                 class="flex h-10 shrink-0 items-center justify-between border-border border-b px-3 text-sm"
               >
                 <span class="truncate">{app.server}</span>
@@ -537,7 +562,7 @@ export function McpAppFrame(props: {
               >
                 {(shown) => (
                   <iframe
-                    ref={attachFrame}
+                    ref={attachFrame()}
                     src={shown}
                     title={`${app.server} app`}
                     // Leaving out allow-same-origin keeps the app out of the session.

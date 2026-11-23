@@ -12,7 +12,7 @@ import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
 } from "@t3tools/shared/claudeCompaction";
-import { createMemo, createRoot, createTrackedEffect } from "solid-js";
+import { createEffect, createMemo, createRoot } from "solid-js";
 import {
   createTestRuntime,
   defineEffect,
@@ -855,22 +855,34 @@ describe("thread events", () => {
     const thread = server.thread();
     const runs = { changed: 0, other: 0, selector: 0, ids: 0 };
     const dispose = createRoot((disposeRoot) => {
-      createTrackedEffect(() => {
-        runs.selector += 1;
-        timelineEntries(thread);
-      });
-      createTrackedEffect(() => {
-        runs.ids += 1;
-        server.runtime.processSelector(timelineIds, () => thread);
-      });
-      createTrackedEffect(() => {
-        runs.changed += 1;
-        void (thread.TurnItems["item-6"] as { text?: string }).text;
-      });
-      createTrackedEffect(() => {
-        runs.other += 1;
-        void (thread.TurnItems["item-0"] as { text?: string }).text;
-      });
+      createEffect(
+        () => {
+          runs.selector += 1;
+          timelineEntries(thread);
+        },
+        () => {},
+      );
+      createEffect(
+        () => {
+          runs.ids += 1;
+          server.runtime.processSelector(timelineIds, () => thread);
+        },
+        () => {},
+      );
+      createEffect(
+        () => {
+          runs.changed += 1;
+          void (thread.TurnItems["item-6"] as { text?: string }).text;
+        },
+        () => {},
+      );
+      createEffect(
+        () => {
+          runs.other += 1;
+          void (thread.TurnItems["item-0"] as { text?: string }).text;
+        },
+        () => {},
+      );
       return disposeRoot;
     });
     expect(runs).toEqual({ changed: 1, other: 1, selector: 1, ids: 1 });

@@ -1,4 +1,4 @@
-import { type ComponentProps, createTrackedEffect, omit } from "solid-js";
+import { type ComponentProps, omit } from "solid-js";
 
 import { RefreshCw } from "../icons";
 import { observeVisibleAnimation } from "./visibleAnimation";
@@ -18,14 +18,11 @@ export function RefreshIcon(
   },
 ) {
   const rest = omit(props, "size", "refreshing", "class");
+  const animate = observeVisibleAnimation(() => props.refreshing === true);
   return (
     <RefreshCw
       aria-hidden="true"
-      ref={(icon: SVGSVGElement) =>
-        createTrackedEffect(() => {
-          if (props.refreshing) observeVisibleAnimation(icon);
-        })
-      }
+      ref={animate}
       {...rest}
       class={[
         props.size === undefined ? undefined : SIZES[props.size],

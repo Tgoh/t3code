@@ -2,15 +2,7 @@ import type { KeybindingCommand } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import { useInFlight, useResource } from "treflex-solid";
 import type { JSX } from "@solidjs/web";
-import {
-  createSignal,
-  createTrackedEffect,
-  For,
-  onCleanup,
-  onSettled,
-  Show,
-  untrack,
-} from "solid-js";
+import { createEffect, createSignal, For, onCleanup, onSettled, Show, untrack } from "solid-js";
 
 import Environment from "./Environment";
 import {
@@ -456,25 +448,27 @@ const ShellPane = TerminalShell.provider(
     };
     const [results, setResults] = createSignal<{ Index: number; Count: number } | null>(null);
     const [host, setHost] = createSignal<HTMLDivElement>();
-    createTrackedEffect(() => {
-      const view = live.value();
-      const element = host();
-      if (view === undefined || element === undefined) return;
-      onCleanup(
-        view.mount(element, {
+    createEffect(
+      () => [live.value(), host()] as const,
+      ([view, element]) => {
+        if (view === undefined || element === undefined) return;
+        return view.mount(element, {
           focus: untrack(() => shell.state.FocusOnMount),
           passKey,
           openLink,
           openFind: () => props.onFind(true),
           findResults: (index, count) => setResults({ Index: index, Count: count }),
-        }),
-      );
-    });
-    createTrackedEffect(() => {
-      if (props.finding) return;
-      untrack(() => live.value())?.clearFind();
-      setResults(null);
-    });
+        });
+      },
+    );
+    createEffect(
+      () => props.finding,
+      (finding) => {
+        if (finding) return;
+        untrack(() => live.value())?.clearFind();
+        setResults(null);
+      },
+    );
     onCleanup(() => {
       if (!props.finding) return;
       live.value()?.clearFind();

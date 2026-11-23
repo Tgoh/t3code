@@ -6,7 +6,7 @@ import {
   createContext,
   createMemo,
   createSignal,
-  createTrackedEffect,
+  createEffect,
   For,
   onSettled,
   Show,
@@ -1054,14 +1054,19 @@ function CodeToken(props: ITokenProps) {
     loads();
     return held === null ? null : cachedHighlight(held.Text, held.Language, held.Scheme);
   });
-  createTrackedEffect(() => {
-    const held = wanted();
-    if (held === null || html() !== null) return;
-    void highlight(held.Text, held.Language, held.Scheme).then(
-      () => setLoads((count) => count + 1),
-      (error: unknown) => console.warn("Code highlighting failed", error),
-    );
-  });
+  createEffect(
+    () => {
+      const held = wanted();
+      return held === null || html() !== null ? null : held;
+    },
+    (held) => {
+      if (held === null) return;
+      void highlight(held.Text, held.Language, held.Scheme).then(
+        () => setLoads((count) => count + 1),
+        (error: unknown) => console.warn("Code highlighting failed", error),
+      );
+    },
+  );
   return (
     <div
       class={CODE_BLOCK}

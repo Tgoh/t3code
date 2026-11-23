@@ -127,7 +127,7 @@ export function CommandInput(
             aria-autocomplete="list"
             aria-expanded="true"
             autocomplete="off"
-            spellcheck={false}
+            spellcheck="false"
             {...rest}
             class={INPUT_FIELD}
             data-slot="autocomplete-input"

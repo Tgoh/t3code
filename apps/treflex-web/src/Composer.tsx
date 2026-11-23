@@ -7,7 +7,7 @@ import {
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useInFlight, useResource } from "treflex-solid";
 import type { JSX } from "@solidjs/web";
-import { createSignal, For, onCleanup, onSettled, Show } from "solid-js";
+import { createSignal, For, onSettled, Show } from "solid-js";
 
 import {
   admitFiles,
@@ -99,7 +99,7 @@ function useFocusRequests(focus: (threadId: string) => void) {
   onSettled(() => {
     const onRequest = (event: Event) => focus((event as CustomEvent<string>).detail);
     window.addEventListener(FOCUS_COMPOSER_EVENT, onRequest);
-    onCleanup(() => window.removeEventListener(FOCUS_COMPOSER_EVENT, onRequest));
+    return () => window.removeEventListener(FOCUS_COMPOSER_EVENT, onRequest);
   });
 }
 
@@ -107,7 +107,7 @@ function useTypedText(take: (event: Event, typed: ITypedText) => void) {
   onSettled(() => {
     const onTyped = (event: Event) => take(event, (event as CustomEvent<ITypedText>).detail);
     window.addEventListener(TYPE_INTO_COMPOSER_EVENT, onTyped);
-    onCleanup(() => window.removeEventListener(TYPE_INTO_COMPOSER_EVENT, onTyped));
+    return () => window.removeEventListener(TYPE_INTO_COMPOSER_EVENT, onTyped);
   });
 }
 
@@ -115,10 +115,10 @@ function useDictationKeys(toggle: () => void, escape: (event: KeyboardEvent) => 
   onSettled(() => {
     window.addEventListener(TOGGLE_DICTATION_EVENT, toggle);
     window.addEventListener("keydown", escape, true);
-    onCleanup(() => {
+    return () => {
       window.removeEventListener(TOGGLE_DICTATION_EVENT, toggle);
       window.removeEventListener("keydown", escape, true);
-    });
+    };
   });
 }
 
@@ -131,11 +131,11 @@ function useAlternateHeld() {
     window.addEventListener("keydown", update);
     window.addEventListener("keyup", update);
     window.addEventListener("blur", clear);
-    onCleanup(() => {
+    return () => {
       window.removeEventListener("keydown", update);
       window.removeEventListener("keyup", update);
       window.removeEventListener("blur", clear);
-    });
+    };
   });
   return held;
 }
@@ -326,10 +326,10 @@ export function FileDropSection(props: { children: JSX.Element }) {
     const clear = () => setDragActive(false);
     window.addEventListener("dragend", clear);
     window.addEventListener("drop", clear);
-    onCleanup(() => {
+    return () => {
       window.removeEventListener("dragend", clear);
       window.removeEventListener("drop", clear);
-    });
+    };
   });
   return (
     <section

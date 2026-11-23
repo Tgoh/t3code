@@ -177,7 +177,7 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
           autocomplete="off"
           autocorrect="off"
           autocapitalize="off"
-          spellcheck={false}
+          spellcheck="false"
           data-1p-ignore=""
           data-lpignore="true"
           data-bwignore=""
@@ -493,7 +493,7 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
                       placeholder="Paste the code"
                       disabled={busy()}
                       autocomplete="one-time-code"
-                      spellcheck={false}
+                      spellcheck="false"
                     />
                     <span class={NOTE}>
                       Create a link on {targetName}: Settings → Sharing & access → Authorized
@@ -511,7 +511,7 @@ function LinkDialog(props: { item: LinkRequestItem; onClose: () => void }) {
                   onInput={(event) => setAddress(event.currentTarget.value)}
                   placeholder="https://machine.tailnet.ts.net"
                   disabled={busy()}
-                  spellcheck={false}
+                  spellcheck="false"
                 />
                 <Show when={target.kind === "machine"}>
                   <span class={NOTE}>

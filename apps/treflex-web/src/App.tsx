@@ -3,13 +3,15 @@ import type { KeybindingCommand } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useDispatch } from "treflex-solid";
 import {
+  createEffect,
   createMemo,
   createSignal,
   For,
+  getOwner,
   Match,
-  createTrackedEffect,
   onCleanup,
   onSettled,
+  runWithOwner,
   Show,
   Switch,
 } from "solid-js";
@@ -106,10 +108,12 @@ const EnvironmentView = Environment.provider(() => {
     },
   );
   // Follows appInit.tsx: styles.css sizes --chat-content-max-width from this attribute.
-  createTrackedEffect(() => {
-    document.documentElement.dataset.chatWidth =
-      environment.state.Local.ClientSettings?.chatWidth ?? "comfortable";
-  });
+  createEffect(
+    () => environment.state.Local.ClientSettings?.chatWidth ?? "comfortable",
+    (chatWidth) => {
+      document.documentElement.dataset.chatWidth = chatWidth;
+    },
+  );
   const keybindings = () => environment.keybindings();
   const platform = navigator.platform;
   const dispatch = useDispatch();
@@ -413,7 +417,11 @@ const EnvironmentMain = Dictation.provider(() => {
 
 export const App = Root.provider(() => {
   const root = Root.use();
-  onSettled(() => trackVisualViewport(document.documentElement));
+  const owner = getOwner();
+  // trackVisualViewport registers onCleanup, which onSettled's own scope refuses.
+  onSettled(() => {
+    runWithOwner(owner, () => trackVisualViewport(document.documentElement));
+  });
   const activeThread = createMemo(() => {
     const environment = root.state.Environments.find((entry) => entry.Local.SelectedThreadId);
     const threadId = environment?.Local.SelectedThreadId;

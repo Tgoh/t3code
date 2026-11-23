@@ -53,11 +53,12 @@ interface ICard {
 const cards = new WeakMap<Element, ICard>();
 
 /** Shows `card` in a glass popup in place of the trigger's `data-tip` text. */
-export const hoverCard =
-  <P extends object>(card: Component<P>, props: P) =>
-  (element: HTMLElement) => {
-    cards.set(element, { Render: () => createComponent(card, props), Owner: getOwner() });
+export const hoverCard = <P extends object>(card: Component<P>, props: P) => {
+  const owner = getOwner();
+  return (element: HTMLElement) => {
+    cards.set(element, { Render: () => createComponent(card, props), Owner: owner });
   };
+};
 
 interface IOpenTip {
   Trigger: HTMLElement;
@@ -134,14 +135,19 @@ function TipPopup(props: { tip: IOpenTip; onLost: () => void }) {
   const [text, setText] = createSignal(trigger.dataset.tip);
   onSettled(() => {
     const element = positioner();
-    if (element !== undefined) onCleanup(followTip(element, trigger, () => props.onLost()));
-    if (card !== undefined) return;
-    onCleanup(
-      watchText(trigger, (next) => {
-        if (next) setText(next);
-        else props.onLost();
-      }),
-    );
+    const stopFollowing =
+      element === undefined ? undefined : followTip(element, trigger, () => props.onLost());
+    const stopWatching =
+      card === undefined
+        ? watchText(trigger, (next) => {
+            if (next) setText(next);
+            else props.onLost();
+          })
+        : undefined;
+    return () => {
+      stopWatching?.();
+      stopFollowing?.();
+    };
   });
   return (
     <div
@@ -298,7 +304,7 @@ function tooltipController() {
     document.addEventListener("focusout", onFocusOut);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    onCleanup(() => {
+    return () => {
       clearTimeout(pending);
       clearTimeout(grace);
       clearTimeout(cooling);
@@ -309,7 +315,7 @@ function tooltipController() {
       document.removeEventListener("focusout", onFocusOut);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("scroll", onScroll, { capture: true });
-    });
+    };
   });
 
   return { open, hide };

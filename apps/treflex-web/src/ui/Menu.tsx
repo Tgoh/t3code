@@ -107,11 +107,7 @@ interface IMenuLevel {
 
 const MenuContext = createContext<IMenuLevel>();
 
-const useMenu = () => {
-  const level = useContext(MenuContext);
-  if (level === undefined) throw new Error("A menu part is outside a MenuPopup.");
-  return level;
-};
+const useMenu = () => useContext(MenuContext);
 
 type IOpenedBy = "keyboard" | "pointer";
 
@@ -589,7 +585,7 @@ interface IRadioGroup {
   onValueChange: (value: string) => void;
 }
 
-const RadioContext = createContext<IRadioGroup>();
+const RadioContext = createContext<IRadioGroup | null>(null);
 
 export function MenuRadioGroup(props: {
   value: string;
@@ -698,11 +694,7 @@ export function MenuSub(props: { children: JSX.Element }) {
   );
 }
 
-const useSub = () => {
-  const sub = useContext(SubContext);
-  if (sub === undefined) throw new Error("A submenu part is outside a MenuSub.");
-  return sub;
-};
+const useSub = () => useContext(SubContext);
 
 export function MenuSubTrigger(props: {
   density?: IDensity;

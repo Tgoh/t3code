@@ -1,5 +1,5 @@
 // @effect-diagnostics globalTimers:off -- A view-only sampling tick, outside any Effect runtime.
-import { createSignal, For, onCleanup, onSettled } from "solid-js";
+import { createSignal, For, onSettled } from "solid-js";
 
 const SAMPLE_MS = 250;
 
@@ -48,17 +48,17 @@ export function ViewportDebug() {
     probe.className =
       "pointer-events-none invisible fixed size-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]";
     document.body.append(probe);
-    onCleanup(() => probe.remove());
     const update = () => setRows(sample(probe));
     update();
     const timer = setInterval(update, SAMPLE_MS);
     window.visualViewport?.addEventListener("resize", update);
     window.visualViewport?.addEventListener("scroll", update);
-    onCleanup(() => {
+    return () => {
       clearInterval(timer);
       window.visualViewport?.removeEventListener("resize", update);
       window.visualViewport?.removeEventListener("scroll", update);
-    });
+      probe.remove();
+    };
   });
   return (
     <>

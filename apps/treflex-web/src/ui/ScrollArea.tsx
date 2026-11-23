@@ -1,6 +1,7 @@
 import type { JSX } from "@solidjs/web";
 import { createSignal, omit, onCleanup } from "solid-js";
 
+import { cleanupRef } from "./cleanupRef";
 import { overrides } from "./merge";
 import { trackScrollOverflow } from "./scrollOverflow";
 
@@ -29,12 +30,18 @@ export function getVirtualizedScrollFadeClassName(ends: { top: boolean; bottom: 
   return `virtualized-scroll-fade [--fade-size:1.5rem] ${mask}`;
 }
 
-/** Whether a scroller can scroll up and down, as stock reads it from its virtualizer. */
+/**
+ * Whether a scroller can scroll up and down, as stock reads it from its virtualizer. Call it in a
+ * component body and pass `track` as the scroller's ref.
+ */
 export function createScrollEnds() {
   const [ends, setEnds] = createSignal({ top: false, bottom: false });
+  let stop: (() => void) | undefined;
+  onCleanup(() => stop?.());
   return {
     ends,
     track: (element: HTMLElement) => {
+      stop?.();
       const update = () => {
         const top = element.scrollTop > 0;
         const bottom = element.scrollTop + element.clientHeight < element.scrollHeight - 1;
@@ -45,11 +52,11 @@ export function createScrollEnds() {
       const mutation = new MutationObserver(update);
       mutation.observe(element, { childList: true, subtree: true });
       element.addEventListener("scroll", update, { passive: true });
-      onCleanup(() => {
+      stop = () => {
         resize.disconnect();
         mutation.disconnect();
         element.removeEventListener("scroll", update);
-      });
+      };
     },
   };
 }
@@ -118,9 +125,9 @@ export function ScrollArea(
   return (
     <div {...rest} class={scrollAreaClass({ radius: props.radius, class: props.class })}>
       <div
-        ref={(element) =>
-          onCleanup(trackScrollOverflow(element, { tabIndex: props.viewportTabIndex }))
-        }
+        ref={cleanupRef((element: HTMLDivElement) =>
+          trackScrollOverflow(element, { tabIndex: props.viewportTabIndex }),
+        )}
         class={scrollAreaViewportClass(props)}
         data-slot="scroll-area-viewport"
       >

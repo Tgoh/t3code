@@ -74,17 +74,23 @@ export function createRoving(options: { orientation: Accessor<IOrientation>; hom
     return open.find((item) => entries.get(item)?.active() === true) ?? open[0] ?? null;
   });
   return {
-    register(item: HTMLElement, entry: { active: Accessor<boolean>; disabled: Accessor<boolean> }) {
-      entries.set(item, entry);
+    /** Call in the item's component body; pass the returned ref to the item's element. */
+    register(entry: { active: Accessor<boolean>; disabled: Accessor<boolean> }) {
+      let item: HTMLElement | undefined;
       // Mounted, the item has its place in the document, which orders the group.
       onSettled(() => {
         changed();
       });
       onCleanup(() => {
+        if (item === undefined) return;
         entries.delete(item);
         if (focused() === item) setFocused(null);
         changed();
       });
+      return (element: HTMLElement) => {
+        item = element;
+        entries.set(element, entry);
+      };
     },
     tabIndex: (item: HTMLElement | undefined) => {
       const held = stop();

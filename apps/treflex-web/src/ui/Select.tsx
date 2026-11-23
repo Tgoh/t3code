@@ -125,11 +125,7 @@ interface IRoot {
 
 const RootContext = createContext<IRoot>();
 
-const useRoot = () => {
-  const root = useContext(RootContext);
-  if (root === undefined) throw new Error("A select part is outside a Select.");
-  return root;
-};
+const useRoot = () => useContext(RootContext);
 
 const itemValues = new WeakMap<Element, string>();
 
@@ -640,11 +636,11 @@ interface IItemHost {
   close: () => void;
 }
 
-const ItemHostContext = createContext<IItemHost>();
+const ItemHostContext = createContext<IItemHost | null>(null);
 
 function itemHandlers(
   root: IRoot,
-  host: IItemHost | undefined,
+  host: IItemHost | null,
   props: { value: string; disabled?: boolean },
 ) {
   let pressed = false;

@@ -19,11 +19,7 @@ interface ICollapsible {
 
 const CollapsibleContext = createContext<ICollapsible>();
 
-const useCollapsible = () => {
-  const context = useContext(CollapsibleContext);
-  if (context === undefined) throw new Error("A collapsible part must sit inside a Collapsible.");
-  return context;
-};
+const useCollapsible = () => useContext(CollapsibleContext);
 
 export function Collapsible(
   props: JSX.HTMLAttributes<HTMLDivElement> & {

@@ -3,15 +3,7 @@ import type { ShownOrder } from "@t3tools/client-runtime/state/thread-search";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useResource } from "treflex-solid";
 import { Portal } from "@solidjs/web";
-import {
-  createMemo,
-  createSignal,
-  createTrackedEffect,
-  For,
-  omit,
-  onCleanup,
-  Show,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, For, omit, onCleanup, Show } from "solid-js";
 
 import { T3Mark } from "./brand";
 import Environment from "./Environment";
@@ -219,11 +211,11 @@ export const Sidebar = Shell.provider(() => {
       isBusy(sidebarStatus(thread, shell.subagentRequests()[thread.id])),
     ),
   );
-  createTrackedEffect(() => {
-    if (!anyWorking()) return;
+  createEffect(anyWorking, (working) => {
+    if (!working) return;
     setSecond(Date.now());
     const ticking = setInterval(() => setSecond(Date.now()), SECOND);
-    onCleanup(() => clearInterval(ticking));
+    return () => clearInterval(ticking);
   });
   const sections = () => layout().Sections;
   const shelves = () => local().Shelves;
@@ -576,7 +568,7 @@ export const Sidebar = Shell.provider(() => {
                           ? searchResultId(results()[highlightIndex()]!.Thread.id)
                           : undefined
                       }
-                      spellcheck={false}
+                      spellcheck="false"
                       autocomplete="off"
                       value={query()}
                       onInput={(event) => {

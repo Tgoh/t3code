@@ -176,11 +176,15 @@ function comboboxNavigation(options: {
     }
   };
   return {
-    setList: (element: HTMLElement) => {
-      list = element;
-      const observer = new MutationObserver(() => sync());
-      observer.observe(element, { childList: true, subtree: true });
-      onCleanup(() => observer.disconnect());
+    /** Call in the list's component body; pass the returned ref to the list element. */
+    list: () => {
+      let observer: MutationObserver | undefined;
+      onCleanup(() => observer?.disconnect());
+      return (element: HTMLElement) => {
+        list = element;
+        observer = new MutationObserver(() => sync());
+        observer.observe(element, { childList: true, subtree: true });
+      };
     },
     setInput: (element: HTMLInputElement) => {
       input = element;
@@ -257,11 +261,7 @@ interface IRoot {
 
 const RootContext = createContext<IRoot>();
 
-const useRoot = () => {
-  const root = useContext(RootContext);
-  if (root === undefined) throw new Error("A combobox part is outside a Combobox.");
-  return root;
-};
+const useRoot = () => useContext(RootContext);
 
 /**
  * Base UI's combobox with `autoHighlight`: typing highlights the first row, clearing the query
@@ -303,7 +303,7 @@ export function ComboboxSearchInput(
               aria-expanded="true"
               aria-controls={root.listId}
               autocomplete="off"
-              spellcheck={false}
+              spellcheck="false"
               {...rest}
               ref={(element) => {
                 root.navigation.setInput(element);
@@ -411,10 +411,11 @@ export function ComboboxPopup(props: {
 
 export function ComboboxList(props: { children: JSX.Element }) {
   const root = useRoot();
+  const setList = root.navigation.list();
   return (
     <ScrollArea scrollbarGutter scrollFade>
       <div
-        ref={(held) => root.navigation.setList(held)}
+        ref={setList}
         id={root.listId}
         class={LIST}
         role="listbox"
@@ -440,12 +441,13 @@ export function ComboboxListVirtualized(props: {
   children: JSX.Element;
 }) {
   const root = useRoot();
+  const setList = root.navigation.list();
   onSettled(() => {
     if (props.inline === true) root.navigation.open(null);
   });
   return (
     <div
-      ref={(held) => root.navigation.setList(held)}
+      ref={setList}
       id={root.listId}
       class={withClass(LIST_VIRTUALIZED, props.class)}
       role="listbox"

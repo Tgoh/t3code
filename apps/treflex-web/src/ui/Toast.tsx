@@ -2,9 +2,9 @@
 import { type JSX, Portal } from "@solidjs/web";
 import {
   type Accessor,
+  createEffect,
   createMemo,
   createSignal,
-  createTrackedEffect,
   For,
   onCleanup,
   onSettled,
@@ -24,6 +24,7 @@ import {
   X,
 } from "../icons";
 import { Button, type ButtonVariant } from "./Button";
+import { cleanupRef } from "./cleanupRef";
 import { follow } from "./floating";
 import { Spinner } from "./Spinner";
 import {
@@ -174,22 +175,29 @@ function createToastRoot(
       if (pointerId !== null) event.preventDefault();
     };
     element.addEventListener("touchmove", preventTouchMove, { passive: false });
-    onCleanup(() => {
+    return () => {
       resize.disconnect();
       mutation.disconnect();
       element.removeEventListener("touchmove", preventTouchMove);
       abort?.abort();
-    });
+    };
   });
 
   let removing = false;
-  createTrackedEffect(() => {
-    const element = root();
-    if (removing || !element || toast().transitionStatus !== "ending") return;
-    removing = true;
-    const id = toast().id;
-    requestAnimationFrame(() => void animationsFinished(element).then(() => store.remove(id)));
-  });
+  createEffect(
+    () => {
+      const element = root();
+      if (removing || !element || toast().transitionStatus !== "ending") return undefined;
+      return { element, id: toast().id };
+    },
+    (ending) => {
+      if (ending === undefined || removing) return;
+      removing = true;
+      requestAnimationFrame(
+        () => void animationsFinished(ending.element).then(() => store.remove(ending.id)),
+      );
+    },
+  );
 
   const damp = (delta: number) =>
     delta > 0
@@ -626,13 +634,13 @@ function VisibleAutoDismiss(props: { id: string; ms: number }) {
     document.addEventListener("visibilitychange", sync);
     window.addEventListener("focus", sync);
     window.addEventListener("blur", sync);
-    onCleanup(() => {
+    return () => {
       document.removeEventListener("visibilitychange", sync);
       window.removeEventListener("focus", sync);
       window.removeEventListener("blur", sync);
       pause();
       clearTimeout(timer);
-    });
+    };
   });
   return null;
 }
@@ -921,22 +929,20 @@ function AnchoredToast(props: { store: ToastStore; toast: Accessor<IToast> }) {
   const [element, setElement] = createSignal<HTMLElement>();
   const root = createToastRoot(props.store, props.toast, element, []);
   const toast = props.toast;
-  const placeAt = (positioner: HTMLElement) => {
+  const placeAt = cleanupRef((positioner: HTMLElement) => {
     const anchor = toast().positionerProps?.anchor;
-    if (!anchor) return;
-    onCleanup(
-      follow(
-        positioner,
-        anchor,
-        () => ({
-          side: "top",
-          align: "center",
-          sideOffset: toast().positionerProps?.sideOffset ?? 4,
-        }),
-        () => props.store.close(toast().id),
-      ),
+    if (!anchor) return undefined;
+    return follow(
+      positioner,
+      anchor,
+      () => ({
+        side: "top",
+        align: "center",
+        sideOffset: toast().positionerProps?.sideOffset ?? 4,
+      }),
+      () => props.store.close(toast().id),
     );
-  };
+  });
   const ending = () => toast().transitionStatus === "ending";
   const tooltipStyle = () => toast().data?.tooltipStyle ?? false;
   return (

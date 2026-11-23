@@ -1,5 +1,5 @@
 import { CodeView, type CodeViewDiffItem, type CodeViewOptions } from "@pierre/diffs";
-import { createEffect, createSignal, createTrackedEffect, onCleanup, untrack } from "solid-js";
+import { createEffect, createSignal, onCleanup, untrack } from "solid-js";
 
 import { THEME_NAMES } from "./codeHighlighter";
 import { DIFF_VIEW_UNSAFE_CSS, fileDiffPath, fnv1a32, type IFileDiffEntry } from "./diffRendering";
@@ -136,14 +136,13 @@ export default function DiffCodeView(props: {
     else props.onToggle(action.Toggle);
   };
   const [host, setHost] = createSignal<HTMLDivElement>();
-  createTrackedEffect(() => {
-    const element = host();
+  createEffect(host, (element) => {
     if (element === undefined) return;
     view.setup(element);
     view.setItems(untrack(() => props.files.map(toItem)));
     view.render(true);
     element.addEventListener("click", onClick, true);
-    onCleanup(() => element.removeEventListener("click", onClick, true));
+    return () => element.removeEventListener("click", onClick, true);
   });
   createEffect(
     () => [props.split, props.wrap, props.scheme],
@@ -161,9 +160,12 @@ export default function DiffCodeView(props: {
     },
     { defer: true },
   );
-  createTrackedEffect(() => {
-    void followScheme(workers.pool, props.scheme).catch(() => undefined);
-  });
+  createEffect(
+    () => props.scheme,
+    (scheme) => {
+      void followScheme(workers.pool, scheme).catch(() => undefined);
+    },
+  );
   onCleanup(() => {
     view.cleanUp();
     workers.release();

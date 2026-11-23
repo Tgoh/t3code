@@ -347,8 +347,7 @@ export function createPopup(options: {
     setTimeout(() => restoreFocus(true), 0);
   };
   show(false);
-  // Presence keeps the same children when it reopens mid-exit, so this opens again too. It runs
-  // as a computation, since an effect can miss an exit that settles within the same flush.
+  // Presence keeps the same children when it reopens mid-exit, so this opens again too.
   createRenderEffect(
     presence.exiting,
     (exiting) => {

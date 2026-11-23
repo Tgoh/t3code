@@ -43,9 +43,7 @@ interface IDialogRoot {
 const DialogContext = createContext<IDialogRoot>();
 
 function useDialogRoot(): IDialogRoot {
-  const root = useContext(DialogContext);
-  if (root === undefined) throw new Error("A dialog part must be inside a Dialog or AlertDialog.");
-  return root;
+  return useContext(DialogContext);
 }
 
 export function DialogRoot(props: { alert: boolean; onClose: () => void; children: JSX.Element }) {

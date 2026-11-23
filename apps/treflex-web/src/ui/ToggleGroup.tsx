@@ -110,9 +110,12 @@ export function Toggle(
   },
 ) {
   const group = useContext(Group);
-  if (group === undefined) throw new Error("A grouped Toggle must sit in a ToggleGroup.");
   const rest = omit(props, "variant", "size", "value", "disabled");
   const [element, setElement] = createSignal<HTMLButtonElement>();
+  const register = group.roving.register({
+    active: () => false,
+    disabled: () => props.disabled === true || rest["aria-disabled"] === "true",
+  });
   const pressed = () => group.pressed(props.value);
   return (
     <ToggleComponent
@@ -123,10 +126,7 @@ export function Toggle(
       {...rest}
       ref={(item) => {
         setElement(item);
-        group.roving.register(item, {
-          active: () => false,
-          disabled: () => props.disabled === true || rest["aria-disabled"] === "true",
-        });
+        register(item);
       }}
       tabindex={group.roving.tabIndex(element())}
       disabled={props.disabled}

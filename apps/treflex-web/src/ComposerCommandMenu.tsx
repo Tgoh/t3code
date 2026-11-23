@@ -1,6 +1,6 @@
 import { useComponentState } from "treflex-solid";
 import { Dynamic } from "@solidjs/web";
-import { createEffect, createMemo, createSignal, createTrackedEffect, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 
 import {
   fileItems,
@@ -114,15 +114,15 @@ export function ComposerCommandMenu(props: {
               {(item, index) => {
                 const Icon = ICONS[item.Kind];
                 const active = () => index() === props.menu.highlight();
+                let row: HTMLElement | undefined;
+                createEffect(active, (isActive) => {
+                  if (isActive) row?.scrollIntoView({ block: "nearest" });
+                });
                 return (
                   <CommandItem
                     active={active()}
                     aria-selected={active() ? "true" : "false"}
-                    ref={(element) =>
-                      createTrackedEffect(() => {
-                        if (active()) element.scrollIntoView({ block: "nearest" });
-                      })
-                    }
+                    ref={(element) => (row = element)}
                     onMouseMove={() => {
                       if (!active()) props.menu.highlightAt(index());
                     }}

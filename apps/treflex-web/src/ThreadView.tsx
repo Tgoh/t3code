@@ -6,7 +6,6 @@ import {
   createMemo,
   createRenderEffect,
   createSignal,
-  createTrackedEffect,
   For,
   lazy,
   Match,
@@ -308,23 +307,26 @@ const ThreadConversation = ThreadSession.provider<{
     First: 0,
     Floor: INITIAL_ROWS,
   });
-  createRenderEffect(thread.timelineIds, (ids) => {
-    const held = untrack(timeline);
-    const moved = firstAfterChange(held.Ids, ids, held.First, saved?.RowId ?? null);
-    const isStuck = untrack(stuck);
-    const first = snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved);
-    if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
-    // A retained thread has rows before the scroller mounts, and there's no scroll to keep then.
-    const trimmed = held.Ids.length > 0 && first !== moved;
-    const before = trimmed ? scroller.scrollTop : 0;
-    setTimeline({ ...held, Ids: ids, First: first });
-    // Only the trim's own shift, so the scroll event it causes isn't read as the user scrolling up
-    // and a scroll-up in the same frame still is.
-    if (trimmed)
-      queueMicrotask(() => {
-        lastPosition = { ...lastPosition, Top: lastPosition.Top + scroller.scrollTop - before };
-      });
-  });
+  createRenderEffect(
+    () => thread.timelineIds(),
+    (ids) => {
+      const held = untrack(timeline);
+      const moved = firstAfterChange(held.Ids, ids, held.First, saved?.RowId ?? null);
+      const isStuck = untrack(stuck);
+      const first = snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved);
+      if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill();
+      // A retained thread has rows before the scroller mounts, and there's no scroll to keep then.
+      const trimmed = held.Ids.length > 0 && first !== moved;
+      const before = trimmed ? scroller.scrollTop : 0;
+      setTimeline({ ...held, Ids: ids, First: first });
+      // Only the trim's own shift, so the scroll event it causes isn't read as the user scrolling up
+      // and a scroll-up in the same frame still is.
+      if (trimmed)
+        queueMicrotask(() => {
+          lastPosition = { ...lastPosition, Top: lastPosition.Top + scroller.scrollTop - before };
+        });
+    },
+  );
   const windowIds = createMemo(() => {
     const held = timeline();
     return held.Ids.slice(held.First);
@@ -397,22 +399,34 @@ const ThreadConversation = ThreadSession.provider<{
     restoring = false;
     holding = null;
   };
-  createTrackedEffect(() => {
-    if (!restoring || saved === null) return;
-    const ids = timeline().Ids;
-    if (responses()?.Starts.includes(saved.RowId)) {
-      holding = content.querySelector(`[data-response="${CSS.escape(saved.RowId)}"]`);
-      if (holding === null) return;
-      restoring = false;
-      putBack();
-    } else if (ids.includes(saved.RowId)) {
-      growTo(ids.indexOf(saved.RowId));
-    } else if (thread.threadSynchronized() && ids.length > 0) {
-      restoring = false;
-      setStuck(true);
-      scrollToEnd();
-    }
-  });
+  createEffect(
+    () => {
+      if (!restoring || saved === null) return null;
+      const ids = timeline().Ids;
+      if (responses()?.Starts.includes(saved.RowId)) return { Found: saved.RowId };
+      if (ids.includes(saved.RowId)) {
+        // growTo reads it, so a change re-runs the step.
+        stuck();
+        return { Grow: ids.indexOf(saved.RowId) };
+      }
+      return thread.threadSynchronized() && ids.length > 0 ? { End: true } : null;
+    },
+    (step) => {
+      if (step === null) return;
+      if ("Found" in step) {
+        holding = content.querySelector(`[data-response="${CSS.escape(step.Found)}"]`);
+        if (holding === null) return;
+        restoring = false;
+        putBack();
+      } else if ("Grow" in step) {
+        growTo(step.Grow);
+      } else {
+        restoring = false;
+        setStuck(true);
+        scrollToEnd();
+      }
+    },
+  );
   onSettled(() => {
     const observer = new ResizeObserver(() => {
       if (stuck()) scrollToEnd();

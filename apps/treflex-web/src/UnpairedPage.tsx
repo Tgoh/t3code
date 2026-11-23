@@ -57,7 +57,7 @@ export function UnpairedPage() {
             disabled={submitting()}
             onInput={(event) => setCredential(event.currentTarget.value)}
             placeholder="Paste a one-time token or pairing secret"
-            spellcheck={false}
+            spellcheck="false"
             value={credential()}
           />
         </div>

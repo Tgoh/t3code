@@ -4,7 +4,7 @@ import {
   type TerminalSpanStyle,
 } from "@t3tools/shared/terminalOutput";
 import { useResource } from "treflex-solid";
-import { createMemo, createSignal, createTrackedEffect, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 
 import Environment from "./Environment";
 import ThreadSession from "./ThreadSession";
@@ -57,11 +57,16 @@ export function CommandOutput(props: { itemId: string }) {
   );
   const [scroller, setScroller] = createSignal<HTMLPreElement>();
   const [following, setFollowing] = createSignal(true);
-  createTrackedEffect(() => {
-    spans();
-    const element = scroller();
-    if (element !== undefined && following()) element.scrollTop = element.scrollHeight;
-  });
+  createEffect(
+    () => {
+      spans();
+      const element = scroller();
+      return element !== undefined && following() ? element : undefined;
+    },
+    (element) => {
+      if (element !== undefined) element.scrollTop = element.scrollHeight;
+    },
+  );
   return (
     <Show when={output.value()} fallback={<p class={NOTE}>Loading output…</p>}>
       {(shown) => (

@@ -2,7 +2,7 @@
 import { MICROPHONE_PERMISSION_ERROR } from "@t3tools/client-runtime/voice-input";
 import type { SpeechStreamText } from "@t3tools/contracts";
 import { useResource } from "treflex-solid";
-import { createSignal, createTrackedEffect, For, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 
 import Dictation, { type IRecording, MISSING_MODEL, STALE_DRAFT } from "./Dictation";
 import Environment from "./Environment";
@@ -91,21 +91,26 @@ function Waveform() {
   const still = createMediaQuery("(prefers-reduced-motion: reduce)");
   const bars: HTMLSpanElement[] = [];
   const levels = BARS.map(() => 0);
-  createTrackedEffect(() => {
-    const value = live.value();
-    if (value === undefined) return;
-    const reduced = still();
-    const draw = () => {
-      levels.copyWithin(0, 1);
-      levels[levels.length - 1] = value.level();
-      bars.forEach((bar, index) => {
-        const level = levels[index] ?? 0;
-        bar.style.opacity = String(0.3 + level * 0.55);
-        bar.style.transform = `scaleY(${reduced ? 0.4 : Math.max(0.2, level)})`;
-      });
-    };
-    onCleanup(value.subscribe(draw));
-  });
+  createEffect(
+    () => {
+      const value = live.value();
+      return value === undefined ? undefined : { value, reduced: still() };
+    },
+    (held) => {
+      if (held === undefined) return;
+      const { value, reduced } = held;
+      const draw = () => {
+        levels.copyWithin(0, 1);
+        levels[levels.length - 1] = value.level();
+        bars.forEach((bar, index) => {
+          const level = levels[index] ?? 0;
+          bar.style.opacity = String(0.3 + level * 0.55);
+          bar.style.transform = `scaleY(${reduced ? 0.4 : Math.max(0.2, level)})`;
+        });
+      };
+      return value.subscribe(draw);
+    },
+  );
   return (
     <div
       aria-hidden="true"
@@ -259,12 +264,18 @@ export function DictationPill(props: { dictation: IRecording; onRetry: () => voi
 export function DictationPreview() {
   const live = useLive();
   const [preview, setPreview] = createSignal<SpeechStreamText | null>(null);
-  createTrackedEffect(() => {
-    const value = live.value();
-    if (value === undefined) return;
-    setPreview(value.preview());
-    onCleanup(value.subscribe(() => setPreview(value.preview())));
-  });
+  createEffect(
+    () => {
+      const value = live.value();
+      return value === undefined ? undefined : { value, text: value.preview() };
+    },
+    (held) => {
+      if (held === undefined) return;
+      const { value, text } = held;
+      setPreview(text);
+      return value.subscribe(() => setPreview(value.preview()));
+    },
+  );
   return (
     <Show when={preview()}>
       {(text) => (

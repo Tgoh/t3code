@@ -4,7 +4,7 @@ import {
   type ProjectCloneSnapshot,
 } from "@t3tools/contracts";
 import { useInFlight, useResource } from "treflex-solid";
-import { createMemo, createTrackedEffect, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, onCleanup, Show } from "solid-js";
 
 import Environment, { cloneControl } from "./Environment";
 import { Download } from "./icons";
@@ -95,38 +95,49 @@ export function CloneToasts() {
       },
     });
   };
-  createTrackedEffect(() => {
-    const seen = new Set<string>();
-    const viewed = viewedProject();
-    for (const clone of clones.value() ?? []) {
-      const projectId = clone.projectId;
-      seen.add(projectId);
-      if (viewed === projectId) {
-        silenced.add(projectId);
-        close(projectId);
-        continue;
+  createEffect(
+    () => {
+      const viewed = viewedProject();
+      const listed = clones.value() ?? [];
+      return {
+        viewed,
+        listed,
+        ids: listed.map((clone) => clone.projectId),
+        keys: listed.map(cloneRenderKey),
+      };
+    },
+    ({ viewed, listed, ids, keys }) => {
+      const seen = new Set<string>();
+      for (const [index, clone] of listed.entries()) {
+        const projectId = ids[index]!;
+        seen.add(projectId);
+        if (viewed === projectId) {
+          silenced.add(projectId);
+          close(projectId);
+          continue;
+        }
+        const key = keys[index]!;
+        const held = tracked.get(projectId);
+        if (held?.Key === key) continue;
+        if (silenced.has(projectId) && (clone.phase === "running" || clone.phase === "done")) {
+          close(projectId);
+          continue;
+        }
+        const next = options(clone);
+        if (held === undefined) {
+          tracked.set(projectId, { Id: toastManager.add(next), Key: key, Phase: clone.phase });
+        } else {
+          toastManager.update(held.Id, next);
+          tracked.set(projectId, { ...held, Key: key, Phase: clone.phase });
+        }
       }
-      const key = cloneRenderKey(clone);
-      const held = tracked.get(projectId);
-      if (held?.Key === key) continue;
-      if (silenced.has(projectId) && (clone.phase === "running" || clone.phase === "done")) {
-        close(projectId);
-        continue;
+      for (const [projectId, held] of tracked) {
+        if (seen.has(projectId)) continue;
+        if (held.Phase !== "done") toastManager.close(held.Id);
+        tracked.delete(projectId);
       }
-      const next = options(clone);
-      if (held === undefined) {
-        tracked.set(projectId, { Id: toastManager.add(next), Key: key, Phase: clone.phase });
-      } else {
-        toastManager.update(held.Id, next);
-        tracked.set(projectId, { ...held, Key: key, Phase: clone.phase });
-      }
-    }
-    for (const [projectId, held] of tracked) {
-      if (seen.has(projectId)) continue;
-      if (held.Phase !== "done") toastManager.close(held.Id);
-      tracked.delete(projectId);
-    }
-  });
+    },
+  );
   onCleanup(() => {
     for (const held of tracked.values()) toastManager.close(held.Id);
     tracked.clear();
