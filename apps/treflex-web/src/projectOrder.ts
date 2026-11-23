@@ -106,6 +106,25 @@ export function orderFolders(
     .map(({ folder }) => folder);
 }
 
+// Follows useSortedProjectGroups in apps/web/src/components/CommandPaletteLookups.ts, which orders
+// the palette's projects the way the sidebar orders its folders.
+export function orderProjects(
+  projects: readonly IWireProject[],
+  sort: IProjectSort,
+  savedOrder: readonly string[],
+  threads: readonly IWireThreadShell[],
+): IWireProject[] {
+  const byId = new Map(projects.map((project) => [project.id as string, project]));
+  const folders = projects.map((project) => ({
+    ProjectId: project.id,
+    Project: project,
+    Threads: [],
+  }));
+  return orderFolders(folders, sort, savedOrder, threads).map((folder) =>
+    byId.get(folder.ProjectId)!,
+  );
+}
+
 /**
  * Moves `id` to the gap before `order[gap]` (or the end when `gap` is the length), where
  * gaps are counted in the order as it was before the move. Returns null when nothing moves.

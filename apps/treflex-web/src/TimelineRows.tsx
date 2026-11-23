@@ -142,9 +142,10 @@ function Body(props: {
 }
 
 export function MessageTime(props: { at: string; class?: string }) {
+  const environment = Environment.use();
   return (
-    <span class={props.class} data-tip={fullTimestamp(props.at)}>
-      {dayAwareTimestamp(props.at)}
+    <span class={props.class} data-tip={fullTimestamp(props.at, environment.timestampFormat())}>
+      {dayAwareTimestamp(props.at, environment.timestampFormat())}
     </span>
   );
 }

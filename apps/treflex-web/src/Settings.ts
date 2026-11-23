@@ -1,4 +1,10 @@
-import { type IActionGenerator, type IOpenGenerator, open, start } from "treflex";
+import {
+  type IActionGenerator,
+  type IOpenGenerator,
+  type ISelectorGenerator,
+  open,
+  start,
+} from "treflex";
 
 import type { IEnvironment } from "./Environment";
 import { type IAddressView, writeAddressEffect } from "./Infrastructure/address";
@@ -18,6 +24,7 @@ import { reconcile } from "./rows";
 import { visitShown } from "./Shell";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
 import { closeDetailsPopover, followCheckout } from "./ThreadSession";
+import type { ITimestampFormat } from "./timestamps";
 import { loadModels } from "./VoiceModels";
 
 /**
@@ -146,6 +153,28 @@ export function* setClientSettings(
   const next = { ...held, ...patch };
   draft.Local.ClientSettings = next;
   yield* storeClientSettingsEffect({ Settings: next });
+}
+
+export function* timestampFormat(draft: IEnvironment): ISelectorGenerator<ITimestampFormat> {
+  return draft.Local.ClientSettings?.timestampFormat ?? "locale";
+}
+
+export function* sendShortcut(
+  draft: IEnvironment,
+): ISelectorGenerator<IWireClientSettings["sendShortcut"]> {
+  return draft.Local.ClientSettings?.sendShortcut ?? "enter";
+}
+
+export function* confirmThreadUnpin(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return draft.Local.ClientSettings?.confirmThreadUnpin ?? false;
+}
+
+export function* confirmThreadDelete(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return draft.Local.ClientSettings?.confirmThreadDelete ?? true;
+}
+
+export function* wordWrap(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return draft.Local.ClientSettings?.wordWrap ?? true;
 }
 
 export function* writeSetting(draft: IEnvironment, write: ISettingWrite): IOpenGenerator {

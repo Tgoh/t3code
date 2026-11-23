@@ -173,9 +173,13 @@ export interface ISelection extends IEntity {
     AppearanceMode: IAppearanceMode;
     CompactionDismissed: string[];
     DetailsOpen: boolean;
+    GroupByProject: boolean;
   };
   SystemDark: boolean;
-  ClientSettings: { followUpBehavior: ActiveTurnComposerAction } | null;
+  ClientSettings: {
+    followUpBehavior: ActiveTurnComposerAction;
+    sidebarWorkingShelfEnabled: boolean;
+  } | null;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -228,8 +232,8 @@ export interface IThreadSession extends IEntity {
   Details: IThreadDetails | null;
   ExpandedRows: Record<string, true>;
   CommandOutputs: Record<string, ICommandOutputRow>;
-  /** Code blocks the person turned wrapping off for, by block key. */
-  UnwrappedCode: Record<string, true>;
+  /** Whether a code block the person toggled wraps, by block key; others follow Word wrap. */
+  CodeWrap: Record<string, boolean>;
 }
 
 export function getDefaultThreadSession(
@@ -256,7 +260,7 @@ export function getDefaultThreadSession(
     },
     ExpandedRows: {},
     CommandOutputs: {},
-    UnwrappedCode: {},
+    CodeWrap: {},
     Details: null,
   };
 }
@@ -1425,9 +1429,19 @@ export function* reattachThread(draft: IThreadSession): IActionGenerator {
 }
 
 /** Code blocks wrap their lines until the person turns it off. */
-export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActionGenerator {
-  if (draft.UnwrappedCode[blockKey]) delete draft.UnwrappedCode[blockKey];
-  else draft.UnwrappedCode[blockKey] = true;
+// Follows MarkdownCodeBlock in apps/web/src/components/chat/MarkdownCodeBlock.tsx (`wrapOverride`).
+export const codeWrapped = (
+  held: Readonly<Record<string, boolean>>,
+  blockKey: string,
+  wordWrap: boolean,
+): boolean => held[blockKey] ?? wordWrap;
+
+export function* toggleCodeWrap(
+  draft: IThreadSession,
+  blockKey: string,
+  wrapped: boolean,
+): IActionGenerator {
+  draft.CodeWrap[blockKey] = !wrapped;
 }
 
 export function* openDiff(

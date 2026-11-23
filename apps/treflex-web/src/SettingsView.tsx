@@ -55,6 +55,7 @@ import {
 } from "./settingsPages";
 import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
+import { ThreadConfirmDialog } from "./ThreadCard";
 import { clockNow, relativeTime } from "./timestamps";
 import { Badge } from "./ui/Badge";
 import { Button, buttonVariants, InlineButton } from "./ui/Button";
@@ -79,15 +80,6 @@ import {
   openMenuFromKeys,
 } from "./ui/Menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from "./ui/AlertDialog";
 import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { SidebarInput, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "./ui/Sidebar";
@@ -1270,7 +1262,11 @@ const ArchivedPage = ArchivedThreads.provider(() => {
                             size="icon-sm"
                             aria-label="Delete"
                             data-tip="Delete"
-                            onClick={() => setDeleting(thread)}
+                            onClick={() =>
+                              environment.confirmThreadDelete()
+                                ? setDeleting(thread)
+                                : command(thread.id, "delete")
+                            }
                           >
                             <Icons.Trash2 class="size-3.5" />
                           </Button>
@@ -1286,28 +1282,12 @@ const ArchivedPage = ArchivedThreads.provider(() => {
             {(held) => {
               const thread = held();
               return (
-                <AlertDialog onClose={() => setDeleting(null)}>
-                  <AlertDialogPopup>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete thread "{thread.title}"?</AlertDialogTitle>
-                      <AlertDialogDescription class="whitespace-pre-line">
-                        This permanently clears conversation history for this thread.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogClose variant="outline">Cancel</AlertDialogClose>
-                      <Button
-                        variant="destructive"
-                        onClick={() => {
-                          setDeleting(null);
-                          command(thread.id, "delete");
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </AlertDialogFooter>
-                  </AlertDialogPopup>
-                </AlertDialog>
+                <ThreadConfirmDialog
+                  kind="delete"
+                  title={thread.title}
+                  onConfirm={() => command(thread.id, "delete")}
+                  onClose={() => setDeleting(null)}
+                />
               );
             }}
           </Presence>

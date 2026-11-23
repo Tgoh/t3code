@@ -16,6 +16,7 @@ function stubStorage(entries: Record<string, string>) {
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => held.get(key) ?? null,
     setItem: (key: string, value: string) => void held.set(key, value),
+    removeItem: (key: string) => void held.delete(key),
   });
   return held;
 }
@@ -45,5 +46,33 @@ describe("client settings in localStorage", () => {
   it("fills the keys an older value lacks with their defaults", () => {
     stubStorage({ [KEY]: '{"chatWidth":"wide"}', "reflex:follow-up-queue-default:v1": "1" });
     expect(read()).toMatchObject({ chatWidth: "wide", confirmThreadDelete: true });
+  });
+
+  it("takes over the project sort earlier builds kept under their own key, once", () => {
+    const saved = JSON.stringify(
+      encodeSaved({ ...DEFAULT_CLIENT_SETTINGS, sidebarProjectSortOrder: "updated_at" }),
+    );
+    const held = stubStorage({
+      [KEY]: saved,
+      "reflex:follow-up-queue-default:v1": "1",
+      "reflex-web:project-sort": '"manual"',
+    });
+    expect(read().sidebarProjectSortOrder).toBe("manual");
+    expect(held.has("reflex-web:project-sort")).toBe(false);
+    held.set(KEY, saved);
+    expect(read().sidebarProjectSortOrder).toBe("updated_at");
+  });
+
+  it("keeps the manual order earlier builds showed without a saved sort", () => {
+    const saved = JSON.stringify(
+      encodeSaved({ ...DEFAULT_CLIENT_SETTINGS, sidebarProjectSortOrder: "updated_at" }),
+    );
+    const held = stubStorage({
+      [KEY]: saved,
+      "reflex:follow-up-queue-default:v1": "1",
+      "reflex-web:project-sort": '"sideways"',
+    });
+    expect(read().sidebarProjectSortOrder).toBe("manual");
+    expect(held.has("reflex-web:project-sort")).toBe(false);
   });
 });

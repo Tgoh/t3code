@@ -1,12 +1,15 @@
+import { type IInbox, isWorkingIn } from "./inbox";
 import type { IPreferences } from "./Infrastructure/preferences";
 import type { IWireProject, IWireThreadShell } from "./Infrastructure/wire";
-import { orderFolders } from "./projectOrder";
+import { type IProjectSort, orderFolders } from "./projectOrder";
 import {
   type IProjectFolder,
   type ISidebarSections,
   type ISubagentRequest,
   projectFolders,
+  runCompletedAt,
   sidebarSections,
+  threadWorking,
   unhiddenThreads,
 } from "./Shell";
 import { liveScope, scopeThreads } from "./threadSearch";
@@ -15,6 +18,7 @@ export const SETTLED_PAGE = 25;
 
 /** Which of the sidebar's shelves are open on this page. Not kept across reloads. */
 export interface IShelves {
+  WorkingOpen: boolean;
   SnoozedOpen: boolean;
   SettledOpen: boolean;
   SettledShown: number;
@@ -27,7 +31,56 @@ export interface ISidebarInput {
   Now: number;
   Subagents: Record<string, ISubagentRequest>;
   Preferences: IPreferences;
+  ProjectSort: IProjectSort;
+  /** The Working section's tracker, or null while it isn't shown. */
+  Inbox: IInbox | null;
   Shelves: IShelves;
+}
+
+const sortable = (value: string | null | undefined) => {
+  const at = value == null ? NaN : Date.parse(value);
+  return Number.isFinite(at) ? at : 0;
+};
+
+const newestFirst =
+  (stamps: Map<IWireThreadShell, number>) => (left: IWireThreadShell, right: IWireThreadShell) =>
+    stamps.get(right)! - stamps.get(left)! || left.id.localeCompare(right.id);
+
+// Follows sortInboxThreadsByReturn in packages/client-runtime/src/state/threadInbox.ts.
+function byReturn(threads: IWireThreadShell[], inbox: IInbox): IWireThreadShell[] {
+  const stamps = new Map(
+    threads.map((thread) => [
+      thread,
+      Math.max(
+        sortable(thread.createdAt),
+        sortable(thread.unsettledAt),
+        thread.latestRunId === null ? 0 : sortable(thread.latestRunRequestedAt),
+        thread.latestRunId === null ? 0 : sortable(runCompletedAt(thread)),
+        inbox.Returns[thread.id] ?? 0,
+      ),
+    ]),
+  );
+  return threads.toSorted(newestFirst(stamps));
+}
+
+// Follows sortWorkingThreadsBySend in packages/client-runtime/src/state/threadInbox.ts.
+function bySend(threads: IWireThreadShell[]): IWireThreadShell[] {
+  const stamps = new Map(
+    threads.map((thread) => [
+      thread,
+      Math.max(
+        sortable(thread.createdAt),
+        sortable(
+          thread.latestUserAuthoredMessageAt === undefined
+            ? thread.latestRunId === null
+              ? null
+              : thread.latestRunRequestedAt
+            : thread.latestUserAuthoredMessageAt,
+        ),
+      ),
+    ]),
+  );
+  return threads.toSorted(newestFirst(stamps));
 }
 
 export interface ISidebarLayout {
@@ -40,6 +93,21 @@ export interface ISidebarLayout {
   Folders: IProjectFolder[];
   /** Thread ids as the sidebar lists them, for next and previous thread. */
   Order: string[];
+}
+
+// Follows partitionSidebarThreads in apps/web/src/components/Sidebar.tsx with the Working shelf on.
+function workingSplit(
+  sections: ISidebarSections,
+  inbox: IInbox,
+  subagents: Record<string, ISubagentRequest>,
+): ISidebarSections {
+  const active: IWireThreadShell[] = [];
+  const working: IWireThreadShell[] = [];
+  for (const thread of sections.Active) {
+    const held = isWorkingIn(inbox, thread.id, threadWorking(thread, subagents[thread.id]));
+    (held ? working : active).push(thread);
+  }
+  return { ...sections, Active: byReturn(active, inbox), Working: bySend(working) };
 }
 
 export function layoutSidebar(input: ISidebarInput): ISidebarLayout {
@@ -58,13 +126,19 @@ export function layoutSidebar(input: ISidebarInput): ISidebarLayout {
   );
   const sorted = sidebarSections(visible, input.Now, input.Subagents);
   // Grouped by project, pinned threads lead their own folder rather than a Pinned section.
-  const sections = preferences.GroupByProject ? { ...sorted, Pinned: [] } : sorted;
+  // Folders already separate the work, so as in stock's boring sidebar there's no Working section.
+  const inbox = preferences.GroupByProject ? null : input.Inbox;
+  const sections = preferences.GroupByProject
+    ? { ...sorted, Pinned: [] }
+    : inbox === null
+      ? sorted
+      : workingSplit(sorted, inbox, input.Subagents);
   const folders = preferences.GroupByProject
     ? orderFolders(
         projectFolders([...sorted.Pinned, ...sorted.Active], input.Projects, hidden).filter(
           (folder) => scope.size === 0 || scope.has(folder.ProjectId) || folder.Threads.length > 0,
         ),
-        preferences.ProjectSort,
+        input.ProjectSort,
         preferences.ProjectOrder,
         visible,
       )
@@ -80,6 +154,7 @@ export function layoutSidebar(input: ISidebarInput): ISidebarLayout {
           closed.has(folder.ProjectId) ? onlySelected(folder.Threads) : folder.Threads,
         )
       : sections.Active),
+    ...(shelves.WorkingOpen ? sections.Working : onlySelected(sections.Working)),
     ...(shelves.SnoozedOpen ? sections.Snoozed : onlySelected(sections.Snoozed)),
     ...(shelves.SettledOpen
       ? sections.Settled.slice(0, shelves.SettledShown)

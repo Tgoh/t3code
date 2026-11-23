@@ -131,7 +131,9 @@ function SubagentCard(props: ICardProps) {
       <span class="shrink-0 text-xs text-muted-foreground tabular-nums">
         <Show when={props.event} fallback={<AgentElapsed agent={timing()} full />}>
           {(event) => (
-            <span data-tip={fullTimestamp(event().At)}>{shortTimestamp(event().At)}</span>
+            <span data-tip={fullTimestamp(event().At, environment.timestampFormat())}>
+              {shortTimestamp(event().At, environment.timestampFormat())}
+            </span>
           )}
         </Show>
       </span>

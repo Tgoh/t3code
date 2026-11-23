@@ -1,4 +1,5 @@
 // @effect-diagnostics globalTimers:off -- A view-only long-press delay, outside any Effect runtime.
+import type { ClientSettings } from "@t3tools/contracts/settings";
 import {
   type Accessor,
   createComputed,
@@ -136,13 +137,41 @@ export function nextFrame(): (run: () => void) => void {
 
 export const COARSE_POINTER_QUERY = "(pointer: coarse)";
 
-/** On a touch screen Enter adds a line and only the send button or a modifier sends. */
+// Follows composerRequiresModifier in apps/web/src/composer-logic.ts.
+export function composerRequiresModifier(
+  sendShortcut: ClientSettings["sendShortcut"],
+  prompt: string,
+): boolean {
+  return (
+    sendShortcut === "mod-enter" ||
+    (sendShortcut === "mod-enter-multiline" && /[\r\n]/.test(prompt))
+  );
+}
+
+/**
+ * On a touch screen Enter adds a line and only the send button or a modifier sends. When the Send
+ * shortcut asks for a modifier, plain Enter adds a line, and Shift with the modifier is the
+ * alternate send, as stock's `shortcutForContext` moves it there.
+ */
 export function enterSends(
   event: Pick<KeyboardEvent, "key" | "shiftKey" | "isComposing" | "metaKey" | "ctrlKey">,
   coarsePointer: boolean,
+  requiresModifier = false,
 ): boolean {
-  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
-  return !coarsePointer || event.metaKey || event.ctrlKey;
+  if (event.key !== "Enter" || event.isComposing) return false;
+  const modifier = event.metaKey || event.ctrlKey;
+  if (requiresModifier) return modifier;
+  if (event.shiftKey) return false;
+  return !coarsePointer || modifier;
+}
+
+export function enterIsAlternate(
+  event: Pick<KeyboardEvent, "shiftKey" | "metaKey" | "ctrlKey">,
+  requiresModifier: boolean,
+  mac: boolean,
+): boolean {
+  const mod = mac ? event.metaKey : event.ctrlKey;
+  return mod && event.shiftKey === requiresModifier;
 }
 
 const LONG_PRESS_MS = 500;

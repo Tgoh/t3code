@@ -57,7 +57,9 @@ import { Spinner } from "./ui/Spinner";
 import {
   COARSE_POINTER_QUERY,
   composerCollapses,
+  composerRequiresModifier,
   createMediaQuery,
+  enterIsAlternate,
   enterSends,
   nextFrame,
   PHONE_QUERY,
@@ -137,6 +139,8 @@ function SendButton(props: {
   blocked: string | null;
   /** The tokens this send compacts first, already formatted. */
   compacts: string | null;
+  /** The Send shortcut asks for a modifier, which moves the alternate send to Shift with it. */
+  shiftAlternate: boolean;
   label?: string | undefined;
   class: string;
   onSend: (alternate: boolean) => void;
@@ -164,7 +168,7 @@ function SendButton(props: {
     (props.compacts !== null
       ? `Summarize ${props.compacts} tokens of history, then send`
       : props.running
-        ? `Click to ${props.followUp}, ${MOD_LABEL}-click or ${MOD_LABEL}+Enter to ${alternateAction()}`
+        ? `Click to ${props.followUp}, ${MOD_LABEL}-click or ${MOD_LABEL}+${props.shiftAlternate ? "Shift+" : ""}Enter to ${alternateAction()}`
         : undefined);
   return (
     <button
@@ -492,6 +496,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   const coarsePointer = createMediaQuery(COARSE_POINTER_QUERY);
   const alternateHeld = useAlternateHeld();
   const running = () => props.active === true;
+  const requiresModifier = () => composerRequiresModifier(environment.sendShortcut(), held().Draft);
   const compactTokens = () => (answering() ? null : session.compactionOffer());
   const compacts = () => {
     const tokens = compactTokens();
@@ -712,6 +717,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
                   disabled={!canSend()}
                   blocked={null}
                   compacts={compacts()}
+                  shiftAlternate={requiresModifier()}
                   // The collapsed composer hides the compact toggle, so it opens rather than sends.
                   label={compacts() === null ? undefined : "Open composer to compact and send"}
                   class="ml-0"
@@ -847,9 +853,13 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               event.preventDefault();
               return;
             }
-            if (!enterSends(event, coarsePointer())) return;
+            const modifier = composerRequiresModifier(
+              environment.sendShortcut(),
+              event.currentTarget.value,
+            );
+            if (!enterSends(event, coarsePointer(), modifier)) return;
             event.preventDefault();
-            send(isAlternate(event));
+            send(enterIsAlternate(event, modifier, IS_MAC));
           }}
         />
         <Show when={held().SendError}>
@@ -932,6 +942,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               disabled={!canSend() && !(dictating() && voice().Phase !== "preparing")}
               blocked={blocked()}
               compacts={compacts()}
+              shiftAlternate={requiresModifier()}
               class="ml-[5px]"
               onSend={send}
             />

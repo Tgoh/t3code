@@ -12,7 +12,14 @@ import { type IAppearanceMode, type IColorScheme, resolveScheme } from "./colorS
 import { activeProjects, type IEnvironment } from "./Environment";
 import { minute } from "./Infrastructure/clock";
 import { type IPreferences, storePreferencesEffect } from "./Infrastructure/preferences";
-import { sidebarRowThreadId, sidebarThreads, subagentRequests } from "./Shell";
+import type { IProjectSort } from "./projectOrder";
+import {
+  shellInbox,
+  sidebarRowThreadId,
+  sidebarThreads,
+  subagentRequests,
+  workingShelfShown,
+} from "./Shell";
 import { type ISidebarLayout, layoutSidebar, SETTLED_PAGE } from "./sidebarLayout";
 import { followColorScheme } from "./Terminal";
 import { liveScope } from "./threadSearch";
@@ -74,9 +81,13 @@ export function* toggleProjectScope(
   });
 }
 
-export function* toggleShelf(draft: IEnvironment, shelf: "Snoozed" | "Settled"): IActionGenerator {
+export function* toggleShelf(
+  draft: IEnvironment,
+  shelf: "Working" | "Snoozed" | "Settled",
+): IActionGenerator {
   const shelves = draft.Local.Shelves;
-  if (shelf === "Snoozed") shelves.SnoozedOpen = !shelves.SnoozedOpen;
+  if (shelf === "Working") shelves.WorkingOpen = !shelves.WorkingOpen;
+  else if (shelf === "Snoozed") shelves.SnoozedOpen = !shelves.SnoozedOpen;
   else shelves.SettledOpen = !shelves.SettledOpen;
 }
 
@@ -114,8 +125,14 @@ export function* sidebarLayout(draft: IEnvironment): ISelectorGenerator<ISidebar
     Now: yield* minute(),
     Subagents: yield* subagentRequests(shell),
     Preferences: draft.Local.Preferences,
+    ProjectSort: yield* projectSort(draft),
+    Inbox: workingShelfShown(draft.Local) ? yield* shellInbox(shell) : null,
     Shelves: draft.Local.Shelves,
   });
+}
+
+export function* projectSort(draft: IEnvironment): ISelectorGenerator<IProjectSort> {
+  return draft.Local.ClientSettings?.sidebarProjectSortOrder ?? "manual";
 }
 
 export const PreferencesReceiver = receiver<IEnvironment>("PreferencesReceiver")({

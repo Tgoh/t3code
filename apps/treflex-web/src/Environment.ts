@@ -67,6 +67,7 @@ import {
 import {
   colorScheme,
   followDevice,
+  projectSort,
   setAppearanceMode,
   setPreferences,
   setProjectHidden,
@@ -91,11 +92,16 @@ import {
 import {
   applyConfigEvent,
   autoRefreshLimits,
+  confirmThreadDelete,
+  confirmThreadUnpin,
   openView,
+  sendShortcut,
   showView,
   syncAddress,
+  timestampFormat,
   toggleModelFavorite,
   updateServerSettings,
+  wordWrap,
   writeSetting,
 } from "./Settings";
 import { compactionDismissalKey, dismissedIn } from "./compaction";
@@ -184,7 +190,12 @@ export function* newEnvironment(
     View: null,
     ClientSettings: yield* storedClientSettingsEffect(),
     Preferences: yield* storedPreferencesEffect(),
-    Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: SETTLED_PAGE },
+    Shelves: {
+      WorkingOpen: false,
+      SnoozedOpen: false,
+      SettledOpen: false,
+      SettledShown: SETTLED_PAGE,
+    },
     SystemDark: false,
     Activity: { Visible: false, Focused: false, RecentlyInteracted: false },
     ViewportDebug: false,
@@ -858,6 +869,7 @@ export default createEntityFeature<IEnvironment>("Environment")(
   },
   {
     sidebarLayout,
+    projectSort,
     minute,
     colorScheme,
     selectedOpenThread,
@@ -869,5 +881,10 @@ export default createEntityFeature<IEnvironment>("Environment")(
     keybindings,
     addProjectSettings,
     editors,
+    timestampFormat,
+    wordWrap,
+    confirmThreadUnpin,
+    confirmThreadDelete,
+    sendShortcut,
   },
 );

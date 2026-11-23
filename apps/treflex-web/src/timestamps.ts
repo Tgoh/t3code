@@ -1,11 +1,26 @@
 // @effect-diagnostics globalDate:off -- View-only labels for times already on the wire.
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+
+export type ITimestampFormat = TimestampFormat;
+
 // A formatter keeps the default zone it was built in, so these run in UTC on the wall-clock time,
 // which Date reads from the current zone.
-const timeFormatter = new Intl.DateTimeFormat(undefined, {
-  hour: "numeric",
-  minute: "2-digit",
-  timeZone: "UTC",
-});
+const timeFormatters = new Map<ITimestampFormat, Intl.DateTimeFormat>();
+
+// Follows getTimestampFormatOptions in apps/web/src/timestampFormat.ts.
+function timeFormatter(format: ITimestampFormat): Intl.DateTimeFormat {
+  let formatter = timeFormatters.get(format);
+  if (formatter === undefined) {
+    formatter = new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      ...(format === "locale" ? {} : { hour12: format === "12-hour" }),
+      timeZone: "UTC",
+    });
+    timeFormatters.set(format, formatter);
+  }
+  return formatter;
+}
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "numeric",
   day: "numeric",
@@ -34,12 +49,11 @@ function ordinalSuffix(day: number): string {
   return day % 10 === 3 ? "rd" : "th";
 }
 
-// Both follow apps/web/src/timestampFormat.ts on its default "locale" setting.
-export function dayAwareTimestamp(iso: string): string {
+export function dayAwareTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
   const date = new Date(iso);
   const now = new Date();
   const wallClock = wallClockAsUtc(date);
-  const time = timeFormatter.format(wallClock);
+  const time = timeFormatter(format).format(wallClock);
   const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY_MS);
   if (days <= 0) return time;
   if (days === 1) return `yesterday at ${time}`;
@@ -48,16 +62,15 @@ export function dayAwareTimestamp(iso: string): string {
   return `${formatter.format(wallClock)} ${time}`;
 }
 
-// Follows formatShortTimestamp in apps/web/src/timestampFormat.ts.
-export function shortTimestamp(iso: string): string {
-  return timeFormatter.format(wallClockAsUtc(new Date(iso)));
+export function shortTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
+  return timeFormatter(format).format(wallClockAsUtc(new Date(iso)));
 }
 
-export function fullTimestamp(iso: string): string {
+export function fullTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
   const date = new Date(iso);
   const wallClock = wallClockAsUtc(date);
   const day = date.getDate();
-  return `${timeFormatter.format(wallClock)}, ${day}${ordinalSuffix(day)} ${monthFormatter.format(wallClock)} ${date.getFullYear()}`;
+  return `${timeFormatter(format).format(wallClock)}, ${day}${ordinalSuffix(day)} ${monthFormatter.format(wallClock)} ${date.getFullYear()}`;
 }
 
 export const MINUTE = 60_000;
