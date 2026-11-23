@@ -282,7 +282,7 @@ const EnvironmentView = Environment.provider(() => {
   };
   return (
     <div
-      class="layout fixed inset-x-0 top-[var(--viewport-top,0)] grid h-[var(--viewport-height,100%)] grid-cols-[calc(var(--sidebar-width)+env(safe-area-inset-left))_minmax(0,1fr)] pt-[env(safe-area-inset-top)] [&:is(.sidebar-sheet,.sidebar-collapsed)]:grid-cols-[minmax(0,1fr)]"
+      class="layout fixed inset-x-0 top-[var(--viewport-top,0)] max-sm:[--workspace-titlebar-control-size:--spacing(8)] grid h-[var(--viewport-height,100%)] grid-cols-[calc(var(--sidebar-width)+env(safe-area-inset-left))_minmax(0,1fr)] pt-[env(safe-area-inset-top)] [&:is(.sidebar-sheet,.sidebar-collapsed)]:grid-cols-[minmax(0,1fr)]"
       style={{ "--sidebar-width": `${sidebarWidth()}px` }}
       classList={{
         "sidebar-sheet": sidebar.sheet(),

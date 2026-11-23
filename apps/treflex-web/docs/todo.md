@@ -12,20 +12,15 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
   - `MiddleTruncate`, for branch and path names.
   - The timeline sender label, which stock replaces with an "Open thread" button in the message actions, and the sidebar's "Show more", which stock draws as a full row with a chevron.
   - Ports for components no treflex view uses yet: `NumberField`, `RadioGroup`, `Calendar`, `ColorPicker`, `Group`, `PreviewCard`, `QrCode`, `DiscoveryList`, `PanelTabCloseButton`, `Table`.
-- **Drift the visual check flags.** **In progress** on `treflex/drift-fixes`. `vp run drift` (see `bench/drift/README.md`) flags these against stock:
-  - Dark theme: stock's `[data-app-sidebar]` overrides are folded into the global `--sidebar-*` tokens, so the settings nav takes the app sidebar's colours (the current page `#f1f3f7` on white 7%, where stock's is neutral-100 on white 3%), and the app sidebar's groups, menu and footer inherit `#f1f3f7` where stock's inherit neutral-100. Scope the overrides to the app sidebar, as stock does.
-  - Phone: the sidebar sheet's toggle is 28px; stock's `SidebarTrigger` there is 32px.
 
 ## 2. Parity and polish
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
 - **html-render and MCP app rows.** **In progress** on `treflex/timeline-polish`. Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
-- **Photos from the phone.** **In progress** on `treflex/phone-photos`. Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
 - **Expired image URLs.** **In progress** on `treflex/timeline-polish`. Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
 - **Tool output.** **In progress** on `treflex/timeline-polish`. Fetch a tool row's output with `getTurnItem` when it's expanded, since the wire omits it. See "Tool output isn't fetched".
-- **The diff panel goes stale.** **In progress** on `treflex/live-state`. Refetch when a later checkpoint lands, not only on each open.
-- **Stop flickers back.** **In progress** on `treflex/live-state`. Hold "Stopping" until the shell stream delivers the stopped row. See "Open: Stop flickers back before the run ends".
+- **Keep each thread's scroll position.** **In progress** on `treflex/timeline-polish`, after its three items. Swapping back to a thread scrolled up into its history returns to the same place; one left at the bottom, or within a small tolerance of it, returns to the bottom. Tam's ask (2026-11-23).
 - **Settings treflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
 
 ## 3. Missing features

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   admitFiles,
   attachmentDetail,
+  attachmentKey,
   classifyAttachmentFile,
   fileAttachmentLimit,
   foldPastedText,
@@ -22,10 +23,33 @@ describe("classifying attachments", () => {
     expect(classifyAttachmentFile(file("raw.dng", "image/x-adobe-dng"))).toBe("file");
   });
 
-  it("refuses images providers can't take, including HEIC this client can't convert", () => {
-    expect(classifyAttachmentFile(file("photo.heic", "image/heic"))).toBe("unsupported-image");
-    expect(classifyAttachmentFile(file("photo.heic", ""))).toBe("unsupported-image");
+  it("takes HEIC as an image to convert, and refuses images providers can't take", () => {
+    expect(classifyAttachmentFile(file("photo.heic", "image/heic"))).toBe("image");
+    expect(classifyAttachmentFile(file("photo.HEIF", ""))).toBe("image");
     expect(classifyAttachmentFile(file("scan.xyz", "image/x-unknown"))).toBe("unsupported-image");
+  });
+});
+
+describe("duplicate attachments", () => {
+  const bytes = (...values: number[]) => new Uint8Array(values);
+
+  it("matches an image by its name, type, size and bytes", () => {
+    const shot = { name: "shot.png", type: "image/png", size: 3 };
+    expect(attachmentKey("image", shot, bytes(1, 2, 3))).toBe(
+      attachmentKey("image", shot, bytes(1, 2, 3)),
+    );
+    expect(attachmentKey("image", shot, bytes(1, 2, 3))).not.toBe(
+      attachmentKey("image", shot, bytes(1, 2, 4)),
+    );
+    expect(attachmentKey("image", shot, bytes(1, 2, 3))).not.toBe(
+      attachmentKey("image", { ...shot, name: "other.png" }, bytes(1, 2, 3)),
+    );
+  });
+
+  it("matches a file by its name, type and size, as stock does", () => {
+    const notes = { name: "notes.md", type: "text/markdown", size: 3 };
+    expect(attachmentKey("file", notes)).toBe(attachmentKey("file", notes));
+    expect(attachmentKey("file", notes)).not.toBe(attachmentKey("file", { ...notes, size: 4 }));
   });
 });
 
@@ -59,9 +83,19 @@ describe("admitting files", () => {
       admitFiles([file("a.md", "text/markdown")], { Reserved: 0, FileLimit: null }).Error,
     ).toBe("This server does not support file attachments.");
     expect(
-      admitFiles([file("huge.png", "image/png", 10 * MB + 1)], { Reserved: 0, FileLimit: limit })
-        .Error,
-    ).toBe("'huge.png' is too large to attach. Images can be up to 10 MB.");
+      admitFiles([file("scan.xyz", "image/x-unknown")], { Reserved: 0, FileLimit: limit }).Error,
+    ).toBe(
+      "'scan.xyz' is not a supported image type. Attach GIF, HEIC, HEIF, JPEG, PNG, or WebP images.",
+    );
+  });
+
+  it("takes an image over the provider's limit, which preparation shrinks", () => {
+    const { Accepted, Error } = admitFiles([file("huge.jpg", "image/jpeg", 10 * MB + 1)], {
+      Reserved: 0,
+      FileLimit: limit,
+    });
+    expect(Error).toBeNull();
+    expect(Accepted.map((entry) => entry.Kind)).toEqual(["image"]);
   });
 
   it("stops at the per-message attachment cap, counting what's already attached", () => {

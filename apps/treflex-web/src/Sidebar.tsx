@@ -67,7 +67,11 @@ const searchResultId = (threadId: string) => `sidebar-search-result-${threadId}`
 
 // The collapse state is a class App.tsx sets on the layout around the sidebar.
 const SIDEBAR_COLUMN =
-  "flex h-full min-h-0 flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) bg-size-[256px_256px] text-sidebar-foreground pl-[env(safe-area-inset-left)] pb-safe in-[.sidebar-collapsed]:hidden";
+  "flex h-full min-h-0 flex-col text-sidebar-foreground in-[.sidebar-collapsed]:hidden";
+// As in stock, the text colour resolves outside the app sidebar's tokens, and so does the phone
+// sheet's surface; the column's surface resolves inside them.
+const SIDEBAR_COLUMN_SURFACE =
+  "flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) bg-size-[256px_256px] pl-[env(safe-area-inset-left)] pb-safe";
 // The sheet stays mounted while closed, held at its exit style and hidden once the exit ends, so
 // its shortcuts keep working.
 const SIDEBAR_SHEET = `${sheetPopupVariants({ side: "left", surface: "sidebar" })} pl-[env(safe-area-inset-left)] pb-safe data-ending-style:pointer-events-none data-closed:invisible`;
@@ -381,480 +385,495 @@ export const Sidebar = Shell.provider(() => {
       onTransitionEnd={onSheetTransition}
       onTransitionCancel={onSheetTransition}
     >
-      <header class="relative flex h-(--workspace-topbar-height) flex-none items-center px-3">
-        <div
-          class={`pointer-events-none absolute top-0 right-0 left-[calc(-1*env(safe-area-inset-left))] h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_92%)] after:absolute after:inset-0 after:content-[''] ${STAGE_FADE}`}
-        >
-          <StageArt />
-        </div>
-        <SidebarToggle inSidebar />
-        <span class="relative inline-flex items-baseline gap-1 text-[14px] font-medium tracking-tight text-white">
-          <T3Mark />
-          <span class="text-[rgb(255_255_255/70%)]">Code</span>
-        </span>
-        <Show when={connection() !== "connected"}>
-          <span class="relative ml-auto text-[12px] font-medium text-white">{connection()}</span>
-        </Show>
-      </header>
-      <Presence when={scopeMenu()}>
-        {(anchor) => (
-          <MenuPopup anchor={anchor()} align="start" onClose={() => setScopeMenu(null)}>
-            <MenuCheckboxItem
-              checked={scope().size === 0}
-              closeOnClick
-              onClick={() => void environment.toggleProjectScope(null)}
-            >
-              All projects
-            </MenuCheckboxItem>
-            <For
-              each={[...projects()].sort((left, right) => left.title.localeCompare(right.title))}
-            >
-              {(project) => (
-                <MenuCheckboxItem
-                  checked={scope().has(project.id)}
-                  onClick={() => void environment.toggleProjectScope(project.id)}
-                >
-                  {project.title}
-                </MenuCheckboxItem>
-              )}
-            </For>
-          </MenuPopup>
-        )}
-      </Presence>
-      <Presence when={moreMenu()}>
-        {(anchor) => (
-          <MenuPopup anchor={anchor()} align="start" onClose={() => setMoreMenu(null)}>
-            <MenuCheckboxItem
-              checked={grouped()}
-              onCheckedChange={(checked) =>
-                void environment.setPreferences({ GroupByProject: checked })
-              }
-            >
-              Group by project
-            </MenuCheckboxItem>
-            <Show when={grouped()}>
-              <MenuSeparator />
-              <MenuGroup>
-                <MenuGroupLabel>Sort projects</MenuGroupLabel>
-                <MenuRadioGroup
-                  value={projectSort()}
-                  onValueChange={(value) => {
-                    if (isProjectSort(value))
-                      void environment.setPreferences({ ProjectSort: value });
-                  }}
-                >
-                  <For each={Object.entries(PROJECT_SORT_LABELS)}>
-                    {([value, label]) => <MenuRadioItem value={value}>{label}</MenuRadioItem>}
-                  </For>
-                </MenuRadioGroup>
-              </MenuGroup>
-            </Show>
-            <Show when={hiddenList().length > 0}>
-              <MenuSeparator />
-              <MenuGroup>
-                <MenuGroupLabel>Hidden projects</MenuGroupLabel>
-                <For each={hiddenList()}>
-                  {(project) => (
-                    <MenuItem
-                      closeOnClick={false}
-                      onClick={() => void environment.setProjectHidden(project.id, false)}
-                    >
-                      <Eye />
-                      <MenuItemLabel>{project.title}</MenuItemLabel>
-                      <MenuItemDetail>Show</MenuItemDetail>
-                    </MenuItem>
-                  )}
-                </For>
-              </MenuGroup>
-            </Show>
-          </MenuPopup>
-        )}
-      </Presence>
-      <SidebarContent
-        class="min-h-full"
-        fixedHeader={
-          <>
-            <SidebarGroup class="z-[1]">
-              <div class="flex items-center gap-1">
-                <div class="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70">
-                  <Search class="size-4 shrink-0 text-(--sidebar-icon-color)" />
-                  <SidebarInput
-                    class="min-w-0 flex-1"
-                    type="search"
-                    placeholder="Search"
-                    aria-label="Search threads"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-expanded={searching() && results().length > 0}
-                    aria-controls={searching() ? "sidebar-search-results" : undefined}
-                    aria-activedescendant={
-                      searching() && results().length > 0
-                        ? searchResultId(results()[highlightIndex()]!.Thread.id)
-                        : undefined
-                    }
-                    spellcheck={false}
-                    autocomplete="off"
-                    value={query()}
-                    onInput={(event) => {
-                      setQuery(event.currentTarget.value);
-                      messageSearch.search(event.currentTarget.value);
-                      setHighlightId(null);
-                    }}
-                    onKeyDown={onSearchKey}
-                  />
-                  <Show when={searching()}>
-                    <Button
-                      variant="ghost-muted"
-                      size="icon-micro"
-                      class="shrink-0"
-                      aria-label="Clear thread search"
-                      data-tip="Clear search"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={clearSearch}
-                    >
-                      <X class="size-3" />
-                    </Button>
-                  </Show>
-                </div>
-                <div class="flex shrink-0 items-center">
-                  <SidebarHeaderButton
-                    isActive={scope().size > 0}
-                    aria-label="Filter projects"
-                    data-tip={`Projects: ${scopeLabel()}`}
-                    aria-haspopup="menu"
-                    aria-expanded="false"
-                    onClick={(event) => {
-                      const trigger = event.currentTarget;
-                      setScopeMenu((held) => (held === null ? trigger : null));
-                    }}
-                    onKeyDown={(event) => {
-                      const trigger = event.currentTarget;
-                      openMenuFromKeys(event, () => setScopeMenu(trigger));
+      <div class={sheet.sheet() ? "contents" : SIDEBAR_COLUMN_SURFACE} data-app-sidebar>
+        <header class="relative flex h-(--workspace-topbar-height) flex-none items-center px-3">
+          <div
+            class={`pointer-events-none absolute top-0 right-0 left-[calc(-1*env(safe-area-inset-left))] h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_92%)] after:absolute after:inset-0 after:content-[''] ${STAGE_FADE}`}
+          >
+            <StageArt />
+          </div>
+          <SidebarToggle inSidebar />
+          <span class="relative inline-flex items-baseline gap-1 text-[14px] font-medium tracking-tight text-white">
+            <T3Mark />
+            <span class="text-[rgb(255_255_255/70%)]">Code</span>
+          </span>
+          <Show when={connection() !== "connected"}>
+            <span class="relative ml-auto text-[12px] font-medium text-white">{connection()}</span>
+          </Show>
+        </header>
+        <Presence when={scopeMenu()}>
+          {(anchor) => (
+            <MenuPopup anchor={anchor()} align="start" onClose={() => setScopeMenu(null)}>
+              <MenuCheckboxItem
+                checked={scope().size === 0}
+                closeOnClick
+                onClick={() => void environment.toggleProjectScope(null)}
+              >
+                All projects
+              </MenuCheckboxItem>
+              <For
+                each={[...projects()].sort((left, right) => left.title.localeCompare(right.title))}
+              >
+                {(project) => (
+                  <MenuCheckboxItem
+                    checked={scope().has(project.id)}
+                    onClick={() => void environment.toggleProjectScope(project.id)}
+                  >
+                    {project.title}
+                  </MenuCheckboxItem>
+                )}
+              </For>
+            </MenuPopup>
+          )}
+        </Presence>
+        <Presence when={moreMenu()}>
+          {(anchor) => (
+            <MenuPopup anchor={anchor()} align="start" onClose={() => setMoreMenu(null)}>
+              <MenuCheckboxItem
+                checked={grouped()}
+                onCheckedChange={(checked) =>
+                  void environment.setPreferences({ GroupByProject: checked })
+                }
+              >
+                Group by project
+              </MenuCheckboxItem>
+              <Show when={grouped()}>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>Sort projects</MenuGroupLabel>
+                  <MenuRadioGroup
+                    value={projectSort()}
+                    onValueChange={(value) => {
+                      if (isProjectSort(value))
+                        void environment.setPreferences({ ProjectSort: value });
                     }}
                   >
-                    <ListFilter />
-                  </SidebarHeaderButton>
-                  <SidebarHeaderButton
-                    aria-label="Add project"
-                    data-tip="Add project"
-                    aria-pressed={navigation.palette() === "add-project"}
-                    onClick={() => navigation.setPalette("add-project")}
-                  >
-                    <FolderPlus />
-                  </SidebarHeaderButton>
-                  <Show when={targetProject()}>
-                    {(projectId) => (
-                      <SidebarHeaderButton
-                        aria-label="New thread"
-                        data-tip={withShortcut("New thread", navigation.shortcut("chat.new"))}
-                        onClick={() => environment.newThread(projectId())}
+                    <For each={Object.entries(PROJECT_SORT_LABELS)}>
+                      {([value, label]) => <MenuRadioItem value={value}>{label}</MenuRadioItem>}
+                    </For>
+                  </MenuRadioGroup>
+                </MenuGroup>
+              </Show>
+              <Show when={hiddenList().length > 0}>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>Hidden projects</MenuGroupLabel>
+                  <For each={hiddenList()}>
+                    {(project) => (
+                      <MenuItem
+                        closeOnClick={false}
+                        onClick={() => void environment.setProjectHidden(project.id, false)}
                       >
-                        <SquarePen />
-                      </SidebarHeaderButton>
+                        <Eye />
+                        <MenuItemLabel>{project.title}</MenuItemLabel>
+                        <MenuItemDetail>Show</MenuItemDetail>
+                      </MenuItem>
                     )}
-                  </Show>
-                  <Show when={projects().length > 1}>
+                  </For>
+                </MenuGroup>
+              </Show>
+            </MenuPopup>
+          )}
+        </Presence>
+        <SidebarContent
+          class="min-h-full"
+          fixedHeader={
+            <>
+              <SidebarGroup class="z-[1]">
+                <div class="flex items-center gap-1">
+                  <div class="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70">
+                    <Search class="size-4 shrink-0 text-(--sidebar-icon-color)" />
+                    <SidebarInput
+                      class="min-w-0 flex-1"
+                      type="search"
+                      placeholder="Search"
+                      aria-label="Search threads"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={searching() && results().length > 0}
+                      aria-controls={searching() ? "sidebar-search-results" : undefined}
+                      aria-activedescendant={
+                        searching() && results().length > 0
+                          ? searchResultId(results()[highlightIndex()]!.Thread.id)
+                          : undefined
+                      }
+                      spellcheck={false}
+                      autocomplete="off"
+                      value={query()}
+                      onInput={(event) => {
+                        setQuery(event.currentTarget.value);
+                        messageSearch.search(event.currentTarget.value);
+                        setHighlightId(null);
+                      }}
+                      onKeyDown={onSearchKey}
+                    />
+                    <Show when={searching()}>
+                      <Button
+                        variant="ghost-muted"
+                        size="icon-micro"
+                        class="shrink-0"
+                        aria-label="Clear thread search"
+                        data-tip="Clear search"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={clearSearch}
+                      >
+                        <X class="size-3" />
+                      </Button>
+                    </Show>
+                  </div>
+                  <div class="flex shrink-0 items-center">
+                    <SidebarHeaderButton
+                      isActive={scope().size > 0}
+                      aria-label="Filter projects"
+                      data-tip={`Projects: ${scopeLabel()}`}
+                      aria-haspopup="menu"
+                      aria-expanded="false"
+                      onClick={(event) => {
+                        const trigger = event.currentTarget;
+                        setScopeMenu((held) => (held === null ? trigger : null));
+                      }}
+                      onKeyDown={(event) => {
+                        const trigger = event.currentTarget;
+                        openMenuFromKeys(event, () => setScopeMenu(trigger));
+                      }}
+                    >
+                      <ListFilter />
+                    </SidebarHeaderButton>
+                    <SidebarHeaderButton
+                      aria-label="Add project"
+                      data-tip="Add project"
+                      aria-pressed={navigation.palette() === "add-project"}
+                      onClick={() => navigation.setPalette("add-project")}
+                    >
+                      <FolderPlus />
+                    </SidebarHeaderButton>
+                    <Show when={targetProject()}>
+                      {(projectId) => (
+                        <SidebarHeaderButton
+                          aria-label="New thread"
+                          data-tip={withShortcut("New thread", navigation.shortcut("chat.new"))}
+                          onClick={() => environment.newThread(projectId())}
+                        >
+                          <SquarePen />
+                        </SidebarHeaderButton>
+                      )}
+                    </Show>
+                    <Show when={projects().length > 1}>
+                      <SidebarHeaderButton
+                        size="icon-sm-narrow"
+                        aria-label="New thread in project"
+                        data-tip="New thread in project"
+                        aria-pressed={navigation.palette() === "new-thread-in"}
+                        onClick={() => navigation.setPalette("new-thread-in")}
+                      >
+                        <ChevronDown class="size-3.5" />
+                      </SidebarHeaderButton>
+                    </Show>
                     <SidebarHeaderButton
                       size="icon-sm-narrow"
-                      aria-label="New thread in project"
-                      data-tip="New thread in project"
-                      aria-pressed={navigation.palette() === "new-thread-in"}
-                      onClick={() => navigation.setPalette("new-thread-in")}
+                      aria-label="More sidebar options"
+                      data-tip="More options"
+                      aria-haspopup="menu"
+                      aria-expanded="false"
+                      onClick={(event) => {
+                        const trigger = event.currentTarget;
+                        setMoreMenu((held) => (held === null ? trigger : null));
+                      }}
+                      onKeyDown={(event) => {
+                        const trigger = event.currentTarget;
+                        openMenuFromKeys(event, () => setMoreMenu(trigger));
+                      }}
                     >
-                      <ChevronDown class="size-3.5" />
+                      <Ellipsis />
                     </SidebarHeaderButton>
-                  </Show>
-                  <SidebarHeaderButton
-                    size="icon-sm-narrow"
-                    aria-label="More sidebar options"
-                    data-tip="More options"
-                    aria-haspopup="menu"
-                    aria-expanded="false"
-                    onClick={(event) => {
-                      const trigger = event.currentTarget;
-                      setMoreMenu((held) => (held === null ? trigger : null));
-                    }}
-                    onKeyDown={(event) => {
-                      const trigger = event.currentTarget;
-                      openMenuFromKeys(event, () => setMoreMenu(trigger));
-                    }}
-                  >
-                    <Ellipsis />
-                  </SidebarHeaderButton>
+                  </div>
                 </div>
-              </div>
-            </SidebarGroup>
-            <Show when={endedReason()}>
-              {(reason) => <p class={SIDEBAR_ERROR}>The shell stream ended: {reason()}</p>}
-            </Show>
-            <Show when={root.state.Failure}>
-              {(failure) => (
-                <p class={SIDEBAR_ERROR}>
-                  That didn't work: {failure()}
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label="Dismiss"
-                    data-tip="Dismiss"
-                    onClick={() => root.dismissFailure()}
+              </SidebarGroup>
+              <Show when={endedReason()}>
+                {(reason) => <p class={SIDEBAR_ERROR}>The shell stream ended: {reason()}</p>}
+              </Show>
+              <Show when={root.state.Failure}>
+                {(failure) => (
+                  <p class={SIDEBAR_ERROR}>
+                    That didn't work: {failure()}
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Dismiss"
+                      data-tip="Dismiss"
+                      onClick={() => root.dismissFailure()}
+                    >
+                      <X />
+                    </Button>
+                  </p>
+                )}
+              </Show>
+            </>
+          }
+        >
+          <SidebarGroup class="flex-1" role="presentation">
+            <Show when={searching()}>
+              <Show
+                when={results().length > 0}
+                fallback={
+                  <p
+                    class="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
+                    role="status"
                   >
-                    <X />
-                  </Button>
-                </p>
-              )}
-            </Show>
-          </>
-        }
-      >
-        <SidebarGroup class="flex-1" role="presentation">
-          <Show when={searching()}>
-            <Show
-              when={results().length > 0}
-              fallback={
-                <p
-                  class="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
-                  role="status"
+                    {messageSearch.pending()
+                      ? "Searching thread messages…"
+                      : messageSearch.failed()
+                        ? "Couldn't search thread messages"
+                        : "No threads found"}
+                  </p>
+                }
+              >
+                <ul
+                  class="flex flex-col gap-[5px]"
+                  id="sidebar-search-results"
+                  role="listbox"
+                  data-tip-group
+                  data-tip-delay="150"
+                  aria-label="Thread search results"
                 >
-                  {messageSearch.pending()
-                    ? "Searching thread messages…"
-                    : messageSearch.failed()
-                      ? "Couldn't search thread messages"
-                      : "No threads found"}
-                </p>
+                  <For each={resultGroups()}>
+                    {(group) => (
+                      <Show
+                        when={group.ProjectId}
+                        fallback={
+                          <For each={group.Results}>
+                            {(result) =>
+                              card(result.Thread, sectionOf(result.Thread), false, result)
+                            }
+                          </For>
+                        }
+                      >
+                        {(projectId) => (
+                          <li class={FOLDER_GROUP} role="presentation" data-folder-group>
+                            <ul class={FOLDER_ROWS} role="presentation">
+                              <li
+                                class="flex h-7 items-center gap-1.5 px-1.5 text-[13px] font-semibold text-sidebar-foreground"
+                                role="presentation"
+                              >
+                                <ProjectBadge
+                                  project={shell.state.Projects[projectId()]}
+                                  size={12}
+                                />
+                                <span class="truncate">
+                                  {shell.state.Projects[projectId()]?.title ?? "Unknown project"}
+                                </span>
+                                <span class={COUNT}>{group.Results.length}</span>
+                              </li>
+                              <For each={group.Results}>
+                                {(result) =>
+                                  card(result.Thread, sectionOf(result.Thread), true, result)
+                                }
+                              </For>
+                            </ul>
+                          </li>
+                        )}
+                      </Show>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+            </Show>
+            <Show
+              when={!searching() && (visibleThreads().length > 0 || folders().size > 0)}
+              fallback={
+                <Show when={!searching()}>
+                  <p class="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
+                    {!shell.shellSynchronized()
+                      ? "Loading threads…"
+                      : scope().size > 0
+                        ? "No threads in these projects yet"
+                        : "No threads yet"}
+                  </p>
+                </Show>
               }
             >
-              <ul
-                class="flex flex-col gap-[5px]"
-                id="sidebar-search-results"
-                role="listbox"
-                data-tip-group
-                data-tip-delay="150"
-                aria-label="Thread search results"
-              >
-                <For each={resultGroups()}>
-                  {(group) => (
-                    <Show
-                      when={group.ProjectId}
-                      fallback={
-                        <For each={group.Results}>
-                          {(result) => card(result.Thread, sectionOf(result.Thread), false, result)}
-                        </For>
-                      }
-                    >
-                      {(projectId) => (
-                        <li class={FOLDER_GROUP} role="presentation" data-folder-group>
-                          <ul class={FOLDER_ROWS} role="presentation">
-                            <li
-                              class="flex h-7 items-center gap-1.5 px-1.5 text-[13px] font-semibold text-sidebar-foreground"
-                              role="presentation"
-                            >
-                              <ProjectBadge project={shell.state.Projects[projectId()]} size={12} />
-                              <span class="truncate">
-                                {shell.state.Projects[projectId()]?.title ?? "Unknown project"}
-                              </span>
-                              <span class={COUNT}>{group.Results.length}</span>
-                            </li>
-                            <For each={group.Results}>
-                              {(result) =>
-                                card(result.Thread, sectionOf(result.Thread), true, result)
+              <ul class={THREAD_LIST} ref={setList} data-tip-group data-tip-delay="150">
+                <For each={sections().Pinned}>{(thread) => card(thread, "pinned")}</For>
+                <Show
+                  when={
+                    sections().Pinned.length > 0 &&
+                    (grouped() ? folders().size > 0 : sections().Active.length > 0)
+                  }
+                >
+                  <li class="mx-2.5 my-1 border-t border-sidebar-border" />
+                </Show>
+                <Show
+                  when={grouped()}
+                  fallback={
+                    <For each={sections().Active}>{(thread) => card(thread, "active")}</For>
+                  }
+                >
+                  <For each={[...folders().keys()]}>
+                    {(projectId) => {
+                      const folder = () => folders().get(projectId)!;
+                      return (
+                        <li
+                          class={`${FOLDER_GROUP} data-dragging:opacity-40`}
+                          data-folder-group
+                          data-dragging={drag.dragging() === projectId ? "" : undefined}
+                          data-folder-id={projectId}
+                        >
+                          <ul class={FOLDER_ROWS}>
+                            <FolderHeader
+                              folder={folder()}
+                              open={!closedFolders().has(projectId)}
+                              renaming={renamingProject() === projectId}
+                              draggable={projectSort() === "manual"}
+                              onDragStart={(event) =>
+                                drag.begin(event, projectId, (x, y) =>
+                                  setProjectMenu({ Id: projectId, X: x, Y: y }),
+                                )
                               }
+                              onToggle={() => void environment.toggleFolder(projectId)}
+                              onMenu={(x, y) => setProjectMenu({ Id: projectId, X: x, Y: y })}
+                              onRenamed={(title) => {
+                                setRenamingProject(null);
+                                const trimmed = title?.trim();
+                                if (trimmed && trimmed !== folder().Project?.title) {
+                                  environment.projectCommand(projectId, {
+                                    Kind: "rename",
+                                    Title: trimmed,
+                                  });
+                                }
+                              }}
+                            />
+                            <For
+                              each={
+                                closedFolders().has(projectId)
+                                  ? folder().Threads.filter((thread) => thread.id === selected())
+                                  : folder().Threads
+                              }
+                            >
+                              {(thread) => card(thread, "active", true, undefined, true)}
                             </For>
                           </ul>
                         </li>
-                      )}
-                    </Show>
-                  )}
-                </For>
-              </ul>
-            </Show>
-          </Show>
-          <Show
-            when={!searching() && (visibleThreads().length > 0 || folders().size > 0)}
-            fallback={
-              <Show when={!searching()}>
-                <p class="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-                  {!shell.shellSynchronized()
-                    ? "Loading threads…"
-                    : scope().size > 0
-                      ? "No threads in these projects yet"
-                      : "No threads yet"}
-                </p>
-              </Show>
-            }
-          >
-            <ul class={THREAD_LIST} ref={setList} data-tip-group data-tip-delay="150">
-              <For each={sections().Pinned}>{(thread) => card(thread, "pinned")}</For>
-              <Show
-                when={
-                  sections().Pinned.length > 0 &&
-                  (grouped() ? folders().size > 0 : sections().Active.length > 0)
-                }
-              >
-                <li class="mx-2.5 my-1 border-t border-sidebar-border" />
-              </Show>
-              <Show
-                when={grouped()}
-                fallback={<For each={sections().Active}>{(thread) => card(thread, "active")}</For>}
-              >
-                <For each={[...folders().keys()]}>
-                  {(projectId) => {
-                    const folder = () => folders().get(projectId)!;
-                    return (
+                      );
+                    }}
+                  </For>
+                  <Show when={dropLine()}>
+                    {(line) => (
                       <li
-                        class={`${FOLDER_GROUP} data-dragging:opacity-40`}
-                        data-folder-group
-                        data-dragging={drag.dragging() === projectId ? "" : undefined}
-                        data-folder-id={projectId}
-                      >
-                        <ul class={FOLDER_ROWS}>
-                          <FolderHeader
-                            folder={folder()}
-                            open={!closedFolders().has(projectId)}
-                            renaming={renamingProject() === projectId}
-                            draggable={projectSort() === "manual"}
-                            onDragStart={(event) =>
-                              drag.begin(event, projectId, (x, y) =>
-                                setProjectMenu({ Id: projectId, X: x, Y: y }),
-                              )
-                            }
-                            onToggle={() => void environment.toggleFolder(projectId)}
-                            onMenu={(x, y) => setProjectMenu({ Id: projectId, X: x, Y: y })}
-                            onRenamed={(title) => {
-                              setRenamingProject(null);
-                              const trimmed = title?.trim();
-                              if (trimmed && trimmed !== folder().Project?.title) {
-                                environment.projectCommand(projectId, {
-                                  Kind: "rename",
-                                  Title: trimmed,
-                                });
-                              }
-                            }}
-                          />
-                          <For
-                            each={
-                              closedFolders().has(projectId)
-                                ? folder().Threads.filter((thread) => thread.id === selected())
-                                : folder().Threads
-                            }
-                          >
-                            {(thread) => card(thread, "active", true, undefined, true)}
-                          </For>
-                        </ul>
-                      </li>
-                    );
-                  }}
-                </For>
-                <Show when={dropLine()}>
-                  {(line) => (
-                    <li
-                      class="pointer-events-none absolute right-1 left-1 h-0.5 rounded-[1px] bg-primary"
-                      style={{ top: `${line().Top}px` }}
-                      aria-hidden="true"
-                    />
-                  )}
+                        class="pointer-events-none absolute right-1 left-1 h-0.5 rounded-[1px] bg-primary"
+                        style={{ top: `${line().Top}px` }}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </Show>
                 </Show>
-              </Show>
-              <Show when={sections().Pinned.length === 0 && sections().Active.length === 0}>
-                <li class="list-none px-2.5 py-2 text-[14px] text-muted-foreground">All clear.</li>
-              </Show>
-              <Show when={sections().Snoozed.length > 0}>
-                <SectionHeader
-                  label="Snoozed"
-                  count={sections().Snoozed.length}
-                  open={shelves().SnoozedOpen}
-                  onToggle={() => void environment.toggleShelf("Snoozed")}
-                />
-                <For each={shelf(sections().Snoozed, shelves().SnoozedOpen)}>
-                  {(thread) => card(thread, "snoozed")}
-                </For>
-              </Show>
-              <Show when={sections().Settled.length > 0}>
-                <SectionHeader
-                  label="Settled"
-                  count={sections().Settled.length}
-                  open={shelves().SettledOpen}
-                  onToggle={() => void environment.toggleShelf("Settled")}
-                />
-                <For
-                  each={shelf(sections().Settled, shelves().SettledOpen, shelves().SettledShown)}
-                >
-                  {(thread) => card(thread, "settled")}
-                </For>
-                <Show
-                  when={shelves().SettledOpen && sections().Settled.length > shelves().SettledShown}
-                >
-                  <li>
-                    <button
-                      type="button"
-                      class="cursor-pointer border-0 bg-transparent px-2.5 py-1 text-[12px] text-sidebar-muted-foreground hover:text-sidebar-foreground"
-                      onClick={() => void environment.showMoreSettled()}
-                    >
-                      Show more
-                    </button>
+                <Show when={sections().Pinned.length === 0 && sections().Active.length === 0}>
+                  <li class="list-none px-2.5 py-2 text-[14px] text-muted-foreground">
+                    All clear.
                   </li>
                 </Show>
-              </Show>
-            </ul>
-          </Show>
-        </SidebarGroup>
-      </SidebarContent>
-      <Presence when={menuThread() === undefined ? undefined : menu()} keyed>
-        {(held) => {
-          const at = held();
-          const thread = shell.state.Threads[at.Id]!;
-          return (
-            <ThreadMenu
-              thread={thread}
-              x={at.X}
-              y={at.Y}
-              onRename={() => setRenaming(thread.id)}
-              onClose={() => setMenu(null)}
-            />
-          );
-        }}
-      </Presence>
-      <Presence when={menuProject() === undefined ? undefined : projectMenu()} keyed>
-        {(held) => {
-          const at = held();
-          const project = shell.state.Projects[at.Id]!;
-          return (
-            <ProjectMenu
-              project={project}
-              x={at.X}
-              y={at.Y}
-              onRename={() => setRenamingProject(project.id)}
-              onRemove={() => setRemovingProject(project.id)}
-              onHide={() => void environment.setProjectHidden(project.id, true)}
-              onClose={() => setProjectMenu(null)}
-            />
-          );
-        }}
-      </Presence>
-      <Presence when={shell.state.Projects[removingProject() ?? ""]} keyed>
-        {(project) => (
-          <RemoveProjectDialog project={project()} onClose={() => setRemovingProject(null)} />
-        )}
-      </Presence>
-      <Show when={folders().get(drag.dragging() ?? "")} keyed>
-        {(folder) => (
-          <Portal>
-            <div class={DRAG_GHOST} ref={drag.setGhost} aria-hidden="true">
-              <ProjectBadge project={folder.Project} size={12} />
-              <span>{folder.Project?.title ?? "Unknown project"}</span>
-            </div>
-          </Portal>
-        )}
-      </Show>
-      <Show when={draggedPin()} keyed>
-        {(thread) => (
-          <Portal>
-            <div class={DRAG_GHOST} ref={pinDrag.setGhost} aria-hidden="true">
-              <span class="truncate">{thread.title}</span>
-            </div>
-          </Portal>
-        )}
-      </Show>
-      <SidebarFooter />
+                <Show when={sections().Snoozed.length > 0}>
+                  <SectionHeader
+                    label="Snoozed"
+                    count={sections().Snoozed.length}
+                    open={shelves().SnoozedOpen}
+                    onToggle={() => void environment.toggleShelf("Snoozed")}
+                  />
+                  <For each={shelf(sections().Snoozed, shelves().SnoozedOpen)}>
+                    {(thread) => card(thread, "snoozed")}
+                  </For>
+                </Show>
+                <Show when={sections().Settled.length > 0}>
+                  <SectionHeader
+                    label="Settled"
+                    count={sections().Settled.length}
+                    open={shelves().SettledOpen}
+                    onToggle={() => void environment.toggleShelf("Settled")}
+                  />
+                  <For
+                    each={shelf(sections().Settled, shelves().SettledOpen, shelves().SettledShown)}
+                  >
+                    {(thread) => card(thread, "settled")}
+                  </For>
+                  <Show
+                    when={
+                      shelves().SettledOpen && sections().Settled.length > shelves().SettledShown
+                    }
+                  >
+                    <li>
+                      <button
+                        type="button"
+                        class="cursor-pointer border-0 bg-transparent px-2.5 py-1 text-[12px] text-sidebar-muted-foreground hover:text-sidebar-foreground"
+                        onClick={() => void environment.showMoreSettled()}
+                      >
+                        Show more
+                      </button>
+                    </li>
+                  </Show>
+                </Show>
+              </ul>
+            </Show>
+          </SidebarGroup>
+        </SidebarContent>
+        <Presence when={menuThread() === undefined ? undefined : menu()} keyed>
+          {(held) => {
+            const at = held();
+            const thread = shell.state.Threads[at.Id]!;
+            return (
+              <ThreadMenu
+                thread={thread}
+                x={at.X}
+                y={at.Y}
+                onRename={() => setRenaming(thread.id)}
+                onClose={() => setMenu(null)}
+              />
+            );
+          }}
+        </Presence>
+        <Presence when={menuProject() === undefined ? undefined : projectMenu()} keyed>
+          {(held) => {
+            const at = held();
+            const project = shell.state.Projects[at.Id]!;
+            return (
+              <ProjectMenu
+                project={project}
+                x={at.X}
+                y={at.Y}
+                onRename={() => setRenamingProject(project.id)}
+                onRemove={() => setRemovingProject(project.id)}
+                onHide={() => void environment.setProjectHidden(project.id, true)}
+                onClose={() => setProjectMenu(null)}
+              />
+            );
+          }}
+        </Presence>
+        <Presence when={shell.state.Projects[removingProject() ?? ""]} keyed>
+          {(project) => (
+            <Portal>
+              <RemoveProjectDialog project={project()} onClose={() => setRemovingProject(null)} />
+            </Portal>
+          )}
+        </Presence>
+        <Show when={folders().get(drag.dragging() ?? "")} keyed>
+          {(folder) => (
+            <Portal>
+              <div class={DRAG_GHOST} ref={drag.setGhost} aria-hidden="true">
+                <ProjectBadge project={folder.Project} size={12} />
+                <span>{folder.Project?.title ?? "Unknown project"}</span>
+              </div>
+            </Portal>
+          )}
+        </Show>
+        <Show when={draggedPin()} keyed>
+          {(thread) => (
+            <Portal>
+              <div class={DRAG_GHOST} ref={pinDrag.setGhost} aria-hidden="true">
+                <span class="truncate">{thread.title}</span>
+              </div>
+            </Portal>
+          )}
+        </Show>
+        <SidebarFooter />
+      </div>
     </nav>
   );
 });

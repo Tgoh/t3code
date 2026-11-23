@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off -- A resource's progress delay, outside any Effect runtime.
 import {
   EnvironmentRegistry,
   type EnvironmentSupervisor,
@@ -6,16 +7,19 @@ import { request } from "@t3tools/client-runtime/rpc";
 import {
   type AttachmentCreateUploadUrlInput,
   EnvironmentId,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import type { IResourceImplementation } from "treflex";
 
-import type { IAdmittedFile, IAttachmentKind } from "../attachmentIntake";
+import { attachmentKey, type IAdmittedFile, type IAttachmentKind } from "../attachmentIntake";
+import { errorText } from "../errorText";
 import type { IWireAttachment } from "./commandEffects";
 import type { IStoredAttachment } from "./draftMemory";
 import { connectionRuntime } from "./connection";
+import { prepareImageForAttachment } from "./imagePreparation";
 import { serverFailure, serverFetch, settle } from "./serverError";
 
 export interface IPickedFile {
@@ -28,12 +32,23 @@ export interface IPickedFile {
   PreviewUrl: string | null;
 }
 
+export type IFileStatus =
+  | { Phase: "uploading"; Progress: number }
+  | { Phase: "failed"; Error: string };
+
+export interface IComposerFilesView {
+  Preparing: Array<{ Id: string; Name: string }>;
+  Status: Record<string, IFileStatus>;
+}
+
 declare module "treflex" {
   interface IResourceTypeRegistry {
     composerFiles: {
       Params: { EnvironmentId: string };
+      Value: IComposerFilesView;
       Methods: {
         upload(id: string): IWireAttachment;
+        retry(id: string): void;
         remove(id: string): void;
         forget(ids: string[]): void;
         stored(ids: string[]): IStoredAttachment[];
@@ -41,12 +56,13 @@ declare module "treflex" {
         recall(attachments: IWireAttachment[]): IPickedFile[];
       };
       Supply: ReadonlyArray<IAdmittedFile>;
-      SupplyResponse: IPickedFile[];
+      SupplyResponse: { Picked: IPickedFile[]; Error: string | null };
     };
   }
 }
 
 interface IHeldFile {
+  Id: string;
   Kind: IAttachmentKind;
   File: File | null;
   PastedText: boolean;
@@ -58,9 +74,15 @@ interface IHeldFile {
   Abort: AbortController;
   Minted: string | null;
   Upload: Promise<string>;
+  Keys: string[];
+  Status: IFileStatus | null;
+  ShowProgress: boolean;
 }
 
 const MAX_UPLOADS = 3;
+const UPLOAD_TIMEOUT_MS = 5 * 60_000;
+const PROGRESS_DELAY_MS = 150;
+const PROGRESS_STEPS = 20;
 
 const readDataUrl = (file: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -75,12 +97,47 @@ async function fileOfDataUrl(dataUrl: string, name: string, mimeType: string) {
   return new File([blob], name, { type: mimeType });
 }
 
+async function keyOf(kind: IAttachmentKind, file: File): Promise<string> {
+  if (kind !== "image") return attachmentKey(kind, file);
+  const bytes = await file.arrayBuffer().catch(() => null);
+  return attachmentKey(kind, file, bytes === null ? undefined : new Uint8Array(bytes));
+}
+
+// Follows uploadBytes in apps/web/src/lib/attachmentUploadQueue.ts; fetch reports no upload progress.
+function postFile(
+  url: string,
+  file: File,
+  signal: AbortSignal,
+  onProgress: (progress: number) => void,
+): Promise<void> {
+  const xhr = new XMLHttpRequest();
+  return new Promise<void>((resolve, reject) => {
+    xhr.open("POST", url, true);
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
+    xhr.setRequestHeader("Content-Type", file.type);
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
+    });
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(serverFailure(`Upload rejected (${xhr.status}).`));
+    });
+    xhr.addEventListener("error", () => reject(serverFailure("Upload failed.")));
+    xhr.addEventListener("timeout", () => reject(serverFailure("Upload timed out.")));
+    xhr.addEventListener("abort", () => reject(signal.reason));
+    signal.addEventListener("abort", () => xhr.abort(), { once: true });
+    xhr.send(file);
+  });
+}
+
 export const composerFiles: IResourceImplementation<"composerFiles"> = (params, r) => {
   const environmentId = EnvironmentId.make(params.EnvironmentId);
   const held = new Map<string, IHeldFile>();
+  const preparing = new Map<string, string>();
   let nextId = 0;
   let active = 0;
   const waiting: Array<() => void> = [];
+  const mintId = () => `file-${(nextId += 1)}`;
   const rpc = <A, E>(effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>) =>
     settle(
       connectionRuntime.runPromiseExit(
@@ -91,6 +148,28 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     );
   const deleteUpload = (attachmentId: string) =>
     void rpc(request(WS_METHODS.attachmentsDelete, { attachmentId })).catch(() => undefined);
+
+  const show = () => {
+    if (r.signal.aborted) return;
+    const status: Record<string, IFileStatus> = {};
+    for (const [id, entry] of held) {
+      if (entry.Status === null) continue;
+      if (entry.Status.Phase === "uploading" && !entry.ShowProgress) continue;
+      status[id] = entry.Status;
+    }
+    r.expose({
+      Preparing: Array.from(preparing, ([Id, Name]) => ({ Id, Name })),
+      Status: status,
+    });
+  };
+  show();
+
+  const isHeld = (keys: ReadonlyArray<string>) => {
+    for (const entry of held.values()) {
+      if (entry.Keys.some((key) => keys.includes(key))) return true;
+    }
+    return false;
+  };
 
   const transfer = async (entry: IHeldFile, file: File): Promise<string> => {
     if (active >= MAX_UPLOADS) await new Promise<void>((resolve) => waiting.push(resolve));
@@ -112,13 +191,14 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
         entry.Abort.signal.throwIfAborted();
       }
       entry.Minted = minted.attachmentId;
-      const response = await serverFetch(minted.relativeUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-        signal: entry.Abort.signal,
+      let step = 0;
+      await postFile(minted.relativeUrl, file, entry.Abort.signal, (progress) => {
+        const next = Math.floor(progress * PROGRESS_STEPS);
+        if (next === step || entry.Abort.signal.aborted) return;
+        step = next;
+        entry.Status = { Phase: "uploading", Progress: progress };
+        if (entry.ShowProgress) show();
       });
-      if (!response.ok) throw serverFailure(`Upload rejected (${response.status}).`);
       return minted.attachmentId;
     } finally {
       active -= 1;
@@ -131,15 +211,34 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     if (file === null) throw serverFailure(`Attach ${entry.Name} again.`);
     if (entry.Minted !== null) deleteUpload(entry.Minted);
     entry.Minted = null;
-    entry.Upload = transfer(entry, file);
-    entry.Upload.catch(() => undefined);
+    entry.Status = { Phase: "uploading", Progress: 0 };
+    entry.ShowProgress = false;
+    const reveal = setTimeout(() => {
+      entry.ShowProgress = true;
+      show();
+    }, PROGRESS_DELAY_MS);
+    const upload = transfer(entry, file);
+    entry.Upload = upload;
+    upload.then(
+      () => {
+        clearTimeout(reveal);
+        if (entry.Upload !== upload) return;
+        entry.Status = null;
+        show();
+      },
+      (error: unknown) => {
+        clearTimeout(reveal);
+        if (entry.Upload !== upload || entry.Abort.signal.aborted) return;
+        entry.Status = { Phase: "failed", Error: errorText(error) };
+        show();
+      },
+    );
   };
 
   const hold = (entry: IHeldFile): IPickedFile => {
-    const id = `file-${(nextId += 1)}`;
-    held.set(id, entry);
+    held.set(entry.Id, entry);
     return {
-      Id: id,
+      Id: entry.Id,
       Kind: entry.Kind,
       Name: entry.Name,
       MimeType: entry.MimeType,
@@ -153,8 +252,11 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     kind: IAttachmentKind,
     file: File | null,
     described: Pick<IHeldFile, "Name" | "MimeType" | "SizeBytes" | "PastedText">,
+    keys: string[],
+    id = mintId(),
   ): IHeldFile => ({
     ...described,
+    Id: id,
     Kind: kind,
     File: file,
     PreviewUrl: kind === "image" && file !== null ? URL.createObjectURL(file) : null,
@@ -162,6 +264,9 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     Abort: new AbortController(),
     Minted: null,
     Upload: Promise.resolve(""),
+    Keys: keys,
+    Status: null,
+    ShowProgress: false,
   });
 
   const storedOf = async (entry: IHeldFile): Promise<IStoredAttachment | null> => {
@@ -189,13 +294,18 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
         () => null,
       );
       if (file === null) return null;
-      const entry = heldFile(stored.Kind, file, stored);
+      const entry = heldFile(stored.Kind, file, stored, [await keyOf(stored.Kind, file)]);
       entry.DataUrl = stored.DataUrl;
       startUpload(entry);
       return entry;
     }
     if (stored.AttachmentId === undefined) return null;
-    const entry = heldFile(stored.Kind, null, stored);
+    const key = attachmentKey(stored.Kind, {
+      name: stored.Name,
+      type: stored.MimeType,
+      size: stored.SizeBytes,
+    });
+    const entry = heldFile(stored.Kind, null, stored, [key]);
     entry.Minted = stored.AttachmentId;
     entry.Upload = Promise.resolve(stored.AttachmentId);
     return entry;
@@ -226,40 +336,94 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
       attachment.source !== undefined &&
       "_tag" in attachment.source &&
       attachment.source._tag === "pasted-text";
-    return heldFile(attachment.type, file, {
-      Name: attachment.name,
-      MimeType: attachment.mimeType,
-      SizeBytes: file.size,
-      PastedText: pastedText,
-    });
+    return heldFile(
+      attachment.type,
+      file,
+      {
+        Name: attachment.name,
+        MimeType: attachment.mimeType,
+        SizeBytes: file.size,
+        PastedText: pastedText,
+      },
+      [await keyOf(attachment.type, file)],
+    );
   };
 
   const release = (id: string, discard: boolean) => {
+    if (preparing.delete(id)) show();
     const entry = held.get(id);
     if (entry === undefined) return;
     held.delete(id);
     if (entry.PreviewUrl) URL.revokeObjectURL(entry.PreviewUrl);
+    if (entry.Status !== null) show();
     if (!discard) return;
     entry.Abort.abort();
     if (entry.Minted !== null) deleteUpload(entry.Minted);
   };
 
   r.signal.addEventListener("abort", () => {
+    preparing.clear();
     for (const id of Array.from(held.keys())) release(id, true);
   });
 
-  r.onSupply((admitted) =>
-    admitted.map(({ Kind, File: file, PastedText }) => {
-      const entry = heldFile(Kind, file, {
-        Name: file.name || Kind,
-        MimeType: file.type,
-        SizeBytes: file.size,
-        PastedText,
-      });
-      startUpload(entry);
-      return hold(entry);
-    }),
-  );
+  /** Fits an image to the provider's limits; null drops it as a repeat or a removal. */
+  const prepareImage = async (id: string, source: File): Promise<IHeldFile | string | null> => {
+    if (!preparing.has(id)) return null;
+    const sourceKey = await keyOf("image", source);
+    if (isHeld([sourceKey])) return null;
+    const prepared = await prepareImageForAttachment(source, PROVIDER_SEND_TURN_MAX_IMAGE_BYTES);
+    if (!preparing.has(id)) return null;
+    if (!prepared.ok) {
+      return prepared.reason === "unreadable"
+        ? `'${source.name}' could not be read as an image.`
+        : `'${source.name}' is too large to attach, even after compression.`;
+    }
+    const file = prepared.file;
+    const keys = file === source ? [sourceKey] : [sourceKey, await keyOf("image", file)];
+    if (!preparing.has(id) || isHeld(keys)) return null;
+    const name = file.name || "image";
+    return heldFile(
+      "image",
+      file,
+      { Name: name, MimeType: file.type, SizeBytes: file.size, PastedText: false },
+      keys,
+      id,
+    );
+  };
+
+  r.onSupply(async (admitted) => {
+    const ids = admitted.map(({ Kind, File: file }) => {
+      const id = mintId();
+      if (Kind === "image") preparing.set(id, file.name || "image");
+      return id;
+    });
+    if (preparing.size > 0) show();
+    const picked: IPickedFile[] = [];
+    let error: string | null = null;
+    for (const [index, { Kind, File: file, PastedText }] of admitted.entries()) {
+      const id = ids[index]!;
+      if (Kind === "file") {
+        const key = attachmentKey(Kind, file);
+        if (isHeld([key])) continue;
+        const described = { Name: file.name || Kind, MimeType: file.type, SizeBytes: file.size };
+        const entry = heldFile(Kind, file, { ...described, PastedText }, [key], id);
+        picked.push(hold(entry));
+        startUpload(entry);
+        continue;
+      }
+      const prepared = await prepareImage(id, file).catch(
+        () => `'${file.name}' could not be read as an image.`,
+      );
+      if (typeof prepared === "string") error = prepared;
+      else if (prepared !== null) {
+        picked.push(hold(prepared));
+        startUpload(prepared);
+      }
+    }
+    for (const id of ids) preparing.delete(id);
+    show();
+    return { Picked: picked.filter((file) => held.has(file.Id)), Error: error };
+  });
 
   r.methods({
     upload: async (_ctx, id) => {
@@ -284,6 +448,10 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
         ...(entry.PastedText ? { source: { _tag: "pasted-text" } } : {}),
       } as IWireAttachment;
     },
+    retry: (_ctx, id) => {
+      const entry = held.get(id);
+      if (entry?.Status?.Phase === "failed") startUpload(entry);
+    },
     remove: (_ctx, id) => release(id, true),
     forget: (_ctx, ids) => {
       for (const id of ids) release(id, false);
@@ -295,12 +463,15 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     },
     restore: async (_ctx, files) => {
       const entries = await Promise.all(files.map(restoreOne));
-      return entries.filter((entry) => entry !== null).map(hold);
+      const picked = entries.filter((entry) => entry !== null).map(hold);
+      show();
+      return picked;
     },
     recall: async (_ctx, attachments) => {
       const entries = await Promise.all(attachments.map(download));
+      const picked = entries.map(hold);
       for (const entry of entries) startUpload(entry);
-      return entries.map(hold);
+      return picked;
     },
   });
 };

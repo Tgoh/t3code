@@ -5,7 +5,13 @@ import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 import { chromium, type Browser, type Locator, type Page } from "playwright-core";
 
-import { report, type IAccepted, type ICapture, type IMismatch } from "./report.ts";
+import {
+  report,
+  type IAccepted,
+  type IAcceptedPixels,
+  type ICapture,
+  type IMismatch,
+} from "./report.ts";
 import { collectStyles, lookOf, type IStyledElement } from "./styles.ts";
 
 const repoRoot = NodePath.resolve(import.meta.dirname, "../../../..");
@@ -461,7 +467,7 @@ async function main() {
   } finally {
     await browser.close().catch(() => undefined);
     try {
-      flagged = report(outDir, captures, pixelThreshold, ACCEPTED, runError);
+      flagged = report(outDir, captures, pixelThreshold, ACCEPTED, ACCEPTED_PIXELS, runError);
     } catch (error) {
       console.error(`Writing the report failed: ${(error as Error).message}`);
     }
@@ -518,6 +524,23 @@ const ACCEPTED: ReadonlyArray<IAccepted> = [
     Reason:
       "treflex disables settings pages it hasn't built; both clients' class dims a disabled button to 64%, but no stock view draws one",
   },
+  ...["New thread in ", "Project actions"].map((text) => ({
+    Slots: ["button"],
+    Text: text,
+    Properties: ["color"],
+    Reason:
+      "stock hides its project folder buttons until hover, so treflex's can only be matched against stock's page-header buttons, which sit outside the app sidebar's tokens",
+  })),
+];
+
+const ACCEPTED_PIXELS: ReadonlyArray<IAcceptedPixels> = [
+  {
+    View: "confirm-dialog",
+    Viewport: "phone",
+    MaxScore: 0.035,
+    Reason:
+      "sub-pixel anti-aliasing on the centred description; its styles match, and the dialog's style check still runs",
+  },
 ];
 
 const acceptedFor = (element: IStyledElement, viewport: string) =>
@@ -525,7 +548,7 @@ const acceptedFor = (element: IStyledElement, viewport: string) =>
     (rule) =>
       rule.Slots.includes(element.Slot) &&
       (rule.Viewport === undefined || rule.Viewport === viewport) &&
-      (rule.Text === undefined || rule.Text === element.Text) &&
+      (rule.Text === undefined || element.Text.startsWith(rule.Text)) &&
       (rule.Disabled === undefined || element.Disabled),
   ).flatMap((rule) => rule.Properties ?? Object.keys(element.Style));
 

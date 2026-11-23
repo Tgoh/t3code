@@ -192,6 +192,9 @@ import {
   chooseQuestionOption,
   setQuestionIndex,
   setRuntimeMode,
+  STOP_PENDING_MAX_MS,
+  StopReceiver,
+  stoppingRun,
   stopRun,
   toggleCodeWrap,
   toggleKeepFullHistory,
@@ -2626,6 +2629,71 @@ describe("writing to the server", () => {
     expect(server.session().StopError).toBe("no run");
   });
 
+  it("holds Stopping from the reply until the run ends, a new run starts or the wait times out", async () => {
+    const server = await connect(undefined, null, { stopThread: () => {} });
+    await server.open();
+    await server.sendThread(
+      snapshotOf({ ...emptyProjection(), runs: [run("run-1", 1, "running")] }, 1),
+    );
+    const stopping = () => server.runtime.processSelector(stoppingRun, () => server.session());
+    expect(stopping()).toBe(false);
+    await server.runtime.dispatch(stopRun, server.sessionId());
+    await settled();
+    expect(inFlightOf(server.runtime, stopRun, () => server.session())).toBe(false);
+    expect(stopping()).toBe(true);
+    expect(server.runtime.timers(server.sessionId())).toMatchObject([
+      { Key: "Stop/Timeout", IntervalMs: STOP_PENDING_MAX_MS },
+    ]);
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("run.updated", run("run-1", 1, "interrupted")),
+    } as IWireThreadItem);
+    expect(stopping()).toBe(false);
+
+    await server.sendThread({
+      kind: "event",
+      sequence: 3,
+      event: event("run.created", run("run-2", 2, "running")),
+    } as IWireThreadItem);
+    expect(stopping()).toBe(false);
+    await server.runtime.dispatch(stopRun, server.sessionId());
+    await settled();
+    expect(stopping()).toBe(true);
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [],
+        threads: [
+          {
+            id: THREAD_ID,
+            projectId: "project-1",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            title: "t",
+            status: "running",
+            latestRunId: "run-2",
+            latestRunStopRequested: true,
+            activeProviderThreadId: null,
+            pendingRuntimeRequest: null,
+            lineage: { rootThreadId: THREAD_ID, parentThreadId: null, relationshipToParent: null },
+          },
+        ],
+      },
+    } as unknown as IWireShellItem);
+    expect(server.environment().Replica.Shell.Threads[THREAD_ID]?.latestRunStopRequested).toBe(
+      true,
+    );
+    await server.runtime.dispatch(
+      StopReceiver.handle,
+      server.sessionId(),
+      { Type: "Stop/Timeout" },
+      { publisher: { Id: server.sessionId() } },
+    );
+    expect(stopping()).toBe(false);
+    expect(server.runtime.timers(server.sessionId())).toEqual([]);
+  });
+
   it("a queue command drops every queue press until it's answered, as stock's one busy run does", async () => {
     const commands: IQueueCommand[] = [];
     const releases: (() => void)[] = [];
@@ -3990,6 +4058,113 @@ describe("diffs", () => {
     replies.get(1)!("late");
     await settled();
     expect(panel()).toBeNull();
+  });
+
+  it("refetches an open whole-thread or branch diff when the workspace changes, keeping the shown text meanwhile", async () => {
+    const asked: string[] = [];
+    let replyTo: ((text: string) => void) | null = null;
+    const server = await connect(undefined, null, {
+      threadDiff: (effect: IThreadDiff) => {
+        asked.push(`${effect.Scope} ${effect.ToTurnCount}`);
+        return new Promise<string>((resolve) => (replyTo = resolve));
+      },
+      branchDiff: () => {
+        asked.push("branch");
+        return { Diff: `branch ${asked.length}`, BaseRef: null, Truncated: false };
+      },
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/repo" }],
+        threads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.open();
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1), run("run-2", 2, "running")],
+          checkpoints: [checkpoint(1, "run-1")],
+        } as never,
+        1,
+      ),
+    );
+    const panel = () => server.session().Panels.Diff;
+    const loading = () => server.runtime.processSelector(diffLoading, () => server.session());
+    await server.runtime.dispatch(openDiff, server.sessionId(), "thread", null);
+    replyTo!("through 1");
+    await settled();
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("run.updated", run("run-2", 2)),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 3,
+      event: event("checkpoint.captured", checkpoint(2, "run-2")),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toEqual(["thread 1", "thread 2"]);
+    expect(panel()).toMatchObject({ ToTurnCount: 2, Text: "through 1" });
+    expect(loading()).toBe(false);
+    replyTo!("through 2");
+    await settled();
+    expect(panel()).toMatchObject({ ToTurnCount: 2, Text: "through 2" });
+
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1);
+    replyTo!("turn 1");
+    await server.sendThread({
+      kind: "event",
+      sequence: 4,
+      event: event("checkpoint.captured", checkpoint(3, "run-3")),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 5,
+      event: event("run.updated", run("run-3", 3)),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toEqual(["thread 1", "thread 2", "turn 1"]);
+
+    await server.runtime.dispatch(openDiff, server.sessionId(), "branch", null);
+    await settled();
+    await server.sendThread({
+      kind: "event",
+      sequence: 6,
+      event: event("turn-item.updated", { ...commandItem("edit", "run-4", 1), status: "running" }),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 7,
+      event: event("turn-item.updated", commandItem("edit", "run-4", 1)),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 8,
+      event: event("turn-item.updated", commandItem("edit", "run-4", 1)),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toEqual(["thread 1", "thread 2", "turn 1", "branch", "branch"]);
+    expect(panel()).toMatchObject({ Scope: "branch", Text: "branch 5" });
+
+    const settledWhileAway = { ...commandItem("away", "run-4", 2), status: "completed" };
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1), run("run-2", 2), run("run-3", 3)],
+          checkpoints: [checkpoint(1, "run-1"), checkpoint(2, "run-2"), checkpoint(3, "run-3")],
+          turnItems: [commandItem("edit", "run-4", 1), settledWhileAway],
+        } as never,
+        9,
+      ),
+    );
+    await settled();
+    expect(asked).toEqual(["thread 1", "thread 2", "turn 1", "branch", "branch", "branch"]);
   });
 
   it("shows a failed fetch and an empty turn", async () => {
