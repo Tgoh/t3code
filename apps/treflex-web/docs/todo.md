@@ -42,7 +42,9 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 - **Multi-surface right panel tabs.** Stock's tab strip (`RightPanelTabs.tsx`, `rightPanelStore.ts`): the diff, side threads and other surfaces open as tabs side by side, with "+", maximize and reordering, and the open tabs and side thread kept across a reload. See "Right panel: … No tabs or maximize".
 - **Diff panel.** The Commits submenu, the base ref picker, the file tree, hide test files and lazy loading of large Git diffs. See the "Diff panel" entries.
 - **Terminal.** The thread's other server terminals as tabs, from the terminal metadata stream, and stock's script reuse of an idle shell. See the terminal entries under "Skipped for the prototype" and "Thread details, scripts".
-- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables, in that order (Tam left the order open, 2026-11-23). Files starts after the diff panel merges, since both change the right panel. The file preview brings stock's copy button with it (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header); until a preview exists, a file attachment opens in a new browser tab.
+- **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables, in that order (Tam left the order open, 2026-11-23).
+  - **In progress** on `treflex/file-preview`: the file preview and stock's open rules for file links. Today a tap opens the editor on the host even from the phone, so nothing shows there. Stock opens the editor only on the host or with a modifier, and the preview otherwise. The preview brings stock's copy button (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header).
+  - After it: the Files tree browser, then Pull request and Browser. Keep right-panel changes from the diff panel and these from running at once.
 - **Settings pages.** Build the pages greyed out in the nav, starting with Labs, Worktrees and Source control (Tam left the order open, 2026-11-23).
 
 ## 4. Performance
