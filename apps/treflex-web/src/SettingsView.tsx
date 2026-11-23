@@ -641,38 +641,38 @@ function ProvidersPage() {
           <SettingsSection title="Providers" plain>
             <div class="grid grid-cols-[17rem_minmax(0,1fr)] items-start gap-4 max-md:grid-cols-[minmax(0,1fr)]">
               <ul class="m-0 list-none rounded-xl border border-border/60 p-1">
-                <For each={rows()}>
+                <For each={rows()} keyed={(row) => row.InstanceId}>
                   {(row) => (
                     <li
                       class="flex items-center gap-2 rounded-lg pr-2 data-active:bg-accent"
-                      data-active={current()?.InstanceId === row.InstanceId || undefined}
+                      data-active={current()?.InstanceId === row().InstanceId || undefined}
                     >
                       <button
                         class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 border-0 bg-transparent p-2 text-left text-[14px] [&>svg]:mt-0.5"
                         onClick={() => {
-                          setSelected(row.InstanceId);
+                          setSelected(row().InstanceId);
                           setModelFilter("");
                         }}
                       >
-                        <ProviderIcon driver={row.Driver} size={16} />
+                        <ProviderIcon driver={row().Driver} size={16} />
                         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span class="flex min-w-0 items-baseline gap-1.5">
-                            {row.Name}
-                            <Show when={row.Version}>
+                            {row().Name}
+                            <Show when={row().Version}>
                               {(version) => <code class={monoNote}>v{version()}</code>}
                             </Show>
                           </span>
                           <span class={headline}>
-                            <StatusDot row={row} />
-                            {row.Headline}
+                            <StatusDot row={row()} />
+                            {row().Headline}
                           </span>
                         </span>
                       </button>
                       <Switch
-                        checked={row.Enabled}
-                        aria-label={`Enable ${row.Name}`}
+                        checked={row().Enabled}
+                        aria-label={`Enable ${row().Name}`}
                         onCheckedChange={(enabled) => {
-                          const write = providerEnabledWrite(held().settings, row, enabled);
+                          const write = providerEnabledWrite(held().settings, row(), enabled);
                           void environment.updateServerSettings(write.Patch, write.Mutation);
                         }}
                       />
@@ -680,183 +680,194 @@ function ProvidersPage() {
                   )}
                 </For>
               </ul>
-              <Show when={current()} keyed>
-                {(row) => (
-                  <div class="flex min-w-0 flex-col gap-6">
-                    <SettingsSection title={row.Name}>
-                      <SettingsRowFrame
-                        title="Status"
-                        description={
-                          <>
-                            <span class={headline}>
-                              <StatusDot row={row} />
-                              {row.Headline}
-                            </span>
-                            <Show when={row.Message}>{(message) => <> · {message()}</>}</Show>
-                          </>
-                        }
-                      />
-                      <SettingsRowFrame
-                        title="Display name"
-                        control={<span class={mutedValue}>{row.Name}</span>}
-                      />
-                      <Show when={hasIdleCompactionOverride(row)}>
+              <Show when={current()?.InstanceId} keyed>
+                {(_instanceId) => {
+                  const row = () => current()!;
+                  return (
+                    <div class="flex min-w-0 flex-col gap-6">
+                      <SettingsSection title={row().Name}>
                         <SettingsRowFrame
-                          title="Compact idle threads"
-                          description={INSTANCE_IDLE_COMPACTION_DESCRIPTION}
-                          settingId="instanceIdleCompaction"
-                          control={
-                            <Select
-                              value={instanceIdleCompaction(held().settings, row)}
-                              onValueChange={(value) =>
-                                void environment.updateServerSettings(
-                                  {},
-                                  instanceIdleCompactionWrite(held().settings, row, value),
-                                )
-                              }
-                            >
-                              <SelectTrigger
-                                size="sm"
-                                class={rowSelect}
-                                aria-label="Compact idle threads"
-                              >
-                                <SelectValue>
-                                  {INSTANCE_IDLE_COMPACTION_OPTIONS.find(
-                                    (option) =>
-                                      option.Value === instanceIdleCompaction(held().settings, row),
-                                  )?.Label ?? ""}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectPopup align="start" alignItemWithTrigger={false}>
-                                <For each={INSTANCE_IDLE_COMPACTION_OPTIONS}>
-                                  {(option) => (
-                                    <SelectItem value={option.Value}>{option.Label}</SelectItem>
-                                  )}
-                                </For>
-                              </SelectPopup>
-                            </Select>
+                          title="Status"
+                          description={
+                            <>
+                              <span class={headline}>
+                                <StatusDot row={row()} />
+                                {row().Headline}
+                              </span>
+                              <Show when={row().Message}>{(message) => <> · {message()}</>}</Show>
+                            </>
                           }
                         />
-                      </Show>
-                    </SettingsSection>
-                    <SettingsSection title="Models">
-                      <p class={`${note} py-3`}>
-                        Model preferences and custom models are saved on the selected environment
-                        and shared across connected devices.
-                      </p>
-                      <div class="flex flex-wrap items-center gap-2 px-4 pt-0 pb-2">
-                        <Show when={row.Models.length > MODEL_FILTER_THRESHOLD}>
-                          <Input
-                            size="sm"
-                            class="w-56 max-w-full"
-                            placeholder="Filter models"
-                            aria-label="Filter models"
-                            spellcheck="false"
-                            value={modelFilter()}
-                            onInput={(event) => setModelFilter(event.currentTarget.value)}
+                        <SettingsRowFrame
+                          title="Display name"
+                          control={<span class={mutedValue}>{row().Name}</span>}
+                        />
+                        <Show when={hasIdleCompactionOverride(row())}>
+                          <SettingsRowFrame
+                            title="Compact idle threads"
+                            description={INSTANCE_IDLE_COMPACTION_DESCRIPTION}
+                            settingId="instanceIdleCompaction"
+                            control={
+                              <Select
+                                value={instanceIdleCompaction(held().settings, row())}
+                                onValueChange={(value) =>
+                                  void environment.updateServerSettings(
+                                    {},
+                                    instanceIdleCompactionWrite(held().settings, row(), value),
+                                  )
+                                }
+                              >
+                                <SelectTrigger
+                                  size="sm"
+                                  class={rowSelect}
+                                  aria-label="Compact idle threads"
+                                >
+                                  <SelectValue>
+                                    {INSTANCE_IDLE_COMPACTION_OPTIONS.find(
+                                      (option) =>
+                                        option.Value ===
+                                        instanceIdleCompaction(held().settings, row()),
+                                    )?.Label ?? ""}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectPopup align="start" alignItemWithTrigger={false}>
+                                  <For each={INSTANCE_IDLE_COMPACTION_OPTIONS}>
+                                    {(option) => (
+                                      <SelectItem value={option.Value}>{option.Label}</SelectItem>
+                                    )}
+                                  </For>
+                                </SelectPopup>
+                              </Select>
+                            }
                           />
                         </Show>
-                        <Show when={row.Models.some((model) => !model.Custom)}>
-                          <Button
-                            size="xs"
-                            variant="ghost-muted"
-                            onClick={() => {
-                              const patch = bulkHiddenPatch(row);
-                              if (patch !== null) void environment.updateServerSettings(patch);
-                            }}
-                          >
-                            {allBuiltInHidden(row) ? "Enable all" : "Disable all"}
-                          </Button>
-                        </Show>
-                        <span class="text-[12px] text-muted-foreground">{modelCount(row)}</span>
-                      </div>
-                      <For each={filterModels(row.Models, modelFilter())}>
-                        {(model) => (
-                          <div class="flex items-center gap-1 py-1.5 pr-4 pl-2.5 max-md:flex-wrap">
+                      </SettingsSection>
+                      <SettingsSection title="Models">
+                        <p class={`${note} py-3`}>
+                          Model preferences and custom models are saved on the selected environment
+                          and shared across connected devices.
+                        </p>
+                        <div class="flex flex-wrap items-center gap-2 px-4 pt-0 pb-2">
+                          <Show when={row().Models.length > MODEL_FILTER_THRESHOLD}>
+                            <Input
+                              size="sm"
+                              class="w-56 max-w-full"
+                              placeholder="Filter models"
+                              aria-label="Filter models"
+                              spellcheck="false"
+                              value={modelFilter()}
+                              onInput={(event) => setModelFilter(event.currentTarget.value)}
+                            />
+                          </Show>
+                          <Show when={row().Models.some((model) => !model.Custom)}>
                             <Button
+                              size="xs"
                               variant="ghost-muted"
-                              size="icon-micro"
-                              aria-label={model.Favorite ? "Remove favorite" : "Add favorite"}
-                              aria-pressed={model.Favorite ? "true" : "false"}
-                              data-tip={model.Favorite ? "Remove favorite" : "Add favorite"}
-                              onClick={() =>
-                                void environment.updateServerSettings(
-                                  modelFavoritePatch(row.InstanceId, model.Slug, !model.Favorite),
-                                )
-                              }
+                              onClick={() => {
+                                const patch = bulkHiddenPatch(row());
+                                if (patch !== null) void environment.updateServerSettings(patch);
+                              }}
                             >
-                              <Icons.Star
-                                class={
-                                  model.Favorite ? "size-3 fill-current text-warning" : "size-3"
+                              {allBuiltInHidden(row()) ? "Enable all" : "Disable all"}
+                            </Button>
+                          </Show>
+                          <span class="text-[12px] text-muted-foreground">{modelCount(row())}</span>
+                        </div>
+                        <For
+                          each={filterModels(row().Models, modelFilter())}
+                          keyed={(model) => model.Slug}
+                        >
+                          {(model) => (
+                            <div class="flex items-center gap-1 py-1.5 pr-4 pl-2.5 max-md:flex-wrap">
+                              <Button
+                                variant="ghost-muted"
+                                size="icon-micro"
+                                aria-label={model().Favorite ? "Remove favorite" : "Add favorite"}
+                                aria-pressed={model().Favorite ? "true" : "false"}
+                                data-tip={model().Favorite ? "Remove favorite" : "Add favorite"}
+                                onClick={() =>
+                                  void environment.updateServerSettings(
+                                    modelFavoritePatch(
+                                      row().InstanceId,
+                                      model().Slug,
+                                      !model().Favorite,
+                                    ),
+                                  )
+                                }
+                              >
+                                <Icons.Star
+                                  class={
+                                    model().Favorite ? "size-3 fill-current text-warning" : "size-3"
+                                  }
+                                />
+                              </Button>
+                              <span
+                                class={`flex min-w-0 flex-1 items-center gap-2 pl-1 text-[14px] max-md:flex-col max-md:items-start max-md:gap-0 ${model().Hidden ? "text-muted-foreground" : ""}`}
+                              >
+                                {model().Name}
+                                <code class={`${monoNote} max-md:max-w-full max-md:truncate`}>
+                                  {model().Slug}
+                                </code>
+                                <Show when={model().Custom}>
+                                  <span class="shrink-0 text-2xs text-muted-foreground/70">
+                                    custom
+                                  </span>
+                                </Show>
+                              </span>
+                              <span class="contents max-md:order-last max-md:flex max-md:basis-full max-md:pl-8 max-md:empty:hidden">
+                                <For each={model().Tags}>
+                                  {(tag) => (
+                                    <span class="mr-3 text-[12px] whitespace-nowrap text-muted-foreground">
+                                      {tag}
+                                    </span>
+                                  )}
+                                </For>
+                              </span>
+                              <Button
+                                variant="ghost-muted"
+                                size="icon-micro"
+                                aria-label="Move up"
+                                data-tip="Move up"
+                                disabled={row().Models.indexOf(model()) === 0}
+                                onClick={() => {
+                                  const patch = modelMovePatch(row(), model().Slug, -1);
+                                  if (patch !== null) void environment.updateServerSettings(patch);
+                                }}
+                              >
+                                <Icons.ArrowUp class="size-3" />
+                              </Button>
+                              <Button
+                                variant="ghost-muted"
+                                size="icon-micro"
+                                aria-label="Move down"
+                                data-tip="Move down"
+                                disabled={row().Models.indexOf(model()) === row().Models.length - 1}
+                                onClick={() => {
+                                  const patch = modelMovePatch(row(), model().Slug, 1);
+                                  if (patch !== null) void environment.updateServerSettings(patch);
+                                }}
+                              >
+                                <Icons.ArrowDown class="size-3" />
+                              </Button>
+                              <Switch
+                                class="ml-2"
+                                size="sm"
+                                checked={!model().Hidden}
+                                aria-label={`Show ${model().Name} in the model picker`}
+                                disabled={model().Custom}
+                                onCheckedChange={(shown) =>
+                                  void environment.updateServerSettings(
+                                    modelHiddenPatch(row().InstanceId, model().Slug, !shown),
+                                  )
                                 }
                               />
-                            </Button>
-                            <span
-                              class={`flex min-w-0 flex-1 items-center gap-2 pl-1 text-[14px] max-md:flex-col max-md:items-start max-md:gap-0 ${model.Hidden ? "text-muted-foreground" : ""}`}
-                            >
-                              {model.Name}
-                              <code class={`${monoNote} max-md:max-w-full max-md:truncate`}>
-                                {model.Slug}
-                              </code>
-                              <Show when={model.Custom}>
-                                <span class="shrink-0 text-2xs text-muted-foreground/70">
-                                  custom
-                                </span>
-                              </Show>
-                            </span>
-                            <span class="contents max-md:order-last max-md:flex max-md:basis-full max-md:pl-8 max-md:empty:hidden">
-                              <For each={model.Tags}>
-                                {(tag) => (
-                                  <span class="mr-3 text-[12px] whitespace-nowrap text-muted-foreground">
-                                    {tag}
-                                  </span>
-                                )}
-                              </For>
-                            </span>
-                            <Button
-                              variant="ghost-muted"
-                              size="icon-micro"
-                              aria-label="Move up"
-                              data-tip="Move up"
-                              disabled={row.Models.indexOf(model) === 0}
-                              onClick={() => {
-                                const patch = modelMovePatch(row, model.Slug, -1);
-                                if (patch !== null) void environment.updateServerSettings(patch);
-                              }}
-                            >
-                              <Icons.ArrowUp class="size-3" />
-                            </Button>
-                            <Button
-                              variant="ghost-muted"
-                              size="icon-micro"
-                              aria-label="Move down"
-                              data-tip="Move down"
-                              disabled={row.Models.indexOf(model) === row.Models.length - 1}
-                              onClick={() => {
-                                const patch = modelMovePatch(row, model.Slug, 1);
-                                if (patch !== null) void environment.updateServerSettings(patch);
-                              }}
-                            >
-                              <Icons.ArrowDown class="size-3" />
-                            </Button>
-                            <Switch
-                              class="ml-2"
-                              size="sm"
-                              checked={!model.Hidden}
-                              aria-label={`Show ${model.Name} in the model picker`}
-                              disabled={model.Custom}
-                              onCheckedChange={(shown) =>
-                                void environment.updateServerSettings(
-                                  modelHiddenPatch(row.InstanceId, model.Slug, !shown),
-                                )
-                              }
-                            />
-                          </div>
-                        )}
-                      </For>
-                    </SettingsSection>
-                  </div>
-                )}
+                            </div>
+                          )}
+                        </For>
+                      </SettingsSection>
+                    </div>
+                  );
+                }}
               </Show>
             </div>
           </SettingsSection>
