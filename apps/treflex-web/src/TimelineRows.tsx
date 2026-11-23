@@ -3,6 +3,7 @@ import {
   toolGroupAction,
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
+import { IDLE_COMPACTING_LABELS } from "@t3tools/client-runtime/user-message";
 import type { AssetResource } from "@t3tools/contracts";
 import { htmlRenderReferencesEqual } from "@t3tools/shared/htmlRender";
 import { mcpAppReferencesEqual } from "@t3tools/shared/mcpApp";
@@ -13,7 +14,7 @@ import { Dynamic } from "solid-js/web";
 
 import { attachmentDetail } from "./attachmentIntake";
 import { CommandOutput, ToolDetailNote, WORK_PRE } from "./CommandOutput";
-import { compactionLabel, compactionReason } from "./compaction";
+import { compactionFailure, compactionLabel, compactionReason } from "./compaction";
 import { CopyButton } from "./CopyButton";
 import {
   Bot,
@@ -798,13 +799,6 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
       held,
       held.type === "file_change" ? fileChangeCounts(thread.state, held) : null,
     );
-    if (held.type === "compaction") {
-      return {
-        ...base,
-        Label: compactionLabel(held, compactionReason(thread.state, held)),
-        Failed: false,
-      };
-    }
     if (EVENT_TYPES.has(held.type)) return { ...base, Failed: false };
     const entry = workLogEntry(held);
     const label = !props.single
@@ -930,6 +924,63 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
       </Show>
     </article>
   );
+}
+
+// Follows ContextCompactionTimelineRow in apps/web/src/components/chat/MessagesTimeline.tsx,
+// without its shimmer while it runs.
+function CompactionDivider(props: { label: string; failure?: string | null; failed?: boolean }) {
+  const line = "h-px flex-1 bg-border/70 group-data-failed/divider:bg-destructive/30";
+  return (
+    <div
+      role="separator"
+      aria-label={props.failure ? `${props.label}: ${props.failure}` : props.label}
+      class="group/divider flex w-full items-center gap-3 py-1 text-xs text-muted-foreground data-failed:text-destructive"
+      data-failed={props.failed ? "" : undefined}
+    >
+      <span class={line} />
+      <span class="flex min-w-0 items-center gap-1.5 [&_svg]:size-3 [&_svg]:flex-none">
+        <Show when={props.failed} fallback={<Minimize2 />}>
+          <CircleAlert />
+        </Show>
+        <span class="truncate">{props.label}</span>
+        <Show when={props.failure}>
+          <span class="min-w-0 truncate opacity-80">· {props.failure}</span>
+        </Show>
+      </span>
+      <span class={line} />
+    </div>
+  );
+}
+
+export function CompactionRow(props: { id: string; age: string | null }) {
+  const { thread, item } = useRow(props);
+  const compaction = createMemo(() => {
+    const held = item();
+    return held?.type === "compaction" ? held : null;
+  });
+  return (
+    <Show when={compaction()}>
+      {(held) => (
+        <CompactionDivider
+          label={compactionLabel(held(), compactionReason(thread.state, held()), props.age)}
+          failure={compactionFailure(held())}
+          failed={held().status === "failed"}
+        />
+      )}
+    </Show>
+  );
+}
+
+/** A bare `/compact` prompt waiting for its compaction to arrive. */
+export function CompactingRow(props: { id: string; pending: boolean }) {
+  const { thread, item } = useRow(props);
+  const label = () => {
+    if (!props.pending) return "Context compaction";
+    const held = item();
+    const reason = held === undefined ? undefined : compactionReason(thread.state, held);
+    return reason === undefined ? "Compacting context" : IDLE_COMPACTING_LABELS[reason];
+  };
+  return <CompactionDivider label={label()} />;
 }
 
 function NotificationRow(props: IRowProps) {

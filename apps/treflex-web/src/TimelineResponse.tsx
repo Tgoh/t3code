@@ -17,6 +17,7 @@ import {
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
 
+import Environment from "./Environment";
 import {
   Bot,
   Brain,
@@ -33,6 +34,7 @@ import { runStatus } from "./Shell";
 import { SubagentGroup } from "./SubagentRows";
 import ThreadSession from "./ThreadSession";
 import {
+  attemptOf,
   entryFacts,
   type IEntryFacts,
   type ILatestRun,
@@ -41,6 +43,8 @@ import {
   sameFacts,
 } from "./timelineLayout";
 import {
+  CompactingRow,
+  CompactionRow,
   MessageMeta,
   MessageTime,
   ROW_FOCUS,
@@ -70,6 +74,7 @@ const sameKeys = (left: readonly string[], right: readonly string[]) =>
 export function TimelineResponse(props: { ids: readonly string[]; latest: boolean }) {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
+  const environment = Environment.use();
   const owner = getOwner();
   const facts = new Map<string, Accessor<IEntryFacts | null>>();
   const factsOf = (id: string) => {
@@ -79,7 +84,9 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
         createMemo(
           () => {
             const item = timelineItem(thread.state, id);
-            return item === undefined || !isRowVisible(thread.state, id) ? null : entryFacts(item);
+            return item === undefined || !isRowVisible(thread.state, id)
+              ? null
+              : entryFacts(item, attemptOf(thread.state, item));
           },
           null,
           { equals: sameFacts },
@@ -119,6 +126,7 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
       LatestRun: latestRun(),
       Working: working(),
       Expanded: (key) => session.state.ExpandedRows[key] === true,
+      Visibility: environment.toolCallVisibility(),
     }),
   );
   const rows = createMemo(() => new Map(layout().map((row) => [row.Key, row])));
@@ -143,7 +151,32 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined }) {
       <Match when={of("meta")}>
         {(row) => <MessageMeta id={row().Id} files={row().Files} standalone />}
       </Match>
+      <Match when={of("attempt")}>{(row) => <AttemptRow row={row()} />}</Match>
+      <Match when={of("compaction")}>
+        {(row) => <CompactionRow id={row().Id} age={row().Age} />}
+      </Match>
+      <Match when={of("compacting")}>
+        {(row) => <CompactingRow id={row().Id} pending={row().Pending} />}
+      </Match>
     </Switch>
+  );
+}
+
+// Follows AttemptFoldTimelineRow in apps/web/src/components/chat/MessagesTimeline.tsx.
+function AttemptRow(props: { row: IRowOf<"attempt"> }) {
+  const session = ThreadSession.use();
+  return (
+    <button
+      class={`mb-1.5 flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-left transition-colors select-none hover:bg-muted/35 [&_svg]:size-3.5 [&_svg]:flex-none [&_svg]:text-muted-foreground ${ROW_FOCUS}`}
+      aria-expanded={props.row.Expanded}
+      onClick={() => session.toggleRowExpanded(props.row.Key)}
+    >
+      <Show when={props.row.Expanded} fallback={<ChevronRight />}>
+        <ChevronDown />
+      </Show>
+      <span class="text-xs font-medium text-foreground/80">Superseded attempt</span>
+      <span class="text-[11px] text-muted-foreground">Cut off by a steer</span>
+    </button>
   );
 }
 

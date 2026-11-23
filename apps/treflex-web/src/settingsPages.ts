@@ -406,6 +406,8 @@ const CHAT: ISettingsSection[] = [
             zen: "Zen",
           }),
         },
+        Default: "showAll",
+        Applied: true,
       }),
     ],
   },

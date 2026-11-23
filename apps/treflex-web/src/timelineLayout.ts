@@ -1,12 +1,18 @@
-import { workEntryDisplayIndicatesToolFailure } from "@t3tools/client-runtime/work-log/presentation";
+import {
+  workEntryDisplayIndicatesToolFailure,
+  workEntryHiddenByToolCallVisibility,
+} from "@t3tools/client-runtime/work-log/presentation";
 import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/turn-item-presentation";
 import { isOrchestrationV2WorkActive, type OrchestrationV2TurnItem } from "@t3tools/contracts";
+import type { ToolCallVisibility } from "@t3tools/contracts/settings";
+import { claudeResumeCompactionAge } from "@t3tools/shared/claudeCompaction";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 
 import { isCompactPrompt } from "./compaction";
 import { embedOf } from "./embeds";
 import type { IWireTurnItem } from "./Infrastructure/wire";
+import type { IOpenThread } from "./OpenThread";
 import { workEntryIsVisibleInGroup, workLogEntryIsToolLike, workLogEntry } from "./workLog";
 
 /**
@@ -44,6 +50,50 @@ export interface IEntryFacts {
   LiveSubagent: boolean;
   /** A subagent's provider turn, which with its run decides the subagents it groups with. */
   Turn: string | null;
+  /** A tool call the Tool calls in chat setting can hide, and whether it succeeded. */
+  Hideable: "succeeded" | "other" | null;
+  /** Work zen still shows: an error, a compaction, a notification or a question's answer. */
+  Essential: boolean;
+  /** The idle time a "compact before continuing?" answer to compact names. */
+  ResumeAge: string | null;
+  AttemptId: string | null;
+  Superseded: boolean;
+  /**
+   * A reply that shows its attempt answered: a final answer, or, in a superseded attempt, one
+   * that completed before the steer did.
+   */
+  Answer: "final" | "early" | null;
+}
+
+export interface IAttempt {
+  Id: string;
+  Status: string;
+  CompletedAt: string | null;
+}
+
+/** Follows resolveAttempt in deriveTimelineEntriesFromVisibleTurnItems, apps/web/src/session-logic.ts. */
+export function attemptOf(
+  open: Pick<IOpenThread, "Attempts" | "Nodes">,
+  item: IWireTurnItem,
+): IAttempt | null {
+  if (item.nodeId === null || item.runId === null) return null;
+  const byRoot = (nodeId: string) => {
+    for (const attempt of Object.values(open.Attempts))
+      if (attempt.rootNodeId === nodeId && attempt.runId === item.runId) return attempt;
+    return undefined;
+  };
+  const visited = new Set<string>();
+  let nodeId: string | null = item.nodeId;
+  while (nodeId !== null && !visited.has(nodeId)) {
+    visited.add(nodeId);
+    const node: IOpenThread["Nodes"][string] | undefined = open.Nodes[nodeId];
+    const attempt = byRoot(nodeId) ?? (node === undefined ? undefined : byRoot(node.rootNodeId));
+    if (attempt !== undefined)
+      return { Id: attempt.id, Status: attempt.status, CompletedAt: attempt.completedAt ?? null };
+    if (node === undefined) return null;
+    nodeId = node.parentNodeId;
+  }
+  return null;
 }
 
 const STANDALONE_EVENTS = new Set<IWireTurnItem["type"]>([
@@ -82,10 +132,35 @@ const NO_WORK = {
   Compaction: false,
   QuestionAnswer: false,
   FailedRun: null,
+  Hideable: null,
+  Essential: false,
+  ResumeAge: null,
+  Answer: null,
 } as const;
 
+// Follows retainedAssistantReplyEntryIds in MessagesTimeline.logic.ts: only an explicit final
+// phase, or a reply completed before the steer superseded its attempt, proves it answered.
+function answerOf(
+  item: Extract<IWireTurnItem, { type: "assistant_message" }>,
+  attempt: IAttempt | null,
+): IEntryFacts["Answer"] {
+  if (item.phase === "final_answer") return "final";
+  return attempt?.Status === "superseded" &&
+    attempt.CompletedAt !== null &&
+    !item.streaming &&
+    item.phase === undefined &&
+    item.status === "completed" &&
+    item.completedAt !== null &&
+    Date.parse(item.completedAt) < Date.parse(attempt.CompletedAt)
+    ? "early"
+    : null;
+}
+
 /** A row's facts, or null for a row the timeline doesn't show (a waiting approval, an empty checkpoint). */
-export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
+export function entryFacts(
+  item: IWireTurnItem,
+  attempt: IAttempt | null = null,
+): IEntryFacts | null {
   if (
     turnItemIsWorkspacePreparation(item as unknown as OrchestrationV2TurnItem) &&
     !("deferredWork" in item && item.deferredWork !== undefined)
@@ -102,6 +177,8 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
     Persistent: PERSISTENT_TYPES.has(item.type),
     LiveSubagent: item.type === "subagent" && isOrchestrationV2WorkActive(item.status),
     Turn: item.type === "subagent" ? item.providerTurnId : null,
+    AttemptId: attempt?.Id ?? null,
+    Superseded: attempt?.Status === "superseded",
     ...NO_WORK,
   };
   switch (item.type) {
@@ -113,6 +190,7 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
         Kind: "assistant",
         Streaming: item.streaming,
         End: item.streaming ? at : item.updatedAt,
+        Answer: answerOf(item, attempt),
       };
     case "proposed_plan":
       return { ...base, Kind: "plan" };
@@ -133,12 +211,28 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
   }
   const entry = workLogEntry(item);
   const failedError = item.type === "error" && item.status === "failed";
+  const compaction = entry.sourceActivityKind === "context-compaction";
   return {
     ...base,
     Kind: "work",
     InProgress: entry.toolLifecycleStatus === "inProgress",
     ToolLike: workLogEntryIsToolLike(entry),
     Failed: workEntryDisplayIndicatesToolFailure(entry),
+    Hideable: !workEntryHiddenByToolCallVisibility(entry, "hideAll")
+      ? null
+      : workEntryHiddenByToolCallVisibility(entry, "hideSuccessful")
+        ? "succeeded"
+        : "other",
+    // Follows workShownAsFinalAnswerOnly in MessagesTimeline.logic.ts.
+    Essential:
+      entry.questionAnswer !== undefined ||
+      compaction ||
+      item.type === "notification" ||
+      entry.tone === "error" ||
+      entry.sourceActivityKind === "runtime.error" ||
+      (item.type === "error" && entry.toolLifecycleStatus !== "completed"),
+    ResumeAge:
+      entry.questionAnswer === undefined ? null : claudeResumeCompactionAge(entry.questionAnswer),
     Visible: workEntryIsVisibleInGroup(entry, false),
     VisibleLive: workEntryIsVisibleInGroup(entry, true),
     Standalone:
@@ -148,7 +242,7 @@ export function entryFacts(item: IWireTurnItem): IEntryFacts | null {
       item.type === "notification" ||
       item.type === "todo_list" ||
       entry.questionAnswer !== undefined,
-    Compaction: entry.sourceActivityKind === "context-compaction",
+    Compaction: compaction,
     QuestionAnswer: entry.questionAnswer !== undefined,
     FailedRun:
       failedError && item.parentItemId === null
@@ -182,6 +276,7 @@ export interface IResponseInput {
   LatestRun: ILatestRun | null;
   Working: boolean;
   Expanded: (key: string) => boolean;
+  Visibility: ToolCallVisibility;
 }
 
 export type ILayoutRow =
@@ -198,7 +293,11 @@ export type ILayoutRow =
       /** The run is still working, so the view times it live. */
       Running: boolean;
     }
-  | { Kind: "meta"; Key: string; Id: string; Files: string | null };
+  | { Kind: "meta"; Key: string; Id: string; Files: string | null }
+  | { Kind: "attempt"; Key: string; Expanded: boolean }
+  | { Kind: "compaction"; Key: string; Id: string; Age: string | null }
+  /** A bare `/compact` prompt before its compaction arrives, `Pending` while its turn runs. */
+  | { Kind: "compacting"; Key: string; Id: string; Pending: boolean };
 
 export const groupKey = (anchorId: string) => `group:${anchorId}`;
 
@@ -280,6 +379,7 @@ function turnFolds(
   entries: ReadonlyArray<IEntryFacts>,
   unfolded: ReadonlySet<string>,
   running: ReadonlySet<string>,
+  retained: ReadonlySet<string>,
 ): Map<string, IFold> {
   const interrupted = new Set<string>();
   for (const entry of entries) {
@@ -289,15 +389,7 @@ function turnFolds(
     )
       interrupted.add(entry.RunId);
   }
-  const terminalIds = new Set<string>();
-  const lastAssistant = new Map<string, string>();
-  let unkeyed = 0;
-  for (const entry of entries) {
-    if (entry.Kind === "user") unkeyed += 1;
-    else if (entry.Kind === "assistant")
-      lastAssistant.set(entry.RunId ?? `unkeyed:${unkeyed}`, entry.Id);
-  }
-  for (const id of lastAssistant.values()) terminalIds.add(id);
+  const terminalIds = terminalAssistantIds(entries);
   const live = liveSubagentIds(entries);
 
   const groups = new Map<string, ITurnGroup>();
@@ -368,7 +460,13 @@ function turnFolds(
       const foldableTrailing =
         entry.Kind === "work" && (isRunning || (!entry.InProgress && !entry.Failed));
       if (!entry.Compaction && index > terminalIndex && !foldableTrailing) continue;
-      if (entry.Id === visibleCompaction || entry.Persistent || live.has(entry.Id)) continue;
+      if (
+        entry.Id === visibleCompaction ||
+        entry.Persistent ||
+        live.has(entry.Id) ||
+        retained.has(entry.Id)
+      )
+        continue;
       if (entry.Type === "notification" || entry.QuestionAnswer) continue;
       hidden.add(entry.Id);
     }
@@ -431,20 +529,161 @@ function turnFolds(
   return folds;
 }
 
+function terminalAssistantIds(entries: ReadonlyArray<IEntryFacts>): Set<string> {
+  const lastAssistant = new Map<string, string>();
+  let unkeyed = 0;
+  for (const entry of entries) {
+    if (entry.Kind === "user") unkeyed += 1;
+    else if (entry.Kind === "assistant")
+      lastAssistant.set(entry.RunId ?? `unkeyed:${unkeyed}`, entry.Id);
+  }
+  return new Set(lastAssistant.values());
+}
+
+// Follows deriveInFlightSteerAnswerIds: the first reply after a steer, when another one follows it.
+function steerAnswerIds(entries: ReadonlyArray<IEntryFacts>): Set<string> {
+  const ids = new Set<string>();
+  let awaitingReply = false;
+  let candidate: string | null = null;
+  for (const entry of entries) {
+    if (entry.Type === "reasoning") continue;
+    const reply = entry.Kind === "assistant";
+    if (candidate !== null && reply) ids.add(candidate);
+    candidate = null;
+    if (entry.Kind === "steer") awaitingReply = true;
+    else if (entry.Kind === "user") awaitingReply = false;
+    else if (reply && awaitingReply) {
+      candidate = entry.Id;
+      awaitingReply = false;
+    }
+  }
+  return ids;
+}
+
+// Follows retainedAssistantReplyEntryIds, without its check for deferred work, which this client
+// doesn't load.
+function retainedReplies(entries: ReadonlyArray<IEntryFacts>): Set<string> {
+  const ids = new Set<string>();
+  const lastOutput = new Map<string, IEntryFacts>();
+  for (const entry of entries) {
+    if (entry.Answer === "final") ids.add(entry.Id);
+    if (
+      !entry.Superseded ||
+      entry.AttemptId === null ||
+      (entry.Kind !== "assistant" && entry.Kind !== "work") ||
+      entry.Type === "system_notice" ||
+      entry.Type === "notification"
+    )
+      continue;
+    lastOutput.set(entry.AttemptId, entry);
+  }
+  for (const entry of lastOutput.values()) if (entry.Answer === "early") ids.add(entry.Id);
+  return ids;
+}
+
+interface IAttemptFold {
+  Key: string;
+  Hidden: Set<string>;
+}
+
+// Follows deriveSupersededAttemptFolds in MessagesTimeline.logic.ts.
+function attemptFolds(
+  entries: ReadonlyArray<IEntryFacts>,
+  unfolded: ReadonlySet<string>,
+  live: ReadonlySet<string>,
+  retained: ReadonlySet<string>,
+): Map<string, IAttemptFold> {
+  const kept = new Set(
+    entries.flatMap((entry) =>
+      entry.AttemptId !== null && retained.has(entry.Id) ? [entry.AttemptId] : [],
+    ),
+  );
+  const byAttempt = new Map<string, IEntryFacts[]>();
+  for (const entry of entries) {
+    if (
+      !entry.Superseded ||
+      entry.AttemptId === null ||
+      kept.has(entry.AttemptId) ||
+      (entry.RunId !== null && unfolded.has(entry.RunId)) ||
+      entry.Kind === "user" ||
+      entry.Kind === "steer" ||
+      entry.Kind === "embed" ||
+      entry.Kind === "sent" ||
+      entry.Type === "handoff" ||
+      entry.Type === "system_notice" ||
+      entry.Persistent ||
+      live.has(entry.Id)
+    )
+      continue;
+    const held = byAttempt.get(entry.AttemptId) ?? [];
+    held.push(entry);
+    byAttempt.set(entry.AttemptId, held);
+  }
+  const folds = new Map<string, IAttemptFold>();
+  for (const [attemptId, held] of byAttempt) {
+    folds.set(held[0]!.Id, {
+      Key: `attempt:${attemptId}`,
+      Hidden: new Set(held.map((entry) => entry.Id)),
+    });
+  }
+  return folds;
+}
+
+// Follows timelineRowEntries in MessagesTimeline.logic.ts. The response being answered is the
+// running one, so zen holds back all of its replies but a steer's answer.
+function shownEntries(
+  entries: ReadonlyArray<IEntryFacts>,
+  visibility: ToolCallVisibility,
+  answering: boolean,
+): ReadonlyArray<IEntryFacts> {
+  if (visibility === "showAll") return entries;
+  if (visibility !== "zen")
+    return entries.filter(
+      (entry) =>
+        entry.Hideable === null || (visibility === "hideSuccessful" && entry.Hideable === "other"),
+    );
+  const terminal = terminalAssistantIds(entries);
+  const steerAnswers = steerAnswerIds(entries);
+  const retained = retainedReplies(entries);
+  return entries.filter((entry) => {
+    switch (entry.Kind) {
+      case "assistant":
+        return (
+          steerAnswers.has(entry.Id) ||
+          retained.has(entry.Id) ||
+          (terminal.has(entry.Id) && !answering)
+        );
+      case "event":
+        return entry.Type !== "subagent";
+      case "work":
+        return entry.Essential;
+      default:
+        return true;
+    }
+  });
+}
+
 const breaksGroup = (entry: IEntryFacts) => entry.Standalone || entry.Compaction;
 
 // Follows deriveMessagesTimelineRows in apps/web/src/components/chat/MessagesTimeline.logic.ts,
 // for one response rather than the whole thread, so a delta costs the same at any thread length.
 export function layoutResponse(input: IResponseInput): ILayoutRow[] {
-  const latestIndex = input.Latest ? input.Entries.length - 1 : -1;
+  const working = input.Working && input.Latest;
+  const zen = input.Visibility === "zen";
+  const shown = shownEntries(input.Entries, input.Visibility, working);
+  const latestIndex = input.Latest ? shown.length - 1 : -1;
   // A reasoning row that something followed has ended, whatever its status says.
-  const entries = input.Entries.map((entry, index) =>
+  const entries = shown.map((entry, index) =>
     entry.Type === "reasoning" && entry.InProgress && index !== latestIndex
       ? { ...entry, InProgress: false }
       : entry,
   );
-  const working = input.Working && input.Latest;
   const unsettled = unsettledRunId(input.LatestRun);
+  const compactionRuns = new Set(
+    entries.flatMap((entry) =>
+      entry.Kind === "user" && entry.Compaction && entry.RunId !== null ? [entry.RunId] : [],
+    ),
+  );
   const failed = new Set<string>();
   if (input.LatestRun?.Status === "failed") failed.add(input.LatestRun.Id);
   const usageLimited = new Set<string>();
@@ -460,14 +699,25 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
   const active = new Set<string>();
   if (unsettled !== null) active.add(unsettled);
   if (working) for (const entry of entries) if (entry.RunId !== null) active.add(entry.RunId);
+  // A compaction's divider stands for its whole turn, so that turn gets no running fold.
   const running = new Set(
-    working && unsettled !== null && !failed.has(unsettled) ? [unsettled] : [],
+    working && unsettled !== null && !failed.has(unsettled) && !compactionRuns.has(unsettled)
+      ? [unsettled]
+      : [],
   );
   const unfolded = new Set([...active, ...failed].filter((runId) => !running.has(runId)));
-  const folds = turnFolds(input, entries, unfolded, running);
+  const retained = retainedReplies(entries);
+  const folds = zen
+    ? new Map<string, IFold>()
+    : turnFolds(input, entries, unfolded, running, retained);
   const collapsed = new Set<string>();
   for (const fold of folds.values()) {
     if (!input.Expanded(fold.Key)) for (const id of fold.Hidden) collapsed.add(id);
+  }
+  const attempts = attemptFolds(entries, failed, liveSubagentIds(entries), retained);
+  const collapsedAttempts = new Set<string>();
+  for (const fold of attempts.values()) {
+    if (!input.Expanded(fold.Key)) for (const id of fold.Hidden) collapsedAttempts.add(id);
   }
   const inActiveRun = (entry: IEntryFacts) =>
     entry.InProgress && entry.RunId !== null && running.has(entry.RunId);
@@ -475,14 +725,26 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
   const headerIndex =
     first !== undefined && (first.Kind === "user" || first.Type === "notification") ? 1 : 0;
   // A running run's fold shows from its start, before it has any rows to hide.
-  const pendingFold = [...running].find(
-    (runId) => ![...folds.values()].some((fold) => fold.RunId === runId),
-  );
+  const pendingFold = zen
+    ? undefined
+    : [...running].find((runId) => ![...folds.values()].some((fold) => fold.RunId === runId));
 
-  // Follows deriveMessagesTimelineRows: the compaction row stands in for a bare `/compact` prompt.
+  // Follows deriveMessagesTimelineRows: the compaction row stands in for a bare `/compact` prompt,
+  // and for the answered "compact before continuing?" question that asked for it.
   const compactedRuns = new Set(
     entries.flatMap((entry) => (entry.Kind === "work" && entry.Compaction ? [entry.RunId] : [])),
   );
+  const resumeAges = new Map<string, string>();
+  const askedAge = new Map<string, string>();
+  for (const entry of entries) {
+    if (entry.Kind !== "work" || entry.RunId === null) continue;
+    const age = askedAge.get(entry.RunId);
+    if (entry.Compaction && age !== undefined) {
+      resumeAges.set(entry.Id, age);
+      askedAge.delete(entry.RunId);
+    }
+    if (entry.ResumeAge !== null) askedAge.set(entry.RunId, entry.ResumeAge);
+  }
   const rows: ILayoutRow[] = [];
   const rowRuns: IRowRun[] = [];
   let subagents: {
@@ -512,6 +774,14 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
     const entry = entries[index]!;
     if (index === headerIndex) pushPendingFold();
     if (entry.Type === "run_interrupt_request") continue;
+    // A stopped compaction's own divider already says it stopped.
+    if (
+      entry.Type === "run_interrupt_result" &&
+      entry.RunId !== null &&
+      compactionRuns.has(entry.RunId) &&
+      compactedRuns.has(entry.RunId)
+    )
+      continue;
     const fold = folds.get(entry.Id);
     if (fold !== undefined) {
       push({
@@ -524,7 +794,30 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
       });
     }
     if (collapsed.has(entry.Id)) continue;
-    if (entry.Kind === "user" && entry.Compaction && compactedRuns.has(entry.RunId)) continue;
+    const attempt = attempts.get(entry.Id);
+    if (attempt !== undefined)
+      push(
+        { Kind: "attempt", Key: attempt.Key, Expanded: input.Expanded(attempt.Key) },
+        entry.RunId,
+      );
+    if (collapsedAttempts.has(entry.Id)) continue;
+    if (entry.Kind === "user" && entry.Compaction) {
+      if (compactedRuns.has(entry.RunId)) continue;
+      if (entry.RunId !== null) {
+        push(
+          {
+            Kind: "compacting",
+            Key: `compaction:${entry.RunId}`,
+            Id: entry.Id,
+            Pending: working && entry.RunId === unsettled && !failed.has(entry.RunId),
+          },
+          entry.RunId,
+        );
+        continue;
+      }
+    }
+    if (entry.ResumeAge !== null && entry.RunId !== null && compactedRuns.has(entry.RunId))
+      continue;
 
     // Follows deriveMessagesTimelineRows: back-to-back subagents of one provider turn share a row.
     if (entry.Type === "subagent") {
@@ -562,11 +855,15 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
       push({ Kind: "item", Key: entry.Id, Id: entry.Id, Meta: meta }, entry.RunId, trail);
       continue;
     }
-    if (
-      entry.Compaction ||
-      entry.Standalone ||
-      (entry.RunId !== null && itemized.has(entry.RunId))
-    ) {
+    if (entry.Compaction) {
+      push(
+        { Kind: "compaction", Key: entry.Id, Id: entry.Id, Age: resumeAges.get(entry.Id) ?? null },
+        entry.RunId,
+        "work",
+      );
+      continue;
+    }
+    if (entry.Standalone || (entry.RunId !== null && itemized.has(entry.RunId))) {
       const tool = entry.ToolLike || (entry.Type === "error" && entry.Failed);
       push(
         { Kind: "item", Key: entry.Id, Id: entry.Id, Meta: false },
@@ -584,7 +881,10 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
         breaksGroup(next) ||
         collapsed.has(next.Id) ||
         folds.has(next.Id) ||
-        next.RunId !== entry.RunId
+        collapsedAttempts.has(next.Id) ||
+        attempts.has(next.Id) ||
+        next.RunId !== entry.RunId ||
+        next.AttemptId !== entry.AttemptId
       )
         break;
       grouped.push(next);

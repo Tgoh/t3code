@@ -204,6 +204,12 @@ export function* timestampFormat(draft: IEnvironment): ISelectorGenerator<ITimes
   return draft.Local.ClientSettings?.timestampFormat ?? "locale";
 }
 
+export function* toolCallVisibility(
+  draft: IEnvironment,
+): ISelectorGenerator<IWireClientSettings["toolCallVisibility"]> {
+  return draft.Local.ClientSettings?.toolCallVisibility ?? "showAll";
+}
+
 export function* sendShortcut(
   draft: IEnvironment,
 ): ISelectorGenerator<IWireClientSettings["sendShortcut"]> {
