@@ -19,7 +19,7 @@ import { type Component, createSignal, createUniqueId, For, type JSX, Show } fro
 import { Dynamic } from "solid-js/web";
 
 import { RUNTIME_MODE_CONFIG } from "./ComposerMenus";
-import { Check, ExternalLink, Link, Lock, Minus, ShieldCheck, X } from "./icons";
+import { Check, ExternalLink, Eye, EyeOff, Link, Lock, Minus, ShieldCheck, X } from "./icons";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import ItemRequest, {
   answerLink,
@@ -32,6 +32,7 @@ import { Alert, AlertDescription, AlertTitle } from "./ui/Alert";
 import { Button, buttonVariants } from "./ui/Button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/Select";
 import { Input } from "./ui/Input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/InputGroup";
 import { Dialog } from "./ui/Dialog";
 import { Presence } from "./ui/Presence";
 import { WizardFooter, WizardHeader, WizardPanel, WizardPopup, WizardSteps } from "./ui/Wizard";
@@ -165,25 +166,46 @@ const SecretForm = ItemRequest.provider<{ item: SecretRequestItem }>((props) => 
   };
 
   const field = (input: SecretRequestInput, index: number) => {
+    const [revealed, setRevealed] = createSignal(false);
     const control = (
-      <Input
-        ref={(element: HTMLInputElement) => elements.set(input.key, element)}
-        id={inputId(index)}
-        class="min-w-0 flex-1"
-        type={input.secret ? "password" : "text"}
-        autocomplete="off"
-        autocorrect="off"
-        autocapitalize="off"
-        spellcheck={false}
-        data-1p-ignore=""
-        data-lpignore="true"
-        data-bwignore=""
-        placeholder={input.placeholder}
-        disabled={busy()}
-        aria-invalid={request.itemAnswerError() !== null || undefined}
-        aria-describedby={describedBy()}
-        onInput={refreshComplete}
-      />
+      <InputGroup class="min-w-0 flex-1">
+        <InputGroupInput
+          ref={(element: HTMLInputElement) => elements.set(input.key, element)}
+          id={inputId(index)}
+          // A CSS-masked text field still exposes its value to screen readers.
+          type={input.secret && !revealed() ? "password" : "text"}
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck={false}
+          data-1p-ignore=""
+          data-lpignore="true"
+          data-bwignore=""
+          placeholder={input.placeholder}
+          disabled={busy()}
+          aria-invalid={request.itemAnswerError() !== null || undefined}
+          aria-describedby={describedBy()}
+          onInput={refreshComplete}
+        />
+        <Show when={input.secret}>
+          <InputGroupAddon align="inline-end">
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              aria-label={`Show ${input.label}`}
+              aria-pressed={revealed()}
+              disabled={busy()}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setRevealed((current) => !current)}
+            >
+              <Show when={revealed()} fallback={<Eye aria-hidden="true" />}>
+                <EyeOff aria-hidden="true" />
+              </Show>
+            </Button>
+          </InputGroupAddon>
+        </Show>
+      </InputGroup>
     );
     if (!multiple()) return control;
     return (

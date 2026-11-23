@@ -37,6 +37,7 @@ import {
   prosePathParts,
 } from "./fileLinks";
 import { CopyButton } from "./CopyButton";
+import { RawHtml, TableCopyMenu } from "./TableCopy";
 import Environment from "./Environment";
 import { MessagesSquare, RotateCw, TriangleAlert, WrapText } from "./icons";
 import { ImageDialog, MEDIA_DIALOG_FIT, MediaDialog } from "./ImageDialog";
@@ -919,10 +920,11 @@ function TableCell(props: { cell: Tokens.TableCell; tag: "th" | "td" }) {
 
 function TableToken(props: ITokenProps) {
   const table = () => of<Tokens.Table>(props);
+  let element: HTMLTableElement | undefined;
   return (
     <div class="chat-markdown-table-container">
       <ScrollArea radius="none" chainVerticalScroll scrollFade class="w-full max-w-full">
-        <table>
+        <table ref={element}>
           <thead>
             <tr>
               <Index each={table().header}>{(cell) => <TableCell cell={cell()} tag="th" />}</Index>
@@ -939,6 +941,7 @@ function TableToken(props: ITokenProps) {
           </tbody>
         </table>
       </ScrollArea>
+      <TableCopyMenu table={() => element} />
     </div>
   );
 }
@@ -1097,7 +1100,7 @@ function TopBlock(props: { token: Token; fromUser: boolean; key: string | null }
         </CodeBlockKey.Provider>
       }
     >
-      {(markup) => <div class="contents" innerHTML={markup()} />}
+      {(markup) => <RawHtml class="contents" markup={markup()} />}
     </Show>
   );
 }
@@ -1147,10 +1150,10 @@ export function Markdown(props: {
           }
         >
           {(tokens) => (
-            <div
+            <RawHtml
               class="chat-markdown"
               onClick={openHtmlThreadLink}
-              innerHTML={sanitizeHtml(assistantHtml(tokens()))}
+              markup={sanitizeHtml(assistantHtml(tokens()))}
             />
           )}
         </Show>

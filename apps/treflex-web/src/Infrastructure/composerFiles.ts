@@ -56,7 +56,8 @@ declare module "treflex" {
         recall(attachments: IWireAttachment[]): IPickedFile[];
       };
       Supply: ReadonlyArray<IAdmittedFile>;
-      SupplyResponse: { Picked: IPickedFile[]; Error: string | null };
+      /** `Preparing` counts the images other supplies are still preparing. */
+      SupplyResponse: { Picked: IPickedFile[]; Error: string | null; Preparing: number };
     };
   }
 }
@@ -422,7 +423,11 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     }
     for (const id of ids) preparing.delete(id);
     show();
-    return { Picked: picked.filter((file) => held.has(file.Id)), Error: error };
+    return {
+      Picked: picked.filter((file) => held.has(file.Id)),
+      Error: error,
+      Preparing: preparing.size,
+    };
   });
 
   r.methods({

@@ -29,6 +29,7 @@ import { type ISurfaceKind, surfaceActions } from "./surfaces";
 import { closeTerminal, openTerminal, toggleTerminal } from "./Terminal";
 import { TerminalPanel } from "./TerminalPanel";
 import { DetailsSurface, ThreadDetailsCard } from "./ThreadDetailsPanel";
+import { ThreadErrorBanner } from "./ThreadErrorBanner";
 import { detailsLayout } from "./threadDetailsLayout";
 import ThreadSession, { type IThreadSession } from "./ThreadSession";
 import { type IResponseSegments, segmentResponses, startsResponse } from "./timelineLayout";
@@ -55,6 +56,9 @@ const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
 /** `chat-stage` and `with-details` have no rule: the timeline and the composer lane key on them. */
 export const CHAT_STAGE =
   "chat-stage relative flex min-h-0 flex-1 flex-col [--turn-status-height:24px] data-checklist:[--checklist-row-height:22px] data-checklist:[--turn-status-height:calc(var(--checklist-rows)*var(--checklist-row-height)+8px)]";
+
+const CONTENT_COLUMN =
+  "mx-auto w-full max-w-(--chat-content-max-width) min-w-0 in-[.chat-stage.with-details]:max-w-[min(var(--chat-content-max-width),var(--details-lane,100%))] in-[.chat-stage.with-details]:translate-x-(--details-shift)";
 
 const NOTICE =
   "mx-auto my-0 w-full max-w-(--chat-content-max-width) py-1 text-[14px] text-warning-foreground";
@@ -528,6 +532,18 @@ const ThreadBody = ThreadSession.provider(() => {
             "--details-lane": layout().LaneWidth === null ? undefined : `${layout().LaneWidth}px`,
           }}
         >
+          <Show when={session.threadError()}>
+            {(error) => (
+              <div
+                class={`pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col ${CONTENT_COLUMN}`}
+              >
+                <ThreadErrorBanner
+                  error={error()}
+                  onDismiss={() => session.dismissThreadError(error())}
+                />
+              </div>
+            )}
+          </Show>
           <Show when={session.state.Details} keyed>
             {(details) => (
               <DetailsSurface
@@ -587,10 +603,7 @@ const ThreadBody = ThreadSession.provider(() => {
               document.addEventListener("pointerup", () => (dragging = false), { once: true });
             }}
           >
-            <div
-              class="mx-auto w-full max-w-(--chat-content-max-width) min-w-0 in-[.chat-stage.with-details]:max-w-[min(var(--chat-content-max-width),var(--details-lane,100%))] in-[.chat-stage.with-details]:translate-x-(--details-shift)"
-              ref={content}
-            >
+            <div class={CONTENT_COLUMN} ref={content}>
               <div ref={head}>
                 <Show
                   when={reachedTop()}
