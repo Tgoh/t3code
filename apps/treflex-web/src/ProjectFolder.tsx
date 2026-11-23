@@ -142,7 +142,7 @@ export function RemoveProjectDialog(props: { project: IWireProject; onClose: () 
   // Follows removeMembers in apps/web/src/components/settings/ProjectSettingsPanel.tsx.
   const confirm = async () => {
     const error = await environment.removeProject(props.project.id);
-    if (error !== null) {
+    if (typeof error === "string") {
       toastManager.add({
         type: "error",
         title: `Failed to remove "${props.project.title}"`,
