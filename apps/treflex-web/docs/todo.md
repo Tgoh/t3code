@@ -12,7 +12,7 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
   - `MiddleTruncate`, for branch and path names.
   - The timeline sender label, which stock replaces with an "Open thread" button in the message actions, and the sidebar's "Show more", which stock draws as a full row with a chevron.
   - Ports for components no treflex view uses yet: `NumberField`, `RadioGroup`, `Calendar`, `ColorPicker`, `Group`, `PreviewCard`, `QrCode`, `DiscoveryList`, `PanelTabCloseButton`, `Table`.
-- **Drift the visual check flags.** `vp run drift` (see `bench/drift/README.md`) flags these against stock:
+- **Drift the visual check flags.** **In progress** on `treflex/drift-fixes`. `vp run drift` (see `bench/drift/README.md`) flags these against stock:
   - Dark theme: stock's `[data-app-sidebar]` overrides are folded into the global `--sidebar-*` tokens, so the settings nav takes the app sidebar's colours (the current page `#f1f3f7` on white 7%, where stock's is neutral-100 on white 3%), and the app sidebar's groups, menu and footer inherit `#f1f3f7` where stock's inherit neutral-100. Scope the overrides to the app sidebar, as stock does.
   - Phone: the sidebar sheet's toggle is 28px; stock's `SidebarTrigger` there is 32px.
 
@@ -20,7 +20,6 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Sidebar rows run together.** A two-line title's line spacing equals the gap between rows, so rows blend. The sidebar is resizable now, but its default stays stock's 256px, where titles still wrap and blend; dragged to about 380px, almost none wrap. Tam decides whether a wider sidebar is enough. If not, Tam picks from the mockups in `G:\Sorted\Code\t3code-dev-home\screenshots\mockups\sidebar-row-separation.png`.
 - **html-render and MCP app rows.** Render stock's html-render rows (`HtmlRenderFrame`, with its long-lived asset URLs) and MCP app rows (`McpAppFrame`) in the timeline, so agents' inline pages and charts show in this client. See "Timeline: the fold and work groups leave out…".
 - **Photos from the phone.** Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
 - **Expired image URLs.** Refresh an attachment or markdown image's signed URL when it expires, so a long-open thread doesn't show "Image unavailable". See "Timeline: an expanded image has no next…".
