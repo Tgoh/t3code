@@ -197,6 +197,7 @@ import {
   toggleDetails,
   toggleRightPanel,
   toggleRowExpanded,
+  sendAppMessage,
 } from "./ThreadSession";
 import { closeTerminal, endTerminal, openTerminal, TerminalReceiver } from "./Terminal";
 import { loadBranches } from "./ThreadDetails";
@@ -2186,6 +2187,33 @@ describe("writing to the server", () => {
     expect(session.Draft).toBe("");
     expect(inFlightOf(server.runtime, send, () => server.session())).toBe(false);
     expect(server.thread().TurnItems).toEqual({});
+  });
+
+  it("an app's message queues as its own turn and leaves the draft alone", async () => {
+    const sent: IStartTurn[] = [];
+    const server = await connect(undefined, null, {
+      startTurn: (effect: IStartTurn) => {
+        if (effect.Text === "refused") throw serverFailure("server said no");
+        sent.push(effect);
+      },
+    });
+    await server.open();
+    await server.runtime.dispatch(setDraft, server.sessionId(), "mine");
+    const reply = await server.runtime.dispatch(sendAppMessage, server.sessionId(), "from app");
+    expect(reply).toBeNull();
+    expect(sent).toMatchObject([
+      {
+        Text: "from app",
+        ThreadId: THREAD_ID,
+        Attachments: [],
+        DispatchMode: "queue",
+        NewThread: null,
+      },
+    ]);
+    expect(server.session().Draft).toBe("mine");
+    expect(await server.runtime.dispatch(sendAppMessage, server.sessionId(), "refused")).toBe(
+      "server said no",
+    );
   });
 
   it("a failed send keeps the draft and shows why", async () => {

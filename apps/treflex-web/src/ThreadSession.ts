@@ -813,6 +813,36 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
 }
 leading(send);
 
+// Follows sendAppMessage in apps/web/src/components/ChatView.tsx.
+/** Sends what an MCP app asked to say, once the person approved it; answers why it failed. */
+export function* sendAppMessage(
+  draft: IThreadSession,
+  text: string,
+): IOpenGenerator<string | null> {
+  if (draft.NewThreadProjectId !== null) return "Messages from apps need a started thread.";
+  const runtimeMode = yield* select(effectiveRuntimeMode);
+  try {
+    yield* open(
+      startTurnEffect({
+        EnvironmentId: draft.EnvironmentId,
+        ThreadId: draft.ThreadId,
+        CommandId: yield* generateGuid(),
+        MessageId: yield* generateGuid(),
+        Text: text,
+        Attachments: [],
+        ModelSelection: null,
+        RuntimeMode: runtimeMode,
+        InteractionMode: "default",
+        DispatchMode: "queue",
+        NewThread: null,
+      }),
+    );
+  } catch (error) {
+    return serverError(error).message;
+  }
+  return null;
+}
+
 export function* stopRun(draft: IThreadSession): IOpenGenerator {
   delete draft.StopError;
   const environmentId = draft.EnvironmentId;
@@ -1582,6 +1612,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     advanceQuestion,
     setQuestionIndex,
     toggleRowExpanded,
+    sendAppMessage,
     toggleCodeWrap,
     openDiff,
     closeDiff,

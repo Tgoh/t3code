@@ -83,7 +83,7 @@ const STANDARD_COLORS = {
   dark: { ...T3_CODE_DARK_THEME_COLORS, canvas: "#000000" },
 };
 
-const pageTheme = (scheme: IColorScheme) =>
+export const pageTheme = (scheme: IColorScheme) =>
   htmlRenderTheme(STANDARD_COLORS[scheme], scheme, HTML_RENDER_DEFAULT_FONTS);
 
 const shortcutKey = (shortcut: HtmlRenderShortcut) =>

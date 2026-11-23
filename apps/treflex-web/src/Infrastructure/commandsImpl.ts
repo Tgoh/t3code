@@ -86,6 +86,7 @@ import {
   threadDiffEffect,
   threadTitlesEffect,
   turnItemEffect,
+  mcpAppEffect,
 } from "./commandEffects";
 import { preferredEditor } from "../editors";
 import { connectionRuntime } from "./connection";
@@ -545,6 +546,44 @@ export const turnItemImpl = implementation(turnItemEffect, async (input, action)
     action?.signal,
   );
   return item === null ? null : (encodeTurnItem(item) as IWireTurnItem);
+});
+
+export const mcpAppImpl = implementation(mcpAppEffect, async (input, action) => {
+  const target = { threadId: ThreadId.make(input.ThreadId), itemId: TurnItemId.make(input.ItemId) };
+  const ask = input.Request;
+  const run = <A, E>(
+    effect: Effect.Effect<
+      A,
+      E,
+      EnvironmentSupervisor.EnvironmentSupervisor | SecureRandom.SecureRandom
+    >,
+  ) => inEnvironment(input.EnvironmentId, effect, action?.signal);
+  switch (ask.Kind) {
+    case "toolInfo":
+      return run(request(WS_METHODS.mcpAppsToolInfo, { ...target, name: ask.Name }));
+    case "callTool":
+      return run(
+        request(WS_METHODS.mcpAppsCallTool, {
+          ...target,
+          name: ask.Name,
+          arguments: ask.Arguments,
+        }),
+      );
+    case "readResource":
+      return run(request(WS_METHODS.mcpAppsReadResource, { ...target, uri: ask.Uri }));
+    case "updateModelContext":
+      await run(
+        request(WS_METHODS.mcpAppsUpdateModelContext, {
+          ...target,
+          conversationThreadId: ThreadId.make(ask.ConversationThreadId),
+          ...(ask.Content === undefined ? {} : { content: ask.Content }),
+          ...(ask.StructuredContent === undefined
+            ? {}
+            : { structuredContent: ask.StructuredContent }),
+        }),
+      );
+      return null;
+  }
 });
 
 export const assetUrlImpl = implementation(assetUrlEffect, async (input, action) => {

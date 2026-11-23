@@ -5,6 +5,7 @@ import {
 } from "@t3tools/client-runtime/work-log/presentation";
 import type { AssetResource } from "@t3tools/contracts";
 import { htmlRenderReferencesEqual } from "@t3tools/shared/htmlRender";
+import { mcpAppReferencesEqual } from "@t3tools/shared/mcpApp";
 import type { IAskId } from "treflex";
 import { useComponentState, useInFlight } from "treflex-solid";
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
@@ -51,6 +52,7 @@ import { EMPTY_MEDIA_URL, type IMediaUrl, loadMediaUrl, mediaFailed } from "./ma
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { embedOf } from "./embeds";
 import { HtmlRenderFrame } from "./HtmlRender";
+import { McpAppFrame } from "./McpApp";
 import { ItemRequestRow } from "./ItemRequestViews";
 import { Markdown } from "./Markdown";
 import OpenThread, {
@@ -953,6 +955,7 @@ const ROWS: Record<string, Component<IRowProps & { meta: boolean }>> = {
   notification: NotificationRow,
   asked: AskedRow,
   "html-render": HtmlRenderRow,
+  "mcp-app": McpAppRow,
 };
 
 // Follows HtmlRenderTimelineRow in apps/web/src/components/chat/TimelineAssistantRows.tsx.
@@ -982,6 +985,41 @@ function HtmlRenderRow(props: IRowProps) {
   );
 }
 
+// Follows McpAppTimelineRow in apps/web/src/components/chat/TimelineAssistantRows.tsx. Stock
+// shows the tool's work line as its own row; here it sits above the app.
+function McpAppRow(props: IRowProps) {
+  const { thread, item } = useRow(props);
+  const app = createMemo(
+    () => {
+      const held = item();
+      const found = held === undefined ? null : embedOf(held);
+      return found?.Kind === "mcp-app" ? found.App : null;
+    },
+    null,
+    {
+      equals: (left, right) =>
+        left === right || (left !== null && right !== null && mcpAppReferencesEqual(left, right)),
+    },
+  );
+  const row = () => thread.state.Rows[props.id];
+  return (
+    <>
+      <WorkRow id={props.id} />
+      <Show when={app()} keyed>
+        {(held) => (
+          <div class="min-w-0 px-1">
+            <McpAppFrame
+              app={held}
+              threadId={row()?.sourceThreadId ?? thread.state.ThreadId}
+              itemId={props.id}
+            />
+          </div>
+        )}
+      </Show>
+    </>
+  );
+}
+
 function AskedRow(props: IRowProps) {
   const { item } = useRow(props);
   return <Show when={item()}>{(held) => <ItemRequestRow id={props.id} item={held()} />}</Show>;
@@ -1000,8 +1038,7 @@ function rowKind(item: IWireTurnItem): string | null {
     case "approval_request":
       return item.status === "waiting" ? null : "work";
     case "dynamic_tool":
-      if (embedOf(item)?.Kind === "html-render") return "html-render";
-      return viewOf(item).Tone === "assistant" ? "message" : "work";
+      return embedOf(item)?.Kind ?? (viewOf(item).Tone === "assistant" ? "message" : "work");
     case "subagent":
     case "notification":
       return item.type;
