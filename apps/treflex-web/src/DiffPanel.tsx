@@ -1,7 +1,11 @@
-import { turnDiffSections } from "@t3tools/client-runtime/state/thread-repositories";
+import {
+  repositorySectionForPath,
+  turnDiffSections,
+} from "@t3tools/client-runtime/state/thread-repositories";
 import { createMemo, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
+import { useInFlight } from "treflex-solid";
 
-import type { IDiffPanel } from "./Diff";
+import { type IDiffPanel, loadDiff } from "./Diff";
 import DiffCodeView from "./DiffCodeView";
 import {
   diffLineStat,
@@ -53,6 +57,8 @@ const EMPTY_STATE =
 const NOTICE =
   "shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground";
 const PICKER_CHEVRON = "size-3.5 shrink-0 opacity-70";
+
+const joinPath = (root: string, path: string) => `${root.replace(/[\\/]+$/, "")}/${path}`;
 
 function Counts(props: { additions: number; deletions: number }) {
   return (
@@ -128,12 +134,12 @@ export function DiffLoadingState(props: { label: string }) {
   );
 }
 
-/** A header button that opens a menu below it. */
 function Picker(props: {
   label: string;
   ariaLabel: string;
   variant: "secondary" | "ghost-muted";
   class?: string;
+  menuClass?: string;
   children: (close: () => void) => JSX.Element;
 }) {
   const [open, setOpen] = createSignal(false);
@@ -156,7 +162,12 @@ function Picker(props: {
       </Button>
       <Presence when={open() && trigger()}>
         {(anchor) => (
-          <MenuPopup anchor={anchor()} align="start" onClose={() => setOpen(false)}>
+          <MenuPopup
+            anchor={anchor()}
+            align="start"
+            class={props.menuClass ?? ""}
+            onClose={() => setOpen(false)}
+          >
             {props.children(() => setOpen(false))}
           </MenuPopup>
         )}
@@ -240,16 +251,27 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
     else if (value.startsWith("turn:")) void session.openDiff("turn", Number(value.slice(5)));
   };
   const toggleFile = (key: string) => void session.setDiffFilesCollapsed([key], !collapsedOf(key));
+  // Follows `repositoryFileTarget` and `openDiffFile` in stock's DiffPanel.tsx.
+  const fileTarget = (path: string, projectRoot: string) => {
+    const repository = gitScope() ? gitRepository() : null;
+    if (repository !== null) return joinPath(repository.Cwd, path);
+    const match = repositorySectionForPath(repositorySections(), path);
+    if (match === null) return joinPath(session.diffRepositoryRoot() ?? projectRoot, path);
+    const cwd = gitRepositories().Repositories.find(
+      (held) => held.RepositoryPath === match.section.repositoryPath,
+    )?.Cwd;
+    return cwd === undefined ? joinPath(projectRoot, path) : joinPath(cwd, match.path);
+  };
   const openFile = (path: string) => {
-    const root = session.fileSearchRoot();
-    if (root === null) return;
-    void environment.openInEditor(`${root.replace(/[\\/]+$/, "")}/${path}`, root);
+    const projectRoot = session.fileSearchRoot();
+    if (projectRoot === null) return;
+    void environment.openInEditor(fileTarget(path, projectRoot), projectRoot);
   };
   // Follows `comparisonHeadRef` and `comparisonBaseRef` in stock's DiffPanel.tsx.
   const headRef = () =>
     panel().HeadRef ?? (gitRepository() === null ? thread.state.Thread?.branch : null) ?? "HEAD";
   const baseRef = () => panel().BaseRef ?? "Automatic";
-  const loading = () => session.diffLoading();
+  const refreshing = useInFlight(loadDiff, () => props.panel);
   const gitScope = () => panel().Scope !== "turn";
 
   return (
@@ -318,6 +340,7 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
               ariaLabel={`Repository: ${gitRepository()?.Name ?? folderName()}`}
               variant="ghost-muted"
               class="max-w-48 min-w-14 shrink"
+              menuClass="max-h-80 max-w-72"
             >
               {(close) => (
                 <MenuRadioGroup
@@ -349,6 +372,7 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
               ariaLabel={`Repository: ${selectedSection()?.name ?? "All repositories"}`}
               variant="ghost-muted"
               class="max-w-48 min-w-14 shrink"
+              menuClass="max-h-80 max-w-72"
             >
               {(close) => (
                 <MenuRadioGroup
@@ -414,11 +438,11 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={loading() ? "Refreshing diff" : "Refresh diff"}
-              data-tip={loading() ? "Refreshing diff…" : "Refresh diff"}
+              aria-label={refreshing() ? "Refreshing diff" : "Refresh diff"}
+              data-tip={refreshing() ? "Refreshing diff…" : "Refresh diff"}
               onClick={() => session.refreshDiff()}
             >
-              <RefreshIcon size="sm" refreshing={loading()} />
+              <RefreshIcon size="sm" refreshing={refreshing()} />
             </Button>
           </Show>
           <Show when={shownFiles().length > 0}>
@@ -548,6 +572,11 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
           <Match when={panel().Text !== null}>
             <div class={EMPTY_STATE}>
               <p>No net changes in this selection.</p>
+            </div>
+          </Match>
+          <Match when={panel().Error !== undefined}>
+            <div class={EMPTY_STATE}>
+              <p>No patch available for this selection.</p>
             </div>
           </Match>
         </Switch>

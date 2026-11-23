@@ -1,3 +1,4 @@
+import { CHECKPOINT_DIFF_TRUNCATED_MARKER } from "@t3tools/contracts";
 import { type IActionGenerator, type IEntity, latest } from "treflex";
 
 import { type IRepositoryDiff, threadDiffEffect } from "./Infrastructure/commandEffects";
@@ -11,7 +12,6 @@ export type IDiffScope = "turn" | "branch" | "unstaged";
 export interface IDiffPanel extends IEntity {
   Scope: IDiffScope;
   TurnCount: number | null;
-  /** A turn scope that moves to each newer turn, as stock's "Latest turn" does while chosen. */
   Latest: boolean;
   /** The repository section a turn diff shows, by key; null shows them all. */
   Repository: string | null;
@@ -44,6 +44,9 @@ export function* loadDiff(draft: IDiffPanel, request: IDiffRequest): IActionGene
       });
       draft.Text = diff.Diff;
       draft.Repositories = diff.Repositories;
+      draft.Truncated = [diff.Diff, ...diff.Repositories.map((held) => held.diff)].some((patch) =>
+        patch.endsWith(CHECKPOINT_DIFF_TRUNCATED_MARKER),
+      );
     } else {
       const diff = yield* branchDiffEffect({
         EnvironmentId: request.EnvironmentId,

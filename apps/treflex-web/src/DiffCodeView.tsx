@@ -145,7 +145,6 @@ export default function DiffCodeView(props: {
     element.addEventListener("click", onClick, true);
     onCleanup(() => element.removeEventListener("click", onClick, true));
   });
-  // Pierre's viewer sits outside Solid, so its options and items are pushed to it as they change.
   createEffect(
     on(
       () => [props.split, props.wrap, props.scheme],

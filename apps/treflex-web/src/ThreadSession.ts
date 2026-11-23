@@ -503,6 +503,16 @@ export function* diffGitRepositories(
     : { Repositories: gitRepositories(thread), FolderIsRepository: folderIsRepository(thread) };
 }
 
+// Follows `activeRepositoryRoot` in apps/web/src/components/DiffPanel.tsx, without its git status.
+export function* diffRepositoryRoot(draft: IThreadSession): ISelectorGenerator<string | null> {
+  const replica = yield* getData(draft, "Replica");
+  const worktreePath = replica?.OpenThreads[draft.ThreadId]?.Thread?.worktreePath;
+  if (worktreePath != null) return worktreePath;
+  const id = yield* projectId(draft);
+  const project = id === null ? undefined : replica?.Shell.Projects[id];
+  return project?.repositoryIdentity?.rootPath ?? project?.workspaceRoot ?? null;
+}
+
 // The repository the Git scopes read: the one chosen while it's still listed, else the thread's
 // folder, or the latest changed repository where that folder isn't one.
 function pickGitRepository(
@@ -1716,11 +1726,20 @@ export function* selectDiffGitRepository(
   if (panel === null || panel.GitRepository === repositoryPath) return;
   panel.GitRepository = repositoryPath;
   panel.Collapsed = {};
+  clearDiff(panel);
   yield* reloadDiff(draft);
 }
 
-// Follows the workspaceMutationId refetch in apps/web/src/components/DiffPanel.tsx: a chosen
-// turn's diff is fixed, the branch and working tree are read again, and the latest turn moves on.
+function clearDiff(panel: IDiffPanel): void {
+  panel.Text = null;
+  panel.Repositories = [];
+  delete panel.HeadRef;
+  delete panel.BaseRef;
+  delete panel.Truncated;
+  delete panel.Error;
+}
+
+// Follows the workspaceMutationId refetch in apps/web/src/components/DiffPanel.tsx.
 export function* followWorkspace(draft: IThreadSession): IActionGenerator {
   const panel = draft.Panels.Diff;
   if (panel === null) return;
@@ -1731,10 +1750,10 @@ export function* followWorkspace(draft: IThreadSession): IActionGenerator {
   if (!panel.Latest) return;
   const toTurnCount = yield* select(latestThreadDiffTurn);
   if (toTurnCount === null || toTurnCount === panel.TurnCount) return;
-  if (panel.TurnCount === null) panel.Text = null;
   panel.TurnCount = toTurnCount;
   panel.Repository = null;
   panel.Collapsed = {};
+  clearDiff(panel);
   yield* reloadDiff(draft);
 }
 
@@ -1752,6 +1771,7 @@ export function* toggleDiffWhitespace(draft: IThreadSession): IActionGenerator {
   const panel = draft.Panels.Diff;
   if (panel === null) return;
   panel.IgnoreWhitespace = !panel.IgnoreWhitespace;
+  if (panel.Scope !== "turn" || panel.TurnCount !== null) clearDiff(panel);
   yield* reloadDiff(draft);
 }
 
@@ -1967,6 +1987,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     diffLoading,
     diffSettings,
     diffGitRepositories,
+    diffRepositoryRoot,
     checkout,
     panels,
     threadError,

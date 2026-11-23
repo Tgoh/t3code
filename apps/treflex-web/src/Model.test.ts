@@ -1,5 +1,6 @@
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
 import {
+  CHECKPOINT_DIFF_TRUNCATED_MARKER,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_SERVER_SETTINGS,
   type KeybindingCommand,
@@ -4594,7 +4595,8 @@ describe("diffs", () => {
     const server = await connect(undefined, null, {
       threadDiff: (effect: IThreadDiff) => {
         asked.push(effect);
-        return { Diff: `patch for turn ${effect.ToTurnCount}`, Repositories: [] };
+        const marker = effect.ToTurnCount === 2 ? CHECKPOINT_DIFF_TRUNCATED_MARKER : "";
+        return { Diff: `patch for turn ${effect.ToTurnCount}${marker}`, Repositories: [] };
       },
     });
     await server.open();
@@ -4607,12 +4609,18 @@ describe("diffs", () => {
       TurnCount: 1,
       Latest: false,
       Text: "patch for turn 1",
+      Truncated: false,
     });
     await server.runtime.dispatch(closeDiff, server.sessionId());
     expect(panel()).toBeNull();
     await server.runtime.dispatch(openDiff, server.sessionId(), "turn", null);
     await settled();
-    expect(panel()).toMatchObject({ TurnCount: 2, Latest: true, Text: "patch for turn 2" });
+    expect(panel()).toMatchObject({
+      TurnCount: 2,
+      Latest: true,
+      Text: `patch for turn 2${CHECKPOINT_DIFF_TRUNCATED_MARKER}`,
+      Truncated: true,
+    });
     expect(asked.map((ask) => [ask.FromTurnCount, ask.ToTurnCount, ask.IgnoreWhitespace])).toEqual([
       [0, 1, true],
       [1, 2, true],
@@ -4765,7 +4773,7 @@ describe("diffs", () => {
     expect(panel()).toBeNull();
   });
 
-  it("refetches an open latest-turn or branch diff when the workspace changes, keeping the shown text meanwhile", async () => {
+  it("refetches an open latest-turn or branch diff when the workspace changes, clearing the text only when the turn moves on", async () => {
     const asked: string[] = [];
     let replyTo: ((text: string) => void) | null = null;
     const server = await connect(undefined, null, {
@@ -4816,8 +4824,8 @@ describe("diffs", () => {
     } as IWireThreadItem);
     await settled();
     expect(asked).toEqual(["turn 1", "turn 2"]);
-    expect(panel()).toMatchObject({ TurnCount: 2, Text: "through 1" });
-    expect(loading()).toBe(false);
+    expect(panel()).toMatchObject({ TurnCount: 2, Text: null });
+    expect(loading()).toBe(true);
     replyTo!("through 2");
     await settled();
     expect(panel()).toMatchObject({ TurnCount: 2, Text: "through 2" });
