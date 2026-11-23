@@ -1436,7 +1436,6 @@ export function* reattachThread(draft: IThreadSession): IActionGenerator {
   yield* followCheckout(draft);
 }
 
-/** Code blocks wrap their lines until the person turns it off. */
 export function* rememberScroll(
   draft: IThreadSession,
   scroll: IThreadSession["Scroll"],
@@ -1444,6 +1443,7 @@ export function* rememberScroll(
   draft.Scroll = scroll;
 }
 
+/** Code blocks wrap their lines until the person turns it off. */
 export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActionGenerator {
   if (draft.UnwrappedCode[blockKey]) delete draft.UnwrappedCode[blockKey];
   else draft.UnwrappedCode[blockKey] = true;

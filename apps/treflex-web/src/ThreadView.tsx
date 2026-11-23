@@ -291,6 +291,7 @@ const ThreadBody = ThreadSession.provider(() => {
     ),
   );
   const onComposerSend = () => {
+    release();
     setStuck(true);
     scrollToEnd();
   };
@@ -383,7 +384,6 @@ const ThreadBody = ThreadSession.provider(() => {
       (target ?? scroller).focus();
     });
   };
-  // The response at the view's top, and how far its start sits above the view's top.
   const readingAt = (): IThreadSession["Scroll"] => {
     const top = scroller.getBoundingClientRect().top;
     const markers = content.querySelectorAll<HTMLElement>("[data-response]");
@@ -409,12 +409,12 @@ const ThreadBody = ThreadSession.provider(() => {
     remembered = scroll;
     void session.rememberScroll(scroll);
   };
-  // A return to a thread read up in its history puts that place back once its rows are shown.
   // History pages the server sent before the thread expired aren't fetched again, so a place
   // in them is gone and the return follows the end instead.
   let restoring = saved !== null;
-  // Rows below the place can still be growing when it's put back, which clamps the scroll short,
-  // so it's put back again as they grow, until the reader scrolls.
+  // Rows below the place can still be growing when it's put back, which clamps the scroll short
+  // (and at the end, where a clamped scroll would read as following it), so it's put back again
+  // as they grow, until the reader scrolls.
   let holding: HTMLElement | null = null;
   const putBack = () => {
     if (holding === null || saved === null || !holding.isConnected) return;
@@ -424,15 +424,21 @@ const ThreadBody = ThreadSession.provider(() => {
     );
     lastPosition = position();
   };
-  const release = () => (holding = null);
+  const release = () => {
+    restoring = false;
+    holding = null;
+  };
   createEffect(() => {
     if (!restoring || saved === null) return;
+    const ids = timeline().Ids;
     if (responses()?.Starts.includes(saved.RowId)) {
       holding = content.querySelector(`[data-response="${CSS.escape(saved.RowId)}"]`);
       if (holding === null) return;
       restoring = false;
       putBack();
-    } else if (thread.threadSynchronized() && timeline().Ids.length > 0) {
+    } else if (ids.includes(saved.RowId)) {
+      growTo(ids.indexOf(saved.RowId));
+    } else if (thread.threadSynchronized() && ids.length > 0) {
       restoring = false;
       setStuck(true);
       scrollToEnd();
@@ -548,6 +554,10 @@ const ThreadBody = ThreadSession.provider(() => {
             data-tip-scroll-dismiss
             tabIndex={-1}
             onScroll={() => {
+              if (holding !== null) {
+                lastPosition = position();
+                return;
+              }
               const next = position();
               const follow = followAfterScroll(lastPosition, next, touching || dragging);
               if (follow === "stick") setStuck(true);
@@ -624,7 +634,10 @@ const ThreadBody = ThreadSession.provider(() => {
                 variant="glass"
                 size="xs"
                 class="absolute bottom-[calc(100%+var(--turn-status-height)+4px)] left-1/2 z-30 -translate-x-1/2"
-                onClick={scrollToEnd}
+                onClick={() => {
+                  release();
+                  scrollToEnd();
+                }}
               >
                 <ChevronDown class="size-3.5" />
                 Scroll to end
