@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { createContext, createSignal, omit, useContext } from "solid-js";
+import { createContext, omit, useContext } from "solid-js";
 
 import { createRoving } from "./roving";
 import { Toggle as ToggleComponent, type ToggleSize, type ToggleVariant } from "./Toggle";
@@ -111,8 +111,7 @@ export function Toggle(
 ) {
   const group = useContext(Group);
   const rest = omit(props, "variant", "size", "value", "disabled");
-  const [element, setElement] = createSignal<HTMLButtonElement>();
-  const register = group.roving.register({
+  const { attach, tabIndex } = group.roving.register({
     active: () => false,
     disabled: () => props.disabled === true || rest["aria-disabled"] === "true",
   });
@@ -124,11 +123,8 @@ export function Toggle(
       variant={props.variant ?? group.variant}
       size={props.size ?? group.size}
       {...rest}
-      ref={(item) => {
-        setElement(item);
-        register(item);
-      }}
-      tabindex={group.roving.tabIndex(element())}
+      ref={attach}
+      tabindex={tabIndex()}
       disabled={props.disabled}
       pressed={pressed()}
       onClick={() => group.press(props.value, !pressed())}

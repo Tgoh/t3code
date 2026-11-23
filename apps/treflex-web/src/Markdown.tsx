@@ -1171,7 +1171,7 @@ export function Markdown(props: {
       environment.openThreadLink(target.Ref.threadId);
   };
   return (
-    <MessageContext value={props.message ?? null}>
+    <MessageContext value={untrack(() => props.message) ?? null}>
       <FileLinkContext value={files}>
         <Show
           when={lexed().WholeHtml}

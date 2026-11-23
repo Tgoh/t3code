@@ -9,7 +9,6 @@ import {
   onCleanup,
   onSettled,
   Show,
-  untrack,
 } from "solid-js";
 
 import { copyText } from "../clipboard";
@@ -25,7 +24,6 @@ import {
   X,
 } from "../icons";
 import { Button, type ButtonVariant } from "./Button";
-import { cleanupRef } from "./cleanupRef";
 import { follow } from "./floating";
 import { Spinner } from "./Spinner";
 import {
@@ -930,11 +928,14 @@ function AnchoredToast(props: { store: ToastStore; toast: Accessor<IToast> }) {
   const [element, setElement] = createSignal<HTMLElement>();
   const root = createToastRoot(props.store, props.toast, element, []);
   const toast = props.toast;
-  const placeAt = cleanupRef((positioner: HTMLElement) => {
-    const anchor = untrack(toast).positionerProps?.anchor;
-    if (!anchor) return undefined;
+  const [positioner, setPositioner] = createSignal<HTMLElement>();
+  // A ref runs before the node is in the document, where floating-ui's ancestor walk throws.
+  onSettled(() => {
+    const placed = positioner();
+    const anchor = toast().positionerProps?.anchor;
+    if (placed === undefined || !anchor) return undefined;
     return follow(
-      positioner,
+      placed,
       anchor,
       () => ({
         side: "top",
@@ -948,7 +949,7 @@ function AnchoredToast(props: { store: ToastStore; toast: Accessor<IToast> }) {
   const tooltipStyle = () => toast().data?.tooltipStyle ?? false;
   return (
     <div
-      ref={placeAt}
+      ref={setPositioner}
       class="fixed top-0 left-0 z-100 max-w-[min(--spacing(64),var(--available-width))]"
       data-slot="toast-positioner"
     >

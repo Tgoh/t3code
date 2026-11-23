@@ -74,7 +74,7 @@ export function createRoving(options: { orientation: Accessor<IOrientation>; hom
     return open.find((item) => entries.get(item)?.active() === true) ?? open[0] ?? null;
   });
   return {
-    /** Call in the item's component body; pass the returned ref to the item's element. */
+    /** Call in the item's component body; give the item's element `attach` as its ref, and its tab index. */
     register(entry: { active: Accessor<boolean>; disabled: Accessor<boolean> }) {
       let item: HTMLElement | undefined;
       // Mounted, the item has its place in the document, which orders the group.
@@ -87,14 +87,16 @@ export function createRoving(options: { orientation: Accessor<IOrientation>; hom
         if (focused() === item) setFocused(null);
         changed();
       });
-      return (element: HTMLElement) => {
-        item = element;
-        entries.set(element, entry);
+      return {
+        attach: (element: HTMLElement) => {
+          item = element;
+          entries.set(element, entry);
+        },
+        tabIndex: () => {
+          const held = stop();
+          return item !== undefined && held === item ? 0 : -1;
+        },
       };
-    },
-    tabIndex: (item: HTMLElement | undefined) => {
-      const held = stop();
-      return item !== undefined && held === item ? 0 : -1;
     },
     onFocusIn(event: FocusEvent) {
       const target = event.target;

@@ -354,7 +354,7 @@ export const Sidebar = Shell.provider(() => {
       results().findIndex((result) => result.Thread.id === highlightId()),
     );
   const sectionOf = (thread: IWireThreadShell): ICardSection => {
-    const held = sections();
+    const held = untrack(sections);
     if (held.Snoozed.includes(thread)) return "snoozed";
     if (held.Settled.includes(thread)) return "settled";
     if (held.Pinned.includes(thread)) return "pinned";
