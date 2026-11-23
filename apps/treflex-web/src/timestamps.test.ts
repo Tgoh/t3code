@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off -- Times built only to format them.
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
+import { dayAwareTimestamp, fullTimestamp, shortTimestamp } from "./timestamps";
 
 // Node re-resolves the default zone when TZ is assigned, like a browser after the OS zone changes.
 function useTimeZone(timeZone: string): Disposable {
@@ -42,5 +42,31 @@ describe("timestamps after the system time zone changes", () => {
 
     process.env.TZ = "Asia/Bangkok";
     expect(dayAwareTimestamp(now)).toBe(timeIn(now, "Asia/Bangkok"));
+  });
+});
+
+describe("the time format setting", () => {
+  const afternoon = "2026-11-07T15:05:00.000Z";
+  const hourIn = (format: "12-hour" | "24-hour") =>
+    new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: format === "12-hour",
+      timeZone: "UTC",
+    }).format(new Date(afternoon));
+
+  it.each(["12-hour", "24-hour"] as const)("renders %s times", (format) => {
+    using _zone = useTimeZone("UTC");
+    expect(shortTimestamp(afternoon, format)).toBe(hourIn(format));
+    expect(fullTimestamp(afternoon, format)).toBe(`${hourIn(format)}, 7th November 2026`);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(afternoon);
+    using _clock = { [Symbol.dispose]: () => vi.useRealTimers() };
+    expect(dayAwareTimestamp(afternoon, format)).toBe(hourIn(format));
+  });
+
+  it("keeps 12-hour and 24-hour apart", () => {
+    using _zone = useTimeZone("UTC");
+    expect(shortTimestamp(afternoon, "12-hour")).not.toBe(shortTimestamp(afternoon, "24-hour"));
   });
 });

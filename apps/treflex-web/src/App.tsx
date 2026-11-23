@@ -2,7 +2,17 @@ import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import type { KeybindingCommand } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useDispatch } from "treflex-solid";
-import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+} from "solid-js";
 
 import { AddProjectPalette } from "./AddProject";
 import { ProjectBadge } from "./brand";
@@ -93,6 +103,11 @@ const EnvironmentView = Environment.provider(() => {
       onChange: (collapsed) => void environment.setPreferences({ SidebarCollapsed: collapsed }),
     },
   );
+  // Follows appInit.tsx: styles.css sizes --chat-content-max-width from this attribute.
+  createEffect(() => {
+    document.documentElement.dataset.chatWidth =
+      environment.state.Local.ClientSettings?.chatWidth ?? "comfortable";
+  });
   const keybindings = () => environment.keybindings();
   const platform = navigator.platform;
   const dispatch = useDispatch();

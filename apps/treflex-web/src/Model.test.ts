@@ -74,6 +74,7 @@ import { pull, runGitAction } from "./GitWork";
 import { loadEarlier } from "./HistoryWindow";
 import {
   autoRefreshLimits,
+  chooseNotificationMode,
   openView,
   toggleModelFavorite,
   updateServerSettings,
@@ -201,6 +202,7 @@ import {
   StopReceiver,
   stoppingRun,
   stopRun,
+  codeWrapped,
   toggleCodeWrap,
   toggleKeepFullHistory,
   toggleQuestionOption,
@@ -227,7 +229,9 @@ import {
   thread,
 } from "./testing/threadFixture";
 import type { IProjectFaviconTarget } from "./projectIcon";
-import { orderFolders } from "./projectOrder";
+import { type IProjectSort, orderFolders } from "./projectOrder";
+import type { IShownNotification } from "./Infrastructure/notifications";
+import { type INotificationMode, threadNotificationTag } from "./threadNotifications";
 import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
 
@@ -281,7 +285,6 @@ const inFlightOf = (
 const storedPreferences: IPreferences = {
   GroupByProject: true,
   ClosedFolders: [],
-  ProjectSort: "manual",
   ProjectOrder: [],
   HiddenProjects: [],
   ProjectScope: [],
@@ -333,6 +336,8 @@ async function connect(
     Applied: [] as IColorScheme[],
     Schemes: [] as IColorScheme[],
     Favicons: [] as IProjectFaviconTarget[],
+    NotifyModes: [] as INotificationMode[],
+    Notified: [] as IShownNotification[],
   };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
@@ -408,6 +413,10 @@ async function connect(
           "Project/Favicons": {
             request: (_ctx: unknown, target: IProjectFaviconTarget) =>
               void device.Favicons.push(target),
+          },
+          "Notify/Device": {
+            setMode: (_ctx: unknown, mode: INotificationMode) => void device.NotifyModes.push(mode),
+            show: (_ctx: unknown, note: IShownNotification) => void device.Notified.push(note),
           },
           ...resources?.methods,
         },
@@ -1384,6 +1393,95 @@ describe("history pages", () => {
   });
 });
 
+describe("thread notifications", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+  const shellRow = (status: string, extra: object = {}) => ({
+    id: "t-1",
+    projectId: "p-1",
+    updatedAt: at,
+    createdAt: at,
+    title: "Fix the build",
+    status,
+    latestRunId: "run-1",
+    activeRunId: status === "running" ? "run-1" : null,
+    latestRunCompletedAt: status === "running" ? null : "2026-01-01T00:05:00.000Z",
+    activeProviderThreadId: null,
+    pendingRuntimeRequest: null,
+    lineage: { rootThreadId: "t-1", parentThreadId: null, relationshipToParent: null },
+    ...extra,
+  });
+  const update = (sequence: number, thread: object) =>
+    ({ kind: "thread.updated", sequence, location: "active", thread }) as unknown as IWireShellItem;
+
+  it("announce a finished run from the shell's status events, skip what a reconnect replays, and open the thread on a click", async () => {
+    const server = await connect(undefined, null, {
+      storeClientSettings: () => undefined,
+      chooseNotificationMode: () => "granted",
+    });
+    expect(server.device.NotifyModes).toEqual(["off"]);
+    await server.sendShell(update(1, shellRow("running")));
+    await server.sendShell({ kind: "synchronized" } as unknown as IWireShellItem);
+    await server.sendShell(update(2, shellRow("completed")));
+    expect(server.device.Notified).toEqual([]);
+    await server.sendShell(update(3, shellRow("running", { latestRunId: "run-2" })));
+
+    expect(
+      await server.runtime.dispatch(chooseNotificationMode, server.envId(), "notifications"),
+    ).toBeNull();
+    expect(server.environment().Local.ClientSettings?.notificationMode).toBe("notifications");
+    expect(server.device.NotifyModes).toEqual(["off", "notifications"]);
+    await server.sendShell(
+      update(4, shellRow("completed", { latestRunCompletedAt: "2026-01-01T00:09:00.000Z" })),
+    );
+    expect(server.device.Notified).toEqual([
+      {
+        ThreadId: "t-1",
+        Kind: "completion",
+        Title: "Thread completed",
+        Body: "Fix the build",
+        Tag: threadNotificationTag(ENV, "t-1"),
+      },
+    ]);
+
+    await server.runtime.dispatch(
+      ShellReceiver.handle,
+      server.shellId(),
+      { Type: "Shell/Stream", Resubscribing: true } as never,
+      { publisher: { Id: server.shellId() } },
+    );
+    const done = shellRow("completed", { latestRunCompletedAt: "2026-01-01T00:09:00.000Z" });
+    await server.sendShell(
+      update(5, {
+        ...done,
+        pendingRuntimeRequest: { id: "req-1", kind: "command_approval", createdAt: at },
+      }),
+    );
+    await server.sendShell(update(6, done));
+    await server.sendShell({ kind: "synchronized" } as unknown as IWireShellItem);
+    expect(server.device.Notified).toHaveLength(1);
+
+    await server.runtime.dispatch(
+      EnvironmentReceiver.handle,
+      server.envId(),
+      { Type: "Notify/Device", Opened: "t-1" } as never,
+      { publisher: { Id: server.envId() } },
+    );
+    expect(server.environment().Local.SelectedThreadId).toBe("t-1");
+  });
+
+  it("keep the mode when the browser refuses to notify, and say why", async () => {
+    const server = await connect(undefined, null, {
+      storeClientSettings: () => undefined,
+      chooseNotificationMode: () => "denied",
+    });
+    expect(
+      await server.runtime.dispatch(chooseNotificationMode, server.envId(), "notifications"),
+    ).toMatch(/^Allow notifications in your browser/);
+    expect(server.environment().Local.ClientSettings?.notificationMode).toBeUndefined();
+    expect(server.device.NotifyModes).toEqual(["off"]);
+  });
+});
+
 describe("the sidebar", () => {
   const row = (id: string, projectId: string, updatedAt: string, extra: object = {}) => ({
     id,
@@ -1742,6 +1840,7 @@ describe("the sidebar", () => {
       preferences: Partial<IPreferences> = {},
       selectedId: string | null = null,
       shelves: Partial<IShelves> = {},
+      projectSort: IProjectSort = "manual",
     ) =>
       layoutSidebar({
         Threads: threads as never,
@@ -1750,7 +1849,15 @@ describe("the sidebar", () => {
         Now: Date.parse(at),
         Subagents: {},
         Preferences: { ...storedPreferences, HiddenProjects: ["h"], ...preferences },
-        Shelves: { SnoozedOpen: false, SettledOpen: false, SettledShown: 25, ...shelves },
+        ProjectSort: projectSort,
+        Inbox: null,
+        Shelves: {
+          WorkingOpen: false,
+          SnoozedOpen: false,
+          SettledOpen: false,
+          SettledShown: 25,
+          ...shelves,
+        },
       });
     const order = (...args: Parameters<typeof layout>) => layout(...args).Order;
 
@@ -1765,7 +1872,7 @@ describe("the sidebar", () => {
     expect(ids(layout({ GroupByProject: false }).Sections.Pinned)).toEqual(["first", "pin"]);
     expect(layout({ GroupByProject: false }).Folders).toEqual([]);
     expect(order({ ProjectOrder: ["b", "a"] })).toEqual(["b1", "first", "pin", "a1"]);
-    expect(order({ ProjectSort: "created_at" })).toEqual(["b1", "first", "pin", "a1"]);
+    expect(order({}, null, {}, "created_at")).toEqual(["b1", "first", "pin", "a1"]);
     expect(order({ ClosedFolders: ["a"] })).toEqual(["b1"]);
     expect(order({ ClosedFolders: ["a"] }, "a1")).toEqual(["a1", "b1"]);
     expect(order({}, "h1")).toEqual(["first", "pin", "a1", "b1", "h1"]);
@@ -1905,8 +2012,76 @@ describe("the sidebar", () => {
     expect(server.environment().Local.ThreadSessions[selected()!]?.NewThreadProjectId).toBe("lone");
   });
 
+  it("folds working threads into the Working section, which holds a finished one for two seconds", async () => {
+    const server = await connect(
+      undefined,
+      null,
+      { storeClientSettings: () => undefined },
+      undefined,
+      undefined,
+      { ...storedPreferences, GroupByProject: false },
+    );
+    const read = () => server.runtime.processSelector(sidebarLayout, server.environment);
+    const ids = (list: { id: string }[]) => list.map((thread) => thread.id);
+    const at = "1970-01-01T00:00:00.000Z";
+    const running = row("busy", "p-1", at, {
+      createdAt: at,
+      status: "running",
+      latestRunId: "run-1",
+      activeRunId: "run-1",
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "p-1", title: "One", workspaceRoot: "/1" }],
+        threads: [row("idle", "p-1", at, { createdAt: at }), running],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.sendShell({ kind: "synchronized" } as unknown as IWireShellItem);
+    expect(ids(read().Sections.Working)).toEqual(["busy"]);
+    expect(ids(read().Sections.Active)).toEqual(["idle"]);
+    expect(read().Order).toEqual(["idle"]);
+    await server.runtime.dispatch(toggleShelf, server.envId(), "Working");
+    expect(read().Order).toEqual(["idle", "busy"]);
+
+    server.device.Now = 1_000;
+    await server.sendShell({
+      kind: "thread.updated",
+      sequence: 2,
+      location: "active",
+      thread: { ...running, status: "completed", activeRunId: null, latestRunCompletedAt: at },
+    } as unknown as IWireShellItem);
+    expect(ids(read().Sections.Working)).toEqual(["busy"]);
+    expect(server.runtime.timers(server.shellId())).toMatchObject([{ Key: "Shell/InboxGrace" }]);
+    server.device.Now = 3_000;
+    await server.runtime.dispatch(
+      ShellReceiver.handle,
+      server.shellId(),
+      { Type: "Shell/InboxGrace" } as never,
+      { publisher: { Id: server.shellId() } },
+    );
+    expect(read().Sections.Working).toEqual([]);
+    expect(ids(read().Sections.Active)).toEqual(["busy", "idle"]);
+    expect(server.runtime.timers(server.shellId())).toEqual([]);
+
+    await server.runtime.dispatch(writeSetting, server.envId(), {
+      Store: "client",
+      Patch: { sidebarWorkingShelfEnabled: false },
+    });
+    await server.sendShell({
+      kind: "thread.updated",
+      sequence: 3,
+      location: "active",
+      thread: { ...running, latestRunId: "run-2", activeRunId: "run-2" },
+    } as unknown as IWireShellItem);
+    expect(read().Sections.Working).toEqual([]);
+    expect(ids(read().Sections.Active)).toEqual(["busy", "idle"]);
+  });
+
   it("keeps this device's choices, restores them in a fresh client, and wakes snoozed rows on the clock", async () => {
-    const first = await connect();
+    const first = await connect(undefined, null, { storeClientSettings: () => undefined });
     const read = () => first.runtime.processSelector(sidebarLayout, first.environment);
     await first.sendShell({
       kind: "snapshot",
@@ -1933,7 +2108,10 @@ describe("the sidebar", () => {
     await first.runtime.dispatch(setProjectHidden, envId, "p-1", true);
     await first.runtime.dispatch(toggleFolder, envId, "p-2");
     await first.runtime.dispatch(toggleProjectScope, envId, "p-2");
-    await first.runtime.dispatch(setPreferences, envId, { ProjectSort: "created_at" });
+    await first.runtime.dispatch(writeSetting, envId, {
+      Store: "client",
+      Patch: { sidebarProjectSortOrder: "created_at" },
+    });
     await first.runtime.dispatch(setPreferences, envId, { ProjectOrder: ["p-2", "p-1"] });
     await first.runtime.dispatch(setPreferences, envId, { SidebarCollapsed: true });
     await first.runtime.dispatch(setPreferences, envId, { SidebarWidth: 320 });
@@ -1943,7 +2121,6 @@ describe("the sidebar", () => {
       HiddenProjects: ["p-1"],
       ClosedFolders: ["p-2"],
       ProjectScope: ["p-2"],
-      ProjectSort: "created_at",
       ProjectOrder: ["p-2", "p-1"],
       SidebarCollapsed: true,
       SidebarWidth: 320,
@@ -1957,7 +2134,10 @@ describe("the sidebar", () => {
     await first.runtime.dispatch(toggleProjectScope, envId, null);
     await first.runtime.dispatch(setProjectHidden, envId, "p-1", false);
     expect(read().Order).toEqual(["t-1", "t-2"]);
-    await first.runtime.dispatch(setPreferences, envId, { ProjectSort: "manual" });
+    await first.runtime.dispatch(writeSetting, envId, {
+      Store: "client",
+      Patch: { sidebarProjectSortOrder: "manual" },
+    });
     expect(read().Order).toEqual(["t-2", "t-1"]);
 
     first.device.Now = 120_000;
@@ -4170,19 +4350,25 @@ describe("drafts", () => {
 describe("code blocks", () => {
   it("keep a wrap choice per thread, and lose it with the thread's session", async () => {
     const server = await connect(undefined, THREAD_ID, { threadCommand: () => undefined });
-    const unwrapped = (threadId: string) => server.session(threadId).UnwrappedCode;
-    await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0");
-    expect(unwrapped(THREAD_ID)).toEqual({ "item-1:0:0": true });
+    const wraps = (threadId: string) => server.session(threadId).CodeWrap;
+    await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0", true);
+    expect(wraps(THREAD_ID)).toEqual({ "item-1:0:0": false });
     await server.runtime.dispatch(selectThread, server.envId(), "other");
-    expect(unwrapped("other")).toEqual({});
+    expect(wraps("other")).toEqual({});
     await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
-    expect(unwrapped(THREAD_ID)).toEqual({ "item-1:0:0": true });
-    await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0");
-    expect(unwrapped(THREAD_ID)).toEqual({});
-    await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0");
+    expect(wraps(THREAD_ID)).toEqual({ "item-1:0:0": false });
+    await server.runtime.dispatch(toggleCodeWrap, server.sessionId(), "item-1:0:0", false);
+    expect(wraps(THREAD_ID)).toEqual({ "item-1:0:0": true });
     await server.runtime.dispatch(threadCommand, server.envId(), THREAD_ID, { Kind: "delete" });
     await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
-    expect(unwrapped(THREAD_ID)).toEqual({});
+    expect(wraps(THREAD_ID)).toEqual({});
+  });
+
+  it("wrap by the Word wrap setting until a block is toggled", () => {
+    expect(codeWrapped({}, "item-1:0:0", true)).toBe(true);
+    expect(codeWrapped({}, "item-1:0:0", false)).toBe(false);
+    expect(codeWrapped({ "item-1:0:0": true }, "item-1:0:0", false)).toBe(true);
+    expect(codeWrapped({ "item-1:0:0": false }, "item-1:0:0", true)).toBe(false);
   });
 });
 

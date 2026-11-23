@@ -18,6 +18,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { implementation } from "treflex";
 
+import { isProjectSort } from "../projectOrder";
 import { inEnvironment, onceRegistered } from "./commandsImpl";
 import {
   archivedShellEffect,
@@ -92,17 +93,45 @@ export const updateServerSettingsImpl = implementation(updateServerSettingsEffec
 const QUEUE_DEFAULT_KEY = "reflex:follow-up-queue-default:v1";
 const TREFLEX_DEFAULTS = { followUpBehavior: "queue" };
 
+// Treflex sorts projects manually by default where stock sorts by update, and saved settings
+// always carry stock's default, so each browser takes its old treflex sort once.
+const PROJECT_SORT_MOVED_KEY = "reflex:project-sort-moved:v1";
+const LEGACY_PROJECT_SORT_KEY = "reflex-web:project-sort";
+const LEGACY_PROJECT_SORT_DEFAULT = "manual";
+
 function readClientSettings(): unknown {
   try {
     const held = localStorage.getItem(CLIENT_SETTINGS_KEY);
-    const settings: unknown = held === null ? {} : JSON.parse(held);
-    if (localStorage.getItem(QUEUE_DEFAULT_KEY) !== null) return settings;
-    const switched = { ...(typeof settings === "object" ? settings : {}), ...TREFLEX_DEFAULTS };
-    localStorage.setItem(CLIENT_SETTINGS_KEY, JSON.stringify(switched));
-    localStorage.setItem(QUEUE_DEFAULT_KEY, "1");
-    return switched;
+    const parsed: unknown = held === null ? {} : JSON.parse(held);
+    let settings = typeof parsed === "object" && parsed !== null ? parsed : {};
+    let changed = false;
+    if (localStorage.getItem(QUEUE_DEFAULT_KEY) === null) {
+      settings = { ...settings, ...TREFLEX_DEFAULTS };
+      localStorage.setItem(QUEUE_DEFAULT_KEY, "1");
+      changed = true;
+    }
+    if (localStorage.getItem(PROJECT_SORT_MOVED_KEY) === null) {
+      const sort = parseJson(localStorage.getItem(LEGACY_PROJECT_SORT_KEY) ?? "null");
+      settings = {
+        ...settings,
+        sidebarProjectSortOrder: isProjectSort(sort) ? sort : LEGACY_PROJECT_SORT_DEFAULT,
+      };
+      localStorage.removeItem(LEGACY_PROJECT_SORT_KEY);
+      localStorage.setItem(PROJECT_SORT_MOVED_KEY, "1");
+      changed = true;
+    }
+    if (changed) localStorage.setItem(CLIENT_SETTINGS_KEY, JSON.stringify(settings));
+    return settings;
   } catch {
     return TREFLEX_DEFAULTS;
+  }
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
   }
 }
 

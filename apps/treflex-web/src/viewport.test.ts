@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   composerCollapses,
+  composerRequiresModifier,
   createMediaQuery,
   createSidebarSheet,
+  enterIsAlternate,
   enterSends,
   longPress,
 } from "./viewport";
@@ -179,5 +181,58 @@ describe("enterSends", () => {
     ["Shift+Cmd+Enter on a touch screen", { ...enter, shiftKey: true, metaKey: true }, true, false],
   ])("%s", (_label, event, coarse, expected) => {
     expect(enterSends(event, coarse)).toBe(expected);
+  });
+
+  const shiftCtrl = { ...enter, ctrlKey: true, shiftKey: true };
+  it.each([
+    ["Enter when Ctrl+Enter always sends", enter, "mod-enter", "x", false, false],
+    [
+      "Ctrl+Enter when Ctrl+Enter always sends",
+      { ...enter, ctrlKey: true },
+      "mod-enter",
+      "x",
+      false,
+      true,
+    ],
+    [
+      "Shift+Ctrl+Enter during a turn when Ctrl+Enter always sends",
+      shiftCtrl,
+      "mod-enter",
+      "x",
+      true,
+      true,
+    ],
+    [
+      "Shift+Ctrl+Enter between turns when Ctrl+Enter always sends",
+      shiftCtrl,
+      "mod-enter",
+      "x",
+      false,
+      false,
+    ],
+    ["Enter on one line, multiline mode", enter, "mod-enter-multiline", "x", false, true],
+    ["Enter on two lines, multiline mode", enter, "mod-enter-multiline", "x\ny", false, false],
+    [
+      "Cmd+Enter on two lines, multiline mode",
+      { ...enter, metaKey: true },
+      "mod-enter-multiline",
+      "x\ny",
+      false,
+      true,
+    ],
+  ] as const)("%s", (_label, event, shortcut, prompt, running, expected) => {
+    const requiresModifier = composerRequiresModifier(shortcut, prompt);
+    expect(enterSends(event, false, requiresModifier, running)).toBe(expected);
+  });
+});
+
+describe("enterIsAlternate", () => {
+  const enter = { key: "Enter", shiftKey: false, metaKey: false, ctrlKey: true };
+  it.each([
+    ["Ctrl+Enter", enter, false, true],
+    ["Ctrl+Enter when a modifier sends", enter, true, false],
+    ["Shift+Ctrl+Enter when a modifier sends", { ...enter, shiftKey: true }, true, true],
+  ])("%s", (_label, event, requiresModifier, expected) => {
+    expect(enterIsAlternate(event, requiresModifier, false)).toBe(expected);
   });
 });

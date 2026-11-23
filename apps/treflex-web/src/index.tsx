@@ -8,6 +8,7 @@ import "./index.css";
 import { App } from "./App";
 import { openExternalLinksInSafari } from "./externalLinks";
 import { addressHistory, addressImpl, writeAddressImpl } from "./Infrastructure/address";
+import { chooseNotificationModeImpl, threadNotifier } from "./Infrastructure/notifications";
 import {
   archivedShellImpl,
   refreshProvidersImpl,
@@ -159,6 +160,8 @@ runtime.registerImplementation(refreshProvidersImpl);
 runtime.registerImplementation(updateServerSettingsImpl);
 runtime.registerImplementation(storedClientSettingsImpl);
 runtime.registerImplementation(storeClientSettingsImpl);
+runtime.registerResourceType("threadNotifier", threadNotifier);
+runtime.registerImplementation(chooseNotificationModeImpl);
 runtime.registerImplementation(archivedShellImpl);
 runtime.registerImplementation(usageSummaryImpl);
 runtime.registerImplementation(refreshUsageRatesImpl);

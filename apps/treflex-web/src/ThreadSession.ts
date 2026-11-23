@@ -123,6 +123,7 @@ import { draftModel, projectRuntimeMode } from "./newThreadDefaults";
 import { delay } from "./Infrastructure/delay";
 import type { IWireServerConfig } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
+import type { INotificationMode } from "./threadNotifications";
 import { serverError, serverFailure } from "./Infrastructure/serverError";
 import { detachTerminal, type ITerminal, openTerminal, restoreTerminal } from "./Terminal";
 import {
@@ -177,9 +178,14 @@ export interface ISelection extends IEntity {
     AppearanceMode: IAppearanceMode;
     CompactionDismissed: string[];
     DetailsOpen: boolean;
+    GroupByProject: boolean;
   };
   SystemDark: boolean;
-  ClientSettings: { followUpBehavior: ActiveTurnComposerAction } | null;
+  ClientSettings: {
+    followUpBehavior: ActiveTurnComposerAction;
+    sidebarWorkingShelfEnabled: boolean;
+    notificationMode: INotificationMode;
+  } | null;
 }
 
 export type IAttachmentDraft = IPickedFile;
@@ -240,8 +246,8 @@ export interface IThreadSession extends IEntity {
   ExpandedRows: Record<string, true>;
   CommandOutputs: Record<string, ICommandOutputRow>;
   ToolDetails: Record<string, IToolDetail>;
-  /** Code blocks the person turned wrapping off for, by block key. */
-  UnwrappedCode: Record<string, true>;
+  /** Whether a code block the person toggled wraps, by block key; others follow Word wrap. */
+  CodeWrap: Record<string, boolean>;
   /**
    * Where the reader left the timeline: the response row at the top of the view and how far its
    * top sat from the view's top, or null at the end, which a return follows to the newest row.
@@ -275,7 +281,7 @@ export function getDefaultThreadSession(
     ExpandedRows: {},
     CommandOutputs: {},
     ToolDetails: {},
-    UnwrappedCode: {},
+    CodeWrap: {},
     Scroll: null,
     Details: null,
   };
@@ -1501,10 +1507,19 @@ export function* rememberScroll(
   draft.Scroll = scroll;
 }
 
-/** Code blocks wrap their lines until the person turns it off. */
-export function* toggleCodeWrap(draft: IThreadSession, blockKey: string): IActionGenerator {
-  if (draft.UnwrappedCode[blockKey]) delete draft.UnwrappedCode[blockKey];
-  else draft.UnwrappedCode[blockKey] = true;
+// Follows MarkdownCodeBlock in apps/web/src/components/chat/MarkdownCodeBlock.tsx (`wrapOverride`).
+export const codeWrapped = (
+  held: Readonly<Record<string, boolean>>,
+  blockKey: string,
+  wordWrap: boolean,
+): boolean => held[blockKey] ?? wordWrap;
+
+export function* toggleCodeWrap(
+  draft: IThreadSession,
+  blockKey: string,
+  wrapped: boolean,
+): IActionGenerator {
+  draft.CodeWrap[blockKey] = !wrapped;
 }
 
 export function* openDiff(

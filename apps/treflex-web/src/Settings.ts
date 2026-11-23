@@ -1,4 +1,11 @@
-import { type IActionGenerator, type IOpenGenerator, open, start } from "treflex";
+import {
+  type IActionGenerator,
+  type IOpenGenerator,
+  type ISelectorGenerator,
+  open,
+  resource,
+  start,
+} from "treflex";
 
 import type { IEnvironment } from "./Environment";
 import { type IAddressView, writeAddressEffect } from "./Infrastructure/address";
@@ -15,9 +22,15 @@ import type { IWireServerConfigEvent } from "./Infrastructure/serverConfigStream
 import { modelFavoritesOf, providerOptions } from "./modelOptions";
 import { modelFavoritePatch } from "./providerSettings";
 import { reconcile } from "./rows";
-import { visitShown } from "./Shell";
+import { followInbox, notifyChanges, visitShown } from "./Shell";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
+import {
+  chooseNotificationModeEffect,
+  type INotificationPermission,
+} from "./Infrastructure/notifications";
+import type { INotificationMode } from "./threadNotifications";
 import { closeDetailsPopover, followCheckout } from "./ThreadSession";
+import type { ITimestampFormat } from "./timestamps";
 import { loadModels } from "./VoiceModels";
 
 /**
@@ -67,6 +80,36 @@ export function* showView(draft: IEnvironment, view: IAddressView | null): IActi
 
 export function* loadSettings(draft: IEnvironment): IActionGenerator {
   draft.Local.ClientSettings = yield* storedClientSettingsEffect();
+  yield* applyNotificationMode(draft);
+  yield* start(notifyChanges, draft.Replica.Shell);
+}
+
+export function* applyNotificationMode(draft: IEnvironment): IActionGenerator {
+  const mode = draft.Local.ClientSettings?.notificationMode ?? "off";
+  yield* resource(draft, "Notify/Device").setMode(mode);
+}
+
+// Follows NotificationSettings in apps/web/src/components/settings/NotificationSettings.tsx.
+const PERMISSION_MESSAGES: Record<Exclude<INotificationPermission, "granted">, string> = {
+  unsupported:
+    "Notifications need a supported browser over HTTPS, or the desktop app. Sound only is still available.",
+  unavailable: "Notifications are unavailable in this browser. Sound only is still available.",
+  denied:
+    "Allow notifications in your browser or system settings, then choose this option again. Sound only is still available.",
+};
+
+/**
+ * Sets Thread notifications once the browser allows what the mode needs. Returns why it didn't,
+ * for the row to show in place of its description.
+ */
+export function* chooseNotificationMode(
+  draft: IEnvironment,
+  mode: INotificationMode,
+): IOpenGenerator<string | null> {
+  const permission = yield* open(chooseNotificationModeEffect({ Mode: mode }));
+  if (permission !== "granted") return PERMISSION_MESSAGES[permission];
+  yield* setClientSettings(draft, { notificationMode: mode });
+  return null;
 }
 
 // Follows applyServerConfigProjection in packages/client-runtime/src/state/serverConfigProjection.ts,
@@ -146,6 +189,34 @@ export function* setClientSettings(
   const next = { ...held, ...patch };
   draft.Local.ClientSettings = next;
   yield* storeClientSettingsEffect({ Settings: next });
+  if (patch.notificationMode !== undefined) {
+    yield* applyNotificationMode(draft);
+    yield* start(notifyChanges, draft.Replica.Shell);
+  }
+  if (patch.sidebarWorkingShelfEnabled !== undefined)
+    yield* start(followInbox, draft.Replica.Shell);
+}
+
+export function* timestampFormat(draft: IEnvironment): ISelectorGenerator<ITimestampFormat> {
+  return draft.Local.ClientSettings?.timestampFormat ?? "locale";
+}
+
+export function* sendShortcut(
+  draft: IEnvironment,
+): ISelectorGenerator<IWireClientSettings["sendShortcut"]> {
+  return draft.Local.ClientSettings?.sendShortcut ?? "enter";
+}
+
+export function* confirmThreadUnpin(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return draft.Local.ClientSettings?.confirmThreadUnpin ?? false;
+}
+
+export function* confirmThreadDelete(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return draft.Local.ClientSettings?.confirmThreadDelete ?? true;
+}
+
+export function* wordWrap(draft: IEnvironment): ISelectorGenerator<boolean> {
+  return draft.Local.ClientSettings?.wordWrap ?? true;
 }
 
 export function* writeSetting(draft: IEnvironment, write: ISettingWrite): IOpenGenerator {

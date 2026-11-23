@@ -1,14 +1,12 @@
 import { defineEffect, type IEffect, implementation } from "treflex";
 
 import { type IAppearanceMode, isAppearanceMode } from "../colorScheme";
-import { type IProjectSort, isProjectSort } from "../projectOrder";
 import { clockNow } from "../timestamps";
 
 /** This device's choices. Each field keeps the localStorage key and value shape it always had. */
 export interface IPreferences {
   GroupByProject: boolean;
   ClosedFolders: string[];
-  ProjectSort: IProjectSort;
   ProjectOrder: string[];
   HiddenProjects: string[];
   ProjectScope: string[];
@@ -75,7 +73,6 @@ const SIDEBAR_WIDTH_KEY = "chat_thread_sidebar_width";
 const KEYS = {
   GroupByProject: "reflex-web:group-by-project",
   ClosedFolders: "reflex-web:closed-folders",
-  ProjectSort: "reflex-web:project-sort",
   ProjectOrder: "reflex-web:project-order",
   HiddenProjects: "reflex-web:hidden-projects",
   ProjectScope: "reflex-web:project-scope",
@@ -126,13 +123,11 @@ const voiceDestination = (held: unknown): IVoiceDestination =>
   held === "server" || held === "off" ? held : null;
 
 export function readPreferences(): IPreferences {
-  const sort = readJson(KEYS.ProjectSort);
   const usage = readJson(USAGE_KEY) as { metric?: unknown; windowDays?: unknown } | undefined;
   const width = readJson(SIDEBAR_WIDTH_KEY);
   return {
     GroupByProject: readJson(KEYS.GroupByProject) !== false,
     ClosedFolders: ids(readJson(KEYS.ClosedFolders)),
-    ProjectSort: isProjectSort(sort) ? sort : "manual",
     ProjectOrder: ids(readJson(KEYS.ProjectOrder)),
     HiddenProjects: ids(readJson(KEYS.HiddenProjects)),
     ProjectScope: ids(readJson(KEYS.ProjectScope)),

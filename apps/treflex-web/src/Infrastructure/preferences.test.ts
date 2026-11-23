@@ -17,7 +17,6 @@ describe("this device's preferences", () => {
     stubStorage({
       "reflex-web:group-by-project": "false",
       "reflex-web:closed-folders": '["p-1"]',
-      "reflex-web:project-sort": '"created_at"',
       "reflex-web:project-order": '["p-2","p-1",3]',
       "reflex-web:hidden-projects": '["p-3"]',
       "reflex-web:project-scope": '["p-2"]',
@@ -32,7 +31,6 @@ describe("this device's preferences", () => {
     expect(readPreferences()).toEqual({
       GroupByProject: false,
       ClosedFolders: ["p-1"],
-      ProjectSort: "created_at",
       ProjectOrder: ["p-2", "p-1"],
       HiddenProjects: ["p-3"],
       ProjectScope: ["p-2"],
@@ -49,7 +47,6 @@ describe("this device's preferences", () => {
 
   it("falls back to the defaults for missing or unreadable values", () => {
     stubStorage({
-      "reflex-web:project-sort": '"sideways"',
       "reflex-web:closed-folders": "not json",
       "t3code:theme-appearance-mode": "sepia",
       chat_thread_sidebar_width: '"wide"',
@@ -57,7 +54,6 @@ describe("this device's preferences", () => {
     expect(readPreferences()).toEqual({
       GroupByProject: true,
       ClosedFolders: [],
-      ProjectSort: "manual",
       ProjectOrder: [],
       HiddenProjects: [],
       ProjectScope: [],
@@ -76,19 +72,16 @@ describe("this device's preferences", () => {
     const held = stubStorage({});
     writePreferences({
       HiddenProjects: ["p-1"],
-      ProjectSort: "updated_at",
       AppearanceMode: "light",
       Usage: { Metric: "tokens", Days: 90 },
     });
     expect(Object.fromEntries(held)).toEqual({
       "reflex-web:hidden-projects": '["p-1"]',
-      "reflex-web:project-sort": '"updated_at"',
       "t3code:theme-appearance-mode": "light",
       "t3code:usage-page-preferences:v1": '{"metric":"tokens","windowDays":90}',
     });
     expect(readPreferences()).toMatchObject({
       HiddenProjects: ["p-1"],
-      ProjectSort: "updated_at",
       AppearanceMode: "light",
       Usage: { Metric: "tokens", Days: 90 },
     });

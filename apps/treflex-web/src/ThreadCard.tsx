@@ -39,7 +39,7 @@ import Shell, {
   workingStartedAt,
 } from "./Shell";
 import { modelDisplay } from "./ThreadSession";
-import { relativeTime, timeUntil } from "./timestamps";
+import { relativeTime, shortTimestamp, timeUntil } from "./timestamps";
 import {
   MenuItem,
   MenuItemDetail,
@@ -50,6 +50,16 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
 } from "./ui/Menu";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "./ui/AlertDialog";
+import { Button } from "./ui/Button";
 import { hoverCard } from "./ui/Tooltip";
 import { longPress, useSidebarSheet } from "./viewport";
 
@@ -515,12 +525,12 @@ export function ThreadMenu(props: {
   x: number;
   y: number;
   onRename: () => void;
+  onConfirm: (kind: IThreadConfirmation) => void;
   onClose: () => void;
 }) {
   const environment = Environment.use();
   const shell = Shell.use();
   const navigation = useNavigation();
-  const [confirmingDelete, setConfirmingDelete] = createSignal(false);
   const now = () => environment.minute();
   const subagent = () => shell.subagentRequests()[props.thread.id];
   const snoozed = () => isSnoozed(props.thread, now(), subagent());
@@ -529,7 +539,9 @@ export function ThreadMenu(props: {
   const presets = createMemo(() =>
     snoozed() || !canSnooze(props.thread, subagent(), now())
       ? []
-      : resolveSnoozePresets(new Date(now())),
+      : resolveSnoozePresets(new Date(now()), {
+          formatTime: (date) => shortTimestamp(date.toISOString(), environment.timestampFormat()),
+        }),
   );
   const run = (command: IThreadCommand) => environment.threadCommand(props.thread.id, command);
   return (
@@ -591,7 +603,11 @@ export function ThreadMenu(props: {
           </MenuItem>
         }
       >
-        <MenuItem onClick={() => run({ Kind: "unpin" })}>
+        <MenuItem
+          onClick={() =>
+            environment.confirmThreadUnpin() ? props.onConfirm("unpin") : run({ Kind: "unpin" })
+          }
+        >
           <PinOff />
           Unpin
         </MenuItem>
@@ -608,25 +624,65 @@ export function ThreadMenu(props: {
         Mark unread
       </MenuItem>
       <MenuSeparator />
-      <Show
-        when={confirmingDelete()}
-        fallback={
-          <MenuItem
-            variant="destructive"
-            closeOnClick={false}
-            onClick={() => setConfirmingDelete(true)}
-          >
-            <Trash2 />
-            Delete
-          </MenuItem>
+      <MenuItem
+        variant="destructive"
+        onClick={() =>
+          environment.confirmThreadDelete() ? props.onConfirm("delete") : run({ Kind: "delete" })
         }
       >
-        <MenuItem variant="destructive" onClick={() => run({ Kind: "delete" })}>
-          <Trash2 />
-          Delete this thread?
-          <MenuItemDetail>Can't be undone</MenuItemDetail>
-        </MenuItem>
-      </Show>
+        <Trash2 />
+        Delete
+      </MenuItem>
     </MenuPopup>
+  );
+}
+
+export type IThreadConfirmation = "unpin" | "delete";
+
+// Follows requestThreadUnpinConfirmation and confirmAndDeleteThread in
+// apps/web/src/hooks/useThreadActions.ts, shown as ConfirmDialogHost.tsx shows them.
+const CONFIRMATION_COPY: Record<IThreadConfirmation, { Title: string; Description: string }> = {
+  unpin: {
+    Title: "Unpin thread",
+    Description: "This will move the thread out of your pinned section.",
+  },
+  delete: {
+    Title: "Delete thread",
+    Description: "This permanently clears conversation history for this thread.",
+  },
+};
+
+export function ThreadConfirmDialog(props: {
+  kind: IThreadConfirmation;
+  title: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const copy = () => CONFIRMATION_COPY[props.kind];
+  return (
+    <AlertDialog onClose={props.onClose}>
+      <AlertDialogPopup>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {copy().Title} "{props.title}"?
+          </AlertDialogTitle>
+          <AlertDialogDescription class="whitespace-pre-line">
+            {copy().Description}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogClose variant="outline">Cancel</AlertDialogClose>
+          <Button
+            variant={props.kind === "delete" ? "destructive" : "default"}
+            onClick={() => {
+              props.onClose();
+              props.onConfirm();
+            }}
+          >
+            Confirm
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogPopup>
+    </AlertDialog>
   );
 }

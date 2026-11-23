@@ -25,13 +25,19 @@ import { RENAME_THREAD_EVENT, useNavigation } from "./navigation";
 import { groupResults, type ISearchResult, rankMessages, searchThreads } from "./threadSearch";
 import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder";
 import { createListDrag } from "./listDrag";
-import { isProjectSort, PROJECT_SORT_LABELS } from "./projectOrder";
+import { isProjectSort, orderProjects, PROJECT_SORT_LABELS } from "./projectOrder";
 import Root from "./Root";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import Shell, { isBusy, sidebarStatus } from "./Shell";
 import { SidebarFooter } from "./SidebarFooter";
 import { StageArt } from "./StageArt";
-import { type ICardSection, ThreadCard, ThreadMenu } from "./ThreadCard";
+import {
+  type ICardSection,
+  type IThreadConfirmation,
+  ThreadCard,
+  ThreadConfirmDialog,
+  ThreadMenu,
+} from "./ThreadCard";
 import { modelDisplay } from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { CollapsibleSectionHeader } from "./ui/CollapsibleSectionHeader";
@@ -216,7 +222,7 @@ export const Sidebar = Shell.provider(() => {
   };
   const grouped = () => preferences().GroupByProject;
   const closedFolders = createMemo(() => new Set(preferences().ClosedFolders));
-  const projectSort = () => preferences().ProjectSort;
+  const projectSort = () => environment.projectSort();
   const folders = createMemo(
     () => new Map(layout().Folders.map((folder) => [folder.ProjectId, folder])),
   );
@@ -243,6 +249,10 @@ export const Sidebar = Shell.provider(() => {
     return top === null ? null : { Top: top };
   };
   const [removingProject, setRemovingProject] = createSignal<string | null>(null);
+  const [confirming, setConfirming] = createSignal<{
+    Id: string;
+    Kind: IThreadConfirmation;
+  } | null>(null);
   const [renamingProject, setRenamingProject] = createSignal<string | null>(null);
   const [projectMenu, setProjectMenu] = createSignal<{ Id: string; X: number; Y: number } | null>(
     null,
@@ -412,7 +422,12 @@ export const Sidebar = Shell.provider(() => {
                 All projects
               </MenuCheckboxItem>
               <For
-                each={[...projects()].sort((left, right) => left.title.localeCompare(right.title))}
+                each={orderProjects(
+                  projects(),
+                  projectSort(),
+                  preferences().ProjectOrder,
+                  shell.sidebarThreads(),
+                )}
               >
                 {(project) => (
                   <MenuCheckboxItem
@@ -445,7 +460,10 @@ export const Sidebar = Shell.provider(() => {
                     value={projectSort()}
                     onValueChange={(value) => {
                       if (isProjectSort(value))
-                        void environment.setPreferences({ ProjectSort: value });
+                        void environment.writeSetting({
+                          Store: "client",
+                          Patch: { sidebarProjectSortOrder: value },
+                        });
                     }}
                   >
                     <For each={Object.entries(PROJECT_SORT_LABELS)}>
@@ -771,6 +789,17 @@ export const Sidebar = Shell.provider(() => {
                     All clear.
                   </li>
                 </Show>
+                <Show when={sections().Working.length > 0}>
+                  <SectionHeader
+                    label="Working"
+                    count={sections().Working.length}
+                    open={shelves().WorkingOpen}
+                    onToggle={() => void environment.toggleShelf("Working")}
+                  />
+                  <For each={shelf(sections().Working, shelves().WorkingOpen)}>
+                    {(thread) => card(thread, "active")}
+                  </For>
+                </Show>
                 <Show when={sections().Snoozed.length > 0}>
                   <SectionHeader
                     label="Snoozed"
@@ -824,6 +853,7 @@ export const Sidebar = Shell.provider(() => {
                 x={at.X}
                 y={at.Y}
                 onRename={() => setRenaming(thread.id)}
+                onConfirm={(kind) => setConfirming({ Id: thread.id, Kind: kind })}
                 onClose={() => setMenu(null)}
               />
             );
@@ -852,6 +882,21 @@ export const Sidebar = Shell.provider(() => {
               <RemoveProjectDialog project={project()} onClose={() => setRemovingProject(null)} />
             </Portal>
           )}
+        </Presence>
+        <Presence when={confirming()} keyed>
+          {(held) => {
+            const { Id: threadId, Kind: kind } = held();
+            return (
+              <Portal>
+                <ThreadConfirmDialog
+                  kind={kind}
+                  title={shell.state.Threads[threadId]?.title ?? "this thread"}
+                  onConfirm={() => void environment.threadCommand(threadId, { Kind: kind })}
+                  onClose={() => setConfirming(null)}
+                />
+              </Portal>
+            );
+          }}
         </Presence>
         <Show when={folders().get(drag.dragging() ?? "")} keyed>
           {(folder) => (
