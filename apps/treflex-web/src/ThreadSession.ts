@@ -202,6 +202,7 @@ export interface IThreadSession extends IEntity {
   NewThreadProjectId: string | null;
   Draft: string;
   Attachments: IAttachmentDraft[];
+  AttachmentError?: string;
   /** Only a model the person picked; a new thread's reseeding leaves it alone. */
   ModelSelection: IWireModelSelection | null;
   SeededModel: IWireModelSelection | null;
@@ -677,7 +678,14 @@ export function* setRuntimeMode(draft: IThreadSession, mode: IWireRuntimeMode): 
   yield* storeDraft(draft);
 }
 
-export function* addAttachments(draft: IThreadSession, picked: IPickedFile[]): IActionGenerator {
+/** `error` replaces the last intake's, as stock's thread error does. */
+export function* addAttachments(
+  draft: IThreadSession,
+  picked: IPickedFile[],
+  error: string | null,
+): IActionGenerator {
+  if (error === null) delete draft.AttachmentError;
+  else draft.AttachmentError = error;
   draft.Attachments.push(...picked);
   if (picked.length > 0) yield* start(storeFiles, draft);
 }
@@ -814,6 +822,7 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
   draft.KeepFullHistory = false;
   if (draft.Draft.trim() === text) draft.Draft = "";
   draft.Attachments = draft.Attachments.filter((file) => !fileIds.includes(file.Id));
+  delete draft.AttachmentError;
   if (fileIds.length > 0) {
     yield* resource(draft, "Composer/Files").forget(fileIds);
     yield* start(storeFiles, draft);
@@ -950,9 +959,15 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
     const steer = yield* select((held: IThreadSession) => steerOperation(held, press.RunId));
     if (steer !== null) yield* run(steer);
   } catch (error) {
+    // Follows QueuedRunsControl.tsx for a send and useQueuedRunEdit.ts for an edit.
     yield* toast({
       Kind: "error",
-      Title: "Could not send queued message",
+      Title:
+        press.Kind === "sendNow"
+          ? "Could not send queued message"
+          : press.Kind === "edit"
+            ? "Could not save the edited queued message."
+            : "Could not change the queue",
       Description: serverError(error).message,
     });
   }

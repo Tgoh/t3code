@@ -127,7 +127,12 @@ export function* openEditor(draft: IGitWork, editor: string | null): IOpenGenera
   const checkout = yield* select(threadCheckout);
   if (checkout === null) return;
   if (editor === null) {
-    yield* failed(draft, "No editor found", `No editor on this machine can open ${checkout.Cwd}.`);
+    yield* toast({
+      Kind: "error",
+      Title: "No editor found",
+      Description: `No editor on this machine can open ${checkout.Cwd}.`,
+      Thread: { EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
+    });
     return;
   }
   try {
@@ -139,7 +144,12 @@ export function* openEditor(draft: IGitWork, editor: string | null): IOpenGenera
       }),
     );
   } catch (error) {
-    yield* failed(draft, "Unable to open editor", serverError(error).message);
+    yield* toast({
+      Kind: "error",
+      Title: "Unable to open editor",
+      Description: serverError(error).message,
+      Thread: { EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
+    });
   }
 }
 

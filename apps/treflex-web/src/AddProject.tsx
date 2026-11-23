@@ -56,9 +56,6 @@ import { serverError } from "./Infrastructure/serverError";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import { CornerLeftUp, Folder, FolderGit2, FolderPlus, Link } from "./icons";
 import { toastManager } from "./ui/toastStore";
-
-const failed = (title: string, description: string) =>
-  toastManager.add({ type: "error", title, description });
 import { browseFoldersEffect, type IFolderListing } from "./Infrastructure/commandEffects";
 import {
   CommandDialog,
@@ -67,6 +64,9 @@ import {
   CommandList,
   type ICommandInputEndInset,
 } from "./ui/Command";
+
+const failed = (title: string, description: string) =>
+  toastManager.add({ type: "error", title, description });
 
 const SUMMARY_ROW = "flex min-h-8 items-center gap-2 rounded-sm px-2 py-1.5";
 const SUMMARY_TEXT = "flex min-w-0 flex-1 flex-col";

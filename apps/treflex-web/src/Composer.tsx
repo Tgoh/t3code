@@ -245,11 +245,6 @@ function UploadStatus(props: {
   );
 }
 
-const attachmentFailed = (error: string | null) => {
-  if (error !== null)
-    toastManager.add({ type: "error", title: error, data: { hideCopyButton: true } });
-};
-
 function useAttachmentIntake() {
   const environment = Environment.use();
   const session = ThreadSession.use();
@@ -268,12 +263,11 @@ function useAttachmentIntake() {
       if (group.length === 0) continue;
       const supplied = await files.supply(group);
       if (supplied === undefined) {
-        attachmentFailed("Attachments aren't available right now. Try again.");
+        session.addAttachments([], "Attachments aren't available right now. Try again.");
         return;
       }
       const pasted = pastedText ? supplied.Picked[0] : undefined;
-      session.addAttachments(supplied.Picked);
-      attachmentFailed(supplied.Error ?? admitted.Error);
+      session.addAttachments(supplied.Picked, supplied.Error ?? admitted.Error);
       // Follows the large-paste toast in apps/web/src/components/chat/useComposerAttachmentIntake.ts.
       if (pasted !== undefined) {
         toastManager.add({
@@ -286,7 +280,7 @@ function useAttachmentIntake() {
         });
       }
     }
-    if (admitted.Accepted.length === 0) attachmentFailed(admitted.Error);
+    if (admitted.Accepted.length === 0) session.addAttachments([], admitted.Error);
   };
   const addFolders = (folders: File[]) => {
     const folder = folders.at(-1);
@@ -827,6 +821,9 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               )}
             </For>
           </ul>
+        </Show>
+        <Show when={held().AttachmentError}>
+          <p class={ERROR}>{held().AttachmentError}</p>
         </Show>
         <Show when={focused() && !answering() && menu.open()}>
           {(trigger) => <ComposerCommandMenu menu={menu} trigger={trigger()} onPick={pick} />}

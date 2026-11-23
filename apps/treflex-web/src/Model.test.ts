@@ -2673,7 +2673,7 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
     expect(server.session()).toMatchObject({ StopError: "no run" });
     expect(server.takeToasts()).toEqual([
-      { Kind: "error", Title: "Could not send queued message", Description: "queue moved on" },
+      { Kind: "error", Title: "Could not change the queue", Description: "queue moved on" },
     ]);
     refuse = false;
     await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
@@ -3953,7 +3953,7 @@ describe("drafts", () => {
     const first = await connect(undefined, null, {}, undefined, fileStubs(restored));
     await first.open();
     await first.runtime.dispatch(setDraft, first.sessionId(), "half written");
-    await first.runtime.dispatch(addAttachments, first.sessionId(), [picked("file-1", "a")]);
+    await first.runtime.dispatch(addAttachments, first.sessionId(), [picked("file-1", "a")], null);
     await settled();
     expect(first.stored.Files.get(THREAD_ID)?.map((file) => file.Name)).toEqual(["file-1"]);
 

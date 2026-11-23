@@ -16,10 +16,6 @@ interface IToastEffect extends IEffect, IToastRequest {
   Type: "toast";
 }
 
-/**
- * Shows a toast from an action. Toasts live outside state: a restore wouldn't bring one back, so
- * the queue is the view's (`ui/toastStore.ts`) and an action only raises one.
- */
 export const toastEffect = defineEffect<IToastEffect, void>("toast", { settles: "sync" });
 
 export const toast = (request: IToastRequest) => toastEffect(request);
