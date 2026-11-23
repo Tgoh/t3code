@@ -123,6 +123,22 @@ describe("the timeline's turn folds", () => {
     expect(shape(layout(turn))).toEqual(["u", "fold Worked for 15s", "a2", "meta a2 with cp"]);
   });
 
+  it("keeps a rendered page out of the fold", () => {
+    const page = item("dynamic_tool", "page", 3, {
+      toolName: "mcp__t3-code__html_render",
+      input: {},
+      output: {
+        structuredContent: { htmlRender: { attachmentId: "a", title: "Chart", height: 400 } },
+      },
+    });
+    expect(shape(layout([user("u", 0), command("c", 1), page, reply("a", 9)]))).toEqual([
+      "u",
+      "fold Worked for 15s",
+      "page",
+      "a +meta",
+    ]);
+  });
+
   it("leaves out workspace preparation, so a reply after only that gets no fold", () => {
     const preparation = command("prep", 1, { input: "Preparing workspace" });
     expect(shape(layout([user("u", 0), preparation, reply("a", 9)]))).toEqual(["u", "a +meta"]);

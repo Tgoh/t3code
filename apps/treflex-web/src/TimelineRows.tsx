@@ -4,6 +4,7 @@ import {
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
 import type { AssetResource } from "@t3tools/contracts";
+import { htmlRenderReferencesEqual } from "@t3tools/shared/htmlRender";
 import type { IAskId } from "treflex";
 import { useComponentState, useInFlight } from "treflex-solid";
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js";
@@ -48,6 +49,8 @@ import Environment from "./Environment";
 import type { IWireAttachment } from "./Infrastructure/commandEffects";
 import { EMPTY_MEDIA_URL, type IMediaUrl, loadMediaUrl, mediaFailed } from "./markdownImage";
 import type { IWireTurnItem } from "./Infrastructure/wire";
+import { embedOf } from "./embeds";
+import { HtmlRenderFrame } from "./HtmlRender";
 import { ItemRequestRow } from "./ItemRequestViews";
 import { Markdown } from "./Markdown";
 import OpenThread, {
@@ -949,7 +952,35 @@ const ROWS: Record<string, Component<IRowProps & { meta: boolean }>> = {
   subagent: SubagentRow,
   notification: NotificationRow,
   asked: AskedRow,
+  "html-render": HtmlRenderRow,
 };
+
+// Follows HtmlRenderTimelineRow in apps/web/src/components/chat/TimelineAssistantRows.tsx.
+function HtmlRenderRow(props: IRowProps) {
+  const { item } = useRow(props);
+  const embed = createMemo(
+    () => {
+      const held = item();
+      const found = held === undefined ? null : embedOf(held);
+      return found?.Kind === "html-render" ? found.HtmlRender : null;
+    },
+    null,
+    {
+      equals: (left, right) =>
+        left === right ||
+        (left !== null && right !== null && htmlRenderReferencesEqual(left, right)),
+    },
+  );
+  return (
+    <Show when={embed()} keyed>
+      {(htmlRender) => (
+        <div class="min-w-0 px-1">
+          <HtmlRenderFrame htmlRender={htmlRender} />
+        </div>
+      )}
+    </Show>
+  );
+}
 
 function AskedRow(props: IRowProps) {
   const { item } = useRow(props);
@@ -969,6 +1000,7 @@ function rowKind(item: IWireTurnItem): string | null {
     case "approval_request":
       return item.status === "waiting" ? null : "work";
     case "dynamic_tool":
+      if (embedOf(item)?.Kind === "html-render") return "html-render";
       return viewOf(item).Tone === "assistant" ? "message" : "work";
     case "subagent":
     case "notification":
