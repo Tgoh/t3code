@@ -7,7 +7,7 @@ import {
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { useInFlight, useResource } from "treflex-solid";
 import type { JSX } from "@solidjs/web";
-import { createSignal, For, onSettled, Show } from "solid-js";
+import { createSignal, flush, For, onSettled, Show } from "solid-js";
 
 import {
   admitFiles,
@@ -534,6 +534,8 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
   // Focuses within the tap, since iOS raises the keyboard only for focus inside a user gesture.
   const expand = () => {
     setFocused(true);
+    // The collapsed composer hides the textarea, which can't take focus until it shows.
+    flush();
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   };

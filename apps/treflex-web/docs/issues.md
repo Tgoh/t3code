@@ -10,7 +10,7 @@ Workaround: use Node 26.13.0 through nvm. The pin in `package.json` isn't enforc
 
 ## Setup: `vp run check:changed` fails this app's tests
 
-Its test step runs `apps/treflex-web`'s tests in the root vitest project, which lacks this app's `solid` and `browser` resolve conditions, so `solid-js` resolves to its server build and every `createTestRuntime` throws treflex's `SolidServerBuildError`. Run them with `vp test run` from `apps/treflex-web`. Fixing it means a change to upstream's root `vite.config.ts`.
+Its test step runs `apps/treflex-web`'s tests in the root vitest project, where they fail. Run them with `vp test run` from `apps/treflex-web`. Fixing it means a change to upstream's root `vite.config.ts`.
 
 ## Gap: the connection runtime has one public door
 

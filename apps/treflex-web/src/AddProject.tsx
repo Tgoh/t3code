@@ -158,7 +158,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
   };
   const show = (next: IView[]) => {
     setStack(next);
-    changeQuery(initialQuery(next.at(-1)!));
+    changeQuery(initialQuery(next.at(-1)!), next.at(-1)!);
     setHighlight(next.at(-1)!.Kind === "sources" ? 0 : null);
     focusInput();
   };
@@ -192,17 +192,20 @@ export function AddProjectPalette(props: { onClose: () => void }) {
     Listing: null,
     Error: null,
   }));
-  const directory = createMemo(() => (browsing() ? browseTarget(query(), platform(), cwd()) : ""));
+  const directoryOf = (held: IView, text: string) =>
+    held.Kind === "folder" || held.Kind === "clone-dest"
+      ? browseTarget(text, platform(), cwd())
+      : "";
+  const directory = createMemo(() => directoryOf(view(), query()));
   const browsed = { Path: "" };
-  const browseDirectory = () => {
-    const path = directory();
+  const browseDirectory = (path = directory()) => {
     if (path === browsed.Path) return;
     browsed.Path = path;
     if (path !== "") void picker.dispatch(browse, environment.state.EnvironmentId, path, cwd());
   };
-  const changeQuery = (next: string) => {
+  const changeQuery = (next: string, held = view()) => {
     setQuery(next);
-    browseDirectory();
+    browseDirectory(directoryOf(held, next));
   };
   // The folder view's target depends on the platform the config reports, which can arrive late.
   createEffect(platform, () => untrack(browseDirectory), { defer: true });

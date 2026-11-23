@@ -51,7 +51,7 @@ function rovingTarget(
 
 /**
  * One tab stop for a group, as Base UI's `CompositeRoot`: the item focused last, else the active
- * one, else the first enabled. Items `register` from their ref.
+ * one, else the first enabled.
  */
 export function createRoving(options: { orientation: Accessor<IOrientation>; homeEnd: boolean }) {
   const entries = new Map<

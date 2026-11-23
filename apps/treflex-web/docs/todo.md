@@ -79,7 +79,7 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 Any time; none of it touches the client.
 
 - **Make `vp run check:changed` pass for this app.** Every thread reports the same two failures, which hide real ones.
-  - Its test step runs this app's tests in the root vitest project, which lacks the app's `solid` and `browser` resolve conditions, so about 140 tests fail there that pass from `apps/treflex-web`. Give the app its own vitest project in the root config, or exclude it from the root run and have `check:changed` run it from its folder.
+  - Its test step runs this app's tests in the root vitest project, where tests fail that pass from `apps/treflex-web`. Give the app its own vitest project in the root config, or exclude it from the root run and have `check:changed` run it from its folder.
   - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.3.0.tgz`.
 
   Both mean editing upstream's root config, so keep the change small. See "Setup: `vp run check:changed` fails this app's tests" in `issues.md`.

@@ -237,11 +237,13 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   const [highlight, setHighlight] = createSignal(0);
   const [list, setList] = createSignal<HTMLElement>();
 
-  const searchesThreads = () => submenu() === null && !query().startsWith(">");
+  const searchesThreadsFor = (inSubmenu: boolean, text: string) =>
+    !inSubmenu && !text.startsWith(">");
+  const searchesThreads = () => searchesThreadsFor(submenu() !== null, query());
   const messageSearch = useMessageSearch(() => (searchesThreads() ? query() : ""));
-  const changeQuery = (next: string) => {
+  const changeQuery = (next: string, inSubmenu = submenu() !== null) => {
     setQuery(next);
-    if (searchesThreads()) messageSearch.search(next);
+    if (searchesThreadsFor(inSubmenu, next)) messageSearch.search(next);
   };
   let shown: ReturnType<typeof rankMessages> | null = null;
   const messageItems = createMemo(() => {
@@ -315,8 +317,9 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
   const back = () => {
     const held = submenu();
     if (held === null) return;
-    setStack(stack().slice(0, -1));
-    changeQuery(held.ParentQuery);
+    const parents = stack().slice(0, -1);
+    setStack(parents);
+    changeQuery(held.ParentQuery, parents.length > 0);
     setHighlight(0);
   };
   const choose = (item: IPaletteItem | undefined) => {

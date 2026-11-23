@@ -26,7 +26,8 @@ import {
   timelineEntries,
   timelineIds,
 } from "../src/OpenThread";
-import { getDefaultRoot, type IRoot, load, RootReceiver } from "../src/Root";
+import { registerReceivers } from "../src/receivers";
+import { getDefaultRoot, type IRoot, load } from "../src/Root";
 import { compactionOffer, type IThreadSession, setDraft } from "../src/ThreadSession";
 import {
   assistantItem,
@@ -102,12 +103,29 @@ async function connected(projection: IWireProjection) {
       storedClientSettings: () => null,
       rememberedModels: () => ({}),
       rememberModel: () => {},
+      toast: () => {},
+      address: () => ({ Thread: null, NewThreadIn: null, View: null }),
+      writeAddress: () => {},
+      threadCommand: () => {},
+      refreshVcsStatus: () => {},
+      reportActivity: () => {},
     },
-    { onError: (error) => console.error("action failed:", error) },
+    {
+      onError: (error) => console.error("action failed:", error),
+      allowDiags: ["selector/many-tracked-reads"],
+      resources: {
+        methods: {
+          "Terminal/Session": { setScheme: () => {} },
+          "Device/Appearance": { apply: () => {} },
+          "Project/Favicons": { request: () => {} },
+          "Notify/Device": { setMode: () => {}, show: () => {}, opened: () => {} },
+          "Keybindings/Warning": { report: () => {} },
+        },
+      },
+    },
   );
-  runtime.registerReceiver(RootReceiver);
-  runtime.registerReceiver(EnvironmentReceiver);
-  runtime.registerReceiver(ThreadReceiver);
+  runtime.provideExternal("Minute", { read: () => 0 });
+  registerReceivers(runtime);
   await runtime.dispatch(load, "Root");
   await settled();
   expect(runtime.resources().some((row) => row.Key === "Shell/Stream")).toBe(true);

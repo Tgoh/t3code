@@ -346,8 +346,7 @@ const ThreadConversation = ThreadSession.provider<{
   );
   const lastStart = () => responses()?.Starts.at(-1);
   const reachedTop = () => timeline().First === 0;
-  const growTo = (target: number) => {
-    const isStuck = untrack(stuck);
+  const growTo = (target: number, isStuck: boolean) => {
     if (!isStuck) keepStill();
     setTimeline((held) => ({
       ...held,
@@ -358,7 +357,7 @@ const ThreadConversation = ThreadSession.provider<{
   const showAll = (forward: boolean) => {
     const boundary = head.nextElementSibling;
     setStuck(false);
-    growTo(0);
+    growTo(0, false);
     queueMicrotask(() => {
       const target = forward
         ? tabbableFrom(content, head, true)
@@ -385,8 +384,8 @@ const ThreadConversation = ThreadSession.provider<{
         };
   };
   let remembered = saved;
-  const remember = () => {
-    const scroll = stuck() ? null : readingAt();
+  const remember = (isStuck: boolean) => {
+    const scroll = isStuck ? null : readingAt();
     if (scroll?.RowId === remembered?.RowId && scroll?.Offset === remembered?.Offset) return;
     remembered = scroll;
     void session.rememberScroll(scroll);
@@ -416,7 +415,7 @@ const ThreadConversation = ThreadSession.provider<{
       const ids = timeline().Ids;
       if (responses()?.Starts.includes(saved.RowId)) return { Found: saved.RowId };
       if (ids.includes(saved.RowId)) {
-        // growTo reads it, so a change re-runs the step.
+        // The Grow step reads it, so a change re-runs the step.
         stuck();
         return { Grow: ids.indexOf(saved.RowId) };
       }
@@ -430,7 +429,7 @@ const ThreadConversation = ThreadSession.provider<{
         restoring = false;
         putBack();
       } else if ("Grow" in step) {
-        growTo(step.Grow);
+        growTo(step.Grow, untrack(stuck));
       } else {
         restoring = false;
         setStuck(true);
@@ -502,10 +501,10 @@ const ThreadConversation = ThreadSession.provider<{
             }
             const next = position();
             const follow = followAfterScroll(lastPosition, next, touching || dragging);
-            if (follow === "stick") setStuck(true);
-            else if (follow === "detach") setStuck(false);
+            const nowStuck = follow === "stick" ? true : follow === "detach" ? false : stuck();
+            setStuck(nowStuck);
             lastPosition = next;
-            if (!restoring) remember();
+            if (!restoring) remember(nowStuck);
           }}
           onWheel={(event) => {
             release();
@@ -536,7 +535,7 @@ const ThreadConversation = ThreadSession.provider<{
                 fallback={
                   <TimelineSentinel
                     root={scroller}
-                    onReach={() => growTo(grow(timeline().First))}
+                    onReach={() => growTo(grow(timeline().First), stuck())}
                     onFocus={showAll}
                   />
                 }
@@ -681,18 +680,19 @@ const ThreadBody = ThreadSession.provider(() => {
     rightPanelOpen() ? void session.closeRightPanel() : onTerminal(closeTerminal);
   const [stageSize, setStageSize] = createSignal({ Width: 0, Height: 0 });
   const details = () => session.state.Panels.Details;
-  const layout = createMemo(() =>
+  const layoutOf = (size: { Width: number; Height: number }) =>
     detailsLayout({
-      ...stageSize(),
+      ...size,
       Padding: 48,
       MaxChatWidth: 736,
       Open: environment.state.Local.Preferences.DetailsOpen,
-    }),
-  );
+    });
+  const layout = createMemo(() => layoutOf(stageSize()));
   // The session toggles the card by whether it fits, which only this view can measure.
   const measureStage = (size: { Width: number; Height: number }) => {
     setStageSize(size);
-    if (layout().Inline !== details().Fits) void session.fitDetails(layout().Inline);
+    const inline = layoutOf(size).Inline;
+    if (inline !== details().Fits) void session.fitDetails(inline);
   };
   const detailsInline = () => layout().Inline && environment.state.Local.Preferences.DetailsOpen;
   const detailsShown = () => detailsInline() || details().Popover;
