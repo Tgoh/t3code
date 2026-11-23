@@ -538,12 +538,33 @@ function* sendProjectCommand(
   );
 }
 
+// Follows the project failure toasts in apps/web/src/components/settings/ProjectSettingsPanel.tsx,
+// apps/web/src/hooks/useProjectGroupUpdate.ts and useRemoveClonedProject.ts.
+const PROJECT_FAILURES: Partial<Record<IProjectCommand["Kind"], string>> = {
+  pin: "Failed to pin project",
+  unpin: "Failed to unpin project",
+  archive: "Failed to archive project",
+  unarchive: "Failed to unarchive project",
+  rename: "Failed to rename project",
+  delete: "Failed to remove project",
+};
+
+/** Sends a project command; a refusal shows as a toast. */
 export function* projectCommand(
   draft: IEnvironment,
   projectId: string,
   command: IProjectCommand,
 ): IOpenGenerator {
-  yield* sendProjectCommand(draft.EnvironmentId, projectId, command);
+  try {
+    yield* sendProjectCommand(draft.EnvironmentId, projectId, command);
+  } catch (error) {
+    yield* toast({
+      Kind: "error",
+      Title: PROJECT_FAILURES[command.Kind] ?? "That didn't work",
+      Description: serverError(error).message,
+    });
+    return;
+  }
   if (command.Kind !== "delete") return;
   const drafts = Object.values(draft.Local.ThreadSessions)
     .filter((session) => session.NewThreadProjectId === projectId)
@@ -723,9 +744,18 @@ export function* cloneControl(
   kind: "cancel" | "retry",
 ): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
-  yield* open(
-    cloneControlEffect({ EnvironmentId: environmentId, ProjectId: projectId, Kind: kind }),
-  );
+  try {
+    yield* open(
+      cloneControlEffect({ EnvironmentId: environmentId, ProjectId: projectId, Kind: kind }),
+    );
+  } catch (error) {
+    // Follows runCloneAction in apps/web/src/components/ProjectCloneToastCoordinator.tsx.
+    yield* toast({
+      Kind: "error",
+      Title: kind === "cancel" ? "Failed to cancel clone" : "Failed to retry clone",
+      Description: serverError(error).message,
+    });
+  }
 }
 leading(cloneControl);
 

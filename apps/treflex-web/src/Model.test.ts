@@ -3788,10 +3788,21 @@ describe("writing to the server", () => {
     expect(draftProjectOf(server)).toBe("p-new");
   });
 
-  it("removing a project forgets its new-thread draft", async () => {
-    const server = await connect(undefined, null, { projectCommand: () => undefined });
+  it("removing a project forgets its new-thread draft, and keeps it with a toast on failure", async () => {
+    let refuse = true;
+    const server = await connect(undefined, null, {
+      projectCommand: () => {
+        if (refuse) throw serverFailure("busy");
+      },
+    });
     await server.runtime.dispatch(newThread, server.envId(), "p-1");
     const draftId = server.environment().Local.SelectedThreadId!;
+    await server.runtime.dispatch(projectCommand, server.envId(), "p-1", { Kind: "delete" });
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to remove project", Description: "busy" },
+    ]);
+    expect(server.environment().Local.ThreadSessions[draftId]).toBeDefined();
+    refuse = false;
     await server.runtime.dispatch(projectCommand, server.envId(), "p-1", { Kind: "delete" });
     expect(server.environment().Local.ThreadSessions[draftId]).toBeUndefined();
     expect(server.environment().Local.SelectedThreadId).toBeNull();

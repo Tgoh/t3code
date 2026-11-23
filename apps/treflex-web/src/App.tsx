@@ -27,6 +27,7 @@ import {
   SEARCH_SELECTOR,
 } from "./navigation";
 import { createOverlayStack, OverlayContext } from "./overlays";
+import { CloneToasts } from "./ProjectClone";
 import Root from "./Root";
 import { SettingsView } from "./SettingsView";
 import { createKeyDispatcher, runPanelShortcut } from "./shortcuts";
@@ -314,6 +315,7 @@ const EnvironmentView = Environment.provider(() => {
               />
             </Show>
             <EnvironmentMain state={environment.state.Local.Dictation} />
+            <CloneToasts />
             <For each={paletteSessions()}>
               {(session) => (
                 <Presence when={paletteSession() === session}>
