@@ -4,6 +4,7 @@ import type { IWireThreadShell } from "./Infrastructure/wire";
 import {
   emptyNotifyGate,
   nextRelease,
+  notificationStatus,
   notificationTitle,
   observeNotifications,
   pauseNotifications,
@@ -143,7 +144,7 @@ describe("what a notification says", () => {
     ["input", thread({ status: "failed", lastErrorClass: "usage_limit" }), "Usage limit reached"],
     ["input", thread({ pendingGuestMessageCount: 1 }), "Guest request"],
   ] as const)("titles %s for %s", (kind, shell, title) => {
-    expect(notificationTitle(kind, shell, undefined)).toBe(title);
+    expect(notificationTitle(notificationStatus(kind, shell, undefined))).toBe(title);
   });
 
   it("tags a thread with a short hash Windows keeps", () => {

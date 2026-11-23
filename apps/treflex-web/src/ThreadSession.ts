@@ -186,6 +186,7 @@ export interface ISelection extends IEntity {
     followUpBehavior: ActiveTurnComposerAction;
     sidebarWorkingShelfEnabled: boolean;
     notificationMode: INotificationMode;
+    inAppNotificationsEnabled: boolean;
   } | null;
 }
 

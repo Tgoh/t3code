@@ -39,6 +39,7 @@ import {
   type INotifyGate,
   type IThreadNotification,
   nextRelease,
+  notificationStatus,
   notificationTitle,
   observeNotifications,
   pauseNotifications,
@@ -687,7 +688,12 @@ const notifyGateOf = (draft: IShell) => transient(draft, "Shell/Notify", emptyNo
 export function* notifyChanges(draft: IShell): IActionGenerator {
   const selection = yield* getData(draft, "Selection");
   const gate = yield* notifyGateOf(draft);
-  if ((selection?.ClientSettings?.notificationMode ?? "off") === "off") {
+  const settings = selection?.ClientSettings;
+  // Follows syncEnvironments in ThreadNotificationCoordinator.tsx: either setting keeps it watching.
+  if (
+    (settings?.notificationMode ?? "off") === "off" &&
+    settings?.inAppNotificationsEnabled !== true
+  ) {
     if (Object.keys(gate.Previous).length > 0) Object.assign(gate, emptyNotifyGate());
     yield* stopTimer(draft, "Shell/NotifyRelease");
     return;
@@ -717,11 +723,13 @@ function* announce(draft: IShell, notes: IThreadNotification[]): IActionGenerato
   const shown = notes.flatMap((note): IShownNotification[] => {
     const thread = draft.Threads[note.ThreadId];
     if (thread === undefined) return [];
+    const status = notificationStatus(note.Kind, thread, subagents[thread.id]);
     return [
       {
         ThreadId: thread.id,
         Kind: note.Kind,
-        Title: notificationTitle(note.Kind, thread, subagents[thread.id]),
+        Status: status,
+        Title: notificationTitle(status),
         Body: thread.title,
         Tag: threadNotificationTag(draft.EnvironmentId, thread.id),
       },

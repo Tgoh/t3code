@@ -497,6 +497,7 @@ export function* selectThread(
 function* showThread(draft: IEnvironment, threadId: string): IActionGenerator {
   const previous = draft.Local.SelectedThreadId;
   draft.Local.SelectedThreadId = threadId;
+  yield* resource(draft, "Notify/Device").opened(threadId);
   if (previous !== null) yield* leaveThread(draft, previous, previous !== sideOfSelected(draft));
   if (draft.Local.ThreadSessions[threadId]?.NewThreadProjectId != null) return;
   yield* openThread(draft, threadId);
@@ -997,7 +998,11 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
     yield* openConfigStream(draft);
   },
   *"Shell/Notify"(draft, { Notes }) {
-    for (const note of Notes) yield* resource(draft, "Notify/Device").show(note);
+    const inApp = draft.Local.ClientSettings?.inAppNotificationsEnabled === true;
+    for (const note of Notes) {
+      const viewing = draft.Local.SelectedThreadId === note.ThreadId && draft.Local.View === null;
+      yield* resource(draft, "Notify/Device").show({ ...note, InApp: inApp, Viewing: viewing });
+    }
   },
   *"Notify/Device"(draft, message) {
     if (isEnded(message)) return;

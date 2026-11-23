@@ -290,22 +290,36 @@ export function nextRelease(gate: INotifyGate): number | null {
 }
 
 // Follows the titles in `present` in apps/web/src/components/ThreadNotificationCoordinator.tsx.
-export function notificationTitle(
+export type INotificationStatus =
+  | "completion"
+  | "approval"
+  | "limited"
+  | "failed"
+  | "request"
+  | "input";
+
+export function notificationStatus(
   kind: INotificationKind,
   thread: IWireThreadShell,
   subagent: ISubagentRequest | undefined,
-): string {
-  if (kind === "completion") return "Thread completed";
-  switch (notifyStatus(thread, subagent)) {
-    case "approval":
-      return "Approval needed";
-    case "limited":
-      return "Usage limit reached";
-    case "failed":
-      return "Thread failed";
-    case "request":
-      return "Guest request";
-    default:
-      return "Input needed";
-  }
+): INotificationStatus {
+  if (kind === "completion") return "completion";
+  const status = notifyStatus(thread, subagent);
+  return status === "approval" ||
+    status === "limited" ||
+    status === "failed" ||
+    status === "request"
+    ? status
+    : "input";
 }
+
+const TITLES: Record<INotificationStatus, string> = {
+  completion: "Thread completed",
+  approval: "Approval needed",
+  limited: "Usage limit reached",
+  failed: "Thread failed",
+  request: "Guest request",
+  input: "Input needed",
+};
+
+export const notificationTitle = (status: INotificationStatus) => TITLES[status];

@@ -17,13 +17,13 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Settings treflex ignores.** Of Tam's picks (2026-11-23), only the Archive confirmation is left: it waits for the archive action in the Sidebar item. In-app notifications go with Toasts, Tool calls in chat with Timeline rows, and Show skills in slash menu with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
+- **Settings treflex ignores.** Of Tam's picks (2026-11-23), only the Archive confirmation is left: it waits for the archive action in the Sidebar item. Tool calls in chat with Timeline rows, and Show skills in slash menu with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
 
 ## 3. Missing features
 
 Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
 
-- **Toasts: In-app notifications.** **In progress** on `treflex/toasts`. Wire up the In-app notifications setting: a toast with Open thread when another thread finishes, fails or needs input while the app has focus, as stock's `ThreadNotificationCoordinator.tsx` `present` does. It hangs off `treflex/settings-wiring`'s `threadNotifier` and waits for that branch to merge. Also left: stock's invalid-keybindings warning toast (`KeybindingsUpdateToast.tsx`), since nothing in treflex shows `config.issues` yet.
+- **Invalid keybindings warning.** Stock toasts "Invalid keybindings configuration" with the config's issues (`KeybindingsUpdateToast.tsx`); nothing in treflex shows `config.issues` yet.
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **Held send:** **In progress** on `treflex/stock-picks`. Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
   - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:

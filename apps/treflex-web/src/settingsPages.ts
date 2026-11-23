@@ -197,6 +197,7 @@ const GENERAL: ISettingsSection[] = [
         Description:
           "Show a toast when another thread finishes, fails, or needs input or approval while this app has focus.",
         Control: switchControl,
+        Applied: true,
       }),
     ],
   },

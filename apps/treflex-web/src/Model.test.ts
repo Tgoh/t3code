@@ -231,7 +231,7 @@ import {
 } from "./testing/threadFixture";
 import type { IProjectFaviconTarget } from "./projectIcon";
 import { type IProjectSort, orderFolders } from "./projectOrder";
-import type { IShownNotification } from "./Infrastructure/notifications";
+import type { INotificationShow } from "./Infrastructure/notifications";
 import { type INotificationMode, threadNotificationTag } from "./threadNotifications";
 import { runPanelShortcut } from "./shortcuts";
 import { reconcile } from "./rows";
@@ -339,7 +339,9 @@ async function connect(
     Schemes: [] as IColorScheme[],
     Favicons: [] as IProjectFaviconTarget[],
     NotifyModes: [] as INotificationMode[],
-    Notified: [] as IShownNotification[],
+    InApp: [] as boolean[],
+    Notified: [] as INotificationShow[],
+    Opened: [] as string[],
   };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
@@ -420,8 +422,12 @@ async function connect(
               void device.Favicons.push(target),
           },
           "Notify/Device": {
-            setMode: (_ctx: unknown, mode: INotificationMode) => void device.NotifyModes.push(mode),
-            show: (_ctx: unknown, note: IShownNotification) => void device.Notified.push(note),
+            setMode: (_ctx: unknown, mode: INotificationMode, inApp: boolean) => {
+              device.NotifyModes.push(mode);
+              device.InApp.push(inApp);
+            },
+            show: (_ctx: unknown, note: INotificationShow) => void device.Notified.push(note),
+            opened: (_ctx: unknown, threadId: string) => void device.Opened.push(threadId),
           },
           ...resources?.methods,
         },
@@ -1443,9 +1449,12 @@ describe("thread notifications", () => {
       {
         ThreadId: "t-1",
         Kind: "completion",
+        Status: "completion",
         Title: "Thread completed",
         Body: "Fix the build",
         Tag: threadNotificationTag(ENV, "t-1"),
+        InApp: false,
+        Viewing: false,
       },
     ]);
 
@@ -1473,6 +1482,27 @@ describe("thread notifications", () => {
       { publisher: { Id: server.envId() } },
     );
     expect(server.environment().Local.SelectedThreadId).toBe("t-1");
+  });
+
+  it("announce with In-app notifications on alone, saying the status and whether the thread is on screen", async () => {
+    const server = await connect(undefined, null, { storeClientSettings: () => undefined });
+    await server.sendShell(update(1, shellRow("running")));
+    await server.sendShell({ kind: "synchronized" } as unknown as IWireShellItem);
+    await server.runtime.dispatch(writeSetting, server.envId(), {
+      Store: "client",
+      Patch: { inAppNotificationsEnabled: true },
+    });
+    expect(server.device.InApp).toEqual([false, true]);
+    await server.sendShell(update(2, shellRow("failed")));
+    await server.runtime.dispatch(selectThread, server.envId(), "t-1");
+    await server.sendShell(update(3, shellRow("completed", { latestRunId: "run-2" })));
+    expect(
+      server.device.Notified.map((note) => [note.Title, note.Status, note.InApp, note.Viewing]),
+    ).toEqual([
+      ["Thread failed", "failed", true, false],
+      ["Thread completed", "completion", true, true],
+    ]);
+    expect(server.device.Opened).toEqual(["t-1"]);
   });
 
   it("keep the mode when the browser refuses to notify, and say why", async () => {

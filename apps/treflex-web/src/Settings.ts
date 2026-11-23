@@ -85,8 +85,11 @@ export function* loadSettings(draft: IEnvironment): IActionGenerator {
 }
 
 export function* applyNotificationMode(draft: IEnvironment): IActionGenerator {
-  const mode = draft.Local.ClientSettings?.notificationMode ?? "off";
-  yield* resource(draft, "Notify/Device").setMode(mode);
+  const settings = draft.Local.ClientSettings;
+  yield* resource(draft, "Notify/Device").setMode(
+    settings?.notificationMode ?? "off",
+    settings?.inAppNotificationsEnabled === true,
+  );
 }
 
 // Follows NotificationSettings in apps/web/src/components/settings/NotificationSettings.tsx.
@@ -189,7 +192,7 @@ export function* setClientSettings(
   const next = { ...held, ...patch };
   draft.Local.ClientSettings = next;
   yield* storeClientSettingsEffect({ Settings: next });
-  if (patch.notificationMode !== undefined) {
+  if (patch.notificationMode !== undefined || patch.inAppNotificationsEnabled !== undefined) {
     yield* applyNotificationMode(draft);
     yield* start(notifyChanges, draft.Replica.Shell);
   }

@@ -7,23 +7,38 @@ import {
   hasNotificationSound,
   type INotificationKind,
   type INotificationMode,
+  type INotificationStatus,
 } from "../threadNotifications";
+import { closeThreadToast, showThreadToast } from "../threadNotificationToast";
 
 export interface IShownNotification {
   ThreadId: string;
   Kind: INotificationKind;
+  Status: INotificationStatus;
   Title: string;
   Body: string;
   Tag: string;
+}
+
+/** A note with what the environment knows when it's shown. */
+export interface INotificationShow extends IShownNotification {
+  InApp: boolean;
+  /** Its thread is the one on screen, which an in-app toast skips. */
+  Viewing: boolean;
 }
 
 declare module "treflex" {
   interface IResourceTypeRegistry {
     threadNotifier: {
       Params: {};
-      /** The person clicked a system notification for this thread. */
+      /** The person clicked a system notification or a toast's Open thread for this thread. */
       Message: { Opened: string };
-      Methods: { setMode(mode: INotificationMode): void; show(note: IShownNotification): void };
+      Methods: {
+        setMode(mode: INotificationMode, inApp: boolean): void;
+        show(note: INotificationShow): void;
+        /** The thread is now on screen, so its toasts close. */
+        opened(threadId: string): void;
+      };
     };
   }
 }
@@ -161,11 +176,45 @@ export const threadNotifier: IResourceImplementation<"threadNotifier"> = (_param
       for (const stop of stops) stop();
     };
   };
-  r.signal.addEventListener("abort", () => stopModeListeners());
+  // Toast ids by thread, so opening the thread or turning in-app off closes them.
+  const toasts = new Map<string, string[]>();
+  const closeToasts = (threadId?: string) => {
+    for (const [id, held] of toasts) {
+      if (threadId !== undefined && id !== threadId) continue;
+      for (const toast of held) closeThreadToast(toast);
+      toasts.delete(id);
+    }
+  };
+  let inApp = false;
+  r.signal.addEventListener("abort", () => {
+    stopModeListeners();
+    closeToasts();
+  });
   r.methods({
-    setMode: (_ctx, next) => applyMode(next),
+    setMode: (_ctx, next, nextInApp) => {
+      applyMode(next);
+      inApp = nextInApp;
+      if (!inApp) closeToasts();
+    },
+    opened: (_ctx, threadId) => closeToasts(threadId),
     show: (_ctx, note) => {
       if (hasNotificationSound(mode)) void playSound(note.Kind, () => hasNotificationSound(mode));
+      if (
+        inApp &&
+        note.InApp &&
+        !note.Viewing &&
+        document.visibilityState === "visible" &&
+        document.hasFocus()
+      ) {
+        const forget = () => {
+          const left = (toasts.get(note.ThreadId) ?? []).filter((held) => held !== id);
+          if (left.length === 0) toasts.delete(note.ThreadId);
+          else toasts.set(note.ThreadId, left);
+        };
+        const id = showThreadToast(note, () => void r.emit({ Opened: note.ThreadId }), forget);
+        toasts.set(note.ThreadId, [...(toasts.get(note.ThreadId) ?? []), id]);
+        return;
+      }
       if (
         !hasDesktopNotifications(mode) ||
         (document.visibilityState === "visible" && document.hasFocus()) ||
