@@ -4570,14 +4570,15 @@ describe("diffs", () => {
             label: "demo",
           },
         ],
+        // The repository's checkpoint comes first, as the same run's root one can.
         checkpoints: [
-          { ...checkpoint(1, "run-1"), scopeId: "scope-root", status: "missing" },
           {
             ...checkpoint(1, "run-1"),
             id: "checkpoint-demo-1",
             scopeId: "scope-demo",
             appRunOrdinal: null,
           },
+          { ...checkpoint(1, "run-1"), scopeId: "scope-root", status: "missing" },
         ],
       } as never,
       sequence,
@@ -4676,6 +4677,7 @@ describe("diffs", () => {
     expect(latestDiffTurn(server.thread())).toBe(1);
     expect(diffTurns(server.thread()).map((turn) => turn.TurnCount)).toEqual([1]);
     expect(folderIsRepository(server.thread())).toBe(false);
+    expect(diffTurnOf(server.thread(), fileChange)).toBe(1);
     expect(gitRepositories(server.thread())).toEqual([
       { RepositoryPath: "C:/test/demo", Name: "demo", Cwd: "C:/test/demo" },
     ]);

@@ -2,6 +2,13 @@
 
 Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) while porting or comparing. Some may be worth reporting or fixing upstream. Each entry says where the bug is, what goes wrong, whether it was reproduced, and whether treflex has the same bug.
 
+## Diff panel: the turn picker offers turns the server refuses
+
+- **Where:** the Turn submenu in `apps/web/src/components/DiffPanel.tsx`, from `deriveThreadCheckpointSummaries` in `packages/client-runtime/src/state/threadCheckpoints.ts`, which lists every checkpoint with an `appRunOrdinal`.
+- **What goes wrong:** an interrupted or failed turn is listed, but `CheckpointDiffQuery.ts` serves only completed runs, so picking one shows "Failed to load turn diff" and "No patch available for this selection."
+- **Status:** reproduced on 2026-11-23 in the Test project's "Live State Check File Creation" thread: Turn 5 to Turn 15 are interrupted runs, and Turn 5 fails to load.
+- **Treflex:** not affected. Its picker lists the turns the server serves (`diffTurns` in `OpenThread.ts`), apart from a run outside the loaded history window, whose status it doesn't hold.
+
 ## Settings: Archive confirmation describes a second click it doesn't ask for
 
 - **Where:** the Archive confirmation row in `GeneralSettingsPanel`, `apps/web/src/components/settings/SettingsPanels.tsx`.

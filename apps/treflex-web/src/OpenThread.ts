@@ -727,9 +727,12 @@ function mergeOlderRows(draft: IOpenThread, items: IWireHistoryPage["items"]): v
   draft.Timeline = [...head, ...draft.Timeline.filter((id) => !inPage.has(id))];
 }
 
+// The thread folder's own checkpoint: a tracked repository's for the same run has no ordinal.
 function checkpointOfRun(draft: IOpenThread, runId: string | null) {
   if (runId === null) return undefined;
-  return Object.values(draft.Checkpoints).find((checkpoint) => checkpoint.runId === runId);
+  return Object.values(draft.Checkpoints).find(
+    (checkpoint) => checkpoint.runId === runId && checkpoint.appRunOrdinal !== null,
+  );
 }
 
 const hasRepositories = (draft: IOpenThread) =>
