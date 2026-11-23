@@ -60,7 +60,7 @@ const SURFACES = {
     "surface-grain",
     {
       position: "absolute top-[env(safe-area-inset-top)] bottom-0 left-0 z-(--z-sheet)",
-      width: "w-[calc(100vw-12px)]",
+      width: "w-[calc(100vw-64px)]",
       maxWidth: "max-w-none",
       surface: "bg-sidebar text-sidebar-foreground",
     },
