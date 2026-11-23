@@ -1,4 +1,3 @@
-// @effect-diagnostics globalTimers:off -- A view-only reset of the copied label, outside any Effect runtime.
 import {
   CHATGPT_USAGE_LIMIT_CODE,
   CHATGPT_USAGE_URL,
@@ -14,8 +13,7 @@ import type { IThreadError } from "./threadError";
 import { threadErrorBannerMessage } from "./threadError";
 import { Alert, AlertAction, AlertDescription } from "./ui/Alert";
 import { Button, buttonVariants, InlineButton } from "./ui/Button";
-
-const COPIED_MS = 1_200;
+import { toastManager } from "./ui/toastStore";
 
 // Follows ExpandableText in apps/web/src/components/settings/ExpandableText.tsx.
 function ExpandableText(props: { text: string; collapsedText: string }) {
@@ -47,19 +45,23 @@ function ExpandableText(props: { text: string; collapsedText: string }) {
   );
 }
 
+// Follows copyAdminRequest in apps/web/src/components/chat/ThreadErrorBanner.tsx.
+async function copyAdminRequest() {
+  toastManager.add(
+    (await copyText(CHATGPT_WORKSPACE_ADMIN_REQUEST))
+      ? {
+          type: "success",
+          title: "Request copied",
+          description: "Send it to your workspace admin.",
+        }
+      : { type: "error", title: "Could not copy the request" },
+  );
+}
+
 function CopyAdminRequest() {
-  const [outcome, setOutcome] = createSignal<"idle" | "copied" | "failed">("idle");
-  const copy = async () => {
-    setOutcome((await copyText(CHATGPT_WORKSPACE_ADMIN_REQUEST)) ? "copied" : "failed");
-    setTimeout(() => setOutcome("idle"), COPIED_MS);
-  };
   return (
-    <Button variant="default" size="sm" onClick={() => void copy()}>
-      {outcome() === "copied"
-        ? "Request copied"
-        : outcome() === "failed"
-          ? "Could not copy the request"
-          : "Copy request for admin"}
+    <Button variant="default" size="sm" onClick={() => void copyAdminRequest()}>
+      Copy request for admin
     </Button>
   );
 }
