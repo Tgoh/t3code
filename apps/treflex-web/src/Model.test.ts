@@ -2559,7 +2559,13 @@ describe("writing to the server", () => {
     await server.open();
     await server.sendThread(snapshotOf({ ...emptyProjection(), runs: [run("run-1", 1)] }, 1));
     await server.runtime.dispatch(chooseModel, server.sessionId(), "devReplay", "showcase");
-    expect(server.session().ModelError).toMatch(/Start a new thread/);
+    expect(server.takeToasts()).toEqual([
+      {
+        Kind: "warning",
+        Title: "Start a new chat to switch providers",
+        Description: "This thread does not support switching providers after it has started.",
+      },
+    ]);
     expect(server.session().ModelSelection).toBeNull();
     expect(commands).toEqual([]);
   });
@@ -2665,10 +2671,13 @@ describe("writing to the server", () => {
     refuse = true;
     await server.runtime.dispatch(stopRun, server.sessionId());
     await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
-    expect(server.session()).toMatchObject({ StopError: "no run", QueueError: "queue moved on" });
+    expect(server.session()).toMatchObject({ StopError: "no run" });
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Could not send queued message", Description: "queue moved on" },
+    ]);
     refuse = false;
     await server.runtime.dispatch(queueAction, server.sessionId(), { Kind: "resume" });
-    expect(server.session().QueueError).toBeUndefined();
+    expect(server.takeToasts()).toEqual([]);
     expect(server.session().StopError).toBe("no run");
   });
 
@@ -3933,7 +3942,7 @@ describe("drafts", () => {
     const first = await connect(undefined, null, {}, undefined, fileStubs(restored));
     await first.open();
     await first.runtime.dispatch(setDraft, first.sessionId(), "half written");
-    await first.runtime.dispatch(addAttachments, first.sessionId(), [picked("file-1", "a")], null);
+    await first.runtime.dispatch(addAttachments, first.sessionId(), [picked("file-1", "a")]);
     await settled();
     expect(first.stored.Files.get(THREAD_ID)?.map((file) => file.Name)).toEqual(["file-1"]);
 
@@ -5457,7 +5466,9 @@ describe("rewinding and forking", () => {
     });
     await server.runtime.dispatch(mergeBack, server.sessionId(), "parent-1");
     await settled();
-    expect(server.session().MergeError).toBe("No checkpoint yet");
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Could not merge back", Description: "No checkpoint yet" },
+    ]);
     expect(server.environment().Local.SelectedThreadId).not.toBe("parent-1");
 
     fail = false;
@@ -5469,7 +5480,7 @@ describe("rewinding and forking", () => {
       TargetThreadId: "parent-1",
       RunId: "run-2",
     });
-    expect(server.session().MergeError).toBeUndefined();
+    expect(server.takeToasts()).toEqual([]);
     expect(server.environment().Local.SelectedThreadId).toBe("parent-1");
   });
 });

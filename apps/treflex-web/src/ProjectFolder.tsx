@@ -24,6 +24,7 @@ import Shell, { type IProjectFolder, isBusy, sidebarStatus } from "./Shell";
 import { RenameInput } from "./ThreadCard";
 import { Button } from "./ui/Button";
 import { MenuItem, MenuPopup, MenuSeparator } from "./ui/Menu";
+import { toastManager } from "./ui/toastStore";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -59,7 +60,19 @@ export function ProjectMenu(props: {
         <SquarePen />
         New thread
       </MenuItem>
-      <MenuItem onClick={() => void copyText(props.project.workspaceRoot)}>
+      <MenuItem
+        onClick={() =>
+          void copyText(props.project.workspaceRoot).then((copied) => {
+            if (!copied) {
+              toastManager.add({
+                type: "error",
+                title: "Failed to copy path",
+                description: "The browser refused the copy.",
+              });
+            }
+          })
+        }
+      >
         <Copy />
         Copy path
       </MenuItem>

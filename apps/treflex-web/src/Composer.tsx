@@ -54,6 +54,7 @@ import ThreadSession, {
 } from "./ThreadSession";
 import { Button, buttonVariants } from "./ui/Button";
 import { Spinner } from "./ui/Spinner";
+import { toastManager } from "./ui/toastStore";
 import {
   COARSE_POINTER_QUERY,
   composerCollapses,
@@ -244,6 +245,11 @@ function UploadStatus(props: {
   );
 }
 
+const attachmentFailed = (error: string | null) => {
+  if (error !== null)
+    toastManager.add({ type: "error", title: error, data: { hideCopyButton: true } });
+};
+
 function useAttachmentIntake() {
   const environment = Environment.use();
   const session = ThreadSession.use();
@@ -262,30 +268,34 @@ function useAttachmentIntake() {
       if (group.length === 0) continue;
       const supplied = await files.supply(group);
       if (supplied === undefined) {
-        session.addAttachments([], "Attachments aren't available right now. Try again.");
+        attachmentFailed("Attachments aren't available right now. Try again.");
         return;
       }
       const pasted = pastedText ? supplied.Picked[0] : undefined;
-      session.addAttachments(
-        supplied.Picked,
-        supplied.Error ?? admitted.Error,
-        pasted === undefined
-          ? null
-          : `Large paste attached as ${pasted.Name} (${formatAttachmentSize(pasted.SizeBytes)}). Use ${
-              IS_MAC ? "⌘⇧V" : "Ctrl+Shift+V"
-            } to keep a large paste inline.`,
-      );
+      session.addAttachments(supplied.Picked);
+      attachmentFailed(supplied.Error ?? admitted.Error);
+      // Follows the large-paste toast in apps/web/src/components/chat/useComposerAttachmentIntake.ts.
+      if (pasted !== undefined) {
+        toastManager.add({
+          type: "info",
+          title: `Large paste attached as ${pasted.Name}`,
+          description: `${formatAttachmentSize(pasted.SizeBytes)} · Use ${
+            IS_MAC ? "⌘⇧V" : "Ctrl+Shift+V"
+          } to keep a large paste inline.`,
+          data: { hideCopyButton: true },
+        });
+      }
     }
-    if (admitted.Accepted.length === 0) session.addAttachments([], admitted.Error);
+    if (admitted.Accepted.length === 0) attachmentFailed(admitted.Error);
   };
   const addFolders = (folders: File[]) => {
     const folder = folders.at(-1);
-    if (folder !== undefined) {
-      session.addAttachments(
-        [],
-        `Couldn't get the path of "${folder.name}". Type its path instead.`,
-      );
-    }
+    if (folder === undefined) return;
+    toastManager.add({
+      type: "error",
+      title: `Couldn't get the path of "${folder.name}"`,
+      description: "Type the folder path with @ instead.",
+    });
   };
   return { files, addFiles, addFolders };
 }
@@ -650,8 +660,14 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       FileLimit: environment.state.FileAttachmentLimit,
     });
     if (decision.Kind === "inline") return false;
-    if (decision.Kind === "refuse") session.addAttachments([], decision.Error);
-    else void intake.addFiles([decision.File], true);
+    if (decision.Kind === "refuse") {
+      toastManager.add({
+        type: "error",
+        title: decision.Title,
+        description: decision.Description,
+        data: { hideCopyButton: true },
+      });
+    } else void intake.addFiles([decision.File], true);
     return true;
   };
   useTypedText((event, typed) => {
@@ -812,14 +828,6 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             </For>
           </ul>
         </Show>
-        <Show when={held().AttachmentError}>
-          <p class={ERROR}>{held().AttachmentError}</p>
-        </Show>
-        <Show when={held().AttachmentNotice}>
-          <p class={`${NOTE} text-muted-foreground ${HIDDEN_COLLAPSED}`}>
-            {held().AttachmentNotice}
-          </p>
-        </Show>
         <Show when={focused() && !answering() && menu.open()}>
           {(trigger) => <ComposerCommandMenu menu={menu} trigger={trigger()} onPick={pick} />}
         </Show>
@@ -857,12 +865,6 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         </Show>
         <Show when={held().StopError}>
           <p class={ERROR}>Couldn't stop: {held().StopError}</p>
-        </Show>
-        <Show when={held().QueueError}>
-          <p class={ERROR}>Couldn't change the queue: {held().QueueError}</p>
-        </Show>
-        <Show when={held().ModelError}>
-          <p class={ERROR}>{held().ModelError}</p>
         </Show>
         <Show when={held().RewindError}>
           <p class={ERROR}>{held().RewindError}</p>

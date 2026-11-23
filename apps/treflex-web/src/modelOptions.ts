@@ -285,7 +285,7 @@ export function modelChangeBlock(input: {
 }): string | null {
   if (!input.Started || input.CurrentInstanceId === null) return null;
   if (input.CurrentInstanceId === input.NextInstanceId || input.SupportsHandoff) return null;
-  return "This thread does not support switching providers after it has started. Start a new thread to use this model.";
+  return "This thread does not support switching providers after it has started.";
 }
 
 export const FAVORITES_TAB = "favorites";

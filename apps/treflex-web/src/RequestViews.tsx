@@ -308,9 +308,6 @@ export const PendingQuestion = RuntimeRequest.provider<{
                     }}
                   </For>
                 </div>
-                <Show when={session.state.QuestionNotice}>
-                  {(notice) => <p class={`${QUESTION_NOTE} text-muted-foreground`}>{notice()}</p>}
-                </Show>
                 <Show when={request.answerError()}>
                   {(error) => (
                     <p class={`${QUESTION_NOTE} text-error-foreground`}>

@@ -92,6 +92,8 @@ import { Presence } from "./ui/Presence";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { SidebarInput, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "./ui/Sidebar";
 import { Spinner } from "./ui/Spinner";
+import { toastManager } from "./ui/toastStore";
+import { copyText } from "./clipboard";
 import { Switch } from "./ui/Switch";
 import { Textarea } from "./ui/Textarea";
 import { VoiceSetup } from "./VoiceSettings";
@@ -1336,7 +1338,16 @@ function AboutPage() {
                       aria-label={`Copy version ${text()}`}
                       data-tip={copied() ? "Copied" : "Copy version"}
                       onClick={() => {
-                        void navigator.clipboard.writeText(text()).then(() => setCopied(true));
+                        void copyText(text()).then((done) => {
+                          if (done) setCopied(true);
+                          else {
+                            toastManager.add({
+                              type: "error",
+                              title: "Could not copy version",
+                              description: "Failed to copy version to the clipboard.",
+                            });
+                          }
+                        });
                       }}
                     >
                       {text()}

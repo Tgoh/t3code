@@ -123,6 +123,7 @@ import { delay } from "./Infrastructure/delay";
 import type { IWireServerConfig } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
 import { serverError, serverFailure } from "./Infrastructure/serverError";
+import { toast } from "./Infrastructure/toasts";
 import { detachTerminal, type ITerminal, openTerminal, restoreTerminal } from "./Terminal";
 import {
   getDefaultThreadDetails,
@@ -201,27 +202,21 @@ export interface IThreadSession extends IEntity {
   NewThreadProjectId: string | null;
   Draft: string;
   Attachments: IAttachmentDraft[];
-  AttachmentError?: string;
-  AttachmentNotice?: string;
   /** Only a model the person picked; a new thread's reseeding leaves it alone. */
   ModelSelection: IWireModelSelection | null;
   SeededModel: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode | null;
   /** The next send skips the compaction the composer offers. */
   KeepFullHistory: boolean;
-  ModelError?: string;
   SendError?: string;
   StopError?: string;
   /** The run a Stop press is waiting to end. */
   StopRunId?: string;
-  QueueError?: string;
   RewindError?: string;
   ForkError?: string;
-  MergeError?: string;
   ScriptError?: string;
   QuestionAnswers: Record<string, Record<string, IQuestionDraft>>;
   QuestionIndex: Record<string, number>;
-  QuestionNotice?: string;
   Panels: { Diff: IDiffPanel | null; Details: IDetailsPanel; Launcher: { Open: boolean } };
   Terminal: ITerminal;
   Git: IGitWork;
@@ -573,8 +568,12 @@ export function* restoreFiles(draft: IThreadSession): IOpenGenerator {
   if (restored === undefined) return;
   draft.Attachments.unshift(...restored);
   if (restored.length < stored.length) {
-    draft.AttachmentNotice =
-      "Some attachments didn't finish uploading before the page closed. Attach them again.";
+    yield* toast({
+      Kind: "warning",
+      Title: "Some attachments were not restored",
+      Description: "They didn't finish uploading before the page closed. Attach them again.",
+      Thread: { EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
+    });
   }
   yield* start(storeFiles, draft);
 }
@@ -608,7 +607,6 @@ export function* setModelSelection(
   selection: IWireModelSelection,
 ): IOpenGenerator {
   draft.ModelSelection = selection;
-  delete draft.ModelError;
   yield* storeDraft(draft);
   yield* rememberModelEffect({ Selection: selection });
   const thread = yield* select(threadModelSelection);
@@ -632,7 +630,11 @@ export function* setModelSelection(
       ),
     );
   } catch (error) {
-    draft.ModelError = `This model pick was not saved. ${serverError(error).message}`;
+    yield* toast({
+      Kind: "error",
+      Title: "Could not apply model selection",
+      Description: `This model pick was not saved. ${serverError(error).message}`,
+    });
   }
 }
 latest(setModelSelection);
@@ -648,7 +650,11 @@ export function* chooseModel(
     NextInstanceId: instanceId,
   });
   if (blocked !== null) {
-    draft.ModelError = blocked;
+    yield* toast({
+      Kind: "warning",
+      Title: "Start a new chat to switch providers",
+      Description: blocked,
+    });
     return;
   }
   const current = yield* select(effectiveModel);
@@ -671,16 +677,7 @@ export function* setRuntimeMode(draft: IThreadSession, mode: IWireRuntimeMode): 
   yield* storeDraft(draft);
 }
 
-export function* addAttachments(
-  draft: IThreadSession,
-  picked: IPickedFile[],
-  error: string | null,
-  notice: string | null = null,
-): IActionGenerator {
-  delete draft.AttachmentNotice;
-  if (error === null) delete draft.AttachmentError;
-  else draft.AttachmentError = error;
-  if (notice !== null) draft.AttachmentNotice = notice;
+export function* addAttachments(draft: IThreadSession, picked: IPickedFile[]): IActionGenerator {
   draft.Attachments.push(...picked);
   if (picked.length > 0) yield* start(storeFiles, draft);
 }
@@ -817,8 +814,6 @@ export function* send(draft: IThreadSession, mode: IDispatchMode = "auto"): IOpe
   draft.KeepFullHistory = false;
   if (draft.Draft.trim() === text) draft.Draft = "";
   draft.Attachments = draft.Attachments.filter((file) => !fileIds.includes(file.Id));
-  delete draft.AttachmentNotice;
-  delete draft.AttachmentError;
   if (fileIds.length > 0) {
     yield* resource(draft, "Composer/Files").forget(fileIds);
     yield* start(storeFiles, draft);
@@ -920,7 +915,6 @@ export type IQueuePress =
 // Follows sendQueuedMessage in apps/web/src/components/chat/QueuedRunsControl.tsx, and saveEdit's
 // steer in apps/web/src/components/chat/useQueuedRunEdit.ts.
 export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGenerator {
-  delete draft.QueueError;
   let operation: IQueueOperation | null;
   if (press.Kind === "edit") {
     operation = { Kind: "edit", RunId: press.RunId, Text: press.Text };
@@ -956,7 +950,11 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
     const steer = yield* select((held: IThreadSession) => steerOperation(held, press.RunId));
     if (steer !== null) yield* run(steer);
   } catch (error) {
-    draft.QueueError = serverError(error).message;
+    yield* toast({
+      Kind: "error",
+      Title: "Could not send queued message",
+      Description: serverError(error).message,
+    });
   }
 }
 leading(queueAction);
@@ -1245,7 +1243,6 @@ function* mergeBackRunId(draft: IThreadSession): ISelectorGenerator<string | nul
 
 // Follows merge in ThreadRelationshipsPanel, apps/web/src/components/chat/ThreadRelationshipsControl.tsx.
 export function* mergeBack(draft: IThreadSession, targetThreadId: string): IOpenGenerator {
-  delete draft.MergeError;
   const runId = yield* select(mergeBackRunId);
   if (runId === null) return;
   const environmentId = draft.EnvironmentId;
@@ -1263,7 +1260,11 @@ export function* mergeBack(draft: IThreadSession, targetThreadId: string): IOpen
       ),
     );
   } catch (error) {
-    draft.MergeError = serverError(error).message;
+    yield* toast({
+      Kind: "error",
+      Title: "Could not merge back",
+      Description: serverError(error).message,
+    });
     return;
   }
   yield* publishToNearest(draft, "Thread/MergedBack", { ThreadId: targetThreadId });
@@ -1314,8 +1315,12 @@ export function* toggleQuestionOption(
   const prompt = carryIntoPrompt(draft.Draft, current?.customAnswer);
   if (prompt !== draft.Draft) {
     draft.Draft = prompt;
-    draft.QuestionNotice =
-      "Your typed text was set aside. It will be back in the composer once the question is answered.";
+    yield* toast({
+      Kind: "info",
+      Title: "Your typed text was set aside",
+      Description: "It will be back in the composer once the question is answered.",
+      Thread: { EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
+    });
     yield* storeDraft(draft);
   }
   heldDrafts(draft, requestId)[questionId] = plainDraft(
@@ -1412,7 +1417,6 @@ export function* settleQuestions(
   for (const requestId of Object.keys(draft.QuestionIndex)) {
     if (!pendingIds.includes(requestId)) delete draft.QuestionIndex[requestId];
   }
-  if (pendingIds.length === 0) delete draft.QuestionNotice;
   if (draft.Draft !== before) yield* storeDraft(draft);
 }
 

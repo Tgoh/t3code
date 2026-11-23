@@ -192,8 +192,8 @@ describe("pasting", () => {
     expect(paste(large, { FileLimit: null }).Kind).toBe("inline");
     expect(paste("x".repeat(120_001), { FileLimit: null })).toEqual({
       Kind: "refuse",
-      Error:
-        "Pasted text is too large for this message. Remove some text or an attachment, then paste again.",
+      Title: "Pasted text is too large for this message",
+      Description: "Remove some text or an attachment, then paste again.",
     });
   });
 });

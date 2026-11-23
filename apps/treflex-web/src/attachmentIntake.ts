@@ -230,7 +230,7 @@ export function attachmentKey(
 export type IPastedTextDecision =
   | { Kind: "inline" }
   | { Kind: "attach"; File: File }
-  | { Kind: "refuse"; Error: string };
+  | { Kind: "refuse"; Title: string; Description: string };
 
 /** A large paste becomes a text file attachment, as stock's composer folds it. */
 export function foldPastedText(input: {
@@ -259,8 +259,8 @@ export function foldPastedText(input: {
     return wouldExceedInputLimit
       ? {
           Kind: "refuse",
-          Error:
-            "Pasted text is too large for this message. Remove some text or an attachment, then paste again.",
+          Title: "Pasted text is too large for this message",
+          Description: "Remove some text or an attachment, then paste again.",
         }
       : { Kind: "inline" };
   }
@@ -271,8 +271,8 @@ export function foldPastedText(input: {
     return wouldExceedInputLimit
       ? {
           Kind: "refuse",
-          Error:
-            "Pasted text is too large to attach. Reduce the clipboard contents or save a smaller excerpt as a file.",
+          Title: "Pasted text is too large to attach",
+          Description: "Reduce the clipboard contents or save a smaller excerpt as a file.",
         }
       : { Kind: "inline" };
   }

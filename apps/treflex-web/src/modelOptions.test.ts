@@ -171,7 +171,9 @@ describe("model options", () => {
   it("blocks another provider on a started thread unless it can hand off", () => {
     const started = { Started: true, SupportsHandoff: false, CurrentInstanceId: "claudeAgent" };
     expect(modelChangeBlock({ ...started, NextInstanceId: "claudeAgent" })).toBeNull();
-    expect(modelChangeBlock({ ...started, NextInstanceId: "codex" })).toMatch(/Start a new thread/);
+    expect(modelChangeBlock({ ...started, NextInstanceId: "codex" })).toMatch(
+      /does not support switching/,
+    );
     expect(
       modelChangeBlock({ ...started, SupportsHandoff: true, NextInstanceId: "codex" }),
     ).toBeNull();

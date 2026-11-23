@@ -575,24 +575,44 @@ export function* removeProject(
 }
 leading(removeProject);
 
+// Follows "Unable to reveal file" in apps/web/src/components/chat/MarkdownFileLink.tsx.
 export function* openInFileManager(draft: IEnvironment, path: string): IOpenGenerator {
-  yield* open(openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path }));
+  try {
+    yield* open(openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path }));
+  } catch (error) {
+    yield* toast({
+      Kind: "error",
+      Title: "Unable to reveal file",
+      Description: serverError(error).message,
+    });
+  }
 }
 
+// Follows "Unable to open file" in apps/web/src/components/chat/MarkdownFileLink.tsx.
 export function* openInEditor(
   draft: IEnvironment,
   path: string,
   projectRoot: string | null,
 ): IOpenGenerator {
   const stored = draft.Local.Editor;
-  const opened = yield* open(
-    openInEditorEffect({
-      EnvironmentId: draft.EnvironmentId,
-      Path: path,
-      ProjectRoot: projectRoot,
-      Stored: stored,
-    }),
-  );
+  let opened: string;
+  try {
+    opened = yield* open(
+      openInEditorEffect({
+        EnvironmentId: draft.EnvironmentId,
+        Path: path,
+        ProjectRoot: projectRoot,
+        Stored: stored,
+      }),
+    );
+  } catch (error) {
+    yield* toast({
+      Kind: "error",
+      Title: "Unable to open file",
+      Description: serverError(error).message,
+    });
+    return;
+  }
   if (opened !== stored) yield* preferEditor(draft, opened);
 }
 

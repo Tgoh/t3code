@@ -588,7 +588,6 @@ function LineageGroups(props: { lineage: ILineage }) {
 
 function LineageSection(props: { threadId: string }) {
   const environment = Environment.use();
-  const session = ThreadSession.use();
   const input = createMemo(() => {
     const open = environment.state.Replica.OpenThreads[props.threadId];
     if (open?.Thread == null) return null;
@@ -635,9 +634,6 @@ function LineageSection(props: { threadId: string }) {
             <h3 class="m-0 mb-1 flex min-h-8 items-center px-2.5 text-[11px] font-medium text-muted-foreground select-none">
               {held().Running > 0 ? `Lineage · ${held().Running} running` : "Lineage"}
             </h3>
-          </Show>
-          <Show when={session.state.MergeError}>
-            {(error) => <p class={ERROR}>Couldn't merge back: {error()}</p>}
           </Show>
           <Show when={props.threadId} keyed>
             {(_threadId: string) => <LineageGroups lineage={held()} />}
