@@ -19,12 +19,13 @@ export interface ISurfaceAction {
 const NOT_HERE_YET = "Not in this client yet.";
 
 /**
- * Follows RightPanelEmptyState in apps/web/src/components/RightPanelTabs.tsx. Terminal and Diff
- * open what this client has; the rest are listed, disabled, until it has them.
+ * Follows RightPanelEmptyState in apps/web/src/components/RightPanelTabs.tsx. Terminal, Diff and
+ * Side chat open what this client has; the rest are listed, disabled, until it has them.
  */
 export function surfaceActions(input: {
   TerminalAvailable: boolean;
   DiffAvailable: boolean;
+  SideChatAvailable: boolean;
 }): ISurfaceAction[] {
   return [
     {
@@ -54,7 +55,12 @@ export function surfaceActions(input: {
       Unavailable: NOT_HERE_YET,
     },
     { Kind: "device", Label: "Device", Shortcut: "M", Unavailable: NOT_HERE_YET },
-    { Kind: "sideChat", Label: "Side chat", Shortcut: "S", Unavailable: NOT_HERE_YET },
+    {
+      Kind: "sideChat",
+      Label: "Side chat",
+      Shortcut: "S",
+      Unavailable: input.SideChatAvailable ? null : "Not available in a side chat or subagent.",
+    },
   ];
 }
 

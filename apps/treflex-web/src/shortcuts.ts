@@ -4,7 +4,13 @@ import type { IDispatch } from "treflex-solid";
 import type { IPanelShortcuts } from "./Environment";
 import type { IOverlayStack } from "./overlays";
 import { toggleTerminal } from "./Terminal";
-import { closeDiff, openDiff, toggleDetails, toggleRightPanel } from "./ThreadSession";
+import {
+  closeDiff,
+  closeRightPanel,
+  openDiff,
+  toggleDetails,
+  toggleRightPanel,
+} from "./ThreadSession";
 
 /** A handler for plain keys while something on screen takes them, as the surface launcher does. */
 export type ILetterKeys = (event: KeyboardEvent) => boolean;
@@ -79,6 +85,10 @@ export function runPanelShortcut(
       return true;
     case "rightPanel.toggle":
       void dispatch(toggleRightPanel, session);
+      return true;
+    case "rightPanel.close":
+      if (!panels.RightPanelOpen) return false;
+      void dispatch(closeRightPanel, session);
       return true;
     case "diff.toggle":
       if (panels.DiffOpen) void dispatch(closeDiff, session);

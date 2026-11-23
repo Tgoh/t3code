@@ -75,6 +75,9 @@ export const isAlternate = (event: MouseEvent | KeyboardEvent) =>
 export const COMPOSER_LANE =
   "composer-lane pointer-events-none absolute inset-x-0 bottom-0 z-20 mx-auto max-w-[calc(var(--chat-content-max-width)+2*var(--gutter))] px-(--gutter) pt-0 pb-[calc(var(--composer-gap,21px)+var(--safe-bottom))] *:pointer-events-auto in-[.chat-stage.with-details]:max-w-[calc(min(var(--chat-content-max-width),var(--details-lane,100vw))+2*var(--gutter))] in-[.chat-stage.with-details]:[translate:var(--details-shift)_0]";
 
+export const COMPOSER_SURFACE =
+  "relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)";
+
 const ROUND_BUTTON =
   "relative isolate inline-flex size-8 flex-none cursor-pointer items-center justify-center overflow-hidden rounded-full border-0 p-0 text-white shadow-[0_1px_2px_rgb(0_0_0/24%)] disabled:cursor-default disabled:opacity-64 disabled:shadow-none";
 const HIDDEN_COLLAPSED = "in-data-collapsed:hidden";
@@ -678,7 +681,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
       </Show>
       <form
         ref={form}
-        class="relative z-1 rounded-2xl border border-(--composer-outline) bg-[color-mix(in_srgb,var(--composer-surface)_var(--glass-opacity),transparent)] shadow-(--composer-shadow) backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturation)"
+        class={COMPOSER_SURFACE}
         data-collapsed={collapsed() ? "" : undefined}
         inert={rewinding()}
         onSubmit={(event) => {
@@ -869,6 +872,9 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
         </Show>
         <Show when={held().ForkError}>
           <p class={ERROR}>Couldn't fork this response: {held().ForkError}</p>
+        </Show>
+        <Show when={held().SideChatError}>
+          <p class={ERROR}>Couldn't start a side chat: {held().SideChatError}</p>
         </Show>
         <Show when={ownsVoice()}>
           <DictationPreview />

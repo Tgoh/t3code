@@ -26,7 +26,13 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 - **Toasts.** **In progress** on `treflex/toasts`. Stock shows toasts (`apps/web/src/components/ui/toast.tsx`, about 176 uses) for git results, copy confirmations, errors and more; treflex has none and uses inline notices and icon swaps. Port stock's toast after the shared components, and move each place stock toasts onto it, including the "Could not…" errors that land in the sidebar today, and wire up the In-app notifications setting. Tam's call (2026-11-22).
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **Held send:** Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
-  - **Side chats, subagents and linked threads open beside the thread or in its place,** **In progress** on `treflex/side-chats`. Chosen by a setting, with a modifier-click for the other. `@t3tools/client-runtime/side-thread` is importable.
+  - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:
+    - linked-environment threads, which need peer-link reads;
+    - the side chat header's "Add to chat" and Delete;
+    - `/side` and `/btw`;
+    - the read-only bar's live status line (stock's `formatProviderSubagentStatus`), and the pane's "Subagent of" and "Context from" dividers;
+    - tabs, so several side threads stay open beside the diff;
+    - keeping the open side thread across a reload, as stock's `rightPanelStore` does.
   - **A show/hide toggle on secret fields.**
   - **A thread error banner that can be dismissed and comes back.**
   - **Copy a chat table as HTML,** and **a copy button on file previews.**

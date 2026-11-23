@@ -12,6 +12,7 @@ import { Bot, ChevronDown, ChevronRight } from "./icons";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import type { ILineageAgent } from "./lineage";
 import OpenThread, { timelineItem } from "./OpenThread";
+import { createSideThreadTrigger } from "./sideThreadTrigger";
 import {
   groupTiming,
   type INotificationItem,
@@ -149,18 +150,28 @@ function SubagentCard(props: ICardProps) {
         </div>
       }
     >
-      {(childThreadId) => (
-        <button
-          type="button"
-          class={`${CARD} cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset`}
-          data-subagent
-          aria-label={`Open ${title()}`}
-          aria-description={statusLabel()}
-          onClick={() => void environment.selectThread(childThreadId())}
-        >
-          {content()}
-        </button>
-      )}
+      {(childThreadId) => {
+        const trigger = createSideThreadTrigger((intent) =>
+          remote() === undefined
+            ? void environment.openSideThread(childThreadId(), intent)
+            : void environment.selectThread(childThreadId()),
+        );
+        return (
+          <>
+            <button
+              type="button"
+              class={`${CARD} cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset`}
+              data-subagent
+              aria-label={`Open ${title()}`}
+              aria-description={statusLabel()}
+              {...trigger.handlers}
+            >
+              {content()}
+            </button>
+            {trigger.menu()}
+          </>
+        );
+      }}
     </Show>
   );
 }

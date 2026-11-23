@@ -33,6 +33,7 @@ import {
   addFolder,
   addProjectSettings,
   cloneProject,
+  closeSideThread,
   closeThread,
   editors,
   EnvironmentReceiver,
@@ -40,7 +41,9 @@ import {
   keybindings,
   newProject,
   newThread,
+  openSideThread,
   openThread,
+  openThreadLink,
   panelShortcuts,
   preferEditor,
   projectCommand,
@@ -48,6 +51,7 @@ import {
   reorderPin,
   selectThread,
   settleThread,
+  startSideChat,
   threadCommand,
   toggleSettleOpenThread,
 } from "./Environment";
@@ -2170,6 +2174,146 @@ describe("selection", () => {
     expect(server.environment().Local.ThreadSessions[THREAD_ID]).toBeDefined();
     await server.runtime.dispatch(selectThread, server.envId(), THREAD_ID);
     expect(server.thread().LastSequence).toBe(0);
+  });
+
+  const row = (id: string, lineage: object) => ({
+    id,
+    projectId: "p-1",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    title: id,
+    status: "idle",
+    archivedAt: null,
+    latestRunId: null,
+    activeProviderThreadId: null,
+    pendingRuntimeRequest: null,
+    lineage,
+  });
+  const sideChatShell = (server: Awaited<ReturnType<typeof connect>>) =>
+    server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "p-1", title: "One", workspaceRoot: "/1" }],
+        threads: [
+          row("a", { rootThreadId: "a", parentThreadId: null, relationshipToParent: null }),
+          row("side", {
+            rootThreadId: "a",
+            parentThreadId: "a",
+            relationshipToParent: null,
+            sideChat: true,
+          }),
+        ],
+        archivedThreads: [],
+      },
+    } as unknown as IWireShellItem);
+
+  it("a side thread opens beside the selected one without a history step, and closing it retains it", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(openSideThread, server.envId(), "s", "primary");
+    expect(server.environment().Local.SelectedThreadId).toBe("a");
+    expect(server.session("a").Panels.Side).toEqual({ ThreadId: "s" });
+    expect(streams(server)).toEqual(["a", "s"]);
+    expect(server.address.history.entries).toHaveLength(2);
+    const side = server.environment().Replica.OpenThreads["s"]!;
+    await server.runtime.dispatch(closeSideThread, server.envId());
+    expect(server.session("a").Panels.Side).toBeNull();
+    expect(streams(server)).toEqual(["a"]);
+    expect(server.runtime.timers(side.$Id)).toMatchObject([{ Key: "Thread/Expire" }]);
+  });
+
+  it("the modifier opens a side thread in the other place, and the setting swaps them", async () => {
+    const server = await connect(undefined, null, { storeClientSettings: () => {} });
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(openSideThread, server.envId(), "s", "alternate");
+    expect(server.environment().Local.SelectedThreadId).toBe("s");
+    expect(server.address.thread).toBe("s");
+    await server.go(-1);
+    expect(server.session("a").Panels.Side).toBeNull();
+
+    await server.runtime.dispatch(writeSetting, server.envId(), {
+      Store: "client",
+      Patch: { sideThreadOpenTarget: "main" },
+    });
+    await server.runtime.dispatch(openSideThread, server.envId(), "s", "alternate");
+    expect(server.session("a").Panels.Side).toEqual({ ThreadId: "s" });
+    await server.runtime.dispatch(openSideThread, server.envId(), "t", "primary");
+    expect(server.environment().Local.SelectedThreadId).toBe("t");
+  });
+
+  it("opens the thread's own parent in place, and moves a side thread to the main view without it staying beside", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(openSideThread, server.envId(), "a", "primary");
+    expect(server.session("a").Panels.Side).toBeNull();
+    await server.runtime.dispatch(openSideThread, server.envId(), "s", "primary");
+    await server.runtime.dispatch(openSideThread, server.envId(), "s", "main");
+    expect(server.environment().Local.SelectedThreadId).toBe("s");
+    expect(server.session("a").Panels.Side).toBeNull();
+    expect(streams(server)).toEqual(["s"]);
+  });
+
+  it("leaving a thread retains its side thread, a return reopens both, and a shown one doesn't expire", async () => {
+    const server = await connect();
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(openSideThread, server.envId(), "s", "primary");
+    await server.runtime.dispatch(selectThread, server.envId(), "b");
+    expect(streams(server)).toEqual(["b"]);
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    expect(streams(server)).toEqual(["a", "s"]);
+    const side = server.environment().Replica.OpenThreads["s"]!;
+    await server.runtime.dispatch(
+      EnvironmentReceiver.handle,
+      server.envId(),
+      { Type: "Thread/Expired", ThreadId: "s" },
+      { publisher: { Id: side.$Id } },
+    );
+    expect(server.environment().Replica.OpenThreads["s"]).toBeDefined();
+  });
+
+  it("opening the diff replaces the side thread, and an unused side chat is deleted when it goes", async () => {
+    const commands: Array<{ ThreadId: string; Command: unknown }> = [];
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: unknown }) => void commands.push(effect),
+    });
+    await sideChatShell(server);
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(openSideThread, server.envId(), "side", "primary");
+    commands.length = 0;
+    await server.runtime.dispatch(openDiff, server.sessionId("a"), "branch", null);
+    await settled();
+    expect(server.session("a").Panels.Side).toBeNull();
+    expect(streams(server)).toEqual(["a"]);
+    expect(commands).toMatchObject([
+      { ThreadId: "side", Command: { Kind: "delete", OnlyIfUnused: true } },
+    ]);
+    expect(server.environment().Local.ThreadSessions["side"]).toBeDefined();
+  });
+
+  it("a link to a side chat opens its parent with the side chat beside it", async () => {
+    const server = await connect();
+    await sideChatShell(server);
+    await server.runtime.dispatch(openThreadLink, server.envId(), "side");
+    expect(server.environment().Local.SelectedThreadId).toBe("a");
+    expect(server.session("a").Panels.Side).toEqual({ ThreadId: "side" });
+    await server.runtime.dispatch(openThreadLink, server.envId(), "b");
+    expect(server.environment().Local.SelectedThreadId).toBe("b");
+  });
+
+  it("starting a side chat forks the latest stable point and opens it beside, with the parent's picks", async () => {
+    const forks: unknown[] = [];
+    const server = await connect(undefined, null, {
+      forkThread: (effect: unknown) => void forks.push(effect),
+    });
+    await server.runtime.dispatch(selectThread, server.envId(), "a");
+    await server.runtime.dispatch(setRuntimeMode, server.sessionId("a"), "approval-required");
+    await server.runtime.dispatch(startSideChat, server.envId());
+    const sideId = server.session("a").Panels.Side?.ThreadId;
+    expect(forks).toMatchObject([
+      { SourceThreadId: "a", TargetThreadId: sideId, RunId: null, Title: "Side chat" },
+    ]);
+    expect(streams(server)).toEqual(["a", sideId]);
+    expect(server.session(sideId).RuntimeMode).toBe("approval-required");
   });
 
   it("a reload returns to the thread in the address", async () => {
