@@ -857,7 +857,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
               environment.sendShortcut(),
               event.currentTarget.value,
             );
-            if (!enterSends(event, coarsePointer(), modifier)) return;
+            if (!enterSends(event, coarsePointer(), modifier, running())) return;
             event.preventDefault();
             send(enterIsAlternate(event, modifier, IS_MAC));
           }}

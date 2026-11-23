@@ -151,16 +151,17 @@ export function composerRequiresModifier(
 /**
  * On a touch screen Enter adds a line and only the send button or a modifier sends. When the Send
  * shortcut asks for a modifier, plain Enter adds a line, and Shift with the modifier is the
- * alternate send, as stock's `shortcutForContext` moves it there.
+ * alternate send during a turn, as stock's `shortcutForContext` moves it there.
  */
 export function enterSends(
   event: Pick<KeyboardEvent, "key" | "shiftKey" | "isComposing" | "metaKey" | "ctrlKey">,
   coarsePointer: boolean,
   requiresModifier = false,
+  running = false,
 ): boolean {
   if (event.key !== "Enter" || event.isComposing) return false;
   const modifier = event.metaKey || event.ctrlKey;
-  if (requiresModifier) return modifier;
+  if (requiresModifier) return modifier && (!event.shiftKey || running);
   if (event.shiftKey) return false;
   return !coarsePointer || modifier;
 }

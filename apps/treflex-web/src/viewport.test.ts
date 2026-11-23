@@ -183,33 +183,46 @@ describe("enterSends", () => {
     expect(enterSends(event, coarse)).toBe(expected);
   });
 
+  const shiftCtrl = { ...enter, ctrlKey: true, shiftKey: true };
   it.each([
-    ["Enter when Ctrl+Enter always sends", enter, "mod-enter", "x", false],
+    ["Enter when Ctrl+Enter always sends", enter, "mod-enter", "x", false, false],
     [
       "Ctrl+Enter when Ctrl+Enter always sends",
       { ...enter, ctrlKey: true },
       "mod-enter",
       "x",
+      false,
       true,
     ],
     [
-      "Shift+Ctrl+Enter when Ctrl+Enter always sends",
-      { ...enter, ctrlKey: true, shiftKey: true },
+      "Shift+Ctrl+Enter during a turn when Ctrl+Enter always sends",
+      shiftCtrl,
       "mod-enter",
       "x",
       true,
+      true,
     ],
-    ["Enter on one line, multiline mode", enter, "mod-enter-multiline", "x", true],
-    ["Enter on two lines, multiline mode", enter, "mod-enter-multiline", "x\ny", false],
+    [
+      "Shift+Ctrl+Enter between turns when Ctrl+Enter always sends",
+      shiftCtrl,
+      "mod-enter",
+      "x",
+      false,
+      false,
+    ],
+    ["Enter on one line, multiline mode", enter, "mod-enter-multiline", "x", false, true],
+    ["Enter on two lines, multiline mode", enter, "mod-enter-multiline", "x\ny", false, false],
     [
       "Cmd+Enter on two lines, multiline mode",
       { ...enter, metaKey: true },
       "mod-enter-multiline",
       "x\ny",
+      false,
       true,
     ],
-  ] as const)("%s", (_label, event, shortcut, prompt, expected) => {
-    expect(enterSends(event, false, composerRequiresModifier(shortcut, prompt))).toBe(expected);
+  ] as const)("%s", (_label, event, shortcut, prompt, running, expected) => {
+    const requiresModifier = composerRequiresModifier(shortcut, prompt);
+    expect(enterSends(event, false, requiresModifier, running)).toBe(expected);
   });
 });
 

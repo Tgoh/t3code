@@ -126,13 +126,11 @@ export function layoutSidebar(input: ISidebarInput): ISidebarLayout {
   );
   const sorted = sidebarSections(visible, input.Now, input.Subagents);
   // Grouped by project, pinned threads lead their own folder rather than a Pinned section.
-  // Folders already separate the work, so as in stock's boring sidebar there's no Working section.
-  const inbox = preferences.GroupByProject ? null : input.Inbox;
   const sections = preferences.GroupByProject
     ? { ...sorted, Pinned: [] }
-    : inbox === null
+    : input.Inbox === null
       ? sorted
-      : workingSplit(sorted, inbox, input.Subagents);
+      : workingSplit(sorted, input.Inbox, input.Subagents);
   const folders = preferences.GroupByProject
     ? orderFolders(
         projectFolders([...sorted.Pinned, ...sorted.Active], input.Projects, hidden).filter(

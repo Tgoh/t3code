@@ -35,7 +35,11 @@ describe("client settings in localStorage", () => {
         followUpBehavior: "steer",
       }),
     );
-    const held = stubStorage({ [KEY]: saved, "reflex:follow-up-queue-default:v1": "1" });
+    const held = stubStorage({
+      [KEY]: saved,
+      "reflex:follow-up-queue-default:v1": "1",
+      "reflex:project-sort-moved:v1": "1",
+    });
     const loaded = read();
     expect(loaded).toMatchObject({ chatWidth: "wide", followUpBehavior: "steer" });
 
@@ -63,16 +67,21 @@ describe("client settings in localStorage", () => {
     expect(read().sidebarProjectSortOrder).toBe("updated_at");
   });
 
-  it("keeps the manual order earlier builds showed without a saved sort", () => {
+  it.each([
+    ["no saved sort", {}],
+    ["an unreadable saved sort", { "reflex-web:project-sort": '"sideways"' }],
+  ])("keeps the manual order earlier builds showed with %s, once", (_label, legacy) => {
     const saved = JSON.stringify(
       encodeSaved({ ...DEFAULT_CLIENT_SETTINGS, sidebarProjectSortOrder: "updated_at" }),
     );
     const held = stubStorage({
       [KEY]: saved,
       "reflex:follow-up-queue-default:v1": "1",
-      "reflex-web:project-sort": '"sideways"',
+      ...legacy,
     });
     expect(read().sidebarProjectSortOrder).toBe("manual");
     expect(held.has("reflex-web:project-sort")).toBe(false);
+    held.set(KEY, saved);
+    expect(read().sidebarProjectSortOrder).toBe("updated_at");
   });
 });

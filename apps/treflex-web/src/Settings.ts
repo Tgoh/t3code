@@ -22,7 +22,7 @@ import type { IWireServerConfigEvent } from "./Infrastructure/serverConfigStream
 import { modelFavoritesOf, providerOptions } from "./modelOptions";
 import { modelFavoritePatch } from "./providerSettings";
 import { reconcile } from "./rows";
-import { visitShown } from "./Shell";
+import { followInbox, notifyChanges, visitShown } from "./Shell";
 import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
 import {
   chooseNotificationModeEffect,
@@ -81,6 +81,7 @@ export function* showView(draft: IEnvironment, view: IAddressView | null): IActi
 export function* loadSettings(draft: IEnvironment): IActionGenerator {
   draft.Local.ClientSettings = yield* storedClientSettingsEffect();
   yield* applyNotificationMode(draft);
+  yield* start(notifyChanges, draft.Replica.Shell);
 }
 
 export function* applyNotificationMode(draft: IEnvironment): IActionGenerator {
@@ -188,7 +189,12 @@ export function* setClientSettings(
   const next = { ...held, ...patch };
   draft.Local.ClientSettings = next;
   yield* storeClientSettingsEffect({ Settings: next });
-  if (patch.notificationMode !== undefined) yield* applyNotificationMode(draft);
+  if (patch.notificationMode !== undefined) {
+    yield* applyNotificationMode(draft);
+    yield* start(notifyChanges, draft.Replica.Shell);
+  }
+  if (patch.sidebarWorkingShelfEnabled !== undefined)
+    yield* start(followInbox, draft.Replica.Shell);
 }
 
 export function* timestampFormat(draft: IEnvironment): ISelectorGenerator<ITimestampFormat> {

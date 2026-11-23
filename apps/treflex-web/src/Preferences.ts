@@ -14,6 +14,7 @@ import { minute } from "./Infrastructure/clock";
 import { type IPreferences, storePreferencesEffect } from "./Infrastructure/preferences";
 import type { IProjectSort } from "./projectOrder";
 import {
+  followInbox,
   shellInbox,
   sidebarRowThreadId,
   sidebarThreads,
@@ -41,6 +42,7 @@ export function* setPreferences(
 ): IActionGenerator {
   Object.assign(draft.Local.Preferences, patch);
   yield* storePreferencesEffect({ Patch: patch });
+  if (patch.GroupByProject !== undefined) yield* start(followInbox, draft.Replica.Shell);
 }
 
 const toggled = (held: readonly string[], id: string, on: boolean) =>

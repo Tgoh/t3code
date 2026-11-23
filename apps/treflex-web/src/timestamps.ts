@@ -49,6 +49,7 @@ function ordinalSuffix(day: number): string {
   return day % 10 === 3 ? "rd" : "th";
 }
 
+// Follows formatDayAwareTimestamp in apps/web/src/timestampFormat.ts.
 export function dayAwareTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
   const date = new Date(iso);
   const now = new Date();
@@ -62,10 +63,12 @@ export function dayAwareTimestamp(iso: string, format: ITimestampFormat = "local
   return `${formatter.format(wallClock)} ${time}`;
 }
 
+// Follows formatShortTimestamp in apps/web/src/timestampFormat.ts.
 export function shortTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
   return timeFormatter(format).format(wallClockAsUtc(new Date(iso)));
 }
 
+// Follows formatChatTimestampTooltip in apps/web/src/timestampFormat.ts.
 export function fullTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
   const date = new Date(iso);
   const wallClock = wallClockAsUtc(date);

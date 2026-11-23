@@ -1407,23 +1407,23 @@ describe("thread notifications", () => {
   const update = (sequence: number, thread: object) =>
     ({ kind: "thread.updated", sequence, location: "active", thread }) as unknown as IWireShellItem;
 
-  it("announce a finished run from the shell's status events, and a click opens the thread", async () => {
+  it("announce a finished run from the shell's status events, skip what a reconnect replays, and open the thread on a click", async () => {
     const server = await connect(undefined, null, {
       storeClientSettings: () => undefined,
       chooseNotificationMode: () => "granted",
     });
     expect(server.device.NotifyModes).toEqual(["off"]);
     await server.sendShell(update(1, shellRow("running")));
+    await server.sendShell({ kind: "synchronized" } as unknown as IWireShellItem);
     await server.sendShell(update(2, shellRow("completed")));
     expect(server.device.Notified).toEqual([]);
+    await server.sendShell(update(3, shellRow("running", { latestRunId: "run-2" })));
 
     expect(
       await server.runtime.dispatch(chooseNotificationMode, server.envId(), "notifications"),
     ).toBeNull();
     expect(server.environment().Local.ClientSettings?.notificationMode).toBe("notifications");
     expect(server.device.NotifyModes).toEqual(["off", "notifications"]);
-    await server.sendShell(update(3, shellRow("running", { latestRunId: "run-2" })));
-    expect(server.device.Notified).toEqual([]);
     await server.sendShell(
       update(4, shellRow("completed", { latestRunCompletedAt: "2026-01-01T00:09:00.000Z" })),
     );
@@ -1436,6 +1436,23 @@ describe("thread notifications", () => {
         Tag: threadNotificationTag(ENV, "t-1"),
       },
     ]);
+
+    await server.runtime.dispatch(
+      ShellReceiver.handle,
+      server.shellId(),
+      { Type: "Shell/Stream", Resubscribing: true } as never,
+      { publisher: { Id: server.shellId() } },
+    );
+    const done = shellRow("completed", { latestRunCompletedAt: "2026-01-01T00:09:00.000Z" });
+    await server.sendShell(
+      update(5, {
+        ...done,
+        pendingRuntimeRequest: { id: "req-1", kind: "command_approval", createdAt: at },
+      }),
+    );
+    await server.sendShell(update(6, done));
+    await server.sendShell({ kind: "synchronized" } as unknown as IWireShellItem);
+    expect(server.device.Notified).toHaveLength(1);
 
     await server.runtime.dispatch(
       EnvironmentReceiver.handle,
@@ -2016,6 +2033,7 @@ describe("the sidebar", () => {
         archivedThreads: [],
       },
     } as unknown as IWireShellItem);
+    await server.sendShell({ kind: "synchronized" } as unknown as IWireShellItem);
     expect(ids(read().Sections.Working)).toEqual(["busy"]);
     expect(ids(read().Sections.Active)).toEqual(["idle"]);
     expect(read().Order).toEqual(["idle"]);

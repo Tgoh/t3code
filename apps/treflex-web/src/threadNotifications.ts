@@ -96,6 +96,13 @@ interface INotifyObservation {
   BackgroundWake: boolean;
 }
 
+const sameObservation = (left: INotifyObservation, right: INotifyObservation) =>
+  left.Attention === right.Attention &&
+  left.RequestId === right.RequestId &&
+  left.Settled === right.Settled &&
+  left.CompletedAt === right.CompletedAt &&
+  left.BackgroundWake === right.BackgroundWake;
+
 const ATTENTION = new Set<INotifyStatus>(["input", "request", "approval", "failed", "limited"]);
 
 function observation(
@@ -236,7 +243,7 @@ export function observeNotifications(
     const subagent = subagents[thread.id];
     const next = observation(thread, subagent);
     const prior = gate.Previous[thread.id];
-    gate.Previous[thread.id] = next;
+    if (prior === undefined || !sameObservation(prior, next)) gate.Previous[thread.id] = next;
     const kind = observe(
       gate,
       thread.id,

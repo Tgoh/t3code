@@ -93,8 +93,9 @@ export const updateServerSettingsImpl = implementation(updateServerSettingsEffec
 const QUEUE_DEFAULT_KEY = "reflex:follow-up-queue-default:v1";
 const TREFLEX_DEFAULTS = { followUpBehavior: "queue" };
 
-// Earlier builds kept the project sort under their own key, "manual" when unset. Its presence
-// marks a browser not yet moved over, so the move happens once and then the key goes.
+// Treflex sorts projects manually by default where stock sorts by update, and saved settings
+// always carry stock's default, so each browser takes its old treflex sort once.
+const PROJECT_SORT_MOVED_KEY = "reflex:project-sort-moved:v1";
 const LEGACY_PROJECT_SORT_KEY = "reflex-web:project-sort";
 const LEGACY_PROJECT_SORT_DEFAULT = "manual";
 
@@ -109,14 +110,14 @@ function readClientSettings(): unknown {
       localStorage.setItem(QUEUE_DEFAULT_KEY, "1");
       changed = true;
     }
-    const legacySort = localStorage.getItem(LEGACY_PROJECT_SORT_KEY);
-    if (legacySort !== null) {
-      const sort = parseJson(legacySort);
+    if (localStorage.getItem(PROJECT_SORT_MOVED_KEY) === null) {
+      const sort = parseJson(localStorage.getItem(LEGACY_PROJECT_SORT_KEY) ?? "null");
       settings = {
         ...settings,
         sidebarProjectSortOrder: isProjectSort(sort) ? sort : LEGACY_PROJECT_SORT_DEFAULT,
       };
       localStorage.removeItem(LEGACY_PROJECT_SORT_KEY);
+      localStorage.setItem(PROJECT_SORT_MOVED_KEY, "1");
       changed = true;
     }
     if (changed) localStorage.setItem(CLIENT_SETTINGS_KEY, JSON.stringify(settings));

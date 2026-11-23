@@ -329,9 +329,13 @@ export const ShellReceiver = receiver<IShell>("ShellReceiver")({
       if (message.$Ended.Reason !== "receiver-failed") yield* reopenLater(draft);
       return;
     }
-    if (!("Item" in message)) (yield* streamState(draft)).Synchronized = false;
-    else if (message.Item.kind === "synchronized") {
+    if (!("Item" in message)) {
+      (yield* streamState(draft)).Synchronized = false;
+      yield* pauseNotify(draft);
+    } else if (message.Item.kind === "synchronized") {
       (yield* streamState(draft)).Synchronized = true;
+      yield* followInbox(draft);
+      yield* notifyChanges(draft);
       if ((yield* lastVisit(draft)).Unconfirmed !== null)
         yield* start(visitShown, draft, { Retry: true });
     } else {
@@ -598,13 +602,15 @@ function inboxFacts(
   thread: IWireThreadShell,
   subagent: ISubagentRequest | undefined,
   now: number,
+  wasWorking: boolean,
 ): IInboxFacts {
   const request = thread.pendingRuntimeRequest;
   const ended = runCompletedAt(thread);
   const endedAt = ended === null ? NaN : Date.parse(ended);
+  const working = threadWorking(thread, subagent);
   return {
     Id: thread.id,
-    Working: threadWorking(thread, subagent),
+    Working: working,
     Actionable:
       (request !== null && request.kind !== "auth_refresh") ||
       subagent !== undefined ||
@@ -618,16 +624,19 @@ function inboxFacts(
       thread.pinnedAt != null ||
       thread.settledOverride === "settled" ||
       isSnoozed(thread, now, subagent),
-    Placement: JSON.stringify([
-      thread.archivedAt,
-      thread.deletedAt,
-      thread.pinnedAt,
-      thread.settledOverride,
-      thread.settledAt,
-      thread.snoozedAt,
-      thread.snoozedUntil,
-      thread.activeOrderKey,
-    ]),
+    Placement:
+      working || wasWorking
+        ? JSON.stringify([
+            thread.archivedAt,
+            thread.deletedAt,
+            thread.pinnedAt,
+            thread.settledOverride,
+            thread.settledAt,
+            thread.snoozedAt,
+            thread.snoozedUntil,
+            thread.activeOrderKey,
+          ])
+        : null,
     EndedAt: Number.isFinite(endedAt) ? endedAt : null,
   };
 }
@@ -641,7 +650,7 @@ export const workingShelfShown = (selection: ISelection | undefined): boolean =>
 const inboxOf = (draft: IShell) =>
   transient(draft, "Shell/Inbox", { Entries: {}, Returns: {} } as IInbox);
 
-function* followInbox(draft: IShell): IActionGenerator {
+export function* followInbox(draft: IShell): IActionGenerator {
   const selection = yield* getData(draft, "Selection");
   const inbox = yield* inboxOf(draft);
   if (!workingShelfShown(selection)) {
@@ -652,11 +661,14 @@ function* followInbox(draft: IShell): IActionGenerator {
     }
     return;
   }
+  if (!(yield* streamState(draft)).Synchronized) return;
   const now = yield* clockNowEffect();
   const subagents = yield* subagentRequests(draft);
   observeInbox(
     inbox,
-    Object.values(draft.Threads).map((thread) => inboxFacts(thread, subagents[thread.id], now)),
+    Object.values(draft.Threads).map((thread) =>
+      inboxFacts(thread, subagents[thread.id], now, inbox.Entries[thread.id]?.Working === true),
+    ),
     now,
   );
   yield* scheduleInbox(draft, inbox, now);
@@ -669,11 +681,10 @@ function* scheduleInbox(draft: IShell, inbox: IInbox, now: number): IActionGener
     yield* startTimer(draft, "Shell/InboxGrace", ShellReceiver, Math.max(0, deadline - now));
 }
 
-// Follows startThreadNotifications in apps/web/src/components/ThreadNotificationCoordinator.tsx:
-// status changes in the shell decide, and the environment shows what they call for.
+// Follows startThreadNotifications in apps/web/src/components/ThreadNotificationCoordinator.tsx.
 const notifyGateOf = (draft: IShell) => transient(draft, "Shell/Notify", emptyNotifyGate());
 
-function* notifyChanges(draft: IShell): IActionGenerator {
+export function* notifyChanges(draft: IShell): IActionGenerator {
   const selection = yield* getData(draft, "Selection");
   const gate = yield* notifyGateOf(draft);
   if ((selection?.ClientSettings?.notificationMode ?? "off") === "off") {
@@ -681,6 +692,7 @@ function* notifyChanges(draft: IShell): IActionGenerator {
     yield* stopTimer(draft, "Shell/NotifyRelease");
     return;
   }
+  if (!(yield* streamState(draft)).Synchronized) return;
   const now = yield* clockNowEffect();
   const subagents = yield* subagentRequests(draft);
   yield* announce(draft, observeNotifications(gate, Object.values(draft.Threads), subagents, now));

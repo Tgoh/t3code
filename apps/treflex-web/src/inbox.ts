@@ -1,5 +1,4 @@
-// Follows createInboxReturnTracker in packages/client-runtime/src/state/threadInbox.ts, held as
-// plain data so it can live in state and expire on a timer.
+// Follows createInboxReturnTracker in packages/client-runtime/src/state/threadInbox.ts.
 
 /** How long a thread that stopped working keeps reading as working. */
 const WORKING_EXIT_GRACE_MS = 2_000;
@@ -29,7 +28,7 @@ export interface IInboxFacts {
   Actionable: boolean;
   /** Archived, deleted, pinned, settled or snoozed. */
   Excluded: boolean;
-  Placement: string;
+  Placement: string | null;
   /** When its latest run ended, if it did. */
   EndedAt: number | null;
 }

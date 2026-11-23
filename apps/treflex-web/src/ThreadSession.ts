@@ -1430,7 +1430,6 @@ export function* reattachThread(draft: IThreadSession): IActionGenerator {
   yield* followCheckout(draft);
 }
 
-/** Code blocks wrap their lines until the person turns it off. */
 // Follows MarkdownCodeBlock in apps/web/src/components/chat/MarkdownCodeBlock.tsx (`wrapOverride`).
 export const codeWrapped = (
   held: Readonly<Record<string, boolean>>,
