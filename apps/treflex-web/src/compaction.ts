@@ -186,7 +186,7 @@ type ICompactionItem = Extract<IWireTurnItem, { type: "compaction" }>;
 /** Why T3 Code sent the `/compact` that ran this item, or undefined for one someone asked for. */
 export function compactionReason(
   open: Pick<IOpenThread, "Runs" | "Messages">,
-  item: ICompactionItem,
+  item: Pick<IWireTurnItem, "runId">,
 ): OrchestrationV2IdleCompaction | undefined {
   const run = item.runId === null ? undefined : open.Runs[item.runId];
   const message = run === undefined ? undefined : open.Messages[run.userMessageId];
@@ -200,21 +200,32 @@ export function compactionReason(
 export function compactionLabel(
   item: ICompactionItem,
   reason: OrchestrationV2IdleCompaction | undefined,
+  /** The idle time named by the answered "compact before continuing?" question that ran it. */
+  age: string | null = null,
 ): string {
   const label = contextCompactionLabel(item as never);
+  const title =
+    reason !== undefined
+      ? IDLE_COMPACTION_TITLES[reason]
+      : age !== null
+        ? `Context compacted after ${age} idle`
+        : undefined;
   if (
-    reason === undefined ||
+    title === undefined ||
     item.status === "failed" ||
     item.status === "cancelled" ||
     item.status === "interrupted"
   )
     return label;
-  if (isOrchestrationV2WorkActive(item.status)) return IDLE_COMPACTING_LABELS[reason];
+  if (isOrchestrationV2WorkActive(item.status))
+    return reason === undefined ? label : IDLE_COMPACTING_LABELS[reason];
   const tokens = contextCompactionTokenCounts(item as never);
-  return tokens === null
-    ? IDLE_COMPACTION_TITLES[reason]
-    : `${IDLE_COMPACTION_TITLES[reason]} ${tokens.before} → ${tokens.after} tokens`;
+  return tokens === null ? title : `${title} ${tokens.before} → ${tokens.after} tokens`;
 }
+
+/** The provider's reason a compaction failed, when it gave one. */
+export const compactionFailure = (item: ICompactionItem): string | null =>
+  item.status === "failed" ? item.summary?.trim() || null : null;
 
 /** A bare `/compact` prompt, which stock shows as its compaction row rather than a message. */
 export const isCompactPrompt = (item: IWireTurnItem) =>

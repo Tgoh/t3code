@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { ToolCallVisibility } from "@t3tools/contracts/settings";
+
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { THREAD_ID } from "./testing/threadFixture";
 import {
   entryFacts,
+  type IAttempt,
   type ILatestRun,
   type ILayoutRow,
   layoutResponse,
@@ -68,8 +71,15 @@ const settled: ILatestRun = {
   Status: "completed",
   StartedAt: at(0),
   CompletedAt: at(15),
+  TurnEnded: false,
 };
-const running: ILatestRun = { Id: "run-1", Status: "running", StartedAt: at(0), CompletedAt: null };
+const running: ILatestRun = {
+  Id: "run-1",
+  Status: "running",
+  StartedAt: at(0),
+  CompletedAt: null,
+  TurnEnded: false,
+};
 
 function layout(
   items: IWireTurnItem[],
@@ -78,14 +88,17 @@ function layout(
     working?: boolean;
     expanded?: string[];
     latest?: boolean;
+    visibility?: ToolCallVisibility;
+    attempts?: Record<string, IAttempt>;
   } = {},
 ): ILayoutRow[] {
   return layoutResponse({
-    Entries: items.flatMap((held) => entryFacts(held) ?? []),
+    Entries: items.flatMap((held) => entryFacts(held, options.attempts?.[held.id] ?? null) ?? []),
     Latest: options.latest ?? true,
     LatestRun: options.run === undefined ? settled : options.run,
     Working: options.working ?? false,
     Expanded: (key) => options.expanded?.includes(key) === true,
+    Visibility: options.visibility ?? "showAll",
   });
 }
 
@@ -104,6 +117,12 @@ const shape = (rows: ILayoutRow[]) =>
         return row.Running ? "fold running" : `fold ${row.Label}`;
       case "meta":
         return `meta ${row.Id}${row.Files === null ? "" : ` with ${row.Files}`}`;
+      case "attempt":
+        return row.Expanded ? "attempt open" : "attempt";
+      case "compaction":
+        return `compaction ${row.Id}${row.Age === null ? "" : ` after ${row.Age}`}`;
+      case "compacting":
+        return row.Pending ? `compacting ${row.Id} pending` : `compacting ${row.Id}`;
     }
   });
 
@@ -266,17 +285,137 @@ describe("a compaction", () => {
   const compaction = item("compaction", "k", 1, { beforeTokenCount: 64_800, afterTokenCount: 1 });
 
   it("stands in for its bare /compact prompt once the provider reports it", () => {
-    expect(shape(layout([compactPrompt, compaction]))).toEqual(["k"]);
+    expect(shape(layout([compactPrompt, compaction]))).toEqual(["compaction k"]);
   });
 
-  it("leaves the prompt in place until then, or when it carries a file", () => {
-    expect(shape(layout([compactPrompt]))).toEqual(["u"]);
+  it("shows a divider for the prompt until then, which owns a running turn's status", () => {
+    expect(shape(layout([compactPrompt]))).toEqual(["compacting u"]);
+    expect(shape(layout([compactPrompt], { run: running, working: true }))).toEqual([
+      "compacting u pending",
+    ]);
+    expect(shape(layout([compactPrompt, compaction], { run: running, working: true }))).toEqual([
+      "compaction k",
+    ]);
+  });
+
+  it("keeps a prompt that carries a file", () => {
     const withFile = user("u", 0, {
       runId: "run-1",
       text: "/compact",
       attachments: [{ id: "file" }],
     });
-    expect(shape(layout([withFile, compaction]))).toEqual(["u", "k"]);
+    expect(shape(layout([withFile, compaction]))).toEqual(["u", "compaction k"]);
+  });
+
+  it("names the idle time from the answered resume question, which it stands in for", () => {
+    const question =
+      "This session is 2h 5m old and uses 64,800 tokens. Compact it before continuing?";
+    const answered = item("user_input_request", "q", 1, {
+      questions: [],
+      questionAnswer: {
+        requestId: "r",
+        questionTextById: { q1: question },
+        answers: { q1: "Compact and continue" },
+      },
+    });
+    const later = item("compaction", "k", 2, { beforeTokenCount: 64_800, afterTokenCount: 1 });
+    expect(shape(layout([user("u", 0), answered, later, reply("a", 3)]))).toEqual([
+      "u",
+      "compaction k after 2h 5m",
+      "a +meta",
+    ]);
+  });
+
+  it("drops the stop notice of a compaction that ran, whose divider says it stopped", () => {
+    const stopped = item("run_interrupt_result", "i", 2, { message: "Stopped" });
+    expect(shape(layout([compactPrompt, compaction, stopped]))).toEqual(["compaction k"]);
+  });
+});
+
+describe("the tool calls in chat setting", () => {
+  const failed = command("c2", 3, { status: "failed", exitCode: 1 });
+  const turn = [user("u", 0), thought("t", 1), command("c1", 2), failed, reply("a", 4)];
+
+  it("hides successful tool calls, or all of them, before the turn folds", () => {
+    const open = { expanded: ["fold:run-1"] };
+    expect(shape(layout(turn, open))).toEqual([
+      "u",
+      "fold Worked for 15s",
+      "group t,c1,c2",
+      "a +meta",
+    ]);
+    expect(shape(layout(turn, { ...open, visibility: "hideSuccessful" }))).toEqual([
+      "u",
+      "fold Worked for 15s",
+      "group t,c2",
+      "a +meta",
+    ]);
+    expect(shape(layout(turn, { ...open, visibility: "hideAll" }))).toEqual([
+      "u",
+      "fold Worked for 15s",
+      "single t",
+      "a +meta",
+    ]);
+  });
+
+  it("in zen shows only prompts, final answers and what needs you, with no folds", () => {
+    const error = item("error", "e", 5, {
+      status: "failed",
+      parentItemId: "c2",
+      failure: { class: "provider", message: "Boom" },
+    });
+    const zen = [user("u", 0), command("c1", 1), reply("a1", 2), error, reply("a2", 6)];
+    expect(shape(layout(zen, { visibility: "zen" }))).toEqual(["u", "e", "a2 +meta"]);
+  });
+
+  it("in zen holds back the running turn's replies until its provider turn ends", () => {
+    const live = [user("u", 0), command("c1", 1), reply("a", 2)];
+    expect(shape(layout(live, { visibility: "zen", run: running, working: true }))).toEqual(["u"]);
+    const waiting = { ...running, TurnEnded: true };
+    expect(shape(layout(live, { visibility: "zen", run: waiting, working: true }))).toEqual([
+      "u",
+      "a",
+    ]);
+  });
+});
+
+describe("a superseded attempt", () => {
+  const superseded: IAttempt = { Id: "att-1", Status: "superseded", CompletedAt: at(4) };
+  const current: IAttempt = { Id: "att-2", Status: "completed", CompletedAt: null };
+  const attempts = (ids: string[], attempt: IAttempt) =>
+    Object.fromEntries(ids.map((id) => [id, attempt]));
+  const steered = [
+    user("u", 0),
+    command("c1", 1),
+    // Cut off by the steer: it only finished once the attempt was superseded.
+    reply("a1", 2, { completedAt: at(5) }),
+    user("s", 4, { runId: "run-1", inputIntent: "steer" }),
+    command("c2", 5),
+    reply("a2", 9),
+  ];
+  const cutOff = { ...attempts(["c1", "a1"], superseded), ...attempts(["c2", "a2"], current) };
+
+  it("folds the work a steer cut off under its own row", () => {
+    const rows = layout(steered, { attempts: cutOff, expanded: ["fold:run-1"] });
+    expect(shape(rows)).toEqual([
+      "u",
+      "fold Worked for 15s",
+      "attempt",
+      "s",
+      "fold Continued for 5s",
+      "a2 +meta",
+    ]);
+    const open = layout(steered, {
+      attempts: cutOff,
+      expanded: ["fold:run-1", "attempt:att-1"],
+    });
+    expect(shape(open).slice(2, 5)).toEqual(["attempt open", "single c1", "a1"]);
+  });
+
+  it("keeps an attempt whose reply finished before the steer", () => {
+    const finished = steered.map((held) => (held.id === "a1" ? reply("a1", 2) : held));
+    const rows = layout(finished, { attempts: cutOff, expanded: ["fold:run-1"] });
+    expect(shape(rows)).not.toContain("attempt");
   });
 });
 

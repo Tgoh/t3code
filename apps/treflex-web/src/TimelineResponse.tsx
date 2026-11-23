@@ -1,7 +1,9 @@
 import {
+  resolveViewedImageAsset,
   summarizeToolGroup,
   type ToolGroupSummaryKind,
   toolGroupSummaryKind,
+  workEntriesViewedImagePaths,
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
 import {
@@ -16,7 +18,9 @@ import {
   Switch,
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import { latestProviderTurnForAttempt } from "@t3tools/contracts";
 
+import Environment from "./Environment";
 import {
   Bot,
   Brain,
@@ -28,11 +32,14 @@ import {
   Terminal,
   Wrench,
 } from "./icons";
+import { ViewedImage } from "./Markdown";
 import OpenThread, { isRowVisible, timelineItem } from "./OpenThread";
 import { runStatus } from "./Shell";
 import { SubagentGroup } from "./SubagentRows";
 import ThreadSession from "./ThreadSession";
 import {
+  attemptOf,
+  attemptsByRoot,
   entryFacts,
   type IEntryFacts,
   type ILatestRun,
@@ -41,6 +48,8 @@ import {
   sameFacts,
 } from "./timelineLayout";
 import {
+  CompactingRow,
+  CompactionRow,
   MessageMeta,
   MessageTime,
   ROW_FOCUS,
@@ -50,6 +59,7 @@ import {
 } from "./TimelineRows";
 import { useWorkingTimer } from "./TurnStatus";
 import { workLogEntry, workLogEntryIsToolLike } from "./workLog";
+import { useWorkspaceRoot } from "./workspaceRoot";
 
 type IRowOf<K extends ILayoutRow["Kind"]> = Extract<ILayoutRow, { Kind: K }>;
 
@@ -60,7 +70,10 @@ const sameRun = (left: ILatestRun | null, right: ILatestRun | null) =>
     left.Id === right.Id &&
     left.Status === right.Status &&
     left.StartedAt === right.StartedAt &&
-    left.CompletedAt === right.CompletedAt);
+    left.CompletedAt === right.CompletedAt &&
+    left.TurnEnded === right.TurnEnded);
+
+const ACTIVITY_RUN_STATUSES = new Set(["preparing", "starting", "running", "waiting"]);
 
 const sameKeys = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every((key, index) => key === right[index]);
@@ -70,7 +83,9 @@ const sameKeys = (left: readonly string[], right: readonly string[]) =>
 export function TimelineResponse(props: { ids: readonly string[]; latest: boolean }) {
   const thread = OpenThread.use();
   const session = ThreadSession.use();
+  const environment = Environment.use();
   const owner = getOwner();
+  const byRoot = createMemo(() => attemptsByRoot(thread.state));
   const facts = new Map<string, Accessor<IEntryFacts | null>>();
   const factsOf = (id: string) => {
     let held = facts.get(id);
@@ -79,7 +94,9 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
         createMemo(
           () => {
             const item = timelineItem(thread.state, id);
-            return item === undefined || !isRowVisible(thread.state, id) ? null : entryFacts(item);
+            return item === undefined || !isRowVisible(thread.state, id)
+              ? null
+              : entryFacts(item, attemptOf(thread.state, byRoot(), item));
           },
           null,
           { equals: sameFacts },
@@ -92,14 +109,22 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
   const latestRun = createMemo<ILatestRun | null>(
     () => {
       const run = thread.latestRun();
-      return run === null
-        ? null
-        : {
-            Id: run.id,
-            Status: run.status,
-            StartedAt: run.startedAt ?? null,
-            CompletedAt: run.completedAt ?? null,
-          };
+      if (run === null) return null;
+      // Follows turnEnded in summarizeThreadRun, packages/client-runtime/src/state/threadExecution.ts.
+      const turn =
+        props.latest && ACTIVITY_RUN_STATUSES.has(run.status)
+          ? latestProviderTurnForAttempt(
+              Object.values(thread.state.ProviderTurns),
+              run.activeAttemptId as never,
+            )
+          : undefined;
+      return {
+        Id: run.id,
+        Status: run.status,
+        StartedAt: run.startedAt ?? null,
+        CompletedAt: run.completedAt ?? null,
+        TurnEnded: turn !== undefined && turn.status !== "pending" && turn.status !== "running",
+      };
     },
     null,
     { equals: sameRun },
@@ -119,6 +144,7 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
       LatestRun: latestRun(),
       Working: working(),
       Expanded: (key) => session.state.ExpandedRows[key] === true,
+      Visibility: environment.toolCallVisibility(),
     }),
   );
   const rows = createMemo(() => new Map(layout().map((row) => [row.Key, row])));
@@ -134,7 +160,14 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined }) {
   return (
     <Switch>
       <Match when={of("item")}>{(row) => <TimelineRow id={row().Id} meta={row().Meta} />}</Match>
-      <Match when={of("single")}>{(row) => <WorkRow id={row().Id} single />}</Match>
+      <Match when={of("single")}>
+        {(row) => (
+          <>
+            <WorkRow id={row().Id} single />
+            <ViewedImages ids={[row().Id]} />
+          </>
+        )}
+      </Match>
       <Match when={of("group")}>{(row) => <GroupRow row={row()} />}</Match>
       <Match when={of("subagents")}>
         {(row) => <SubagentGroup rowKey={row().Key} ids={row().Ids} expanded={row().Expanded} />}
@@ -143,7 +176,79 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined }) {
       <Match when={of("meta")}>
         {(row) => <MessageMeta id={row().Id} files={row().Files} standalone />}
       </Match>
+      <Match when={of("attempt")}>{(row) => <AttemptRow row={row()} />}</Match>
+      <Match when={of("compaction")}>
+        {(row) => <CompactionRow id={row().Id} age={row().Age} />}
+      </Match>
+      <Match when={of("compacting")}>
+        {(row) => <CompactingRow id={row().Id} pending={row().Pending} />}
+      </Match>
     </Switch>
+  );
+}
+
+// Follows ViewedImagesTimelineRow in apps/web/src/components/chat/TimelineWorkEntryRow.tsx: the
+// images a tool group opened stay in view while the group is collapsed.
+function ViewedImages(props: { ids: readonly string[] }) {
+  const thread = OpenThread.use();
+  const workspaceRoot = useWorkspaceRoot();
+  const paths = createMemo(
+    () =>
+      workEntriesViewedImagePaths(
+        props.ids.flatMap((id) => {
+          const item = timelineItem(thread.state, id);
+          return item === undefined ? [] : [workLogEntry(item)];
+        }),
+      ),
+    [],
+    { equals: sameKeys },
+  );
+  const imageOf = (path: string) => {
+    const threadId = thread.state.Thread?.id;
+    return threadId === undefined
+      ? null
+      : resolveViewedImageAsset(path, {
+          threadId: threadId as never,
+          workspaceRoot: workspaceRoot(),
+        });
+  };
+  return (
+    <Show when={paths().length > 0}>
+      <div class="flex flex-wrap items-start gap-2 px-0.5 pb-2">
+        <For each={paths()}>
+          {(path) => (
+            <Show when={imageOf(path)} keyed>
+              {(image) => (
+                <ViewedImage
+                  resource={image.resource}
+                  fragment={image.srcFragment}
+                  alt={image.alt}
+                  size="strip"
+                />
+              )}
+            </Show>
+          )}
+        </For>
+      </div>
+    </Show>
+  );
+}
+
+// Follows AttemptFoldTimelineRow in apps/web/src/components/chat/MessagesTimeline.tsx.
+function AttemptRow(props: { row: IRowOf<"attempt"> }) {
+  const session = ThreadSession.use();
+  return (
+    <button
+      class={`mb-1.5 flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-left transition-colors select-none hover:bg-muted/35 [&_svg]:size-3.5 [&_svg]:flex-none [&_svg]:text-muted-foreground ${ROW_FOCUS}`}
+      aria-expanded={props.row.Expanded}
+      onClick={() => session.toggleRowExpanded(props.row.Key)}
+    >
+      <Show when={props.row.Expanded} fallback={<ChevronRight />}>
+        <ChevronDown />
+      </Show>
+      <span class="text-xs font-medium text-foreground/80">Superseded attempt</span>
+      <span class="text-[11px] text-muted-foreground">Cut off by a steer</span>
+    </button>
   );
 }
 
@@ -230,6 +335,7 @@ function GroupRow(props: { row: IRowOf<"group"> }) {
           <For each={props.row.Ids}>{(id) => <WorkRow id={id} grouped />}</For>
         </div>
       </Show>
+      <ViewedImages ids={props.row.Ids} />
     </div>
   );
 }

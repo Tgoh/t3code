@@ -1,5 +1,7 @@
 // @effect-diagnostics globalDate:off -- A view-only working timer, outside any Effect runtime.
+import { waitingOnSubagentsLabel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
+import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { useInFlight } from "treflex-solid";
 import {
@@ -77,10 +79,21 @@ function useActivity(): Accessor<string | null> {
   const workspaceRoot = useWorkspaceRoot();
   return createMemo(() => {
     const ids = thread.timelineIds();
+    const runId = thread.latestRun()?.id;
+    // Follows runningSubagentsAtRunTail: a run that has done nothing since launching children
+    // that still run is waiting on them.
+    let waitingOn = 0;
+    let tail = true;
     for (let index = ids.length - 1; index >= 0; index -= 1) {
       const id = ids[index]!;
       const item = timelineItem(thread.state, id);
       if (item === undefined || !isRowVisible(thread.state, id)) continue;
+      if (tail && item.type === "subagent" && item.runId === runId) {
+        if (isOrchestrationV2WorkActive(item.status)) waitingOn += 1;
+        continue;
+      }
+      if (tail && waitingOn > 0) return waitingOnSubagentsLabel(waitingOn);
+      tail = false;
       switch (item.type) {
         case "user_message":
         case "notification":
@@ -93,7 +106,7 @@ function useActivity(): Accessor<string | null> {
       if (!workEntryIsVisibleInGroup(entry, true)) continue;
       return liveWorkEntryLabel(entry, workspaceRoot(), workEntryIsActiveTurnActivity(entry));
     }
-    return null;
+    return waitingOn > 0 ? waitingOnSubagentsLabel(waitingOn) : null;
   });
 }
 
