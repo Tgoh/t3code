@@ -205,7 +205,7 @@ Settings opens in place of the thread view, not as stock's modal, and keeps the 
 - About: the server's version, not the client build's, and no update, update track, mobile app or welcome rows.
 - Usage: no environment or provider pickers (this client has one environment), model price overrides, model detail dialog, chart hover tooltip, speed premium note, ChatGPT shared usage, or in-page shortcuts (stock's `c`, `t`, `l` and the period keys). `mod+u` opens it, as in stock.
 - Usage limit recovery: no limit-recovery banner (stock's `UsageLimitRecoveryBanner`, with Wake now for the snooze it sets). Stock hides the thread error banner while that banner shows (`timelineThreadError` in `apps/web/src/components/ChatView.tsx`); treflex shows the usage-limit error as a warning banner instead, until it has one.
-- Usage limits: no usage-limit hubs (the session's config stream isn't opened with `usageLimitSources`), external usage links, segment popovers or reset credits. `server.refreshProviders` is a guarded RPC, so `settingsImpl.ts` supplies an allow-all `RpcPermissionGuard` past the `no-rpc-permission-bypass` lint rule (see "the command path assumes atoms"): a connection without the read scope learns from the server's refusal.
+- Usage limits: no external usage links, segment popovers or reset credits (a hub account's among them). `server.refreshProviders` is a guarded RPC, so `settingsImpl.ts` supplies an allow-all `RpcPermissionGuard` past the `no-rpc-permission-bypass` lint rule (see "the command path assumes atoms"): a connection without the read scope learns from the server's refusal.
 
 ## Unmatched: voice input
 

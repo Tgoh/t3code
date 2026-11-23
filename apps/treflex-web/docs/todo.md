@@ -23,7 +23,6 @@ From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its
 
 Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
 
-- **Invalid keybindings warning.** **In progress** on `treflex/small-gaps`. Stock toasts "Invalid keybindings configuration" with the config's issues (`KeybindingsUpdateToast.tsx`); nothing in treflex shows `config.issues` yet.
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:
     - linked-environment threads, which need peer-link reads;
@@ -41,8 +40,6 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 - **Terminal.** **In progress** on `treflex/terminal`. Tabs and splits, a resizable drawer, links, search and a restart button for an exited shell. See the terminal entries under "Skipped for the prototype".
 - **Right panel surfaces.** Files, Pull request and Browser, which the launcher lists but disables. Tam picks the order. The file preview brings stock's copy button with it (Copy contents, or Copy preview when truncated, in `AttachmentFilePreview`'s header); until a preview exists, a file attachment opens in a new browser tab.
 - **Settings pages.** Of the pages greyed out in the nav, build the ones Tam picks; Labs, Worktrees and Source control look most used.
-- **A pairing token box on the unpaired page.** **In progress** on `treflex/small-gaps`. Stock's unpaired page takes a pasted pairing token; treflex's only says to open a pairing link. Add the box and stock's wording ("Enter a pairing token to start a session with this environment.").
-- **Usage limits from external sources.** **In progress** on `treflex/small-gaps`. Open the config stream with `usageLimitSources` and show the usage-limit hubs, as stock does. See "Usage limits".
 
 ## 4. Performance
 

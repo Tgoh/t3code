@@ -154,6 +154,7 @@ declare module "treflex" {
     "Project/Clones": { Type: "projectClones" };
     "Server/Config": { Type: "serverConfigStream" };
     "Notify/Device": { Type: "threadNotifier" };
+    "Keybindings/Warning": { Type: "keybindingsWarning" };
     "Device/History": { Type: "addressHistory" };
   }
   interface ITimerRegistry {
@@ -252,6 +253,9 @@ export function* init(draft: IEnvironment): IActionGenerator {
   yield* followDevice(draft);
   yield* followActivity(draft);
   yield* openResource(draft, "Notify/Device", EnvironmentReceiver, { Type: "threadNotifier" });
+  yield* openResource(draft, "Keybindings/Warning", EnvironmentReceiver, {
+    Type: "keybindingsWarning",
+  });
   yield* applyNotificationMode(draft);
   yield* openShellStream(draft.Replica.Shell);
   yield* openResource(draft, "Project/Clones", {
@@ -779,6 +783,7 @@ export function* openInEditor(
   draft: IEnvironment,
   path: string,
   projectRoot: string | null,
+  failureTitle = "Unable to open file",
 ): IOpenGenerator {
   const stored = draft.Local.Editor;
   let opened: string;
@@ -794,7 +799,7 @@ export function* openInEditor(
   } catch (error) {
     yield* toast({
       Kind: "error",
-      Title: "Unable to open file",
+      Title: failureTitle,
       Description: serverError(error).message,
     });
     return;
@@ -987,7 +992,17 @@ export function* currentProjectRoot(draft: IEnvironment): ISelectorGenerator<str
 
 export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")({
   *"Server/Config"(draft, message) {
-    if (!isEnded(message)) applyConfigEvent(draft, message.Item);
+    if (!isEnded(message)) {
+      applyConfigEvent(draft, message.Item);
+      const config = draft.Replica.Config;
+      if (message.Item.type === "keybindingsUpdated" && config !== null) {
+        yield* resource(draft, "Keybindings/Warning").report(
+          message.Item.payload.issues,
+          config.keybindingsConfigPath,
+          config.availableEditors.length > 0,
+        );
+      }
+    }
     // A batch the receiver failed would fail again on every reopen.
     else if (message.$Ended.Reason !== "receiver-failed") {
       yield* startTimer(draft, "Server/ConfigReopen", EnvironmentReceiver, CONFIG_REOPEN_MS);
@@ -1007,6 +1022,10 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   *"Notify/Device"(draft, message) {
     if (isEnded(message)) return;
     yield* start(selectThread, draft, message.Opened);
+  },
+  *"Keybindings/Warning"(draft, message) {
+    if (isEnded(message)) return;
+    yield* start(openInEditor, draft, message.Open, null, "Unable to open keybindings file");
   },
   *"Thread/Deleted"(draft, { ThreadId }) {
     delete draft.Replica.OpenThreads[ThreadId];

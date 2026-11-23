@@ -345,6 +345,7 @@ async function connect(
     InApp: [] as boolean[],
     Notified: [] as INotificationShow[],
     Opened: [] as string[],
+    KeybindingReports: [] as unknown[][],
   };
   let guid = 0;
   const runtime = createTestRuntime<IRoot>(
@@ -352,6 +353,7 @@ async function connect(
     {
       environmentInfo: () => ({
         Authenticated: true,
+        BootstrapMethods: ["one-time-token"],
         EnvironmentId: ENV,
         Label: "Test",
         FileAttachmentLimit: null,
@@ -431,6 +433,10 @@ async function connect(
             },
             show: (_ctx: unknown, note: INotificationShow) => void device.Notified.push(note),
             opened: (_ctx: unknown, threadId: string) => void device.Opened.push(threadId),
+          },
+          "Keybindings/Warning": {
+            report: (_ctx: unknown, ...report: unknown[]) =>
+              void device.KeybindingReports.push(report),
           },
           ...resources?.methods,
         },
@@ -5322,21 +5328,31 @@ describe("work started by events", () => {
     expect(settings()).toMatchObject({ BaseDirectory: "~/src", GhqCloneLayout: false });
   });
 
-  it("reads the keybindings from the config stream, with no stream of their own", async () => {
+  it("reads the keybindings from the config stream, with no stream of their own, and warns of each reload's issues", async () => {
     const server = await connect();
     const bound = () => server.runtime.processSelector(keybindings, server.environment);
     const binding = (key: string) => ({ command: "sidebar.toggle", shortcut: { key } });
+    const issue = { kind: "keybindings.malformed-config", message: "Unexpected token" };
+    const snapshot = configSnapshot([replayProvider()]);
     await server.sendConfig({
-      ...configSnapshot([replayProvider()]),
-      config: { ...configSnapshot([replayProvider()]).config, keybindings: [binding("b")] },
+      ...snapshot,
+      config: {
+        ...snapshot.config,
+        keybindings: [binding("b")],
+        issues: [issue],
+        keybindingsConfigPath: "/home/keybindings.json",
+        availableEditors: ["vscode"],
+      },
     });
     expect(bound()).toEqual([binding("b")]);
+    expect(server.device.KeybindingReports).toEqual([]);
     await server.sendConfig({
       version: 1,
       type: "keybindingsUpdated",
-      payload: { keybindings: [binding("k")], issues: [] },
+      payload: { keybindings: [binding("k")], issues: [issue] },
     });
     expect(bound()).toEqual([binding("k")]);
+    expect(server.device.KeybindingReports).toEqual([[[issue], "/home/keybindings.json", true]]);
     const streams = server.runtime
       .resources()
       .filter((row) => row.Key.startsWith("Server/"))
@@ -5668,6 +5684,33 @@ describe("settings and usage", () => {
     });
     expect(server.environment().Replica.Config?.settings.sidebarAutoSettleAfterDays).toBe(3);
     expect(usedPercent()).toBe(39);
+  });
+
+  it("holds the usage-limit hubs the stream reports, through a reconnect's snapshot, until it reports none", async () => {
+    const fake = settingsServer();
+    const server = await connect(undefined, null, fake.commands);
+    const hub = {
+      id: "hub-1",
+      kind: "cliproxy",
+      label: "Hub",
+      checkedAt: "2026-11-17T00:00:00.000Z",
+      accounts: [],
+    };
+    const held = () => server.environment().Replica.Config?.usageLimitSources;
+    await server.sendConfig({
+      version: 1,
+      type: "usageLimitSourcesUpdated",
+      payload: { sources: [hub] },
+    });
+    expect(held()).toEqual([hub]);
+    await server.sendConfig(fake.snapshot());
+    expect(held()).toEqual([hub]);
+    await server.sendConfig({
+      version: 1,
+      type: "usageLimitSourcesUpdated",
+      payload: { sources: [] },
+    });
+    expect(held()).toBeUndefined();
   });
 
   it("the header's limits refresh asks the server to re-probe, and leaves the result to the stream", async () => {

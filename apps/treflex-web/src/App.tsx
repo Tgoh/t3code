@@ -50,9 +50,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/Empty";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
 import { Presence, usePresence } from "./ui/Presence";
 import { SheetBackdrop } from "./ui/Sheet";
-import { StandalonePage, StandalonePageHeader } from "./ui/StandalonePage";
 import { AnchoredToasts, Toasts } from "./ui/Toast";
 import { TooltipHost } from "./ui/Tooltip";
+import { UnpairedPage } from "./UnpairedPage";
 import { UsageView } from "./UsageView";
 import { ViewportDebug } from "./ViewportDebug";
 import {
@@ -421,17 +421,7 @@ export const App = Root.provider(() => {
           </Empty>
         </Match>
         <Match when={root.state.Phase === "unpaired"}>
-          <StandalonePage>
-            <StandalonePageHeader
-              context={root.state.Label}
-              title="Pair with this environment"
-              description="Open this page with a pairing token to start a session with this environment."
-            />
-            <div class="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-              Run <code>node apps/server/src/bin.ts pair</code> and add <code>#token=…</code> to the
-              address.
-            </div>
-          </StandalonePage>
+          <UnpairedPage />
         </Match>
         <Match when={root.state.Phase === "connected"}>
           <For each={root.state.Environments}>
