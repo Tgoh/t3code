@@ -109,6 +109,7 @@ import type {
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
 import { serverFailure } from "./Infrastructure/serverError";
+import type { IToastRequest } from "./Infrastructure/toasts";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import type { IPreferences } from "./Infrastructure/preferences";
 import {
@@ -140,7 +141,7 @@ import {
   timelineIds,
 } from "./OpenThread";
 import { registerReceivers } from "./receivers";
-import { dismissFailure, getDefaultRoot, type IRoot, load } from "./Root";
+import { getDefaultRoot, type IRoot, load } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
 import {
   answerRequest,
@@ -321,6 +322,7 @@ async function connect(
     },
   };
   const terminals = new Map<string, ITerminalLaunch>();
+  const toasts: IToastRequest[] = [];
   const models: IRememberedModels = { Last: null, OptionsByModel: {} };
   const device = {
     Preferences: preferences,
@@ -384,6 +386,9 @@ async function connect(
         device.Editor = effect.Editor;
       },
       clockNow: () => device.Now,
+      toast: ({ Type: _type, ...request }: IToastRequest & { Type: string }) => {
+        toasts.push(request);
+      },
       rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
       rememberTerminal: (effect: { ThreadId: string; Launch: ITerminalLaunch | null }) => {
         if (effect.Launch === null) terminals.delete(effect.ThreadId);
@@ -453,6 +458,7 @@ async function connect(
   return {
     runtime,
     takeFailures: () => failures.splice(0),
+    takeToasts: () => toasts.splice(0),
     clock,
     address,
     go,
@@ -1883,8 +1889,10 @@ describe("the sidebar", () => {
 
     await server.runtime.dispatch(selectThread, envId, "a1");
     refusal = "The thread received another run before settlement.";
-    await expect(server.runtime.dispatch(toggleSettleOpenThread, envId)).rejects.toThrow(refusal);
-    server.takeFailures();
+    await server.runtime.dispatch(toggleSettleOpenThread, envId);
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to settle thread", Description: refusal },
+    ]);
     expect(selected()).toBe("a1");
     refusal = null;
 
@@ -2354,7 +2362,13 @@ describe("writing to the server", () => {
     await server.runtime.dispatch(setDraft, server.sessionId(), "keep me");
     await expect(server.runtime.dispatch(send, server.sessionId())).rejects.toThrow(TypeError);
     expect(server.session().SendError).toBeUndefined();
-    expect(server.runtime.state.Failure).toBe("Cannot read properties of undefined");
+    expect(server.takeToasts()).toEqual([
+      {
+        Kind: "error",
+        Title: "That didn't work",
+        Description: "Cannot read properties of undefined",
+      },
+    ]);
     expect(server.takeFailures()).toMatchObject([{ Label: "send", Taken: true }]);
   });
 
@@ -2794,7 +2808,7 @@ describe("writing to the server", () => {
     expect(inFlightOf(server.runtime, [runGitAction, pull], () => server.session().Git)).toBe(true);
     finish();
     await running;
-    expect(server.session().Git.Notice).toMatchObject({ Tone: "success", Title: "Pushed" });
+    expect(server.session().Git.Notice).toMatchObject({ Title: "Pushed" });
   });
 
   it("send now starts a queued run when idle and steers it into the active run otherwise", async () => {
@@ -3451,40 +3465,28 @@ describe("writing to the server", () => {
     expect(server.session().Draft).toBe("draft\n\ntyped for cancelled\n\ntyped for expired");
   });
 
-  it("sends a thread command and leaves the row to the stream, showing a failure", async () => {
+  it("sends a thread command and leaves the row to the stream, toasting a failure", async () => {
     const commands: { ThreadId: string; Command: object }[] = [];
     let refusal: string | null = null;
-    const server = await connect(
-      undefined,
-      null,
-      {
-        threadCommand: (effect: { ThreadId: string; Command: object }) => {
-          if (refusal !== null) throw serverFailure(refusal);
-          commands.push(effect);
-        },
+    const server = await connect(undefined, null, {
+      threadCommand: (effect: { ThreadId: string; Command: object }) => {
+        if (refusal !== null) throw serverFailure(refusal);
+        commands.push(effect);
       },
-      undefined,
-      undefined,
-      undefined,
-      [threadCommand],
-    );
-    const refused = async (command: IThreadCommand, message: string) => {
-      refusal = message;
-      await expect(
-        server.runtime.dispatch(threadCommand, server.envId(), "t-1", command),
-      ).rejects.toThrow(message);
-      expect(server.takeFailures()).toMatchObject([
-        { Label: "threadCommand", Taken: true, Error: { message } },
-      ]);
-    };
-    await server.runtime.dispatch(threadCommand, server.envId(), "t-1", { Kind: "settle" });
+    });
+    const send = (command: IThreadCommand) =>
+      server.runtime.dispatch(threadCommand, server.envId(), "t-1", command);
+    expect(await send({ Kind: "settle" })).toBe(true);
     expect(commands).toMatchObject([{ ThreadId: "t-1", Command: { Kind: "settle" } }]);
-    await refused({ Kind: "pin" }, "server said no");
-    expect(server.runtime.state.Failure).toBe("server said no");
-    await refused({ Kind: "unpin" }, "still no");
-    expect(server.runtime.state.Failure).toBe("still no");
-    await server.runtime.dispatch(dismissFailure, "Root");
-    expect(server.runtime.state.Failure).toBeUndefined();
+    refusal = "server said no";
+    expect(await send({ Kind: "pin" })).toBe(false);
+    refusal = "still no";
+    expect(await send({ Kind: "unpin" })).toBe(false);
+    expect(server.takeToasts()).toEqual([
+      { Kind: "error", Title: "Failed to pin thread", Description: "server said no" },
+      { Kind: "error", Title: "Failed to unpin thread", Description: "still no" },
+    ]);
+    expect(server.takeFailures()).toEqual([]);
   });
 
   it("marks the shown thread visited once per completion, and sends an open on each select", async () => {
@@ -3568,7 +3570,7 @@ describe("writing to the server", () => {
     await deliver(THREAD_ID, T2, T1);
     await settled();
     expect(take()).toEqual([shown]);
-    expect(server.runtime.state.Failure).toBeUndefined();
+    expect(server.takeToasts()).toEqual([]);
     await deliver(THREAD_ID, T2, null);
     await settled();
     expect(take()).toEqual([]);
@@ -3654,7 +3656,7 @@ describe("writing to the server", () => {
     expect(await server.runtime.dispatch(addFolder, server.envId(), "E:\\Elsewhere")).toBe(
       "no such folder",
     );
-    expect(server.runtime.state.Failure).toBeUndefined();
+    expect(server.takeToasts()).toEqual([]);
     expect(server.environment().Local.SelectedThreadId).toBe(selected);
   });
 

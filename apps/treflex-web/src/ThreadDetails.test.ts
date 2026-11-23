@@ -22,6 +22,7 @@ import {
   runGitAction,
 } from "./GitWork";
 import type { IGitActionOutcome, IGitActionRequest } from "./Infrastructure/sourceControlEffects";
+import type { IToastRequest } from "./Infrastructure/toasts";
 import type { ICheckout } from "./checkout";
 import {
   branchMatchesQuery,
@@ -73,6 +74,7 @@ async function details(outcome: () => IGitActionOutcome = () => OUTCOME) {
   const actions: IGitActionRequest[] = [];
   const commands: unknown[] = [];
   const switches: unknown[] = [];
+  const toasts: IToastRequest[] = [];
   const { EnvironmentId, ThreadId, ProjectId, ProjectRoot, Cwd } = CHECKOUT;
   const runtime = createTestRuntime<ITestRoot>(
     {
@@ -99,10 +101,13 @@ async function details(outcome: () => IGitActionOutcome = () => OUTCOME) {
         return effect.RefName;
       },
       refreshVcsStatus: () => {},
+      toast: ({ Type: _type, ...request }: IToastRequest & { Type: string }) => {
+        toasts.push(request);
+      },
     },
   );
   await runtime.dispatch(registerReplica, "Root");
-  return { runtime, actions, commands, switches };
+  return { runtime, actions, commands, switches, toasts };
 }
 
 const ask = (action: "push" | "commit" | "commit_push", featureBranch = false) => ({
@@ -179,7 +184,7 @@ describe("runGitAction", () => {
       ["commit", "thread-1", CHECKOUT.Cwd],
       ["push", "thread-1", CHECKOUT.Cwd],
     ]);
-    expect(runtime.state.Git.Notice).toMatchObject({ Tone: "success", Title: "Pushed" });
+    expect(runtime.state.Git.Notice).toMatchObject({ Title: "Pushed" });
   });
 
   it("moves the thread to a branch the action created, and names a created PR", async () => {
@@ -198,17 +203,21 @@ describe("runGitAction", () => {
     });
   });
 
-  it("shows a failure as an error notice", async () => {
-    const { runtime } = await details(() => {
+  it("shows a failure as a toast on this thread that stays until dismissed", async () => {
+    const { runtime, toasts } = await details(() => {
       throw serverFailure("nothing to commit");
     });
     await runtime.dispatch(runGitAction, "Git", ask("commit"), ON_FEATURE);
-    expect(runtime.state.Git.Notice).toEqual({
-      Tone: "error",
-      Title: "Action failed",
-      Description: "nothing to commit",
-      Url: null,
-    });
+    expect(runtime.state.Git.Notice).toBeNull();
+    expect(toasts).toEqual([
+      {
+        Kind: "error",
+        Title: "Action failed",
+        Description: "nothing to commit",
+        Thread: { EnvironmentId: "env-1", ThreadId: "thread-1" },
+        Sticky: true,
+      },
+    ]);
   });
 });
 
@@ -232,15 +241,15 @@ describe("selectBranch", () => {
   });
 
   it("refuses a branch checked out in another worktree, but not in this one", async () => {
-    const { runtime, switches } = await details();
+    const { runtime, switches, toasts } = await details();
     await runtime.dispatch(selectBranch, "Details", {
       ...ref,
       WorktreePath: "G:\\Sorted\\Test\\repo-other",
     });
     expect(switches).toEqual([]);
-    expect(runtime.state.Details.BranchError).toBe(
-      "other is checked out in G:\\Sorted\\Test\\repo-other.",
-    );
+    expect(toasts).toEqual([
+      { Kind: "warning", Title: "other is checked out in G:\\Sorted\\Test\\repo-other." },
+    ]);
     await runtime.dispatch(selectBranch, "Details", {
       ...ref,
       WorktreePath: "g:/sorted/test/repo/",

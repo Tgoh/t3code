@@ -26,6 +26,7 @@ import { createEntityFeature } from "treflex-solid";
 import { type ICheckout, type IThreadPart, checkout as threadCheckout } from "./checkout";
 import { serverError } from "./Infrastructure/serverError";
 import { threadCommandEffect, withCommandId } from "./Infrastructure/commandEffects";
+import { toast } from "./Infrastructure/toasts";
 import {
   gitActionEffect,
   type IGitActionOutcome,
@@ -42,8 +43,8 @@ declare module "treflex" {
 // Follows GIT_ACTION_SUCCESS_VISIBLE_MS in apps/web/src/components/GitActionsControl.logic.ts.
 export const NOTICE_VISIBLE_MS = 10_000;
 
+/** A finished action's result, shown in the quick action's row as stock's inline success is. */
 export interface IGitNotice {
-  Tone: "success" | "error";
   Title: string;
   Description: string | null;
   Url: string | null;
@@ -73,11 +74,10 @@ export interface IGitActionAsk {
 
 export interface IGitWork extends IThreadPart {
   Notice: IGitNotice | null;
-  BranchError: string | null;
 }
 
 export function getDefaultGitWork(environmentId: string, threadId: string): Omit<IGitWork, "$Id"> {
-  return { EnvironmentId: environmentId, ThreadId: threadId, Notice: null, BranchError: null };
+  return { EnvironmentId: environmentId, ThreadId: threadId, Notice: null };
 }
 
 const includesCommit = ({ Action, FeatureBranch }: IGitActionAsk, context: IActionContext) =>
@@ -104,10 +104,19 @@ export function* sendThreadBranch(
 function* showNotice(draft: IGitWork, notice: IGitNotice): IActionGenerator {
   yield* stopTimer(draft, "Git/Notice");
   draft.Notice = notice;
-  if (notice.Tone === "success") {
-    yield* startTimer(draft, "Git/Notice", GitReceiver, NOTICE_VISIBLE_MS);
-  }
+  yield* startTimer(draft, "Git/Notice", GitReceiver, NOTICE_VISIBLE_MS);
 }
+
+// Follows the error toasts in apps/web/src/components/GitActionsControl.tsx, which stay until
+// dismissed (`resolveGitActionResultToastTiming`).
+const failed = (draft: IGitWork, title: string, description: string) =>
+  toast({
+    Kind: "error",
+    Title: title,
+    Description: description,
+    Thread: { EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
+    Sticky: true,
+  });
 
 export function* dismissNotice(draft: IGitWork): IActionGenerator {
   yield* stopTimer(draft, "Git/Notice");
@@ -118,12 +127,7 @@ export function* openEditor(draft: IGitWork, editor: string | null): IOpenGenera
   const checkout = yield* select(threadCheckout);
   if (checkout === null) return;
   if (editor === null) {
-    yield* showNotice(draft, {
-      Tone: "error",
-      Title: "No editor found",
-      Description: `No editor on this machine can open ${checkout.Cwd}.`,
-      Url: null,
-    });
+    yield* failed(draft, "No editor found", `No editor on this machine can open ${checkout.Cwd}.`);
     return;
   }
   try {
@@ -135,12 +139,7 @@ export function* openEditor(draft: IGitWork, editor: string | null): IOpenGenera
       }),
     );
   } catch (error) {
-    yield* showNotice(draft, {
-      Tone: "error",
-      Title: "Unable to open editor",
-      Description: serverError(error).message,
-      Url: null,
-    });
+    yield* failed(draft, "Unable to open editor", serverError(error).message);
   }
 }
 
@@ -174,7 +173,6 @@ export function* runGitAction(
   const checkout = yield* select(threadCheckout);
   if (checkout === null) return;
   yield* dismissNotice(draft);
-  draft.BranchError = null;
   const actionId = yield* generateGuid();
   let outcome: IGitActionOutcome;
   try {
@@ -191,23 +189,17 @@ export function* runGitAction(
       }),
     );
   } catch (error) {
-    yield* showNotice(draft, {
-      Tone: "error",
-      Title: "Action failed",
-      Description: serverError(error).message,
-      Url: null,
-    });
+    yield* failed(draft, "Action failed", serverError(error).message);
     return;
   }
   if (outcome.Branch !== null) {
     try {
       yield* sendThreadBranch(checkout, outcome.Branch);
     } catch (error) {
-      draft.BranchError = serverError(error).message;
+      yield* failed(draft, "Failed to switch ref.", serverError(error).message);
     }
   }
   yield* showNotice(draft, {
-    Tone: "success",
     Title: outcome.PrCreated ? "Created PR" : outcome.Title,
     Description: outcome.PrCreated ? null : outcome.Description,
     Url: outcome.PrUrl,
@@ -242,7 +234,6 @@ export function* pull(draft: IGitWork): IOpenGenerator {
       pullEffect({ EnvironmentId: checkout.EnvironmentId, Cwd: checkout.Cwd }),
     );
     yield* showNotice(draft, {
-      Tone: "success",
       Title: result.Pulled ? "Pulled" : "Already up to date",
       Description: result.Pulled
         ? `Updated ${result.RefName} from ${result.Upstream ?? "upstream"}`
@@ -250,12 +241,7 @@ export function* pull(draft: IGitWork): IOpenGenerator {
       Url: null,
     });
   } catch (error) {
-    yield* showNotice(draft, {
-      Tone: "error",
-      Title: "Pull failed",
-      Description: serverError(error).message,
-      Url: null,
-    });
+    yield* failed(draft, "Pull failed", serverError(error).message);
   }
 }
 leading(pull);

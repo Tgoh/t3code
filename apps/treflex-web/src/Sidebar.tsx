@@ -26,7 +26,6 @@ import { groupResults, type ISearchResult, rankMessages, searchThreads } from ".
 import { FolderHeader, ProjectMenu, RemoveProjectDialog } from "./ProjectFolder";
 import { createListDrag } from "./listDrag";
 import { isProjectSort, PROJECT_SORT_LABELS } from "./projectOrder";
-import Root from "./Root";
 import { arrowStep, stepHighlight } from "./listNavigation";
 import Shell, { isBusy, sidebarStatus } from "./Shell";
 import { SidebarFooter } from "./SidebarFooter";
@@ -147,7 +146,6 @@ export function SidebarToggle(props: { inSidebar?: boolean }) {
 }
 
 export const Sidebar = Shell.provider(() => {
-  const root = Root.use();
   const environment = Environment.use();
   const shell = Shell.use();
   const navigation = useNavigation();
@@ -591,22 +589,6 @@ export const Sidebar = Shell.provider(() => {
               </SidebarGroup>
               <Show when={endedReason()}>
                 {(reason) => <p class={SIDEBAR_ERROR}>The shell stream ended: {reason()}</p>}
-              </Show>
-              <Show when={root.state.Failure}>
-                {(failure) => (
-                  <p class={SIDEBAR_ERROR}>
-                    That didn't work: {failure()}
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Dismiss"
-                      data-tip="Dismiss"
-                      onClick={() => root.dismissFailure()}
-                    >
-                      <X />
-                    </Button>
-                  </p>
-                )}
               </Show>
             </>
           }

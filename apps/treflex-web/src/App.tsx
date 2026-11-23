@@ -40,6 +40,7 @@ import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } fro
 import { Presence, usePresence } from "./ui/Presence";
 import { SheetBackdrop } from "./ui/Sheet";
 import { StandalonePage, StandalonePageHeader } from "./ui/StandalonePage";
+import { AnchoredToasts, Toasts } from "./ui/Toast";
 import { TooltipHost } from "./ui/Tooltip";
 import { UsageView } from "./UsageView";
 import { ViewportDebug } from "./ViewportDebug";
@@ -387,6 +388,11 @@ const EnvironmentMain = Dictation.provider(() => {
 export const App = Root.provider(() => {
   const root = Root.use();
   onMount(() => trackVisualViewport(document.documentElement));
+  const activeThread = createMemo(() => {
+    const environment = root.state.Environments.find((entry) => entry.Local.SelectedThreadId);
+    const threadId = environment?.Local.SelectedThreadId;
+    return environment && threadId ? { environmentId: environment.EnvironmentId, threadId } : null;
+  });
   return (
     <>
       <Switch>
@@ -416,6 +422,8 @@ export const App = Root.provider(() => {
           </For>
         </Match>
       </Switch>
+      <Toasts activeThread={activeThread()} />
+      <AnchoredToasts activeThread={activeThread()} />
       <TooltipHost />
     </>
   );

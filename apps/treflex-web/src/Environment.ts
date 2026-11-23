@@ -111,6 +111,7 @@ import {
 import type { IWireProject } from "./Infrastructure/wire";
 import { minute } from "./Infrastructure/clock";
 import { serverError } from "./Infrastructure/serverError";
+import { toast } from "./Infrastructure/toasts";
 import { lookUpLineageTitles } from "./lineageTitles";
 import { toSortableThread } from "./projectOrder";
 import { getDefaultShell, type IShell, openShellStream, visitShown } from "./Shell";
@@ -416,24 +417,51 @@ function* forgetSession(draft: IEnvironment, threadId: string): IActionGenerator
   }
 }
 
+// Follows the failure toasts of the thread actions in apps/web/src/components/Sidebar.tsx and
+// ArchivedThreadsPanel.tsx.
+const COMMAND_FAILURES: Partial<Record<IThreadCommand["Kind"], string>> = {
+  settle: "Failed to settle thread",
+  unsettle: "Failed to un-settle thread",
+  snooze: "Failed to snooze thread",
+  unsnooze: "Failed to wake thread",
+  pin: "Failed to pin thread",
+  unpin: "Failed to unpin thread",
+  reorderPin: "Failed to reorder pinned threads",
+  rename: "Failed to rename thread",
+  markUnread: "Failed to mark thread unread",
+  unarchive: "Failed to unarchive thread",
+  delete: "Failed to delete thread",
+};
+
+/** Sends a thread command; a refusal shows as a toast, and the result says whether it went through. */
 export function* threadCommand(
   draft: IEnvironment,
   threadId: string,
   command: IThreadCommand,
-): IOpenGenerator {
+): IOpenGenerator<boolean> {
   const environmentId = draft.EnvironmentId;
-  yield* open(
-    withCommandId((commandId) =>
-      threadCommandEffect({
-        EnvironmentId: environmentId,
-        ThreadId: threadId,
-        CommandId: commandId,
-        Command: command,
-      }),
-    ),
-  );
+  try {
+    yield* open(
+      withCommandId((commandId) =>
+        threadCommandEffect({
+          EnvironmentId: environmentId,
+          ThreadId: threadId,
+          CommandId: commandId,
+          Command: command,
+        }),
+      ),
+    );
+  } catch (error) {
+    yield* toast({
+      Kind: "error",
+      Title: COMMAND_FAILURES[command.Kind] ?? "That didn't work",
+      Description: serverError(error).message,
+    });
+    return false;
+  }
   // Only an open thread's stream reports a deletion; the shell doesn't say why a row left.
   if (command.Kind === "delete") yield* forgetSession(draft, threadId);
+  return true;
 }
 
 // Follows the reorder-pinned plan in apps/web/src/components/Sidebar.tsx, which writes the moved
@@ -451,7 +479,8 @@ export function* reorderPin(
   );
   const writes = planPinnedReorder({ orderedIds: order, keysById, movedId: threadId });
   for (const write of writes) {
-    yield* threadCommand(draft, write.id, { Kind: "reorderPin", OrderKey: write.orderKey });
+    if (!(yield* threadCommand(draft, write.id, { Kind: "reorderPin", OrderKey: write.orderKey })))
+      return;
   }
 }
 
@@ -460,8 +489,8 @@ export function* reorderPin(
 export function* settleThread(draft: IEnvironment, threadId: string): IOpenGenerator {
   const advance =
     draft.Local.SelectedThreadId === threadId ? yield* threadAfterSettling(draft, threadId) : null;
-  yield* threadCommand(draft, threadId, { Kind: "settle" });
-  if (advance === null || draft.Local.SelectedThreadId !== threadId) return;
+  const settled = yield* threadCommand(draft, threadId, { Kind: "settle" });
+  if (!settled || advance === null || draft.Local.SelectedThreadId !== threadId) return;
   if (advance.ThreadId !== null) yield* selectThread(draft, advance.ThreadId);
   else yield* newThread(draft, advance.ProjectId);
 }

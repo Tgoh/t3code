@@ -75,6 +75,7 @@ import { terminalSession } from "./Infrastructure/terminalSession";
 import { vcsStatus } from "./Infrastructure/vcsStatus";
 import { threadHistoryPageImpl } from "./Infrastructure/threadHistory";
 import { threadStream } from "./Infrastructure/threadStream";
+import { toastImpl } from "./Infrastructure/toasts";
 import { appearance } from "./Infrastructure/appearance";
 import { deviceActivity, reportActivityImpl } from "./Infrastructure/clientActivityImpl";
 import {
@@ -167,6 +168,7 @@ runtime.registerImplementation(storePreferencesImpl);
 runtime.registerImplementation(storedEditorImpl);
 runtime.registerImplementation(storeEditorImpl);
 runtime.registerImplementation(clockNowImpl);
+runtime.registerImplementation(toastImpl);
 runtime.registerResourceType("appearance", appearance);
 runtime.registerResourceType("deviceActivity", deviceActivity);
 runtime.registerImplementation(reportActivityImpl);

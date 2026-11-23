@@ -10,13 +10,13 @@ import { createEntityFeature } from "treflex-solid";
 
 import { type IEnvironment, init, newEnvironment } from "./Environment";
 import { environmentInfo } from "./Infrastructure/environmentInfo";
+import { toast } from "./Infrastructure/toasts";
 
 export interface IRoot extends IEntity {
   readonly $Receiver?: IReceiverId<IRoot>;
   Phase: "loading" | "unpaired" | "connected";
   Label: string;
   Environments: IEnvironment[];
-  Failure?: string;
 }
 
 export function getDefaultRoot(id: string): IRoot {
@@ -46,17 +46,17 @@ export function* load(draft: IRoot): IActionGenerator {
   yield* start(init, environment.$Id);
 }
 
-export function* dismissFailure(draft: IRoot): IActionGenerator {
-  delete draft.Failure;
-}
-
 const describe = (thrown: ISerializedThrow): string =>
   thrown.Thrown === "error" ? thrown.Message : JSON.stringify(thrown.Data ?? null);
 
 export const RootReceiver = receiver<IRoot>("RootReceiver")({
-  *"Action/Error"(draft, failure) {
-    draft.Failure = describe(failure.Error);
+  *"Action/Error"(_draft, failure) {
+    yield* toast({
+      Kind: "error",
+      Title: "That didn't work",
+      Description: describe(failure.Error),
+    });
   },
 });
 
-export default createEntityFeature<IRoot>("Root")({ load, dismissFailure });
+export default createEntityFeature<IRoot>("Root")({ load });

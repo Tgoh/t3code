@@ -49,7 +49,6 @@ import {
   Play,
   Plus,
   Server,
-  X,
 } from "./icons";
 import GitWork, { GitRunning, type IActionContext, type IDefaultBranchChoice } from "./GitWork";
 import {
@@ -845,10 +844,7 @@ const Body = (props: IDetailsProps) => {
     if (entry !== null)
       void work.chooseDefaultBranch(entry.Id as IAskId<IDefaultBranchChoice>, choice);
   };
-  const noticeLabel = () => {
-    const notice = work.state.Notice;
-    return notice?.Tone === "success" ? notice.Title : null;
-  };
+  const noticeLabel = () => work.state.Notice?.Title ?? null;
 
   return (
     <div>
@@ -915,9 +911,7 @@ const Body = (props: IDetailsProps) => {
             </span>
             <ChevronDown class="ml-auto" />
           </ComboboxTrigger>
-          <Show when={details.state.BranchError ?? work.state.BranchError}>
-            {(error) => <p class={ERROR}>{error()}</p>}
-          </Show>
+          <Show when={details.state.BranchError}>{(error) => <p class={ERROR}>{error()}</p>}</Show>
           <Show
             when={!busy() && noticeLabel() === null}
             fallback={
@@ -961,23 +955,6 @@ const Body = (props: IDetailsProps) => {
                 toggleMenu("git", anchor);
               }}
             />
-          </Show>
-          <Show when={work.state.Notice?.Tone === "error" && work.state.Notice}>
-            {(notice) => (
-              <div class="flex items-start gap-1 pr-2" role="alert">
-                <p class={`${ERROR} flex-1`}>
-                  {notice().Title}: {notice().Description}
-                </p>
-                <button
-                  class={ICON_ACTION}
-                  aria-label="Dismiss"
-                  data-tip="Dismiss"
-                  onClick={() => void work.dismissNotice()}
-                >
-                  <X />
-                </button>
-              </div>
-            )}
           </Show>
           <button class={ROW} onClick={() => void session.openDiff("branch", null)}>
             <FileDiff />

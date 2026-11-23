@@ -5,6 +5,7 @@ import { createEntityFeature } from "treflex-solid";
 
 import type { IThreadPart } from "./checkout";
 import { serverError } from "./Infrastructure/serverError";
+import { toast } from "./Infrastructure/toasts";
 import { sendThreadBranch } from "./GitWork";
 import {
   type IBranchRef,
@@ -108,25 +109,31 @@ export function* loadBranches(draft: IThreadDetails, query: string): IOpenGenera
 }
 latest(loadBranches);
 
+// Follows the switch and create failures in apps/web/src/components/BranchToolbarBranchSelector.tsx.
 function* switchTo(draft: IThreadDetails, refName: string, create: boolean): IOpenGenerator {
-  draft.BranchError = null;
   const request = {
     EnvironmentId: draft.EnvironmentId,
     Cwd: draft.Cwd,
     RefName: refName,
     Create: create,
   };
+  const failed = (error: unknown) =>
+    toast({
+      Kind: "error",
+      Title: create ? "Failed to create and switch ref." : "Failed to switch ref.",
+      Description: serverError(error).message,
+    });
   let switched: string | null = null;
   try {
     switched = yield* open(switchBranchEffect(request));
   } catch (error) {
-    draft.BranchError = serverError(error).message;
+    yield* failed(error);
     return;
   }
   try {
     yield* sendThreadBranch(draft, switched ?? refName);
   } catch (error) {
-    draft.BranchError = serverError(error).message;
+    yield* failed(error);
   }
   yield* refreshStatus(draft);
 }
@@ -151,7 +158,7 @@ export function blockedByWorktree(ref: IBranchRef, cwd: string): boolean {
 export function* selectBranch(draft: IThreadDetails, ref: IBranchRef): IOpenGenerator {
   if (ref.Current) return;
   if (blockedByWorktree(ref, draft.Cwd)) {
-    draft.BranchError = `${ref.Name} is checked out in ${ref.WorktreePath}.`;
+    yield* toast({ Kind: "warning", Title: `${ref.Name} is checked out in ${ref.WorktreePath}.` });
     return;
   }
   yield* switchTo(draft, ref.Name, false);
