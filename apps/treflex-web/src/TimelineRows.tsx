@@ -8,7 +8,7 @@ import type { AssetResource } from "@t3tools/contracts";
 import { htmlRenderReferencesEqual } from "@t3tools/shared/htmlRender";
 import { mcpAppReferencesEqual } from "@t3tools/shared/mcpApp";
 import type { IAskId } from "treflex";
-import { useComponentState, useInFlight } from "treflex-solid";
+import { useComponentState, useDispatch, useInFlight } from "treflex-solid";
 import { Dynamic } from "@solidjs/web";
 import { type Component, createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
 
@@ -66,7 +66,13 @@ import OpenThread, {
 } from "./OpenThread";
 import { focusComposerAtEnd } from "./composerFocus";
 import { canForkItem } from "./rewind";
-import ThreadSession, { editFromHere, forkFromRun, type IRewindChoice } from "./ThreadSession";
+import { attachmentSource } from "./FilePanel";
+import ThreadSession, {
+  editFromHere,
+  forkFromRun,
+  type IRewindChoice,
+  openAttachment,
+} from "./ThreadSession";
 import { dayAwareTimestamp, fullTimestamp } from "./timestamps";
 import { Button, buttonVariants } from "./ui/Button";
 import {
@@ -112,7 +118,7 @@ const IMAGE =
   "block h-48 max-w-full min-w-24 rounded-2xl object-cover outline outline-[color:var(--media-ring)] -outline-offset-1";
 
 const FILE_OPEN =
-  "flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left text-inherit no-underline";
+  "group/file focus-visible:ring-ring/70 flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none";
 
 const FOLD_LABEL = "max-w-[50%] flex-none truncate text-muted-foreground";
 
@@ -251,27 +257,31 @@ function AttachmentFile(props: { file: IWireAttachment; url: string | null }) {
         <File />
       </span>
       <span class="flex min-w-0 flex-1 flex-col">
-        <span class="truncate text-[14px] font-medium in-[a:hover]:underline">{label()}</span>
+        <span class="truncate text-[14px] font-medium group-hover/file:underline">{label()}</span>
         <span class="text-[12px] text-muted-foreground tabular-nums">
           {attachmentDetail(props.file.name, props.file.sizeBytes, pastedText())}
         </span>
       </span>
     </>
   );
+  const environment = Environment.use();
+  const dispatch = useDispatch();
+  // A side pane's attachment opens in the panel it sits in, which is the selected thread's.
+  const preview = () => {
+    const selected = environment.state.Local.SelectedThreadId;
+    const session =
+      selected === null ? undefined : environment.state.Local.ThreadSessions[selected];
+    if (session !== undefined)
+      void dispatch(openAttachment, session.$Id, attachmentSource(props.file));
+  };
   return (
     <div class="flex w-64 max-w-full items-center gap-1 rounded-2xl bg-message py-2 pr-1 pl-2">
-      <Show when={props.url} fallback={<span class={FILE_OPEN}>{identity()}</span>}>
+      <button type="button" class={FILE_OPEN} aria-label={`Preview ${label()}`} onClick={preview}>
+        {identity()}
+      </button>
+      <Show when={props.url}>
         {(url) => (
           <>
-            <a
-              class={FILE_OPEN}
-              href={url()}
-              target="_blank"
-              rel="noopener"
-              aria-label={`Preview ${label()}`}
-            >
-              {identity()}
-            </a>
             <a
               class={buttonVariants({ variant: "ghost-muted", size: "icon-xs" })}
               href={url()}

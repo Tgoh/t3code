@@ -191,7 +191,7 @@ export function fileDiffEntries(files: readonly FileDiffMetadata[]): IFileDiffEn
 // Pierre renders inside shadow roots, so its theme overrides go in as unsafeCSS. Follows
 // DIFF_SURFACE_THEME_UNSAFE_CSS in apps/web/src/lib/diffRendering.ts and DIFF_VIEW_UNSAFE_CSS in
 // apps/web/src/components/diffs/StyledDiffCodeView.tsx.
-export const DIFF_VIEW_UNSAFE_CSS = `
+export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
 [data-diffs-header],
 [data-diff],
 [data-file],
@@ -249,7 +249,9 @@ export const DIFF_VIEW_UNSAFE_CSS = `
 [data-change-icon="rename-changed"] {
   color: var(--diff-modified-icon, light-dark(var(--info-foreground), var(--diffs-modified-base))) !important;
 }
+`;
 
+export const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
 /* Keeps both split code columns the same width, so wrapping doesn't shift them as lines mount. */
 [data-diff-type="split"][data-overflow="wrap"] {
   --diffs-code-grid: var(--diffs-grid-number-column-width) minmax(0, 1fr);

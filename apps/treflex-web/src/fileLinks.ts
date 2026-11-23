@@ -1,3 +1,4 @@
+import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { isLocalEditorFileUrl } from "@t3tools/contracts";
 import {
   buildFileLinkParentSuffixByPath,
@@ -15,6 +16,7 @@ import {
   parseMarkdownFileLink,
   resolveMarkdownFileLinkTarget,
 } from "@t3tools/shared/markdownLinks";
+import { isHostPath, workspaceRelativeFilePath } from "@t3tools/shared/path";
 
 // Follows resolveMarkdownFileLinkMeta, resolveInlineCodeFileLinkMeta and isLocalEditorFileHref in
 // apps/web/src/markdown-links.ts, and fileLinkSourcesKey and normalizeMarkdownLinkHrefKey in
@@ -114,3 +116,71 @@ export const chipLabel = (link: IFileLink, suffixes: ReadonlyMap<string, string>
     },
     suffixes,
   );
+
+// Follows the chip's `onClick` and `handleOpenInFilePreview` in
+// apps/web/src/components/chat/MarkdownFileLink.tsx and `panelPath` in ChatMarkdown.tsx's
+// `fileLinkChip`.
+export type IFileChipAction = "editor" | "panel" | "media" | "menu";
+
+/** Where a workspace file opens in the Files preview: its relative path, or a host path. */
+export function chipPanelPath(
+  link: IFileLink,
+  cwd: string | undefined,
+  media: boolean,
+): string | null {
+  return (
+    workspaceRelativeFilePath(link.FilePath, cwd) ??
+    (!media && isHostPath(link.FilePath) ? link.FilePath : null)
+  );
+}
+
+export function fileChipAction(input: {
+  /** The editor opens on this client's machine. */
+  Editor: boolean;
+  /** The platform's open-in-editor modifier was held. */
+  Modifier: boolean;
+  PanelPath: string | null;
+  Media: boolean;
+}): IFileChipAction {
+  if (!input.Editor && input.PanelPath === null && !input.Media) return "menu";
+  if (input.Editor && input.Modifier) return "editor";
+  if (input.PanelPath !== null) return "panel";
+  if (input.Media) return "media";
+  return "editor";
+}
+
+export type IFileChipMenuItem =
+  | { Id: "preview-media" | "open" | "reveal"; Label: string }
+  | { Id: "copy-relative" | "copy-full"; Label: string; Value: string };
+
+// Follows showFileContextMenu and markdownFileCopyMenuItems in MarkdownFileLink.tsx and
+// MarkdownFileLink.logic.ts, and markdownFileCopyPaths in apps/web/src/markdownFileHostPath.ts.
+export function fileChipMenu(input: {
+  Link: IFileLink;
+  Cwd: string | undefined;
+  Media: boolean;
+  /** The open-in-editor label, present when the editor opens on this machine. */
+  EditorLabel: string | null;
+  /** The reveal label, present when the file manager opens on this machine. */
+  RevealLabel: string | null;
+}): IFileChipMenuItem[] {
+  const { Link: link } = input;
+  const relative = workspaceRelativeFilePath(link.FilePath, input.Cwd);
+  const clipboard = (path: string) => formatFilePathForClipboard(path, link.TargetPath);
+  const position = link.TargetPath.slice(link.FilePath.length);
+  return [
+    ...(input.Media ? [{ Id: "preview-media" as const, Label: "Preview media" }] : []),
+    ...(input.EditorLabel === null ? [] : [{ Id: "open" as const, Label: input.EditorLabel }]),
+    ...(input.RevealLabel === null ? [] : [{ Id: "reveal" as const, Label: input.RevealLabel }]),
+    ...(relative === null
+      ? []
+      : [
+          {
+            Id: "copy-relative" as const,
+            Label: "Copy relative path",
+            Value: clipboard(`${relative}${position}`),
+          },
+        ]),
+    { Id: "copy-full" as const, Label: "Copy full path", Value: clipboard(link.TargetPath) },
+  ];
+}

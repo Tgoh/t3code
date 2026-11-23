@@ -44,3 +44,32 @@ export function editorChoices(
     Preferred: preferredEditor(available, stored),
   };
 }
+
+// Follows openInEditorMenuLabel in apps/web/src/editorLabels.ts.
+export function openInEditorLabel(editors: IEditors): string {
+  const preferred = editors.Available.find((editor) => editor.Id === editors.Preferred);
+  return preferred === undefined || preferred.Id === "file-manager"
+    ? "Open in editor"
+    : `Open in ${preferred.Label}`;
+}
+
+// Follows `revealInFileManager` in markdownServerConfigFields in
+// apps/web/src/components/ChatMarkdown.tsx and apps/web/src/components/preview/fileExplorerLabel.ts.
+export function revealLabel(
+  config: {
+    shellRevealInFileManager?: boolean;
+    shellRevealInFileManagerKind?: string;
+    availableEditors: ReadonlyArray<string>;
+    environment: { platform: { os: string } };
+  } | null,
+): string | null {
+  if (
+    config?.shellRevealInFileManager !== true ||
+    !config.availableEditors.includes("file-manager")
+  )
+    return null;
+  const kind = config.shellRevealInFileManagerKind ?? config.environment.platform.os;
+  if (kind === "finder" || kind === "darwin") return "Reveal in Finder";
+  if (kind === "file-explorer" || kind === "windows") return "Reveal in File Explorer";
+  return "Reveal in Files";
+}

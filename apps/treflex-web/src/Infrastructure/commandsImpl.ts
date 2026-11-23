@@ -38,6 +38,8 @@ import { linkRequestFailureMessage } from "@t3tools/client-runtime/link-request"
 // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- this client has no atom command boundary (issues.md, "the command path assumes atoms"); the server authorizes a link answer
 import { request, requestGuarded, RpcPermissionGuard } from "@t3tools/client-runtime/rpc";
 import { secretRequestFailureMessage } from "@t3tools/client-runtime/secret-request";
+import { readFilePreviewResponse } from "@t3tools/client-runtime/file-preview";
+import { FILE_TEXT_PREVIEW_MAX_BYTES } from "@t3tools/shared/filePreview";
 import {
   CommandId,
   EnvironmentId,
@@ -45,6 +47,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   OrchestrationV2TurnItem,
   ProjectId,
+  ProjectReadFileError,
   RunId,
   RuntimeRequestId,
   THREAD_SEARCH_QUERY_MAX_LENGTH,
@@ -66,6 +69,7 @@ import { implementation } from "treflex";
 import {
   answerLinkEffect,
   answerSecretEffect,
+  assetTextEffect,
   assetUrlEffect,
   browseFoldersEffect,
   searchEntriesEffect,
@@ -77,6 +81,7 @@ import {
   openInFileManagerEffect,
   projectCommandEffect,
   queueCommandEffect,
+  readProjectFileEffect,
   forkThreadEffect,
   mergeBackEffect,
   respondRequestEffect,
@@ -94,7 +99,8 @@ import {
 import { preferredEditor } from "../editors";
 import { connectionRuntime } from "./connection";
 import { type IWireTurnItem, wireCodec } from "./wire";
-import { serverFailure, settle } from "./serverError";
+import { errorText } from "../errorText";
+import { serverFailure, serverFetch, settle, thrownOf } from "./serverError";
 import { runCommand, sourceControl } from "./sourceControl";
 
 const runInEnvironment = <A, E>(
@@ -496,7 +502,11 @@ export const newProjectImpl = implementation(newProjectEffect, async (input) => 
 export const openInFileManagerImpl = implementation(openInFileManagerEffect, async (input) => {
   await inEnvironment(
     input.EnvironmentId,
-    request(WS_METHODS.shellOpenInEditor, { cwd: input.Path, editor: "file-manager" }),
+    request(WS_METHODS.shellOpenInEditor, {
+      cwd: input.Path,
+      editor: "file-manager",
+      ...(input.Reveal === true ? { reveal: true } : {}),
+    }),
   );
 });
 
@@ -631,6 +641,60 @@ export const assetUrlImpl = implementation(assetUrlEffect, async (input, action)
       ? {}
       : { Size: { Width: imageDimensions.width, Height: imageDimensions.height } }),
   };
+});
+
+const isProjectReadFileError = Schema.is(ProjectReadFileError);
+
+// Follows useProjectFileQuery in apps/web/src/components/files/projectFilesQueryState.ts.
+export const readProjectFileImpl = implementation(readProjectFileEffect, async (input, action) => {
+  const exit = await runInEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.projectsReadFile, { cwd: input.Cwd, relativePath: input.Path }),
+    action?.signal,
+  );
+  if (Exit.isSuccess(exit)) {
+    const read = exit.value;
+    return {
+      Kind: "text" as const,
+      Contents: read.contents,
+      ByteLength: read.byteLength,
+      Truncated: read.truncated,
+    };
+  }
+  const failure = Cause.squash(exit.cause);
+  if (!Cause.hasDies(exit.cause) && isProjectReadFileError(failure)) {
+    return {
+      Kind: "error" as const,
+      Message: failure.message,
+      Failure: failure.failure ?? null,
+      Operation: failure.operation ?? null,
+      AttemptedPath: failure.resolvedPath ?? failure.operationPath ?? null,
+      Cwd: failure.cwd ?? null,
+    };
+  }
+  throw thrownOf(exit.cause);
+});
+
+// Follows the text fetch in apps/web/src/components/files/AttachmentFilePreview.tsx.
+export const assetTextImpl = implementation(assetTextEffect, async (input, action) => {
+  const { relativeUrl } = await inEnvironment(
+    input.EnvironmentId,
+    request(WS_METHODS.assetsCreateUrl, { resource: input.Resource }),
+    action?.signal,
+  );
+  const signal = action?.signal ?? new AbortController().signal;
+  const response = await serverFetch(relativeUrl, {
+    signal,
+    ...(input.SizeBytes > 0
+      ? { headers: { Range: `bytes=0-${FILE_TEXT_PREVIEW_MAX_BYTES}` } }
+      : {}),
+  });
+  try {
+    const { text, truncated } = await readFilePreviewResponse(response, signal);
+    return { Text: text, Truncated: truncated };
+  } catch (error) {
+    throw serverFailure(errorText(error), { cause: error });
+  }
 });
 
 const followOnce = <A, E>(

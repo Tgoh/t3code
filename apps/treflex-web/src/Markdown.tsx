@@ -14,7 +14,7 @@ import {
   useContext,
 } from "solid-js";
 import { Dynamic } from "@solidjs/web";
-import { useComponentState } from "treflex-solid";
+import { useComponentState, useDispatch } from "treflex-solid";
 
 import { ProjectBadge } from "./brand";
 import {
@@ -28,16 +28,22 @@ import {
 import { ensureFileIconSprite, fileIconFor, hasSpecificIcon, languageFileName } from "./fileIcons";
 import {
   chipLabel,
+  chipPanelPath,
+  fileChipAction,
+  fileChipMenu,
   fileLinkFromCode,
   fileLinkFromHref,
   fileLinkPathsKey,
+  type IFileChipMenuItem,
   type IFileLink,
   isEditorLinkHref,
   labelNamesFile,
   parentSuffixes,
   prosePathParts,
 } from "./fileLinks";
+import { copyText } from "./clipboard";
 import { CopyButton } from "./CopyButton";
+import { openInEditorLabel, revealLabel } from "./editors";
 import { RawHtml, TableCopyMenu } from "./TableCopy";
 import Environment from "./Environment";
 import { MessagesSquare, RotateCw, TriangleAlert, WrapText } from "./icons";
@@ -61,11 +67,13 @@ import {
 import { assistantHtml, blockTokens, containsHtml, createMarkdownLexer } from "./markdownTokens";
 import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } from "./sanitize";
-import ThreadSession, { codeWrapped } from "./ThreadSession";
+import ThreadSession, { codeWrapped, openFile } from "./ThreadSession";
 import { Button } from "./ui/Button";
+import { MenuItem, MenuItemLabel, MenuPopup } from "./ui/Menu";
 import { Presence } from "./ui/Presence";
 import { ScrollArea } from "./ui/ScrollArea";
 import { Spinner } from "./ui/Spinner";
+import { stackedThreadToast, toastManager } from "./ui/toastStore";
 import {
   contextThreadTarget,
   type ILinkTarget,
@@ -134,7 +142,7 @@ const FileLinkContext = createContext<IFileLinks>({
   inLink: false,
 });
 
-function FileIcon(props: { path: string; class: string }) {
+export function FileIcon(props: { path: string; class: string }) {
   const icon = () => fileIconFor(props.path);
   return (
     <svg
@@ -148,18 +156,67 @@ function FileIcon(props: { path: string; class: string }) {
   );
 }
 
-// Follows MarkdownFileLink in apps/web/src/components/chat/MarkdownFileLink.tsx. Stock opens a
-// workspace file in its Files panel, which this client doesn't have, so a workspace media file
-// opens in the viewer like any other and the rest open in the editor.
+// Follows MarkdownFileLink in apps/web/src/components/chat/MarkdownFileLink.tsx and its caller,
+// `fileLinkChip` in apps/web/src/components/ChatMarkdown.tsx.
 function FileChip(props: { link: IFileLink }) {
   const environment = Environment.use();
   const thread = OpenThread.use();
   const files = useContext(FileLinkContext);
+  const dispatch = useDispatch();
   const media = createMemo(
     () => mediaLinkTarget(props.link, files.cwd(), thread.state.Thread?.id),
     { equals: sameTarget },
   );
+  const onHost = () => environment.openMode() === "local-exec";
+  const panelPath = () => chipPanelPath(props.link, files.cwd(), media() !== null);
   const [viewing, setViewing] = createSignal<IMediaTarget | null>(null);
+  const [menu, setMenu] = createSignal<{ X: number; Y: number } | null>(null);
+  const label = () => chipLabel(props.link, files.suffixes());
+  const openEditor = () =>
+    void environment.openInEditor(props.link.TargetPath, files.cwd() ?? null);
+  // A side pane's file opens in the panel it sits in, which is the selected thread's.
+  const openInPanel = (path: string) => {
+    const selected = environment.state.Local.SelectedThreadId;
+    const session =
+      selected === null ? undefined : environment.state.Local.ThreadSessions[selected];
+    if (session !== undefined) void dispatch(openFile, session.$Id, path, props.link.Line ?? null);
+  };
+  const menuItems = () =>
+    fileChipMenu({
+      Link: props.link,
+      Cwd: files.cwd(),
+      Media: media() !== null,
+      EditorLabel: onHost() ? openInEditorLabel(environment.editors()) : null,
+      RevealLabel: onHost() ? revealLabel(environment.state.Replica.Config) : null,
+    });
+  const runMenuItem = (item: IFileChipMenuItem) => {
+    setMenu(null);
+    if ("Value" in item) {
+      void copyText(item.Value).then((copied) => {
+        if (copied) return;
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title:
+              item.Id === "copy-relative"
+                ? "Failed to copy relative path"
+                : "Failed to copy full path",
+            description: "Clipboard API unavailable.",
+          }),
+        );
+      });
+    } else if (item.Id === "preview-media") setViewing(media());
+    else if (item.Id === "open") openEditor();
+    else void environment.openInFileManager(props.link.FilePath, true);
+  };
+  const showMenu = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.clientX === 0 && event.clientY === 0) {
+      const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      setMenu({ X: bounds.left, Y: bounds.bottom });
+    } else setMenu({ X: event.clientX, Y: event.clientY });
+  };
   return (
     <>
       <button
@@ -171,27 +228,49 @@ function FileChip(props: { link: IFileLink }) {
         data-tip-hoverable
         onClick={(event) => {
           event.stopPropagation();
-          const held = media();
-          if (held !== null && !opensInEditor(event)) setViewing(held);
-          else environment.openInEditor(props.link.TargetPath, files.cwd() ?? null);
+          const action = fileChipAction({
+            Editor: onHost(),
+            Modifier: opensInEditor(event),
+            PanelPath: panelPath(),
+            Media: media() !== null,
+          });
+          if (action === "menu") showMenu(event);
+          else if (action === "editor") openEditor();
+          else if (action === "panel") openInPanel(panelPath()!);
+          else setViewing(media());
         }}
+        onContextMenu={showMenu}
       >
         <FileIcon
           path={props.link.FilePath}
           class="mr-[0.2em] inline size-[1em] align-[-0.125em]"
         />
         <span class="underline decoration-transparent decoration-1 underline-offset-[0.2em] transition-[text-decoration-color] duration-150 ease-[ease] group-hover/file:decoration-current">
-          {chipLabel(props.link, files.suffixes())}
+          {label()}
         </span>
       </button>
-      <Presence when={viewing()} keyed>
-        {(held) => (
-          <MediaViewer
-            target={held()}
-            name={chipLabel(props.link, files.suffixes())}
-            onClose={() => setViewing(null)}
-          />
+      <Presence when={menu()} keyed>
+        {(at) => (
+          <MenuPopup
+            anchor={at()}
+            side="bottom"
+            align="start"
+            sideOffset={0}
+            label={`File options for ${label()}`}
+            onClose={() => setMenu(null)}
+          >
+            <For each={menuItems()}>
+              {(item) => (
+                <MenuItem onClick={() => runMenuItem(item)}>
+                  <MenuItemLabel>{item.Label}</MenuItemLabel>
+                </MenuItem>
+              )}
+            </For>
+          </MenuPopup>
         )}
+      </Presence>
+      <Presence when={viewing()} keyed>
+        {(held) => <MediaViewer target={held()} name={label()} onClose={() => setViewing(null)} />}
       </Presence>
     </>
   );
@@ -423,7 +502,7 @@ function ImageUnavailable(props: { alt: string; kind?: IMediaKind }) {
   );
 }
 
-function useMediaUrl(resource: AssetResource) {
+export function useMediaUrl(resource: AssetResource) {
   const environment = Environment.use();
   const local = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
   const load = () => local.dispatch(loadMediaUrl, environment.state.EnvironmentId, resource);

@@ -58,6 +58,7 @@ import { SheetBackdrop, sheetPopupVariants } from "./ui/Sheet";
 import { createMediaQuery, enterPanel, PANEL_SHEET_QUERY } from "./viewport";
 
 const DiffPanel = lazy(() => import("./DiffPanel"));
+const FilePreviewPanel = lazy(() => import("./FilePreviewPanel"));
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
 
@@ -770,12 +771,13 @@ const ThreadBody = ThreadSession.provider(() => {
     void dispatch(action, session.state.Terminal.$Id);
   const terminalOpen = () => session.state.Terminal.Open;
   const diffOpen = () => session.state.Panels.Diff !== null;
+  const fileOpen = () => session.state.Panels.File !== null;
   const side = () => {
     const held = session.state.Panels.Side;
     return held === null ? null : (environment.state.Replica.OpenThreads[held.ThreadId] ?? null);
   };
   const launcherOpen = () => session.state.Panels.Launcher.Open;
-  const rightPanelOpen = () => diffOpen() || side() !== null || launcherOpen();
+  const rightPanelOpen = () => diffOpen() || fileOpen() || side() !== null || launcherOpen();
   const panelSheet = createMediaQuery(PANEL_SHEET_QUERY);
   const [panelMotion, setPanelMotion] = createSignal(false);
   // Late, so panels already open on a thread switch don't slide in again.
@@ -941,7 +943,7 @@ const ThreadBody = ThreadSession.provider(() => {
         <aside
           ref={enterPanel}
           class={panelSheet() ? RIGHT_PANEL_SHEET : RIGHT_PANEL_COLUMN}
-          data-side-pane={side() !== null && session.state.Panels.Diff === null ? "" : undefined}
+          data-side-pane={side() !== null && !diffOpen() && !fileOpen() ? "" : undefined}
         >
           <Switch
             fallback={
@@ -954,6 +956,9 @@ const ThreadBody = ThreadSession.provider(() => {
           >
             <Match when={!launcherOpen() && session.state.Panels.Diff} keyed>
               {(panel) => <DiffPanel panel={panel} />}
+            </Match>
+            <Match when={!launcherOpen() && session.state.Panels.File} keyed>
+              {(panel) => <FilePreviewPanel panel={panel} />}
             </Match>
             <Match when={side()} keyed>
               {(held) => <SidePane state={held} />}

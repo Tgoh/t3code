@@ -10,6 +10,7 @@ import type {
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import { defineEffect, generateGuid, type IActionGenerator, type IEffect } from "treflex";
 
+import type { IFileReadError } from "../filePreview";
 import type { IWireProjection, IWireTurnItem } from "./wire";
 
 export type IWireAttachment = Extract<
@@ -338,6 +339,8 @@ interface IOpenInFileManagerEffect extends IEffect {
   Type: "openInFileManager";
   EnvironmentId: string;
   Path: string;
+  /** Selects the file in its folder rather than opening the folder. */
+  Reveal?: boolean;
 }
 
 export const openInFileManagerEffect = defineEffect<IOpenInFileManagerEffect, void>(
@@ -407,6 +410,35 @@ export interface IAssetUrl {
 }
 
 export const assetUrlEffect = defineEffect<IAssetUrlEffect, IAssetUrl>("assetUrl");
+
+interface IReadProjectFileEffect extends IEffect {
+  Type: "readProjectFile";
+  EnvironmentId: string;
+  Cwd: string;
+  /** Workspace-relative, or an absolute host path. */
+  Path: string;
+}
+
+export type IProjectFileRead =
+  | { Kind: "text"; Contents: string; ByteLength: number; Truncated: boolean }
+  | ({ Kind: "error" } & IFileReadError);
+
+/** The server's refusal to read the file is its answer, not a failure. */
+export const readProjectFileEffect = defineEffect<IReadProjectFileEffect, IProjectFileRead>(
+  "readProjectFile",
+);
+
+interface IAssetTextEffect extends IEffect {
+  Type: "assetText";
+  EnvironmentId: string;
+  Resource: AssetResource;
+  SizeBytes: number;
+}
+
+/** The first megabyte of a signed asset, as text. */
+export const assetTextEffect = defineEffect<IAssetTextEffect, { Text: string; Truncated: boolean }>(
+  "assetText",
+);
 
 interface IQueueCommandEffect extends IEffect, IQueueCommand {
   Type: "queueCommand";

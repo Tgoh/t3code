@@ -68,6 +68,8 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import { type IDiffPanel, type IDiffScope, loadDiff } from "./Diff";
+import { type IFilePanel, type IFileSource, loadFile } from "./FilePanel";
+import { panelFilePath, previewPath } from "./filePreview";
 import { type IToolDetail, loadToolDetail } from "./ToolDetail";
 import type { IGitWork } from "./GitWork";
 import type { IAddressView } from "./Infrastructure/address";
@@ -252,6 +254,7 @@ export interface IThreadSession extends IEntity {
   QuestionIndex: Record<string, number>;
   Panels: {
     Diff: IDiffPanel | null;
+    File: IFilePanel | null;
     Details: IDetailsPanel;
     Launcher: { Open: boolean };
     /** The thread shown beside this one in the right panel, which holds one surface at a time. */
@@ -294,6 +297,7 @@ export function getDefaultThreadSession(
     QuestionIndex: {},
     Panels: {
       Diff: null,
+      File: null,
       Details: { Popover: false, Fits: false },
       Launcher: { Open: false },
       Side: null,
@@ -577,6 +581,7 @@ export interface IPanels {
   /** The thread has a turn to diff. */
   Diff: boolean;
   DiffOpen: boolean;
+  FileOpen: boolean;
   RightPanelOpen: boolean;
   TerminalEntityId: string;
   /** The focused shell's entity while the drawer is open, which split, new and close act on. */
@@ -588,12 +593,15 @@ export function* panels(draft: IThreadSession): ISelectorGenerator<IPanels> {
   const replica = yield* getData(draft, "Replica");
   const thread = replica?.OpenThreads[draft.ThreadId];
   const diffOpen = draft.Panels.Diff !== null;
+  const fileOpen = draft.Panels.File !== null;
   return {
     Details: (yield* checkout(draft)) !== null,
     Terminal: thread?.Thread != null,
     Diff: thread !== undefined && latestDiffTurn(thread) !== null,
     DiffOpen: diffOpen,
-    RightPanelOpen: diffOpen || draft.Panels.Side !== null || draft.Panels.Launcher.Open,
+    FileOpen: fileOpen,
+    RightPanelOpen:
+      diffOpen || fileOpen || draft.Panels.Side !== null || draft.Panels.Launcher.Open,
     SideChats:
       thread?.Thread != null &&
       sideThreadKindOf(thread.Thread) === null &&
@@ -1721,6 +1729,7 @@ export function* openDiff(
   turnCount: number | null,
 ): IActionGenerator {
   draft.Panels.Launcher.Open = false;
+  draft.Panels.File = null;
   yield* hideSide(draft, true);
   const held = draft.Panels.Diff;
   const settings = yield* select(diffSettings);
@@ -1795,6 +1804,8 @@ function clearDiff(panel: IDiffPanel): void {
 
 // Follows the workspaceMutationId refetch in apps/web/src/components/DiffPanel.tsx.
 export function* followWorkspace(draft: IThreadSession): IActionGenerator {
+  const file = draft.Panels.File;
+  if (file?.Source.Kind === "workspace") yield* start(loadFile, file);
   const panel = draft.Panels.Diff;
   if (panel === null) return;
   if (panel.Scope !== "turn") {
@@ -1841,6 +1852,85 @@ export function* setDiffFilesCollapsed(
 
 export function* closeDiff(draft: IThreadSession): IActionGenerator {
   draft.Panels.Diff = null;
+}
+
+// Follows openFile and openAttachment in apps/web/src/rightPanelStore.ts, in a panel that shows
+// one surface at a time.
+/** Opens a workspace file, or an absolute host path, in the Files preview at `line`. */
+export function* openFile(
+  draft: IThreadSession,
+  requestedPath: string,
+  line: number | null,
+): IActionGenerator {
+  const cwd = yield* select(searchRoot);
+  if (cwd === null) return;
+  const path = previewPath(panelFilePath(requestedPath), cwd);
+  if (path === null) return;
+  const revealLine = line !== null && Number.isInteger(line) && line > 0 ? line : null;
+  const held = draft.Panels.File;
+  if (held?.Source.Kind === "workspace" && held.Source.Path === path && held.Source.Cwd === cwd) {
+    held.RevealLine = revealLine;
+    held.RevealId += 1;
+    yield* showFile(draft, held);
+    return;
+  }
+  yield* showFile(
+    draft,
+    yield* newFilePanel(draft, { Kind: "workspace", Path: path, Cwd: cwd }, revealLine),
+  );
+}
+
+export function* openAttachment(draft: IThreadSession, source: IFileSource): IActionGenerator {
+  const held = draft.Panels.File;
+  if (
+    held?.Source.Kind === "attachment" &&
+    source.Kind === "attachment" &&
+    held.Source.Id === source.Id
+  ) {
+    yield* showFile(draft, held);
+    return;
+  }
+  yield* showFile(draft, yield* newFilePanel(draft, source, null));
+}
+
+function* newFilePanel(
+  draft: IThreadSession,
+  source: IFileSource,
+  revealLine: number | null,
+): IActionGenerator<IFilePanel> {
+  return yield* entity<IFilePanel>({
+    EnvironmentId: draft.EnvironmentId,
+    Source: source,
+    RevealLine: revealLine,
+    RevealId: 1,
+    Read: null,
+  });
+}
+
+function* showFile(draft: IThreadSession, panel: IFilePanel): IActionGenerator {
+  draft.Panels.Launcher.Open = false;
+  draft.Panels.Diff = null;
+  yield* hideSide(draft, true);
+  if (draft.Panels.File === panel) return;
+  draft.Panels.File = panel;
+  yield* start(loadFile, draft.Panels.File);
+}
+
+/** Stock's Try again on a preview whose read failed. */
+export function* reloadFile(draft: IThreadSession): IActionGenerator {
+  const panel = draft.Panels.File;
+  if (panel === null) return;
+  panel.Read = null;
+  yield* start(loadFile, panel);
+}
+
+export function* closeFile(draft: IThreadSession): IActionGenerator {
+  draft.Panels.File = null;
+}
+
+export function* fileLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
+  const panel = draft.Panels.File;
+  return panel !== null && panel.Read === null && (yield* inFlight(loadFile, panel));
 }
 
 export function* detailsOpen(draft: IThreadSession): ISelectorGenerator<boolean> {
@@ -1907,7 +1997,7 @@ export function* hideSide(draft: IThreadSession, discard: boolean): IActionGener
 
 /** The header's right-panel toggle: closes whichever surface is open, or shows the launcher. */
 export function* toggleRightPanel(draft: IThreadSession): IActionGenerator {
-  if (draft.Panels.Diff !== null || draft.Panels.Side !== null) {
+  if (draft.Panels.Diff !== null || draft.Panels.File !== null || draft.Panels.Side !== null) {
     yield* closeRightPanel(draft);
     return;
   }
@@ -1926,6 +2016,7 @@ export function* closeLauncher(draft: IThreadSession): IActionGenerator {
 export function* closeRightPanel(draft: IThreadSession): IActionGenerator {
   if (draft.Panels.Launcher.Open) draft.Panels.Launcher.Open = false;
   else if (draft.Panels.Diff !== null) yield* closeDiff(draft);
+  else if (draft.Panels.File !== null) yield* closeFile(draft);
   else if (draft.Panels.Side !== null) yield* hideSide(draft, true);
   else draft.Panels.Launcher.Open = false;
 }
@@ -2012,6 +2103,10 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     toggleDiffWhitespace,
     setDiffFilesCollapsed,
     closeDiff,
+    openFile,
+    openAttachment,
+    reloadFile,
+    closeFile,
     toggleDetails,
     closeDetailsPopover,
     fitDetails,
@@ -2046,6 +2141,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     rewindConfirm,
     mergeBackRunId,
     diffLoading,
+    fileLoading,
     diffSettings,
     diffGitRepositories,
     diffRepositoryRoot,
