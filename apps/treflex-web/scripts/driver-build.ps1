@@ -1,5 +1,4 @@
 #!/usr/bin/env pwsh
-#Requires -Version 7.0
 #
 # Builds the treflex client beside the dist it serves and swaps it in, so a failed build leaves the
 # running client alone. dev-stack.ps1 calls it for the driver.
@@ -35,6 +34,8 @@ if ($Build) {
   Remove-Item Env:VITE_HTTP_URL, Env:VITE_WS_URL -ErrorAction SilentlyContinue
   Push-Location $appDir
   try {
+    # Windows PowerShell 5.1 turns a native command's redirected stderr into errors, which "Stop" would throw on.
+    $ErrorActionPreference = "Continue"
     & (Get-Command vp).Source build --outDir $next --emptyOutDir *> $log
     $code = $LASTEXITCODE
   } finally {

@@ -1,5 +1,4 @@
 #!/usr/bin/env pwsh
-#Requires -Version 7.0
 #
 #   ./dev-stack.ps1           start whatever isn't already running
 #   ./dev-stack.ps1 -Status   show what's running
