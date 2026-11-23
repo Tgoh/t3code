@@ -9,7 +9,7 @@ import { type Component, createMemo, createSignal, For, onMount, Show } from "so
 import { Dynamic } from "solid-js/web";
 
 import { attachmentDetail } from "./attachmentIntake";
-import { CommandOutput, WORK_PRE } from "./CommandOutput";
+import { CommandOutput, ToolDetailNote, WORK_PRE } from "./CommandOutput";
 import { compactionLabel, compactionReason } from "./compaction";
 import { CopyButton } from "./CopyButton";
 import {
@@ -861,8 +861,13 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
       </Show>
     </>
   );
+  const detail = () => session.state.ToolDetails[props.id];
+  const bodyText = () => {
+    const fetched = detail()?.Item;
+    return fetched != null && fetched.type === item()?.type ? viewOf(fetched).Body : view()?.Body;
+  };
   const body = (pre?: string) => (
-    <Show when={view()?.Body}>
+    <Show when={bodyText()}>
       {(text) => <Body id={props.id} text={text()} format={view()?.Format ?? "text"} pre={pre} />}
     </Show>
   );
@@ -877,7 +882,7 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
       data-failed={view()?.Failed === true ? "" : undefined}
     >
       <Show
-        when={view()?.Collapsed && (view()?.Body || view()?.LiveOutput)}
+        when={view()?.Collapsed && (view()?.Body || view()?.LiveOutput || view()?.Detail)}
         fallback={
           <>
             <div class={`${workLine(tone())} group-data-action/row:pr-18`}>{label()}</div>
@@ -892,10 +897,19 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
           open={expanded()}
           onToggle={(event) => {
             if (event.currentTarget.open === expanded()) return;
-            const output = view()?.LiveOutput
-              ? { ThreadId: thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId }
-              : undefined;
-            session.toggleRowExpanded(props.id, output);
+            const fetch = view()?.LiveOutput
+              ? ("output" as const)
+              : view()?.Detail
+                ? ("detail" as const)
+                : null;
+            const source =
+              fetch === null
+                ? undefined
+                : {
+                    ThreadId: thread.state.Rows[props.id]?.sourceThreadId ?? thread.state.ThreadId,
+                    Fetch: fetch,
+                  };
+            session.toggleRowExpanded(props.id, source);
           }}
         >
           <summary
@@ -913,6 +927,7 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
             <Show when={view()?.LiveOutput && expanded()}>
               <CommandOutput itemId={props.id} />
             </Show>
+            <Show when={detail()}>{(held) => <ToolDetailNote detail={held()} />}</Show>
             {body()}
           </div>
         </details>

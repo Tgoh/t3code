@@ -41,11 +41,13 @@ import {
   EnvironmentId,
   MessageId,
   ORCHESTRATION_V2_WS_METHODS,
+  OrchestrationV2TurnItem,
   ProjectId,
   RunId,
   RuntimeRequestId,
   THREAD_SEARCH_QUERY_MAX_LENGTH,
   ThreadId,
+  TurnItemId,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -55,6 +57,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { implementation } from "treflex";
 
@@ -82,9 +85,11 @@ import {
   threadCommandEffect,
   threadDiffEffect,
   threadTitlesEffect,
+  turnItemEffect,
 } from "./commandEffects";
 import { preferredEditor } from "../editors";
 import { connectionRuntime } from "./connection";
+import { type IWireTurnItem, wireCodec } from "./wire";
 import { serverFailure, settle } from "./serverError";
 import { runCommand, sourceControl } from "./sourceControl";
 
@@ -526,6 +531,20 @@ export const threadDiffImpl = implementation(threadDiffEffect, async (input, act
     action?.signal,
   );
   return turn.diff;
+});
+
+const encodeTurnItem = Schema.encodeSync(wireCodec(OrchestrationV2TurnItem));
+
+export const turnItemImpl = implementation(turnItemEffect, async (input, action) => {
+  const { item } = await inEnvironment(
+    input.EnvironmentId,
+    request(ORCHESTRATION_V2_WS_METHODS.getTurnItem, {
+      threadId: ThreadId.make(input.ThreadId),
+      itemId: TurnItemId.make(input.ItemId),
+    }),
+    action?.signal,
+  );
+  return item === null ? null : (encodeTurnItem(item) as IWireTurnItem);
 });
 
 export const assetUrlImpl = implementation(assetUrlEffect, async (input, action) => {

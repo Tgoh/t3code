@@ -177,6 +177,16 @@ interface IThreadDiffEffect extends IEffect, IThreadDiff {
   Type: "threadDiff";
 }
 
+export interface ITurnItemRequest {
+  EnvironmentId: string;
+  ThreadId: string;
+  ItemId: string;
+}
+
+interface ITurnItemEffect extends IEffect, ITurnItemRequest {
+  Type: "turnItem";
+}
+
 export type IThreadCommand =
   | { Kind: "settle" }
   | { Kind: "unsettle" }
@@ -327,6 +337,9 @@ interface IOpenInEditorEffect extends IEffect {
 export const openInEditorEffect = defineEffect<IOpenInEditorEffect, string>("openInEditor");
 
 export const threadDiffEffect = defineEffect<IThreadDiffEffect, string>("threadDiff");
+
+/** The whole item, with the output and input the wire leaves out, or null once it's gone. */
+export const turnItemEffect = defineEffect<ITurnItemEffect, IWireTurnItem | null>("turnItem");
 
 interface IAssetUrlEffect extends IEffect {
   Type: "assetUrl";

@@ -64,6 +64,7 @@ import {
   withCommandId,
 } from "./Infrastructure/commandEffects";
 import { type IDiffPanel, type IDiffRequest, type IDiffScope, loadDiff } from "./Diff";
+import { type IToolDetail, loadToolDetail } from "./ToolDetail";
 import type { IGitWork } from "./GitWork";
 import type { IAddressView } from "./Infrastructure/address";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
@@ -221,6 +222,7 @@ export interface IThreadSession extends IEntity {
   Details: IThreadDetails | null;
   ExpandedRows: Record<string, true>;
   CommandOutputs: Record<string, ICommandOutputRow>;
+  ToolDetails: Record<string, IToolDetail>;
   /** Code blocks the person turned wrapping off for, by block key. */
   UnwrappedCode: Record<string, true>;
 }
@@ -248,6 +250,7 @@ export function getDefaultThreadSession(
     },
     ExpandedRows: {},
     CommandOutputs: {},
+    ToolDetails: {},
     UnwrappedCode: {},
     Details: null,
   };
@@ -1335,21 +1338,36 @@ export function* settleQuestions(
   if (draft.Draft !== before) yield* storeDraft(draft);
 }
 
-/** `output` names the thread that ran a command row, whose output shows while it's expanded. */
+/**
+ * `source` names the thread that ran the row and what its expanded body needs: a command's live
+ * output, or the whole item of a tool whose output the wire leaves out.
+ */
 export function* toggleRowExpanded(
   draft: IThreadSession,
   rowId: string,
-  output?: { ThreadId: string },
+  source?: { ThreadId: string; Fetch: "output" | "detail" },
 ): IActionGenerator {
   if (draft.ExpandedRows[rowId]) {
     delete draft.ExpandedRows[rowId];
     delete draft.CommandOutputs[rowId];
+    delete draft.ToolDetails[rowId];
     return;
   }
   draft.ExpandedRows[rowId] = true;
-  if (output === undefined) return;
+  if (source === undefined) return;
+  if (source.Fetch === "detail") {
+    draft.ToolDetails[rowId] = yield* entity<IToolDetail>({
+      ThreadId: source.ThreadId,
+      ItemId: rowId,
+      Item: null,
+      Missing: false,
+      Error: null,
+    });
+    yield* start(loadToolDetail, draft.ToolDetails[rowId]!, draft.EnvironmentId);
+    return;
+  }
   draft.CommandOutputs[rowId] = yield* entity<ICommandOutputRow>({
-    ThreadId: output.ThreadId,
+    ThreadId: source.ThreadId,
     ItemId: rowId,
   });
   yield* openOutput(draft, draft.CommandOutputs[rowId]!);
