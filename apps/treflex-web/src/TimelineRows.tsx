@@ -985,8 +985,7 @@ function HtmlRenderRow(props: IRowProps) {
   );
 }
 
-// Follows McpAppTimelineRow in apps/web/src/components/chat/TimelineAssistantRows.tsx. Stock
-// shows the tool's work line as its own row; here it sits above the app.
+// Follows McpAppTimelineRow in apps/web/src/components/chat/TimelineAssistantRows.tsx.
 function McpAppRow(props: IRowProps) {
   const { thread, item } = useRow(props);
   const app = createMemo(

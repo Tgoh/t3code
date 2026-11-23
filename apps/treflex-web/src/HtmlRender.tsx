@@ -261,7 +261,6 @@ function HtmlRenderDocument(props: {
   const postTheme = () => post(htmlRenderThemeMessage(theme()));
   const postShortcuts = () =>
     post(htmlRenderShortcutsMessage(shortcuts().allowed, shortcuts().blocked));
-  // The page lives in another window, so each change is posted to it.
   createEffect(postTheme);
   createEffect(postShortcuts);
   // Pages can forge key and code pairs: a pair matching another binding is refused, and a named

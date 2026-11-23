@@ -157,6 +157,10 @@ function confirmCopy(message: string): { Title: string; Description: string | nu
 
 const refuse = (message: string) => new McpAppHostRefusal({ message });
 
+/** State reads are view proxies, which `postMessage` can't clone, so the host gets copies. */
+const plain = <T,>(value: T): T =>
+  value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
+
 // Follows McpAppFrame in apps/web/src/components/chat/McpAppFrame.tsx.
 export function McpAppFrame(props: {
   app: McpAppReference;
@@ -210,7 +214,8 @@ export function McpAppFrame(props: {
     (held) => {
       const current = generation();
       if (held.Generation === current && held.Src !== null) return held;
-      const url = local.state.Url;
+      // A failed mint leaves the previous, possibly expired, URL in place.
+      const url = local.state.Failed ? null : local.state.Url;
       if (url === null) return { Generation: current, Src: null };
       // The app paints before `ui/initialize`, so it reads the first scheme from its URL.
       const absolute = new URL(url, location.href);
@@ -270,7 +275,7 @@ export function McpAppFrame(props: {
     safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 },
     ...(local.state.ToolDefinition === undefined
       ? {}
-      : { toolInfo: { tool: local.state.ToolDefinition } }),
+      : { toolInfo: { tool: plain(local.state.ToolDefinition) } }),
   });
 
   // The host belongs to this frame element, which a reopened document replaces.
@@ -406,7 +411,6 @@ export function McpAppFrame(props: {
     });
   };
 
-  // The app lives in another window, so each change to what it reads is sent to it.
   createEffect(() => {
     theme();
     width();
@@ -418,7 +422,9 @@ export function McpAppFrame(props: {
   createEffect(() => {
     const call = local.state.ToolCall;
     src();
-    if (call !== null) host()?.setToolCall({ arguments: call.Arguments, result: call.Result });
+    if (call !== null) {
+      host()?.setToolCall({ arguments: plain(call.Arguments), result: plain(call.Result) });
+    }
   });
 
   const attachBox = (element: HTMLDivElement) => {
