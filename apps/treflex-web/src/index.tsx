@@ -65,6 +65,7 @@ import {
 } from "./Infrastructure/draftMemory";
 import { rememberedModelsImpl, rememberModelImpl } from "./Infrastructure/modelMemory";
 import { registerServiceWorker } from "./Infrastructure/serviceWorker";
+import { keybindingsWarning } from "./Infrastructure/keybindingsWarning";
 import { pairFromUrl } from "./Infrastructure/pairing";
 import { projectClones } from "./Infrastructure/projectClones";
 import { projectFavicons } from "./Infrastructure/projectFavicons";
@@ -162,6 +163,7 @@ runtime.registerImplementation(updateServerSettingsImpl);
 runtime.registerImplementation(storedClientSettingsImpl);
 runtime.registerImplementation(storeClientSettingsImpl);
 runtime.registerResourceType("threadNotifier", threadNotifier);
+runtime.registerResourceType("keybindingsWarning", keybindingsWarning);
 runtime.registerImplementation(chooseNotificationModeImpl);
 runtime.registerImplementation(archivedShellImpl);
 runtime.registerImplementation(usageSummaryImpl);

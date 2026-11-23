@@ -3,6 +3,7 @@ import {
   type EnvironmentSupervisor,
 } from "@t3tools/client-runtime/connection";
 import {
+  archiveThread,
   cancelQueuedRun,
   createProject,
   deleteProject,
@@ -340,8 +341,18 @@ export const threadCommandImpl = implementation(threadCommandEffect, async (inpu
           ...(command.SearchQuery ? { searchQuery: command.SearchQuery } : {}),
         }),
       ));
+    case "regenerateTitle":
+      return void (await run(
+        updateThreadMetadata({
+          commandId: CommandId.make(command.RequestId),
+          threadId: common.threadId,
+          regenerateTitle: true,
+        }),
+      ));
     case "markUnread":
       return void (await run(markThreadUnread(common)));
+    case "archive":
+      return void (await run(archiveThread(common)));
     case "unarchive":
       return void (await run(unarchiveThread(common)));
     case "delete":

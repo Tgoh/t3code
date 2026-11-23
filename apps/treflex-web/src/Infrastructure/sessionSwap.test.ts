@@ -63,6 +63,7 @@ interface ICase {
   tag: string;
   start: (context: never) => unknown;
   event: (marker: string) => unknown;
+  input?: unknown;
   /** What the resource has passed on so far, one entry per event. */
   delivered: (resource: IFakeResource) => unknown[];
 }
@@ -102,6 +103,7 @@ const CASES: ICase[] = [
     start: (r) =>
       serverConfigStream({ Type: "serverConfigStream", EnvironmentId: ENVIRONMENT_ID }, r),
     event: keybindingsUpdated,
+    input: { usageLimitSources: true },
     delivered: items,
   },
   {
@@ -147,12 +149,14 @@ describe("a session swap", () => {
     const delivered = () => test.delivered(resource).length;
     try {
       const first = sessions.current;
-      await first.opened(test.tag);
+      const input = await first.opened(test.tag);
+      if (test.input !== undefined) expect(input).toEqual(test.input);
       first.push(test.tag, test.event("first"));
       await resource.until(() => delivered() === 1);
 
       const second = sessions.swap();
-      await second.opened(test.tag);
+      const reopened = await second.opened(test.tag);
+      if (test.input !== undefined) expect(reopened).toEqual(test.input);
       await first.ended(test.tag);
       second.push(test.tag, test.event("second"));
       await resource.until(() => delivered() === 2);

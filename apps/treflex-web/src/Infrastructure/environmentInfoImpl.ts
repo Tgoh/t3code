@@ -20,6 +20,9 @@ async function readInfo() {
   ]);
   return {
     Authenticated: session.authenticated === true,
+    BootstrapMethods: Array.isArray(session.auth?.bootstrapMethods)
+      ? session.auth.bootstrapMethods
+      : [],
     EnvironmentId: descriptor.environmentId,
     Label: descriptor.label,
     FileAttachmentLimit: fileAttachmentLimit(descriptor.capabilities),

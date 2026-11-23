@@ -31,6 +31,8 @@ export const REPLICA_WRITERS: ReadonlySet<string | null> = new Set([
   "startSideChat",
   "newThread",
   "settleThread",
+  "settleThreads",
+  "archiveThread",
   "toggleSettleOpenThread",
   "addFolder",
   "cloneProject",

@@ -16,6 +16,7 @@ export interface IRoot extends IEntity {
   readonly $Receiver?: IReceiverId<IRoot>;
   Phase: "loading" | "unpaired" | "connected";
   Label: string;
+  BootstrapMethods: string[];
   Environments: IEnvironment[];
 }
 
@@ -25,13 +26,17 @@ export function getDefaultRoot(id: string): IRoot {
     $Receiver: RootReceiver.Id,
     Phase: "loading",
     Label: "",
+    BootstrapMethods: [],
     Environments: [],
   };
 }
 
+/** Also runs again once the unpaired page has paired, since the session is then authenticated. */
 export function* load(draft: IRoot): IActionGenerator {
+  if (draft.Phase === "connected") return;
   const info = yield* environmentInfo();
   draft.Label = info.Label;
+  draft.BootstrapMethods = info.BootstrapMethods;
   if (!info.Authenticated) {
     draft.Phase = "unpaired";
     return;
