@@ -62,20 +62,19 @@ function Counts(props: { additions: number; deletions: number }) {
   );
 }
 
-function FileDiffRow(props: { file: IDiffFile; openFirst: boolean }) {
-  const [open, setOpen] = createSignal(props.openFirst);
+function FileDiffRow(props: { file: IDiffFile; open: boolean; onToggle: (open: boolean) => void }) {
   return (
     <details
       class="group border-b border-border"
-      open={open()}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
+      open={props.open}
+      onToggle={(event) => props.onToggle(event.currentTarget.open)}
     >
       <summary class="sticky top-0 z-1 flex h-8 cursor-pointer list-none items-center gap-1.5 bg-background px-3 text-[12px] [&::-webkit-details-marker]:hidden">
         <ChevronRight class="size-3.5 text-muted-foreground group-open:rotate-90" />
         <span class="min-w-0 flex-1 font-medium wrap-anywhere">{props.file.Path}</span>
         <Counts additions={props.file.Additions} deletions={props.file.Deletions} />
       </summary>
-      <Show when={open()}>
+      <Show when={props.open}>
         <Patch patch={props.file.Patch} />
       </Show>
     </details>
@@ -151,6 +150,7 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
   const session = ThreadSession.use();
   const panel = () => props.panel;
   const files = createMemo(() => parseDiff(panel().Text ?? ""));
+  const [opened, setOpened] = createSignal<Record<string, boolean>>({});
   const title = () => {
     const held = panel();
     if (held.Scope === "branch") return held.BaseRef == null ? "Uncommitted" : `vs ${held.BaseRef}`;
@@ -184,7 +184,13 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
           </div>
         </Show>
         <For each={files()}>
-          {(file, index) => <FileDiffRow file={file} openFirst={index() === 0} />}
+          {(file, index) => (
+            <FileDiffRow
+              file={file}
+              open={opened()[file.Path] ?? index() === 0}
+              onToggle={(open) => setOpened((held) => ({ ...held, [file.Path]: open }))}
+            />
+          )}
         </For>
       </div>
     </>

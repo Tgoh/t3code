@@ -12,34 +12,25 @@ Nothing hand-rolled that stock already has. Before parity and the missing featur
   - `MiddleTruncate`, for branch and path names.
   - The timeline sender label, which stock replaces with an "Open thread" button in the message actions, and the sidebar's "Show more", which stock draws as a full row with a chevron.
   - Ports for components no treflex view uses yet: `NumberField`, `RadioGroup`, `Calendar`, `ColorPicker`, `Group`, `PreviewCard`, `QrCode`, `DiscoveryList`, `PanelTabCloseButton`, `Table`.
-- **Drift the visual check flags.** **In progress** on `treflex/drift-fixes`. `vp run drift` (see `bench/drift/README.md`) flags these against stock:
-  - Dark theme: stock's `[data-app-sidebar]` overrides are folded into the global `--sidebar-*` tokens, so the settings nav takes the app sidebar's colours (the current page `#f1f3f7` on white 7%, where stock's is neutral-100 on white 3%), and the app sidebar's groups, menu and footer inherit `#f1f3f7` where stock's inherit neutral-100. Scope the overrides to the app sidebar, as stock does.
-  - Phone: the sidebar sheet's toggle is 28px; stock's `SidebarTrigger` there is 32px.
 
 ## 2. Parity and polish
 
 From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its `issues.md` entry, which has the detail.
 
-- **Photos from the phone.** **In progress** on `treflex/phone-photos`. Resize and recompress images before upload as stock does, and convert HEIC to JPEG, so iPhone photos aren't refused. Drop duplicates, and show upload progress and a retry. See "Attachments: images aren't resized…".
-- **Back button.** **In progress** on `treflex/navigation-polish`. Push address history when the thread or view changes, so the browser's back button and the phone's back gesture work. See "The address uses `replaceState`".
-- **New-thread defaults.** **In progress** on `treflex/navigation-polish`. A new thread's permission mode should follow the project's `defaultRuntimeMode`, and its model shouldn't fall back to the first provider's default, which can be a paid one. Match stock's resolution. See "A new thread's permission mode…" and "A new thread starts on the model…".
-- **A missing thread.** **In progress** on `treflex/navigation-polish`. Report a thread that doesn't exist, as stock does, instead of retrying its subscription with backoff.
-- **The diff panel goes stale.** **In progress** on `treflex/live-state`. Refetch when a later checkpoint lands, not only on each open.
-- **Stop flickers back.** **In progress** on `treflex/live-state`. Hold "Stopping" until the shell stream delivers the stopped row. See "Open: Stop flickers back before the run ends".
-- **Settings treflex ignores.** Wire up whichever of the 19 settings still marked "Not used here yet" Tam picks. Send shortcut and Time format look easiest. Waits for Tam's pick.
+- **Settings treflex ignores.** **In progress** on `treflex/settings-wiring`. Wire up Tam's picks (2026-11-23) of the settings marked "Not used here yet": Thread notifications, Send shortcut, Time format, Chat width, Word wrap, the Unpin, Archive and Delete confirmations, Working section and Project order. In-app notifications go with Toasts, Tool calls in chat with Timeline rows, and Show skills in slash menu with Composer. Rich text composer, Render math, Effort display, the two screen reader settings and Project grouping stay unwired for now.
 
 ## 3. Missing features
 
 Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
 
-- **Toasts.** Stock shows toasts (`apps/web/src/components/ui/toast.tsx`, about 176 uses) for git results, copy confirmations, errors and more; treflex has none and uses inline notices and icon swaps. Port stock's toast after the shared components, and move each place stock toasts onto it, including the "Could not…" errors that land in the sidebar today. Tam's call (2026-11-22).
+- **Toasts.** Stock shows toasts (`apps/web/src/components/ui/toast.tsx`, about 176 uses) for git results, copy confirmations, errors and more; treflex has none and uses inline notices and icon swaps. Port stock's toast after the shared components, and move each place stock toasts onto it, including the "Could not…" errors that land in the sidebar today, and wire up the In-app notifications setting. Tam's call (2026-11-22).
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **Held send:** Enter while images are still uploading arms the send, with "Sending once image is ready" and Esc to cancel.
   - **Side chats, subagents and linked threads open beside the thread or in its place,** chosen by a setting, with a modifier-click for the other. `@t3tools/client-runtime/side-thread` is importable.
   - **A show/hide toggle on secret fields.**
   - **A thread error banner that can be dismissed and comes back.**
   - **Copy a chat table as HTML,** and **a copy button on file previews.**
-- **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
+- **Composer.** `@` thread items and chips in place of markdown links, the built-in `/model` and `/clear`, keyboard shortcuts, project skills from the workspace snapshot with the Show skills in slash menu setting, and stock's steer-while-approvals-show override. See "Composer: no stash…" and "A send during a run…".
 - **Timeline rows.** Compaction dividers and `/compact` turns, superseded-attempt folds, the tool-call visibility setting, viewed-image strips, the "Waiting on N subagents" label and stock's per-tool detail in expanded rows. See the "Timeline" entries under "Unmatched against the stock UI".
 - **Sidebar.** Search, bulk settle, an archive view with the way back, custom snooze time and Regenerate title. See the "Sidebar" entries.
 - **Thread details and git.** Context and usage rows, environment and worktree pickers, git progress phases and hook output, View PR, Initialize Git and Publish repository. See "Thread details" and "Thread details, git".

@@ -90,6 +90,7 @@ import {
 } from "./modelOptions";
 import { compactBeforeSendTokens } from "./compaction";
 import {
+  ACTIVE_RUN,
   type IOpenThread,
   isRowVisible,
   latestDiffTurn,
@@ -117,6 +118,7 @@ import {
 } from "./questions";
 import { answerRequest, canAnswer, type IRuntimeRequest } from "./RuntimeRequest";
 import { minute } from "./Infrastructure/clock";
+import { draftModel, projectRuntimeMode } from "./newThreadDefaults";
 import { delay } from "./Infrastructure/delay";
 import type { IWireServerConfig } from "./Infrastructure/settings";
 import type { IShell } from "./Shell";
@@ -149,6 +151,7 @@ declare module "treflex" {
   }
   interface ITimerRegistry {
     "Rewind/Timeout": {};
+    "Stop/Timeout": {};
   }
 }
 
@@ -200,13 +203,17 @@ export interface IThreadSession extends IEntity {
   Attachments: IAttachmentDraft[];
   AttachmentError?: string;
   AttachmentNotice?: string;
+  /** Only a model the person picked; a new thread's reseeding leaves it alone. */
   ModelSelection: IWireModelSelection | null;
+  SeededModel: IWireModelSelection | null;
   RuntimeMode: IWireRuntimeMode | null;
   /** The next send skips the compaction the composer offers. */
   KeepFullHistory: boolean;
   ModelError?: string;
   SendError?: string;
   StopError?: string;
+  /** The run a Stop press is waiting to end. */
+  StopRunId?: string;
   QueueError?: string;
   RewindError?: string;
   ForkError?: string;
@@ -244,6 +251,7 @@ export function getDefaultThreadSession(
     Draft: "",
     Attachments: [],
     ModelSelection: null,
+    SeededModel: null,
     RuntimeMode: null,
     KeepFullHistory: false,
     QuestionAnswers: {},
@@ -270,17 +278,15 @@ export function* effectiveModel(
   if (replica === undefined) return null;
   const thread = replica.OpenThreads[draft.ThreadId]?.Thread;
   if (thread != null) return thread.modelSelection;
+  if (draft.SeededModel !== null) return draft.SeededModel;
   const projectId = draft.NewThreadProjectId;
-  const projectDefault =
-    projectId == null ? null : replica.Shell.Projects[projectId]?.defaultModelSelection;
-  if (projectDefault != null) return projectDefault;
-  for (const provider of replica.Providers) {
-    const model = provider.Models.find((held) => held.IsDefault) ?? provider.Models[0];
-    if (model !== undefined) {
-      return { instanceId: provider.InstanceId, model: model.Slug } as IWireModelSelection;
-    }
-  }
-  return null;
+  if (projectId === null || replica.Config === null) return null;
+  return draftModel({
+    Config: replica.Config,
+    ProjectId: projectId,
+    Project: replica.Shell.Projects[projectId],
+    Now: yield* minute(),
+  });
 }
 
 export function modelDisplay(
@@ -401,9 +407,16 @@ function* threadRuntimeMode(draft: IThreadSession): ISelectorGenerator<IWireRunt
   return replica?.OpenThreads[draft.ThreadId]?.Thread?.runtimeMode ?? null;
 }
 
+function* defaultRuntimeMode(draft: IThreadSession): ISelectorGenerator<IWireRuntimeMode> {
+  const config = (yield* getData(draft, "Replica"))?.Config;
+  if (config == null) return DEFAULT_RUNTIME_MODE;
+  return projectRuntimeMode(config, yield* projectId(draft));
+}
+
 function* runtimeModeChoice(draft: IThreadSession) {
   const provider = yield* effectiveProvider(draft);
-  const held = draft.RuntimeMode ?? (yield* threadRuntimeMode(draft)) ?? DEFAULT_RUNTIME_MODE;
+  const held =
+    draft.RuntimeMode ?? (yield* threadRuntimeMode(draft)) ?? (yield* defaultRuntimeMode(draft));
   return compatibleRuntimeMode(held, provider?.SupportedRuntimeModes);
 }
 
@@ -442,11 +455,6 @@ export function* projectName(draft: IThreadSession): ISelectorGenerator<string |
   const id = yield* projectId(draft);
   if (id === null) return null;
   return (yield* getData(draft, "Replica"))?.Shell.Projects[id]?.title ?? null;
-}
-
-export function* stopRequested(draft: IThreadSession): ISelectorGenerator<boolean> {
-  const replica = yield* getData(draft, "Replica");
-  return replica?.Shell.Threads[draft.ThreadId]?.latestRunStopRequested === true;
 }
 
 function* latestThreadDiffTurn(draft: IThreadSession): ISelectorGenerator<number | null> {
@@ -684,6 +692,10 @@ export function* removeAttachment(draft: IThreadSession, id: string): IActionGen
   yield* start(storeFiles, draft);
 }
 
+export function* retryAttachment(draft: IThreadSession, id: string): IActionGenerator {
+  yield* resource(draft, "Composer/Files").retry(id);
+}
+
 function* uploadAndStart(
   files: IResourceHandle<"Composer/Files">,
   fileIds: string[],
@@ -849,10 +861,39 @@ export function* sendAppMessage(
   return null;
 }
 
+/** How long Stop stays disabled waiting for its run to end, as stock's `STOP_PENDING_MAX_MS`. */
+export const STOP_PENDING_MAX_MS = 10_000;
+
+function* runningRunId(draft: IThreadSession): ISelectorGenerator<string | null> {
+  const thread = (yield* getData(draft, "Replica"))?.OpenThreads[draft.ThreadId];
+  const run = thread === undefined ? null : newestRun(thread);
+  return run === null || !ACTIVE_RUN.has(run.status) ? null : run.id;
+}
+
+// Follows useStopPhase in apps/web/src/components/chat/ComposerPrimaryActions.tsx: Stop stays
+// pending past the command's reply, until its run ends, another run starts or the wait times out.
+export function* stoppingRun(draft: IThreadSession): ISelectorGenerator<boolean> {
+  if (yield* inFlight(stopRun, draft)) return true;
+  return draft.StopRunId != null && draft.StopRunId === (yield* runningRunId(draft));
+}
+
+export const StopReceiver = receiver<IThreadSession>("StopReceiver")({
+  *"Stop/Timeout"(draft) {
+    yield* stopTimer(draft, "Stop/Timeout");
+    delete draft.StopRunId;
+  },
+});
+
 export function* stopRun(draft: IThreadSession): IOpenGenerator {
   delete draft.StopError;
   const environmentId = draft.EnvironmentId;
   const threadId = draft.ThreadId;
+  const runId = yield* select(runningRunId);
+  if (runId !== null) {
+    draft.StopRunId = runId;
+    yield* stopTimer(draft, "Stop/Timeout");
+    yield* startTimer(draft, "Stop/Timeout", StopReceiver, STOP_PENDING_MAX_MS);
+  }
   try {
     yield* open(
       withCommandId((commandId) =>
@@ -865,6 +906,8 @@ export function* stopRun(draft: IThreadSession): IOpenGenerator {
     );
   } catch (error) {
     draft.StopError = serverError(error).message;
+    delete draft.StopRunId;
+    yield* stopTimer(draft, "Stop/Timeout");
   }
 }
 leading(stopRun);
@@ -918,7 +961,6 @@ export function* queueAction(draft: IThreadSession, press: IQueuePress): IOpenGe
 }
 leading(queueAction);
 
-const ACTIVE_RUN = new Set(["preparing", "starting", "running", "waiting"]);
 const REWIND_TIMEOUT_MS = 120_000;
 const EMPTY_TARGETS: Record<string, number> = {};
 
@@ -1478,6 +1520,33 @@ export function* openDiff(
   if (request !== null) yield* start(loadDiff, draft.Panels.Diff, request);
 }
 
+// Follows the workspaceMutationId refetch in apps/web/src/components/DiffPanel.tsx: a turn's diff
+// is fixed, the branch's is read again, and the whole thread's moves to the latest turn.
+export function* followWorkspace(draft: IThreadSession): IActionGenerator {
+  const panel = draft.Panels.Diff;
+  if (panel === null || panel.Scope === "turn") return;
+  if (panel.Scope === "branch") {
+    const cwd = yield* select(searchRoot);
+    if (cwd === null) return;
+    yield* start(loadDiff, panel, {
+      Scope: "branch",
+      EnvironmentId: draft.EnvironmentId,
+      Cwd: cwd,
+    });
+    return;
+  }
+  const toTurnCount = yield* select(latestThreadDiffTurn);
+  if (toTurnCount === null || toTurnCount === panel.ToTurnCount) return;
+  if (panel.ToTurnCount === null) panel.Text = null;
+  panel.ToTurnCount = toTurnCount;
+  yield* start(loadDiff, panel, {
+    Scope: "thread",
+    EnvironmentId: draft.EnvironmentId,
+    ThreadId: draft.ThreadId,
+    ToTurnCount: toTurnCount,
+  });
+}
+
 export function* closeDiff(draft: IThreadSession): IActionGenerator {
   draft.Panels.Diff = null;
 }
@@ -1600,7 +1669,7 @@ leading(saveScripts);
 
 export function* diffLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
   const panel = draft.Panels.Diff;
-  return panel !== null && (yield* inFlight(loadDiff, panel));
+  return panel !== null && panel.Text === null && (yield* inFlight(loadDiff, panel));
 }
 
 export default createEntityFeature<IThreadSession>("ThreadSession")(
@@ -1611,6 +1680,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     setRuntimeMode,
     addAttachments,
     removeAttachment,
+    retryAttachment,
     send,
     toggleKeepFullHistory,
     stopRun,
@@ -1654,7 +1724,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     menuCatalog,
     promptHistory,
     fileSearchRoot,
-    stopRequested,
+    stoppingRun,
     revertTargets,
     threadWorking,
     rewindConfirm,

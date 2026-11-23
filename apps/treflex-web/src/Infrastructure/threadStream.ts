@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import type { IResourceImplementation } from "treflex";
 
 import { followItems } from "./followItems";
+import { threadMissing } from "./missingThread";
 import { encodeThreadItem } from "./threadItemCodec";
 import type { IWireThreadItem } from "./wire";
 
@@ -11,7 +12,7 @@ declare module "treflex" {
   interface IResourceTypeRegistry {
     threadStream: {
       Params: { EnvironmentId: string; ThreadId: string };
-      Message: { Item: IWireThreadItem } | { Resubscribing: true };
+      Message: { Item: IWireThreadItem } | { Resubscribing: true } | { Missing: true };
     };
   }
 }
@@ -19,6 +20,7 @@ declare module "treflex" {
 export const threadStream: IResourceImplementation<"threadStream"> = (params, r) => {
   let cursor = typeof r.resumeFrom === "number" ? r.resumeFrom : 0;
   let retrying = false;
+  let checked = cursor > 0;
   const items = subscribeDynamic(
     ORCHESTRATION_V2_WS_METHODS.subscribeThread,
     () =>
@@ -35,14 +37,18 @@ export const threadStream: IResourceImplementation<"threadStream"> = (params, r)
       ),
     {
       onExpectedFailure: () =>
-        Effect.sync(() => {
+        Effect.promise(async () => {
           retrying = true;
           r.status("retrying");
+          if (checked) return;
+          checked = true;
+          if (await threadMissing(params.ThreadId)) await r.emit({ Missing: true });
         }),
       retryExpectedFailureAfter: "1 second",
     },
   );
   return followItems(r, params.EnvironmentId, items, encodeThreadItem, (item) => {
+    checked = true;
     if (retrying) {
       retrying = false;
       r.status();

@@ -7,12 +7,7 @@ import "./index.css";
 
 import { App } from "./App";
 import { openExternalLinksInSafari } from "./externalLinks";
-import {
-  addressThreadImpl,
-  addressViewImpl,
-  setAddressThreadImpl,
-  setAddressViewImpl,
-} from "./Infrastructure/address";
+import { addressHistory, addressImpl, writeAddressImpl } from "./Infrastructure/address";
 import {
   archivedShellImpl,
   refreshProvidersImpl,
@@ -157,10 +152,9 @@ runtime.registerImplementation(voiceStatusImpl);
 runtime.registerImplementation(voiceModelsImpl);
 runtime.registerImplementation(voiceModelCommandImpl);
 runtime.registerImplementation(delayImpl);
-runtime.registerImplementation(addressThreadImpl);
-runtime.registerImplementation(setAddressThreadImpl);
-runtime.registerImplementation(addressViewImpl);
-runtime.registerImplementation(setAddressViewImpl);
+runtime.registerImplementation(addressImpl);
+runtime.registerImplementation(writeAddressImpl);
+runtime.registerResourceType("addressHistory", addressHistory);
 runtime.registerImplementation(refreshProvidersImpl);
 runtime.registerImplementation(updateServerSettingsImpl);
 runtime.registerImplementation(storedClientSettingsImpl);

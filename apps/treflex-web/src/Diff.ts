@@ -1,4 +1,4 @@
-import { type IActionGenerator, type IEntity } from "treflex";
+import { type IActionGenerator, type IEntity, latest } from "treflex";
 
 import { threadDiffEffect } from "./Infrastructure/commandEffects";
 import { serverError } from "./Infrastructure/serverError";
@@ -31,7 +31,9 @@ export function* loadDiff(draft: IDiffPanel, request: IDiffRequest): IActionGene
     } else {
       draft.Text = yield* threadDiffEffect(request);
     }
+    delete draft.Error;
   } catch (error) {
     draft.Error = serverError(error).message;
   }
 }
+latest(loadDiff);

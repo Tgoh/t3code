@@ -1,7 +1,7 @@
 import { type IActionGenerator, type IOpenGenerator, open, start } from "treflex";
 
 import type { IEnvironment } from "./Environment";
-import { type IAddressView, setAddressView } from "./Infrastructure/address";
+import { type IAddressView, writeAddressEffect } from "./Infrastructure/address";
 import {
   type IWireClientSettings,
   type IWireInstanceMutation,
@@ -20,9 +20,29 @@ import { builtSettingsPage, type ISettingWrite } from "./settingsPages";
 import { closeDetailsPopover, followCheckout } from "./ThreadSession";
 import { loadModels } from "./VoiceModels";
 
+/**
+ * Writes the selection and page to the address. A push adds a back-button entry, unless the
+ * address already holds them, as it does after a back or forward.
+ */
+export function* syncAddress(draft: IEnvironment, push = true): IActionGenerator {
+  const selected = draft.Local.SelectedThreadId;
+  const newThreadIn =
+    selected === null ? null : (draft.Local.ThreadSessions[selected]?.NewThreadProjectId ?? null);
+  const view = draft.Local.View;
+  yield* writeAddressEffect({
+    Address: {
+      Thread: newThreadIn === null ? selected : null,
+      NewThreadIn: newThreadIn,
+      View: view === null ? null : { ...view },
+    },
+    Push: push,
+  });
+}
+
 export function* openView(draft: IEnvironment, view: IAddressView | null): IActionGenerator {
   const covered = draft.Local.View !== null;
   yield* showView(draft, view);
+  yield* syncAddress(draft);
   const selected = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
   if (selected !== undefined) yield* start(followCheckout, selected);
   if (covered && view === null) yield* start(visitShown, draft.Replica.Shell, { Again: true });
@@ -33,7 +53,6 @@ export function* showView(draft: IEnvironment, view: IAddressView | null): IActi
   const next: IAddressView | null =
     view?.Kind === "settings" ? { Kind: "settings", Page: builtSettingsPage(view.Page) } : view;
   draft.Local.View = next;
-  yield* setAddressView(next);
   if (next === null) return;
   const covered = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
   if (covered !== undefined) yield* start(closeDetailsPopover, covered);

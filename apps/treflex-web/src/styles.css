@@ -130,16 +130,14 @@
   --media-ring: rgb(0 0 0 / 9%);
 
   --sidebar: var(--zinc-50);
-  --sidebar-foreground: var(--zinc-900);
-  --sidebar-muted-foreground: var(--zinc-500);
-  --sidebar-border: var(--zinc-200);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-muted-foreground: var(--muted-foreground);
+  --sidebar-border: var(--border);
   --sidebar-row-hover: var(--zinc-25);
   --sidebar-row-active: #fff;
   --sidebar-row-selected: #fff;
   --sidebar-control-surface: var(--zinc-100);
   --sidebar-stage-fade: var(--sidebar);
-  --sidebar-secondary-label: var(--zinc-500);
-  --sidebar-accent: var(--zinc-100);
 
   --stage-art-top: oklch(0.782169 0.123386 240.226);
   --stage-art-mid: oklch(0.616111 0.195824 259.735);
@@ -218,16 +216,12 @@
   --composer-shadow: 0 14px 32px -18px rgb(0 0 0 / 75%);
   --media-ring: rgb(255 255 255 / 12%);
 
-  --sidebar: #000;
-  --sidebar-foreground: #f1f3f7;
-  --sidebar-muted-foreground: #a3a3a3;
-  --sidebar-border: rgb(255 255 255 / 8%);
-  --sidebar-row-hover: color-mix(in srgb, #f1f3f7 8%, transparent);
-  --sidebar-row-active: color-mix(in srgb, #f1f3f7 11%, transparent);
-  --sidebar-row-selected: color-mix(in srgb, #f1f3f7 7%, transparent);
-  --sidebar-control-surface: #0a0a0a;
-  --sidebar-secondary-label: #8f8f8f;
-  --sidebar-accent: #191a1d;
+  --sidebar: var(--card);
+  --sidebar-row-hover: var(--accent);
+  --sidebar-row-active: var(--accent);
+  --sidebar-row-selected: var(--muted);
+  --sidebar-control-surface: var(--muted);
+  --sidebar-stage-fade: var(--card);
 
   --stage-art-top: oklch(0.581473 0.149124 256.9);
   --stage-art-mid: oklch(0.456509 0.159377 261.945);
@@ -248,7 +242,53 @@
   --chat-content-max-width: 100%;
 }
 
-:root {
+[data-app-sidebar] {
+  --background: var(--zinc-25);
+  --foreground: var(--zinc-900);
+  --card: #fff;
+  --card-foreground: var(--zinc-900);
+  --accent: var(--zinc-100);
+  --accent-foreground: var(--zinc-900);
+  --muted: var(--zinc-50);
+  --muted-foreground: var(--zinc-500);
+  --border: var(--zinc-200);
+  --input: var(--zinc-300);
+  --sidebar: var(--zinc-50);
+  --sidebar-foreground: var(--zinc-900);
+  --sidebar-muted-foreground: var(--zinc-500);
+  --sidebar-control-surface: var(--zinc-100);
+  --sidebar-row-hover: var(--zinc-25);
+  --sidebar-row-active: #fff;
+  --sidebar-row-selected: #fff;
+  --sidebar-border: var(--zinc-200);
+  --sidebar-stage-fade: var(--sidebar);
+}
+
+:root[data-theme="dark"] [data-app-sidebar] {
+  --background: #000;
+  --foreground: #f1f3f7;
+  --card: #000;
+  --card-foreground: var(--foreground);
+  --accent: #191a1d;
+  --accent-foreground: #f7f9ff;
+  --muted: #0a0a0a;
+  --muted-foreground: #a3a3a3;
+  --border: rgb(255 255 255 / 8%);
+  --input: rgb(255 255 255 / 18%);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-muted-foreground: var(--muted-foreground);
+  --sidebar-control-surface: var(--muted);
+  --sidebar-row-hover: color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+  --sidebar-row-active: color-mix(in srgb, var(--contrast-foreground) 11%, transparent);
+  --sidebar-row-selected: color-mix(in srgb, var(--contrast-foreground) 7%, transparent);
+  --sidebar-border: var(--border);
+  --sidebar-stage-fade: var(--card);
+  --secondary-label: #8f8f8f;
+}
+
+:root,
+[data-app-sidebar] {
   --contrast-toolbar-foreground: color-mix(
     in oklab,
     color-mix(

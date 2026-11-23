@@ -99,7 +99,10 @@ export function collectStyles(root: Element): Array<IStyledElement> {
     style.height = `${Math.round(rect.height)}px`;
     found.push({
       Slot: slot,
-      Text: (element.textContent ?? element.getAttribute("aria-label") ?? "").trim().slice(0, 48),
+      Text: (element.textContent?.trim() || element.getAttribute("aria-label")?.trim() || "").slice(
+        0,
+        48,
+      ),
       Disabled: element.matches(":disabled, [aria-disabled='true'], [data-disabled]"),
       Style: style,
     });

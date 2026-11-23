@@ -68,7 +68,7 @@ const CARD_SLOT =
 const CARD_ACTIONS =
   "invisible absolute top-0 -right-1 inline-flex h-5 items-center gap-0.5 bg-inherit pl-1 before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-inherit before:[mask-image:linear-gradient(to_right,transparent,black)] group-hover/card:visible group-focus-visible/card:visible group-has-[:focus-visible]/card:visible [@media(hover:hover)]:group-focus-within/card:visible";
 const CARD_ACTION =
-  "inline-flex h-5 cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0 text-[12px] leading-4 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground [&_svg]:size-3.5";
+  "inline-flex h-5 cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0 text-[12px] leading-4 text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3.5";
 
 export const STATUS_TONE: Record<NonNullable<ISidebarStatus>, string> = {
   preparing: "text-info-foreground",
@@ -397,7 +397,7 @@ export function ThreadCard(props: {
                 <ProjectBadge
                   project={environment.state.Replica.Shell.Projects[props.thread.projectId]}
                 />
-                <span class="min-w-0 flex-1 truncate text-[12px] leading-4 text-(--sidebar-secondary-label)">
+                <span class="min-w-0 flex-1 truncate text-[12px] leading-4 text-secondary-label">
                   {projectName()}
                 </span>
               </>
@@ -412,7 +412,7 @@ export function ThreadCard(props: {
             <Show
               when={status()}
               fallback={
-                <span class="flex-none text-[12px] leading-4 text-(--sidebar-secondary-label) tabular-nums">
+                <span class="flex-none text-[12px] leading-4 text-secondary-label tabular-nums">
                   {props.section === "snoozed"
                     ? timeUntil(props.thread.snoozedUntil ?? "", now())
                     : relativeTime(activityAt(props.thread) ?? props.thread.updatedAt, now())}
@@ -497,9 +497,7 @@ export function ThreadCard(props: {
         </Show>
         <Show when={props.search?.snippet}>
           {(snippet) => (
-            <span
-              class={`mt-1 line-clamp-2 text-[12px] leading-4 text-(--sidebar-secondary-label) ${MARK}`}
-            >
+            <span class={`mt-1 line-clamp-2 text-[12px] leading-4 text-secondary-label ${MARK}`}>
               <Highlighted
                 text={snippet()}
                 ranges={findSearchTokenRanges(snippet(), props.search?.query ?? "")}

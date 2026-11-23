@@ -14,11 +14,19 @@ export interface IAccepted {
   Slots: ReadonlyArray<string>;
   /** Every viewport when left out. */
   Viewport?: string;
-  /** Only elements with this text, or only disabled ones. */
+  /** Only elements whose text (or label, when they have none) starts with this, or only disabled ones. */
   Text?: string;
   Disabled?: true;
   /** Every property when left out. */
   Properties?: ReadonlyArray<string>;
+  Reason: string;
+}
+
+/** Raises the pixel threshold for one view at one viewport, in both themes. */
+export interface IAcceptedPixels {
+  View: string;
+  Viewport: string;
+  MaxScore: number;
   Reason: string;
 }
 
@@ -33,10 +41,13 @@ export interface ICapture {
   Errors: Array<string>;
 }
 
-const isFlagged = (capture: ICapture, threshold: number) =>
-  capture.Mismatches.length > 0 ||
-  capture.Errors.length > 0 ||
-  (capture.PixelGate && (capture.PixelScore ?? 1) > threshold);
+const pixelThreshold = (
+  capture: ICapture,
+  threshold: number,
+  acceptedPixels: ReadonlyArray<IAcceptedPixels>,
+) =>
+  acceptedPixels.find((rule) => rule.View === capture.View && rule.Viewport === capture.Viewport)
+    ?.MaxScore ?? threshold;
 
 const escape = (text: string) =>
   text
@@ -50,9 +61,15 @@ export function report(
   captures: ReadonlyArray<ICapture>,
   threshold: number,
   accepted: ReadonlyArray<IAccepted>,
+  acceptedPixels: ReadonlyArray<IAcceptedPixels>,
   runError: string | null,
 ): Array<ICapture> {
-  const flagged = captures.filter((capture) => isFlagged(capture, threshold));
+  const isFlagged = (capture: ICapture) =>
+    capture.Mismatches.length > 0 ||
+    capture.Errors.length > 0 ||
+    (capture.PixelGate &&
+      (capture.PixelScore ?? 1) > pixelThreshold(capture, threshold, acceptedPixels));
+  const flagged = captures.filter(isFlagged);
   NodeFS.writeFileSync(
     NodePath.join(dir, "report.json"),
     `${JSON.stringify({ PixelThreshold: threshold, RunError: runError, Captures: captures }, null, 2)}\n`,
@@ -63,7 +80,7 @@ export function report(
       : `${(capture.PixelScore * 100).toFixed(2)}%${capture.PixelGate ? "" : " (not gated)"}`;
   const rows = captures
     .map(
-      (capture) => `<tr class="${isFlagged(capture, threshold) ? "bad" : ""}">
+      (capture) => `<tr class="${isFlagged(capture) ? "bad" : ""}">
   <td><a href="#${capture.Key}">${capture.View}</a></td><td>${capture.Viewport}</td><td>${capture.Theme}</td>
   <td>${capture.Mismatches.length}</td><td>${pixel(capture)}</td><td>${capture.Errors.length}</td></tr>`,
     )
@@ -83,7 +100,7 @@ export function report(
         "",
       );
       return `<section id="${capture.Key}">
-<h2>${capture.View} · ${capture.Viewport} · ${capture.Theme}${isFlagged(capture, threshold) ? ' <span class="flag">flagged</span>' : ""}</h2>
+<h2>${capture.View} · ${capture.Viewport} · ${capture.Theme}${isFlagged(capture) ? ' <span class="flag">flagged</span>' : ""}</h2>
 <p>Style mismatches: ${capture.Mismatches.length} · Pixel diff: ${pixel(capture)}</p>
 <ul>${errors}${mismatches}</ul>
 <div class="images">
@@ -119,7 +136,12 @@ ${runError === null ? "" : `<p class="error">The run stopped early, so nothing b
 <ul>${accepted
       .map(
         (rule) =>
-          `<li>${rule.Properties?.join(", ") ?? "every property"} of ${rule.Disabled ? "disabled " : ""}${rule.Slots.map((slot) => `<code>${slot}</code>`).join(", ")}${rule.Text === undefined ? "" : ` reading “${escape(rule.Text)}”`} on ${rule.Viewport ?? "every viewport"}: ${escape(rule.Reason)}</li>`,
+          `<li>${rule.Properties?.join(", ") ?? "every property"} of ${rule.Disabled ? "disabled " : ""}${rule.Slots.map((slot) => `<code>${slot}</code>`).join(", ")}${rule.Text === undefined ? "" : ` reading “${escape(rule.Text)}…”`} on ${rule.Viewport ?? "every viewport"}: ${escape(rule.Reason)}</li>`,
+      )
+      .join("")}${acceptedPixels
+      .map(
+        (rule) =>
+          `<li>pixel diffs up to ${(rule.MaxScore * 100).toFixed(2)}% on ${rule.View} at ${rule.Viewport}: ${escape(rule.Reason)}</li>`,
       )
       .join("")}</ul>
 <table><tr><th>View</th><th>Viewport</th><th>Theme</th><th>Style mismatches</th><th>Pixels</th><th>Errors</th></tr>

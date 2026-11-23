@@ -1080,6 +1080,9 @@ importers:
       effect:
         specifier: 4.1.5
         version: 4.1.5
+      heic-to:
+        specifier: ^1.5.2
+        version: 1.5.2
       lucide-solid:
         specifier: ^0.564.0
         version: 0.564.0(solid-js@1.9.20)
