@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { IWireThreadShell } from "./Infrastructure/wire";
+import { reconcile } from "./rows";
 import {
   groupResults,
   type IThreadSearchMatch,
@@ -59,6 +60,23 @@ describe("searchThreads", () => {
     expect(results[0]!.Match).toBeNull();
     expect(results[0]!.Ranges.length).toBeGreaterThan(0);
     expect(results[1]!.Match?.snippet).toBe("about t4");
+  });
+
+  it("matches a row renamed in place by its new title", () => {
+    const row = shell("r1", "Old name");
+    const search = (query: string) =>
+      searchThreads({
+        threads: [row],
+        environmentId: "env",
+        query,
+        messages: [],
+        messageOrder: [],
+        now: NOW,
+      });
+    expect(titles(search("old"))).toEqual(["Old name"]);
+    reconcile(row, { ...row, title: "Fresh title" });
+    expect(titles(search("fresh"))).toEqual(["Fresh title"]);
+    expect(search("old")).toEqual([]);
   });
 
   it("matches nothing for a blank query and leaves out message rows for unlisted threads", () => {

@@ -18,20 +18,36 @@ import type { IWireThreadShell } from "./Infrastructure/wire";
 
 export type IThreadSearchMatch = EnvironmentThreadSearchMatch;
 
-// threadSearchSubject caches by shell identity, so each wire row keeps one search shell.
-const searchShells = new WeakMap<IWireThreadShell, ThreadSearchShell>();
+// threadSearchSubject caches by shell identity, and a wire row is folded in place, so a row's
+// search shell is rebuilt whenever the fields the subject reads change.
+const searchShells = new WeakMap<IWireThreadShell, { Source: string; Shell: ThreadSearchShell }>();
+
+const searchSource = (thread: IWireThreadShell): string =>
+  JSON.stringify([
+    thread.title,
+    thread.branch,
+    thread.createdAt,
+    thread.updatedAt,
+    thread.latestUserMessageAt,
+    thread.latestUserAuthoredMessageAt,
+    thread.opens,
+    thread.pullRequests,
+    thread.linkedPullRequest,
+    thread.branchPullRequest,
+  ]);
 
 export function threadSubject(
   thread: IWireThreadShell,
   environmentId: string,
   projectTitle: string | null = null,
 ): ThreadSearchSubject {
-  let shell = searchShells.get(thread);
-  if (shell === undefined) {
-    shell = { ...thread, environmentId } as unknown as ThreadSearchShell;
-    searchShells.set(thread, shell);
+  const source = searchSource(thread);
+  let held = searchShells.get(thread);
+  if (held?.Source !== source) {
+    held = { Source: source, Shell: { ...thread, environmentId } as unknown as ThreadSearchShell };
+    searchShells.set(thread, held);
   }
-  return threadSearchSubject(shell, projectTitle);
+  return threadSearchSubject(held.Shell, projectTitle);
 }
 
 export interface ISearchResult {
