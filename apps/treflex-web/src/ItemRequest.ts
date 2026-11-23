@@ -12,6 +12,7 @@ import {
   type IWithId,
   leading,
   open,
+  redactArgs,
   transient,
 } from "treflex";
 import { createEntityFeature } from "treflex-solid";
@@ -62,6 +63,7 @@ export function* answerSecret(
   );
 }
 leading(answerSecret);
+redactArgs(answerSecret);
 
 export function* answerLink(
   draft: IItemRequest,
@@ -76,6 +78,7 @@ export function* answerLink(
   );
 }
 leading(answerLink);
+redactArgs(answerLink);
 
 export function* itemAnswerError(draft: IItemRequest): ISelectorGenerator<string | null> {
   return (yield* outcome(draft)).Error;

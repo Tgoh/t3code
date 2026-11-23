@@ -1,6 +1,7 @@
 import { createRuntime } from "treflex";
 import { TreflexProvider } from "treflex-solid";
 import { render } from "@solidjs/web";
+import { Errored } from "solid-js";
 
 import "@fontsource-variable/inter";
 import "./index.css";
@@ -92,6 +93,7 @@ import {
 import { resolveScheme, SYSTEM_DARK_QUERY } from "./colorScheme";
 import { registerReceivers } from "./receivers";
 import { getDefaultRoot, load } from "./Root";
+import { raiseViewCrash, ViewCrash } from "./ViewCrash";
 
 await pairFromUrl();
 
@@ -193,9 +195,16 @@ registerServiceWorker();
 
 render(
   () => (
-    <TreflexProvider value={runtime}>
-      <App state={runtime.state} />
-    </TreflexProvider>
+    <Errored
+      fallback={(error) => {
+        raiseViewCrash(error());
+        return <ViewCrash error={error()} />;
+      }}
+    >
+      <TreflexProvider value={runtime}>
+        <App state={runtime.state} />
+      </TreflexProvider>
+    </Errored>
   ),
   document.getElementById("root") as HTMLElement,
 );
