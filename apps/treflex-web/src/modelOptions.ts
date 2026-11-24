@@ -7,12 +7,18 @@ import {
 } from "@t3tools/client-runtime/model-traits";
 import { rankModelPickerSearch } from "@t3tools/client-runtime/model-search";
 import {
+  normalizeProviderAccentColor,
+  providerInstanceInitials,
+  resolveProviderInstanceDisplayName,
+  shouldShowInstanceBadge,
+} from "@t3tools/client-runtime/state/provider-instance-display";
+import {
   DEFAULT_MODEL_BY_PROVIDER,
   isProviderAvailable,
   type ModelCapabilities,
   type ModelSelection,
-  type ProviderDriverKind,
-  type ProviderInstanceId,
+  ProviderDriverKind,
+  ProviderInstanceId,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
 } from "@t3tools/contracts";
@@ -367,6 +373,48 @@ export function providerOptions(config: IWireServerConfig): IProviderOption[] {
         })),
       };
     });
+}
+
+export interface IInstanceBadge {
+  Name: string;
+  Initials: string;
+  Accent?: string;
+}
+
+// Follows deriveProviderInstanceEntries and applyProviderInstanceBranding in apps/web/src/providerInstances.ts.
+export function instanceBadges(config: IWireServerConfig): Record<string, IInstanceBadge> {
+  const instances = config.settings?.providerInstances ?? {};
+  const entries = config.providers.map((provider) => {
+    const raw = provider.driver === "acpRegistry" ? instances[provider.instanceId]?.config : null;
+    const branding =
+      raw !== null && typeof raw === "object" ? (raw as Readonly<Record<string, unknown>>) : null;
+    const agentId =
+      branding?.source === "local" || typeof branding?.agentId !== "string"
+        ? ""
+        : branding.agentId.trim();
+    return {
+      provider,
+      driverKind: ProviderDriverKind.make(provider.driver),
+      accentColor: normalizeProviderAccentColor(provider.accentColor),
+      ...(agentId === "" ? {} : { acpRegistryAgentId: agentId }),
+      enabled: provider.enabled,
+    };
+  });
+  const badges: Record<string, IInstanceBadge> = {};
+  for (const entry of entries) {
+    if (!shouldShowInstanceBadge(entry, entries)) continue;
+    const name = resolveProviderInstanceDisplayName({
+      instanceId: ProviderInstanceId.make(entry.provider.instanceId),
+      driver: entry.driverKind,
+      displayName: entry.provider.displayName,
+    });
+    badges[entry.provider.instanceId] = {
+      Name: name,
+      Initials: providerInstanceInitials(name),
+      ...(entry.accentColor === undefined ? {} : { Accent: entry.accentColor }),
+    };
+  }
+  return badges;
 }
 
 export const modelFavoritesOf = (config: IWireServerConfig): IModelFavorite[] =>

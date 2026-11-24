@@ -21,7 +21,7 @@ import {
   updateServerSettingsEffect,
 } from "./Infrastructure/settings";
 import type { IWireServerConfigEvent } from "./Infrastructure/serverConfigStream";
-import { modelFavoritesOf, providerOptions } from "./modelOptions";
+import { instanceBadges, modelFavoritesOf, providerOptions } from "./modelOptions";
 import { modelFavoritePatch } from "./providerSettings";
 import { reconcile } from "./rows";
 import { followInbox, notifyChanges, visitShown } from "./Shell";
@@ -188,13 +188,17 @@ export function applyConfigEvent(draft: IEnvironment, event: IWireServerConfigEv
   }
 }
 
-/** Rewrites the composer's provider list and favorites only when the config changed what they hold. */
+/** Rewrites the provider list, badges and favorites only when the config changed what they hold. */
 function syncProviders(draft: IEnvironment): void {
   const config = draft.Replica.Config;
   if (config === null) return;
   const providers = JSON.stringify(providerOptions(config));
   if (providers !== JSON.stringify(draft.Replica.Providers)) {
     draft.Replica.Providers = JSON.parse(providers);
+  }
+  const badges = JSON.stringify(instanceBadges(config));
+  if (badges !== JSON.stringify(draft.Replica.InstanceBadges)) {
+    draft.Replica.InstanceBadges = JSON.parse(badges);
   }
   const favorites = JSON.stringify(modelFavoritesOf(config));
   if (favorites !== JSON.stringify(draft.Replica.ModelFavorites)) {

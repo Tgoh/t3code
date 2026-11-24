@@ -1,5 +1,10 @@
 // @effect-diagnostics globalDate:off -- View-only relative times, outside any Effect runtime.
-import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { getProviderClient } from "@t3tools/client-runtime/provider-clients";
+import {
+  normalizeProviderAccentColor,
+  providerInstanceInitials,
+} from "@t3tools/client-runtime/state/provider-instance-display";
+import { ProviderInstanceId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import {
   children as resolveChildren,
   createMemo,
@@ -21,6 +26,7 @@ import type { IWireArchivedShell } from "./Infrastructure/settings";
 import type { IWireProject } from "./Infrastructure/wire";
 import { keybindingGroups, keyCaps } from "./keybindingRows";
 import { arrowStep, stepHighlight } from "./listNavigation";
+import type { IInstanceBadge } from "./modelOptions";
 import { RemoveProjectDialog } from "./ProjectFolder";
 import {
   allBuiltInHidden,
@@ -621,6 +627,17 @@ function ProvidersPage() {
   });
   const [selected, setSelected] = createSignal<string | null>(null);
   const current = () => rows().find((row) => row.InstanceId === selected()) ?? rows()[0] ?? null;
+  // Follows `displayName` and `accentColor` in ProviderInstanceCard, whose icon is badged only
+  // for an accent.
+  const accentBadge = (row: IProviderRow): IInstanceBadge | undefined => {
+    const instance =
+      config()?.settings.providerInstances?.[ProviderInstanceId.make(row.InstanceId)];
+    const accent = normalizeProviderAccentColor(instance?.accentColor);
+    if (accent === undefined) return undefined;
+    const name =
+      instance?.displayName?.trim() || getProviderClient(row.Driver)?.label || row.Driver;
+    return { Name: name, Initials: providerInstanceInitials(name), Accent: accent };
+  };
   const [modelFilter, setModelFilter] = createSignal("");
   const modelCount = (row: IProviderRow) => {
     const favorites = row.Models.filter((model) => model.Favorite).length;
@@ -645,13 +662,13 @@ function ProvidersPage() {
                       data-active={current()?.InstanceId === row().InstanceId || undefined}
                     >
                       <button
-                        class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 border-0 bg-transparent p-2 text-left text-[14px] [&>svg]:mt-0.5"
+                        class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 border-0 bg-transparent p-2 text-left text-[14px] [&>svg]:mt-0.5 [&>[data-instance-badge]]:mt-0.5"
                         onClick={() => {
                           setSelected(row().InstanceId);
                           setModelFilter("");
                         }}
                       >
-                        <ProviderIcon driver={row().Driver} size={16} />
+                        <ProviderIcon driver={row().Driver} size={16} badge={accentBadge(row())} />
                         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span class="flex min-w-0 items-baseline gap-1.5">
                             {row().Name}

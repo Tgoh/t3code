@@ -208,6 +208,7 @@ export function* newEnvironment(
   const shell = yield* entity<IShell>(getDefaultShell(environmentId));
   const replica = yield* entity<IReplica>({
     Providers: [],
+    InstanceBadges: {},
     ModelFavorites: [],
     Shell: shell,
     OpenThreads: {},

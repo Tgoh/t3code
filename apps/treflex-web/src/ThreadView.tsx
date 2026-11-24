@@ -194,7 +194,13 @@ function ProviderSubagentBar() {
       <div class="flex min-h-12 items-center gap-3 rounded-2xl py-2 ps-5 pe-2 text-sm">
         <div class="flex min-w-0 flex-1 items-center gap-3">
           <span class="flex min-w-0 max-w-full items-center gap-2">
-            <ProviderIcon driver={session.effectiveModelDriver()} size={16} />
+            <ProviderIcon
+              driver={session.effectiveModelDriver()}
+              size={16}
+              badge={
+                environment.state.Replica.InstanceBadges[session.effectiveModel()?.instanceId ?? ""]
+              }
+            />
             <span class="min-w-0 truncate font-medium text-foreground">
               {session.effectiveModelName() ?? "Subagent"}
             </span>

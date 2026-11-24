@@ -18,7 +18,6 @@ import {
 import {
   displayLimitWindows,
   type LimitPace,
-  type LimitPool,
   type LimitPoolWindow,
 } from "@t3tools/shared/usageLimits";
 import { collectLimitNotices, formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
@@ -861,8 +860,10 @@ function UsageLimits(props: { config: ILimitSources | null }) {
   );
 }
 
-const poolColor = (pool: LimitPool) =>
-  Object.values(PROVIDERS).find((entry) => entry.Driver === pool.driver)?.Color ?? "var(--primary)";
+const poolColor = (instance: ILimitInstance) =>
+  instance.Accent ??
+  Object.values(PROVIDERS).find((entry) => entry.Driver === instance.Pool.driver)?.Color ??
+  "var(--primary)";
 const windowLeft = (window: LimitPoolWindow) => `${Math.max(0, window.remainingPercent)}%`;
 const windowResets = (window: LimitPoolWindow, now: number) =>
   window.members[0] === undefined ? "" : (formatResetsIn(window.members[0].window, now) ?? "");
@@ -879,7 +880,12 @@ export function LimitsSummary(props: { instances: readonly ILimitInstance[]; now
           {(instance) => (
             <section class="flex flex-col gap-2">
               <h2 class="m-0 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
-                <ProviderIcon driver={instance.Pool.driver} size={12} />
+                <ProviderIcon
+                  driver={instance.Pool.driver}
+                  size={12}
+                  badge={instance.Badge}
+                  surface="var(--popover)"
+                />
                 {instance.Label}
               </h2>
               <For each={displayLimitWindows(instance.Pool)}>
@@ -894,7 +900,7 @@ export function LimitsSummary(props: { instances: readonly ILimitInstance[]; now
                         class="block h-full opacity-85"
                         style={{
                           width: windowLeft(window),
-                          "background-color": poolColor(instance.Pool),
+                          "background-color": poolColor(instance),
                         }}
                       />
                     </span>
@@ -913,11 +919,16 @@ export function LimitsSummary(props: { instances: readonly ILimitInstance[]; now
 }
 
 function LimitInstanceSection(props: { instance: ILimitInstance; now: number }) {
-  const color = () => poolColor(props.instance.Pool);
+  const color = () => poolColor(props.instance);
   return (
     <section class="flex flex-col gap-3">
       <h2 class={HEADING}>
-        <ProviderIcon driver={props.instance.Pool.driver} size={16} />
+        <ProviderIcon
+          driver={props.instance.Pool.driver}
+          size={16}
+          badge={props.instance.Badge}
+          surface="var(--background)"
+        />
         {props.instance.Label}
       </h2>
       <For each={displayLimitWindows(props.instance.Pool)} keyed={(window) => window.id}>

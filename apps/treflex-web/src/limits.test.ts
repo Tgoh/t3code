@@ -112,6 +112,8 @@ describe("weekly limit ring", () => {
     const hubbed = instances({ providers: [], usageLimitSources: [hub] });
     expect(weeklyLimit(hubbed)).toMatchObject({ UsedPercent: 30 });
     expect(hubbed.map((instance) => instance.Label)).toEqual(["max · Hub"]);
+    // Named, but with no reset credit to redeem, so stock draws no badge.
+    expect(hubbed.map((instance) => instance.Badge)).toEqual([undefined]);
   });
 
   it("tips the share left and the reset", () => {
@@ -151,6 +153,25 @@ describe("instance limit pools", () => {
           { Id: "seven_day_fable", Left: 80, Resets: [ALT_RESET] },
         ],
       },
+    ]);
+  });
+
+  it("badges an instance that has its own name, and colours its bars with its accent", () => {
+    const shown = pools([
+      claude([weekly(60)]),
+      claude([weekly(4)], {
+        instanceId: "claude_alt",
+        displayName: "Claude Alt",
+        accentColor: "#2563eb",
+      }),
+    ]).map(({ Label, Accent, Badge }) => ({ Label, Accent, Badge }));
+    expect(shown).toEqual([
+      {
+        Label: "Claude Alt",
+        Accent: "#2563eb",
+        Badge: { Name: "Claude Alt", Initials: "CA", Accent: "#2563eb" },
+      },
+      { Label: "Claude Code", Accent: undefined, Badge: undefined },
     ]);
   });
 });
