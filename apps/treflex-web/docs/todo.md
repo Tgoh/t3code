@@ -60,6 +60,14 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 ## Waiting on treflex
 
+- **Move to treflex 0.4.0** once it ships. The missing features wait on this. Do the following with the move:
+  - **A dev-only state hook** (Tam, 2026-11-24). It lets threads check live state directly, not through DOM `evaluate` calls (about 2,800 in the friction review). This is the shape treflex Main recommended; it's recorded on their "why mode" item (reflex `81541ef5`), which will keep it working or give a one-line move.
+    - Call `createActivityLog(runtime)` in setup, and again in a restore's setup.
+    - Under `import.meta.env.DEV` only, set `window.__treflex = { state: () => runtime.state, select: (selector, node = runtime.state) => runtime.select(selector, node), log: () => runtime.select(readLog, runtime.state) }`. `readLog` reads the `ActivityLog` external, as treflex's `restart-and-records.md` shows.
+    - Keep it read-only: leave out `runtime`, since `dispatch` writes real state. State isn't redacted, so the hook must never reach production.
+    - In 0.4, `runtime.select(sel, node)` replaces `processSelector(sel, () => x)`, and log fields are camelCase (`kind`, not `Kind`).
+    - Tell threads about the hook in this app's `CLAUDE.md`, with an example `evaluate` snippet, and say that the preview is for layout and screenshots.
+    - `inFlight(action, owner)` through `select` answers what's running until "why mode" adds a list of running work.
 - **Checks that keep agents off React habits.** treflex's verdicts are in `docs/wip/13-external/views-start-work-from-their-lifecycle.md` in the reflex repo. When each one ships, turn it on here and fix what it finds.
   1. **A development diag in treflex-solid** for a dispatch into main state from a component or effect. It waits until treflex has chosen its Solid 2 route.
   2. **A restore-under-views check** for the main-or-component-state rule comes after resume's piece 4c.
