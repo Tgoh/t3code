@@ -17,6 +17,7 @@ import {
   Switch,
   untrack,
 } from "solid-js";
+import { useComponentState } from "treflex-solid";
 
 import { copyText } from "./clipboard";
 import Environment from "./Environment";
@@ -31,7 +32,12 @@ import {
   markdownBaseDir,
   readErrorMessage,
   renderedToggleLabel,
+  followRevision,
+  type IPlaybackSource,
+  playerErrorFails,
+  playerSource,
   revisionedUrl,
+  videoFailed,
   workspaceCopyable,
   workspaceMediaKind,
 } from "./filePreview";
@@ -45,15 +51,23 @@ import {
   Maximize,
   Minus,
   Plus,
+  RotateCw,
   Scan,
   TextWrap,
+  TriangleAlert,
 } from "./icons";
 import { ImageDialog } from "./ImageDialog";
 import { FileIcon, Markdown, useMediaUrl } from "./Markdown";
+import {
+  EMPTY_MEDIA_URL,
+  type IMediaUrl,
+  prepareVideoFirstFrame,
+  retryMediaUrl,
+} from "./markdownImage";
 import OpenThread from "./OpenThread";
 import { PanelHeader } from "./RightPanel";
 import ThreadSession from "./ThreadSession";
-import { Button, buttonVariants } from "./ui/Button";
+import { Button } from "./ui/Button";
 import { Presence } from "./ui/Presence";
 import { ScrollArea } from "./ui/ScrollArea";
 import { Spinner } from "./ui/Spinner";
@@ -325,48 +339,45 @@ function PreviewImage(props: { src: string; name: string; onError: () => void })
 
 type IMediaKind = IWorkspaceMediaKind;
 
-/** A signed media file, whose URL is this view's. */
-function SignedMedia(props: {
-  kind: IMediaKind;
-  resource: AssetResource;
-  name: string;
-  /** The workspace changes seen since the file opened; 0 for an attachment. */
-  revision: number;
-}) {
-  const media = useMediaUrl(untrack(() => props.resource));
+function useSignedMedia(resource: AssetResource, kind: IMediaKind, revision: () => number) {
+  const media = useMediaUrl(resource);
   // Follows WorkspaceVideoPreview and WorkspaceAudioPreview, which sign the URL again on each
-  // workspace change but load it only when the file's revision changed.
+  // workspace change.
   createEffect(
-    () => props.revision,
+    revision,
     () => {
-      if (props.kind !== "image") void media.reload();
+      if (kind !== "image") void media.reload();
     },
     { defer: true },
   );
-  const playbackKey = createMemo(() => media.state.FileRevision ?? String(props.revision));
-  const signed = createMemo(() => media.state.Url !== null);
-  const src = createMemo(() => {
-    if (props.kind === "image") {
-      return media.state.Url === null ? null : revisionedUrl(media.state.Url, null, props.revision);
-    }
-    playbackKey();
-    if (!signed()) return null;
-    return untrack(() => revisionedUrl(media.state.Url!, media.state.FileRevision, props.revision));
-  });
+  const latest = () =>
+    media.state.Url === null
+      ? null
+      : revisionedUrl(
+          media.state.Url,
+          kind === "image" ? null : media.state.FileRevision,
+          revision(),
+        );
+  const revisionKey = () =>
+    media.state.FileRevision ?? (revision() === 0 ? null : String(revision()));
+  return { media, latest, revisionKey };
+}
+
+// Follows WorkspaceImagePreview in apps/web/src/components/files/FilePreviewPanel.tsx.
+function SignedImage(props: { resource: AssetResource; name: string; revision: number }) {
+  const { media, latest } = useSignedMedia(
+    untrack(() => props.resource),
+    "image",
+    () => props.revision,
+  );
   const [erroredSrc, setErroredSrc] = createSignal<string | null>(null);
-  const failed = () => media.state.Failed || (src() !== null && erroredSrc() === src());
-  const failure = () =>
-    props.kind === "image"
-      ? "Unable to load workspace image."
-      : props.kind === "video"
-        ? "Unable to load video."
-        : "Unable to load audio.";
+  const failed = () => media.state.Failed || (latest() !== null && erroredSrc() === latest());
   return (
     <Show
       when={!failed()}
       fallback={
         <SurfaceFailure
-          message={failure()}
+          message="Unable to load workspace image."
           onRetry={() => {
             setErroredSrc(null);
             void media.retry();
@@ -374,62 +385,266 @@ function SignedMedia(props: {
         />
       }
     >
-      <Show when={src()} keyed fallback={<SurfaceLoading />}>
+      <Show when={latest()} keyed fallback={<SurfaceLoading />}>
         {(src) => (
-          <Switch>
-            <Match when={props.kind === "image"}>
-              <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PreviewImage src={src} name={props.name} onError={media.failed} />
-              </div>
-            </Match>
-            <Match when={props.kind === "video"}>
-              <div class="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4">
-                <video
-                  class="aspect-auto max-h-full w-auto max-w-full"
-                  src={src}
-                  aria-label={props.name}
-                  controls
-                  playsinline
-                  preload="metadata"
-                  onError={() => setErroredSrc(src)}
-                />
-              </div>
-            </Match>
-            <Match when={props.kind === "audio"}>
-              <div class="flex min-h-0 flex-1 items-center justify-center p-6">
-                <audio
-                  class="w-full max-w-xl"
-                  src={src}
-                  aria-label={props.name}
-                  controls
-                  preload="metadata"
-                  onError={() => setErroredSrc(src)}
-                />
-              </div>
-            </Match>
-          </Switch>
+          <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <PreviewImage src={src} name={props.name} onError={media.failed} />
+          </div>
         )}
       </Show>
     </Show>
   );
 }
 
-function SaveAction(props: { resource: AssetResource; name: string }) {
-  const media = useMediaUrl(untrack(() => props.resource));
+// Follows MediaVideoPlayer in apps/web/src/components/media/MediaVideoPlayer.tsx, as
+// WorkspaceVideoPreview uses it.
+function SignedVideo(props: { resource: AssetResource; name: string; revision: number }) {
+  const { media, latest, revisionKey } = useSignedMedia(
+    untrack(() => props.resource),
+    "video",
+    () => props.revision,
+  );
+  const [playback, setPlayback] = createSignal<IPlaybackSource | null>(null);
+  const [playing, setPlaying] = createSignal(false);
+  const [failedSrc, setFailedSrc] = createSignal<string | null>(null);
+  const [retrying, setRetrying] = createSignal(false);
+  const [attempt, setAttempt] = createSignal(0);
+  const src = () => playerSource(playback(), latest());
+  const sourceRevision = () => {
+    const held = playback();
+    return held === null ? revisionKey() : held.Revision;
+  };
+  const failed = () => videoFailed(src(), failedSrc(), media.state.Failed);
+  createEffect(
+    () =>
+      followRevision({
+        held: playback(),
+        latest: latest(),
+        revision: revisionKey(),
+        sourceFailed: media.state.Failed,
+        playing: playing(),
+      }),
+    (next) => {
+      if (next !== untrack(playback)) setPlayback(next);
+    },
+  );
+  const retry = async () => {
+    if (retrying()) return;
+    setRetrying(true);
+    await media.retry();
+    if (media.state.Failed) setFailedSrc(src());
+    else {
+      setPlayback(null);
+      setFailedSrc(null);
+      setAttempt(attempt() + 1);
+    }
+    setRetrying(false);
+  };
+  const mount = createMemo(() => ({ Attempt: attempt() }));
   return (
-    <Show when={media.state.Url}>
-      {(url) => (
-        <a
-          class={buttonVariants({ variant: "ghost", size: "icon-sm", class: "shrink-0" })}
-          href={url()}
-          download={props.name}
-          aria-label="Save file"
-          data-tip="Save file"
+    <div class="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4">
+      <span class="relative flex h-full min-h-0 w-full max-w-5xl items-center justify-center align-middle">
+        <Switch
+          fallback={
+            <span
+              role="status"
+              aria-label="Loading video"
+              class="block aspect-video w-full rounded-lg bg-muted/60"
+            />
+          }
         >
-          <Download class="size-3.5" />
-        </a>
-      )}
+          <Match when={failed()}>
+            <span
+              role="alert"
+              class="flex aspect-video max-h-full w-full flex-col items-center justify-center gap-3 rounded-lg border border-border/40 bg-muted/40 p-4 text-center text-sm text-muted-foreground"
+            >
+              <span class="inline-flex items-center gap-1.5">
+                <TriangleAlert aria-hidden="true" class="size-3.5 shrink-0" />
+                {["Video unavailable", props.name].filter(Boolean).join(" · ")}
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={retrying()}
+                onClick={() => void retry()}
+              >
+                <RotateCw />
+                {retrying() ? "Retrying…" : "Retry video"}
+              </Button>
+            </span>
+          </Match>
+          <Match when={src() !== null}>
+            <Show when={mount()} keyed>
+              {(_attempt) => (
+                <video
+                  src={src()!}
+                  aria-label={props.name || "Video preview"}
+                  controls
+                  playsinline
+                  preload="metadata"
+                  class="aspect-auto max-h-full w-auto max-w-full bg-black object-contain"
+                  onLoadedMetadata={(event) => {
+                    prepareVideoFirstFrame(event.currentTarget);
+                    const revision = sourceRevision();
+                    if (revision !== null) setPlayback({ Src: src()!, Revision: revision });
+                  }}
+                  onPlay={() => {
+                    setPlaying(true);
+                    setPlayback({ Src: src()!, Revision: sourceRevision() });
+                  }}
+                  onPause={() => setPlaying(false)}
+                  onEnded={() => setPlaying(false)}
+                  onError={() => {
+                    const shown = src()!;
+                    setPlaying(false);
+                    setPlayback(null);
+                    if (playerErrorFails(shown, latest())) setFailedSrc(shown);
+                  }}
+                />
+              )}
+            </Show>
+          </Match>
+        </Switch>
+      </span>
+    </div>
+  );
+}
+
+// Follows WorkspaceAudioPreview in apps/web/src/components/files/FilePreviewPanel.tsx and
+// StandardAudioPreview in AudioPreview.tsx.
+function SignedAudio(props: { resource: AssetResource; name: string; revision: number }) {
+  const { media, latest, revisionKey } = useSignedMedia(
+    untrack(() => props.resource),
+    "audio",
+    () => props.revision,
+  );
+  const [loaded, setLoaded] = createSignal<IPlaybackSource | null>(null);
+  const [playing, setPlaying] = createSignal(false);
+  const [failedUrl, setFailedUrl] = createSignal<string | null>(null);
+  const failed = () => media.state.Failed || (latest() !== null && failedUrl() === latest());
+  createEffect(
+    () =>
+      followRevision({
+        held: loaded(),
+        latest: latest(),
+        revision: revisionKey(),
+        sourceFailed: false,
+        playing: playing(),
+      }),
+    (next) => {
+      if (next !== untrack(loaded)) setLoaded(next);
+    },
+  );
+  const src = () => playerSource(loaded(), latest());
+  return (
+    <Show
+      when={!failed()}
+      fallback={
+        <SurfaceFailure
+          message="Unable to load audio."
+          onRetry={() => {
+            setFailedUrl(null);
+            void media.retry();
+          }}
+        />
+      }
+    >
+      <Show when={src() !== null} fallback={<SurfaceLoading />}>
+        <div class="flex min-h-0 flex-1 items-center justify-center p-6">
+          <audio
+            class="w-full max-w-xl"
+            src={src()!}
+            aria-label={props.name}
+            controls
+            preload="metadata"
+            onLoadedMetadata={() => {
+              const revision = revisionKey();
+              if (revision !== null && loaded() === null)
+                setLoaded({ Src: src()!, Revision: revision });
+            }}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onEnded={() => setPlaying(false)}
+            onError={() => {
+              const shown = src()!;
+              setPlaying(false);
+              setLoaded(null);
+              if (shown === latest()) setFailedUrl(shown);
+            }}
+          />
+        </div>
+      </Show>
     </Show>
+  );
+}
+
+function SignedMedia(props: {
+  kind: IMediaKind;
+  resource: AssetResource;
+  name: string;
+  /** The workspace changes seen since the file opened; 0 for an attachment. */
+  revision: number;
+}) {
+  return (
+    <Switch>
+      <Match when={props.kind === "image"}>
+        <SignedImage resource={props.resource} name={props.name} revision={props.revision} />
+      </Match>
+      <Match when={props.kind === "video"}>
+        <SignedVideo resource={props.resource} name={props.name} revision={props.revision} />
+      </Match>
+      <Match when={props.kind === "audio"}>
+        <SignedAudio resource={props.resource} name={props.name} revision={props.revision} />
+      </Match>
+    </Switch>
+  );
+}
+
+// Follows `save` in apps/web/src/components/files/AttachmentFilePreview.tsx and
+// WorkspacePdfSaveAction in FilePreviewPanel.tsx: each press signs again, so an expired URL or a
+// rewritten file never downloads the server's error page.
+function SaveAction(props: { resource: AssetResource; name: string }) {
+  const environment = Environment.use();
+  const signing = useComponentState<IMediaUrl>(() => ({ ...EMPTY_MEDIA_URL }));
+  const [saving, setSaving] = createSignal(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await signing.dispatch(
+        retryMediaUrl,
+        environment.state.EnvironmentId,
+        untrack(() => props.resource),
+      );
+      const url = signing.state.Url;
+      if (signing.state.Failed || url === null) {
+        throw new Error("Reconnect to the environment and try again.");
+      }
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("The file could not be loaded. Try again.");
+      const downloadUrl = URL.createObjectURL(await response.blob());
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = props.name.split(/[\\/]/).at(-1) || props.name;
+      anchor.click();
+    } catch (cause) {
+      toastManager.add({
+        type: "error",
+        title: "Could not save file",
+        description: cause instanceof Error ? cause.message : "Please try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <SurfaceAction
+      label={saving() ? "Preparing file…" : "Save file"}
+      disabled={saving()}
+      onPress={() => void save()}
+    >
+      <Download class="size-3.5" />
+    </SurfaceAction>
   );
 }
 

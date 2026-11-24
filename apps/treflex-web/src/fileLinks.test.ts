@@ -130,6 +130,9 @@ describe("opening a file chip", () => {
     expect(chipPanelPath(link("src/shot.png"), CWD, true)).toBe("src/shot.png");
     expect(chipPanelPath(link("G:\\Other\\b.cs"), CWD, false)).toBe("G:/Other/b.cs");
     expect(chipPanelPath(link("G:\\Other\\b.png"), CWD, true)).toBeNull();
+    // The workspace folder itself has no preview, so its chip falls to the editor or the menu.
+    expect(chipPanelPath(fileLinkFromHref("./", "/repo")!, "/repo", false)).toBeNull();
+    expect(chipPanelPath(fileLinkFromCode("./", "/repo")!, "/repo", false)).toBeNull();
   });
 
   it.each([

@@ -6,11 +6,15 @@ import {
   clampFileLine,
   diffPathForWorkspace,
   fileBreadcrumbs,
+  followRevision,
   markdownBaseDir,
   panelFilePath,
+  playerErrorFails,
+  playerSource,
   previewPath,
   readErrorMessage,
   revisionedUrl,
+  videoFailed,
   workspaceCopyable,
   workspaceMediaKind,
 } from "./filePreview";
@@ -152,5 +156,48 @@ describe("a reread", () => {
       ...shown,
       Contents: "b",
     });
+  });
+});
+
+describe("a media player's source", () => {
+  const held = { Src: "/a?sig=1&file-revision=r1", Revision: "r1" };
+
+  it("keeps its loaded source through a re-sign of the same revision", () => {
+    const next = followRevision({
+      held,
+      latest: "/a?sig=2&file-revision=r1",
+      revision: "r1",
+      sourceFailed: false,
+      playing: false,
+    });
+    expect(next).toBe(held);
+    expect(playerSource(next, "/a?sig=2&file-revision=r1")).toBe(held.Src);
+  });
+
+  it("moves to a changed file once playback pauses, and drops a source the server can't sign", () => {
+    const moved = {
+      held,
+      latest: "/a?sig=2&file-revision=r2",
+      revision: "r2",
+      sourceFailed: false,
+    };
+    expect(followRevision({ ...moved, playing: true })).toBe(held);
+    expect(followRevision({ ...moved, playing: false })).toEqual({
+      Src: "/a?sig=2&file-revision=r2",
+      Revision: "r2",
+    });
+    expect(followRevision({ ...moved, latest: null, playing: false })).toBe(held);
+    expect(
+      followRevision({ ...moved, latest: null, sourceFailed: true, playing: false }),
+    ).toBeNull();
+  });
+
+  it("fails only on its own source, so a stale one falls through and a failed re-sign leaves it playing", () => {
+    expect(playerErrorFails("/a?sig=1", "/a?sig=2")).toBe(false);
+    expect(playerErrorFails("/a?sig=2", "/a?sig=2")).toBe(true);
+    expect(playerErrorFails("/a?sig=1", null)).toBe(true);
+    expect(videoFailed("/a?sig=1", null, true)).toBe(false);
+    expect(videoFailed("/a?sig=1", "/a?sig=1", false)).toBe(true);
+    expect(videoFailed(null, null, true)).toBe(true);
   });
 });

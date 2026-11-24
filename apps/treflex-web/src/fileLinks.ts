@@ -159,10 +159,9 @@ export function chipPanelPath(
   cwd: string | undefined,
   media: boolean,
 ): string | null {
-  return (
-    workspaceRelativeFilePath(link.FilePath, cwd) ??
-    (!media && isHostPath(link.FilePath) ? link.FilePath : null)
-  );
+  const relative = workspaceRelativeFilePath(link.FilePath, cwd);
+  if (relative === ".") return null;
+  return relative ?? (!media && isHostPath(link.FilePath) ? link.FilePath : null);
 }
 
 export function fileChipAction(input: {

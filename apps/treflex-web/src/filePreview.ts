@@ -204,3 +204,37 @@ export function markdownBaseDir(relativePath: string, cwd: string): string {
   const separator = Math.max(relativePath.lastIndexOf("/"), relativePath.lastIndexOf("\\"));
   return separator >= 0 ? resolvePathLinkTarget(relativePath.slice(0, separator), cwd) : cwd;
 }
+
+// Follows MediaVideoPlayer in apps/web/src/components/media/MediaVideoPlayer.tsx and
+// StandardAudioPreview in apps/web/src/components/files/AudioPreview.tsx: a loaded player keeps
+// its source through a re-sign, and a changed file loads once playback pauses.
+export interface IPlaybackSource {
+  Src: string;
+  Revision: string | null;
+}
+
+/** The source a player shows: the one it loaded, else the latest signed URL. */
+export const playerSource = (held: IPlaybackSource | null, latest: string | null): string | null =>
+  held?.Src ?? latest;
+
+/** What a held source becomes when the file's revision may have moved; `held` when it stays. */
+export function followRevision(input: {
+  held: IPlaybackSource | null;
+  latest: string | null;
+  revision: string | null;
+  sourceFailed: boolean;
+  playing: boolean;
+}): IPlaybackSource | null {
+  const { held, latest, revision } = input;
+  if (held === null || held.Revision === revision || input.playing) return held;
+  if (latest === null && !input.sourceFailed) return held;
+  return revision !== null && latest !== null ? { Src: latest, Revision: revision } : null;
+}
+
+/** A video fails only on its own source, or with no source when signing failed. */
+export const videoFailed = (src: string | null, failedSrc: string | null, sourceFailed: boolean) =>
+  src !== null ? failedSrc === src : sourceFailed;
+
+/** A load error on a stale source falls through to the latest URL rather than failing. */
+export const playerErrorFails = (src: string, latest: string | null): boolean =>
+  latest === null || src === latest;
