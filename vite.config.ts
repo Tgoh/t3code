@@ -339,7 +339,11 @@ export default defineConfig({
       },
       {
         files: ["apps/treflex-web/**"],
-        rules: { "t3code/no-session-bound-subscription": "error" },
+        rules: {
+          "t3code/no-session-bound-subscription": "error",
+          "t3code/no-cleanup-in-ref": "error",
+          "t3code/no-effect-writes-own-source": "error",
+        },
       },
       {
         files: [

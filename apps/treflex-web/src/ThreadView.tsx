@@ -599,6 +599,7 @@ const ThreadConversation = ThreadSession.provider<{
         growTo(step.Grow, untrack(stuck));
       } else {
         restoring = false;
+        // oxlint-disable-next-line t3code/no-effect-writes-own-source -- only the Grow step reads stuck, and it must rerun on a change
         setStuck(true);
         scrollToEnd("restore");
       }
