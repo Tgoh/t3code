@@ -261,11 +261,12 @@ const ThreadConversation = ThreadSession.provider<{
   };
   const roomAbove = () => scroller.scrollHeight - scroller.clientHeight - fromEnd() > 1;
   const statusRows = createMemo(() => checklistRows(checklist()));
-  const onComposerSend = () => {
+  // Stuck before the write, so growth in the same frame isn't corrected back up from the end.
+  const goToEnd = (cause: string) => {
     release();
     setStuck(true);
-    releaseTail("send");
-    scrollToEnd("send");
+    releaseTail(cause);
+    scrollToEnd(cause);
   };
 
   const firstBelow = (parent: Element, top: number): Element | null => {
@@ -771,10 +772,7 @@ const ThreadConversation = ThreadSession.provider<{
               variant="glass"
               size="xs"
               class="absolute bottom-[calc(100%+var(--turn-status-height)+4px)] left-1/2 z-30 -translate-x-1/2"
-              onClick={() => {
-                release();
-                scrollToEnd("button");
-              }}
+              onClick={() => goToEnd("button")}
             >
               <ChevronDown class="size-3.5" />
               Scroll to end
@@ -788,7 +786,7 @@ const ThreadConversation = ThreadSession.provider<{
             <Show
               when={thread.pendingQuestionIds()[0]}
               keyed
-              fallback={<Composer active={turnState() !== null} onSend={onComposerSend} />}
+              fallback={<Composer active={turnState() !== null} onSend={() => goToEnd("send")} />}
             >
               {(id) => (
                 <PendingQuestion
@@ -796,7 +794,7 @@ const ThreadConversation = ThreadSession.provider<{
                   composer={(answering) => (
                     <Composer
                       active={turnState() !== null}
-                      onSend={onComposerSend}
+                      onSend={() => goToEnd("send")}
                       question={answering}
                     />
                   )}
