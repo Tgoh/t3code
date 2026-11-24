@@ -1,14 +1,8 @@
 import { errorText } from "./errorText";
 import { StandalonePage, StandalonePageHeader } from "./ui/StandalonePage";
 
-const raised = new WeakSet<object>();
-
-/** Reports a view's throw once per error object, as an uncaught rejection the console shows. */
-export function raiseViewCrash(error: unknown): void {
-  if (error !== null && (typeof error === "object" || typeof error === "function")) {
-    if (raised.has(error)) return;
-    raised.add(error);
-  }
+/** The render root's error hook: shows a throw an `<Errored>` caught as an uncaught rejection. */
+export function raiseCaughtError(error: unknown): void {
   void Promise.reject(error);
 }
 

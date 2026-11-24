@@ -80,7 +80,16 @@ export default defineConfig(({ mode }) => ({
           // Production's setting. In dev the budgeted walk adds a full-tree pause every so many writes.
           env: { TREFLEX_VERIFY_INDEX: process.env.TREFLEX_VERIFY_INDEX ?? "off" },
         }
-      : { include: ["src/**/*.test.ts"], setupFiles: ["treflex/vitest"] }),
+      : {
+          setupFiles: ["treflex/vitest"],
+          projects: [
+            { extends: true, test: { name: "node", include: ["src/**/*.test.ts"] } },
+            {
+              extends: true,
+              test: { name: "dom", include: ["src/**/*.test.tsx"], environment: "jsdom" },
+            },
+          ],
+        }),
   },
   server: {
     host: "localhost",

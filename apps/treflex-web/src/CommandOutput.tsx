@@ -9,6 +9,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import Environment from "./Environment";
 import ThreadSession from "./ThreadSession";
 import type { IToolDetail } from "./ToolDetail";
+import { Caught } from "./ui/Caught";
 import { ERROR_TEXT } from "./ui/notice";
 
 const cssOf = (style: TerminalSpanStyle) => ({
@@ -59,7 +60,8 @@ export function CommandOutput(props: { itemId: string }) {
   const [following, setFollowing] = createSignal(true);
   createEffect(
     () => {
-      spans();
+      // Not spans(): an effect that reads a throw logs it again, outside the boundary's report.
+      void output.value()?.Text;
       const element = scroller();
       return element !== undefined && following() ? element : undefined;
     },
@@ -93,13 +95,15 @@ export function CommandOutput(props: { itemId: string }) {
                 setFollowing(element.scrollHeight - element.scrollTop - element.clientHeight < 8);
               }}
             >
-              <For each={spans()} keyed={false}>
-                {(span) => (
-                  <Show when={span().style} fallback={span().text}>
-                    {(style) => <span style={cssOf(style())}>{span().text}</span>}
-                  </Show>
-                )}
-              </For>
+              <Caught fallback={shown().Text}>
+                <For each={spans()} keyed={false}>
+                  {(span) => (
+                    <Show when={span().style} fallback={span().text}>
+                      {(style) => <span style={cssOf(style())}>{span().text}</span>}
+                    </Show>
+                  )}
+                </For>
+              </Caught>
             </pre>
           </Show>
         </>

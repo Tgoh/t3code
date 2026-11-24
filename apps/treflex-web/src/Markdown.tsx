@@ -70,6 +70,7 @@ import OpenThread from "./OpenThread";
 import { EXTERNAL_LINK, sanitizeHtml, THREAD_LINK, THREAD_LINK_UNAVAILABLE } from "./sanitize";
 import ThreadSession, { codeWrapped, openFile } from "./ThreadSession";
 import { Button } from "./ui/Button";
+import { Caught } from "./ui/Caught";
 import { MenuItem, MenuItemLabel, MenuPopup } from "./ui/Menu";
 import { Presence } from "./ui/Presence";
 import { ScrollArea } from "./ui/ScrollArea";
@@ -1275,30 +1276,32 @@ export function Markdown(props: {
   return (
     <MessageContext value={untrack(() => props.message) ?? null}>
       <FileLinkContext value={files}>
-        <Show
-          when={lexed().WholeHtml}
-          fallback={
-            <div class="chat-markdown" onClick={openHtmlThreadLink} data-tip-shared>
-              <For each={lexed().Blocks} keyed={false}>
-                {(token, index) => (
-                  <TopBlock
-                    token={token()}
-                    fromUser={props.fromUser}
-                    key={props.id === undefined ? null : `${props.id}:${index}`}
-                  />
-                )}
-              </For>
-            </div>
-          }
-        >
-          {(tokens) => (
-            <RawHtml
-              class="chat-markdown"
-              onClick={openHtmlThreadLink}
-              markup={sanitizeHtml(assistantHtml(tokens()))}
-            />
-          )}
-        </Show>
+        <Caught fallback={<div class="chat-markdown whitespace-pre-wrap">{props.text}</div>}>
+          <Show
+            when={lexed().WholeHtml}
+            fallback={
+              <div class="chat-markdown" onClick={openHtmlThreadLink} data-tip-shared>
+                <For each={lexed().Blocks} keyed={false}>
+                  {(token, index) => (
+                    <TopBlock
+                      token={token()}
+                      fromUser={props.fromUser}
+                      key={props.id === undefined ? null : `${props.id}:${index}`}
+                    />
+                  )}
+                </For>
+              </div>
+            }
+          >
+            {(tokens) => (
+              <RawHtml
+                class="chat-markdown"
+                onClick={openHtmlThreadLink}
+                markup={sanitizeHtml(assistantHtml(tokens()))}
+              />
+            )}
+          </Show>
+        </Caught>
       </FileLinkContext>
     </MessageContext>
   );

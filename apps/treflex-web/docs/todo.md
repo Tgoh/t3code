@@ -21,7 +21,6 @@ From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its
 - **Provider instance badges.** Tam added a second Claude instance, Claude Alt (`claude_alt`), on 2026-11-23. Stock now marks each thread row with the instance's initials ("CL") in its provider icon (`SidebarProviderStack`, `shouldShowInstanceBadge` in `apps/web/src/components/sidebar/SidebarThreadRow.tsx`), and in the model picker and the thread tooltip; treflex draws none, so threads on the two accounts look alike. Port the badge and accent colour to `ProviderIcon` and use them wherever stock does. See the "Provider icons" and "Model menu" entries in `issues.md`. The usage limit sections (one per instance, in `UsageView.tsx`) should take the badge in their heading and the accent on their bars, as stock's segments do.
 - **Phone: the send button misbehaves near the caret.** On the iPhone (2026-11-23), the send button acts oddly when the text cursor is close to it, likely iOS's caret and selection handles taking taps near the caret. Find out exactly what happens first (ask Tam, or reproduce it on the phone), compare stock's phone composer layout, and if the button is the problem, move it or give it room on phone only.
 - **Paradigm review leftovers.** The fixes merged (2026-11-24); what stays open is in `issues.md` under "Review: treflex paradigms after Solid 2": `viewport.ts` `enterPanel` still waits a microtask, since its elements have no component to wait in with `onSettled`, and `repairRestore` in `Root.ts` has no caller until something snapshots.
-- **Archive: "Archived now ago".** A thread archived under a minute ago reads "Archived now ago · Created …" on the Archive page (`SettingsView.tsx`, `relativeTime` in `timestamps.ts` returns "now", and the row appends "ago"). Match stock's `ArchivedThreadsPanel.tsx` wording.
 - **A reusable bottom-anchored scroller.** After the phone scroll work merges and has had a week or so on Tam's iPhone (Tam agreed, 2026-11-24). Extract the timeline's scrolling from `ThreadView.tsx` into a self-contained module inside this app, with a clean API. It covers:
   - the `column-reverse` anchoring;
   - the gesture hold, which works without `touchstart` during momentum;
@@ -31,8 +30,6 @@ From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its
   - the `scrollTrace` ring as a debug option.
 
   Split it into a framework-free core (gesture state, correction decision, anchor maths, clamp handling) with unit tests, and a thin Solid 2 binding. It's a candidate for treflex's reference app (`solidportal`) and later a package of its own; that's Tam's call once it has proven itself.
-
-- **Local error boundaries.** A view's throw reaches the root `<Errored>` (`index.tsx`, `ViewCrash.tsx`) and replaces the whole app, as stock's root `errorComponent` (`apps/web/src/routes/__root.tsx`) does. Stock also catches render errors locally with `RenderErrorBoundary` fallbacks around `ChatMarkdown`, `ShellCommandBlock`, `HighlightedSearchLine`, `V2ItemInspector`, `MarkdownMermaidCodeBlock` and `SnapShotAttachmentDetails`, so one bad row doesn't take the page down. Add matching `<Errored>` boundaries around the treflex equivalents (`Markdown.tsx`, `CommandOutput.tsx`, `Highlighted.tsx`, `ToolInspector.tsx`), with fallbacks like stock's. Treflex has no Mermaid block or SnapShot attachment yet.
 
 ## 3. Missing features
 
@@ -87,11 +84,7 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 Any time; none of it touches the client.
 
 - **Where threads get stuck, and where bugs come from.** Tam asked (2026-11-23) for a review of the worktree threads' transcripts: failed and repeated tool calls, setup and port trouble, waits, rework after review, and which kinds of bug reviewers keep finding or Tam finds after a merge (the Solid 2 read-after-write lag and the iPhone-only scroll and keyboard bugs, for example). Start from the `/getfriction` skill over this project's transcripts, add the review findings from the merged branches, and turn each cause into a fix: a line in this app's `CLAUDE.md` or README, a change to the brief template or the `/build` skill, a script fix, a lint rule or a permission rule. The goal is faster builds and fewer tokens per thread.
-- **Make `vp run check:changed` pass for this app.** Every thread reports the same two failures, which hide real ones.
-  - Its test step runs this app's tests in the root vitest project, where tests fail that pass from `apps/treflex-web`. Give the app its own vitest project in the root config, or exclude it from the root run and have `check:changed` run it from its folder.
-  - Its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.3.0.tgz`.
-
-  Both mean editing upstream's root config, so keep the change small. See "Setup: `vp run check:changed` fails this app's tests" in `issues.md`.
+- **Make `vp run check:changed` pass for this app.** Every thread reports the same failure, which hides real ones: its unused-patches step installs in a temp copy that can't find `vendor/treflex-eslint-0.3.0.tgz`. The fix means editing upstream's root config, so keep the change small. See "Setup: `vp run check:changed` fails its unused-patches step" in `issues.md`.
 
 - **Record the verdicts.** Add treflex's verdicts to the "Feedback for treflex" section of `issues.md`. The friction write-up is at `G:\Sorted\Code\t3code-dev-home\notes\treflex-friction-from-t3code-port.md`, and the treflex side's verdicts are in the reflex repo's `docs/wip` (commit 2b37348).
 - **Server start time.** On a server restart, check whether the roughly 50 seconds between launch and the first log line comes back. See `G:\Sorted\Code\t3code-dev-home\dev-stack\server.log`.

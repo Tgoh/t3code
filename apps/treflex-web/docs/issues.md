@@ -8,9 +8,9 @@ The repo pins Node 26.12.1 and the server needs 24.10 or later, but `vp` stays i
 
 Workaround: use Node 26.13.0 through nvm. The pin in `package.json` isn't enforced, and `vp i` and `vp run dev` work on it.
 
-## Setup: `vp run check:changed` fails this app's tests
+## Setup: `vp run check:changed` fails its unused-patches step
 
-Its test step runs `apps/treflex-web`'s tests in the root vitest project, where they fail. Run them with `vp test run` from `apps/treflex-web`. Fixing it means a change to upstream's root `vite.config.ts`.
+The step installs in a temp copy of the repo, which has no `apps/treflex-web/vendor/treflex-eslint-0.3.0.tgz`, so the install fails. The other steps pass. Fixing it means a change to upstream's root config.
 
 ## Gap: the connection runtime has one public door
 
@@ -102,7 +102,7 @@ A review of the client against treflex 0.3's and Solid 2's rules, merged with it
 - Persistence is whole-runtime only: a snapshot carries the whole tree, and nothing persists one slice, such as `Local`'s preferences, across a reload. Each kind of preference was persisted its own way until it converged on a read effect at creation plus a write effect per change (`Infrastructure/preferences.ts`, `draftMemory.ts`). A persisted slice, read before the first render and written per change, would replace those effects and the pre-paint read of the colour scheme in `index.tsx`.
 - The 0.2 to 0.3 upgrade notes don't mention third-party Solid 1 libraries. `lucide-solid` peers Solid 1 and has no Solid 2 release, so this client replaced it with its own icon component over `lucide`'s data.
 - The notes' test setup leaves out four things that cost time here. Setting `resolve.conditions` replaces Vite's defaults rather than adding to them. `@solidjs/vite-plugin` adds the `"solid"` condition itself, so an app can drop its own. The plugin inlines `solid-js` for tests only when the app sets no `test.server.deps.inline`. And the `"browser"` condition is needed by any Node-environment test that imports Solid, not only a component test.
-- "Put an `<Errored>` at the root" changes what a view's throw does compared with 0.2's provider, which reported the throw and left the rest of the page running. A root `<Errored>` replaces the whole app with its fallback. The notes could say so, and suggest boundaries lower in the tree for an app that wants the old behaviour.
+- "Put an `<Errored>` at the root" changes what a view's throw does compared with 0.2's provider, which reported the throw and left the rest of the page running. A root `<Errored>` replaces the whole app with its fallback. The notes could say so, and suggest boundaries lower in the tree for an app that wants the old behaviour, with `render`'s `onError` to report what they catch: a boundary's catch reaches no global handler.
 - "A rejection reaches an action as a copy" could say that `instanceof Error`, `TypeError` and `DOMException` still hold for the copy, and that `effect/class-rejection` checks only the thrown value, not its `cause`.
 - The notes leave Solid 2's own changes to Solid's notes, but one caused most of this migration's regressions and no diagnostic catches it: a read after a write in the same tick sees the old value until the flush, for memos and the DOM as well as the signal. Here it broke scroll-to-end memory, the folder picker, the command palette's search, the composer's focus on expand, the collapsible's animation and the timeline's scroll correction. `STRICT_READ_UNTRACKED` and `ownedWrite` say nothing about it. The notes could flag it, together with the other Solid 2 changes that cost time: boolean attributes render by presence (`aria-*` and `spellcheck` need `"true"`/`"false"` strings), `useContext` throws without a provider and no default value, `onCleanup` throws `CLEANUP_IN_FORBIDDEN_SCOPE` in `onSettled`, `createTrackedEffect` and ref callbacks, while in `createEffect`'s apply phase dev only warns `NO_OWNER_CLEANUP` and the cleanup never runs, so production leaks silently, and `createMemo` has no initial-value argument.
 

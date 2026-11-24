@@ -36,6 +36,7 @@
     "@solidjs/vite-plugin": "^3.0.1",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
+    "jsdom": "^30.0.1",
     "playwright-core": "1.64.1",
     "tailwindcss": "catalog:",
     "treflex-eslint": "file:vendor/treflex-eslint-0.3.0.tgz",

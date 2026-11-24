@@ -95,7 +95,7 @@ import {
 import { resolveScheme, SYSTEM_DARK_QUERY } from "./colorScheme";
 import { registerReceivers } from "./receivers";
 import { getDefaultRoot, load } from "./Root";
-import { raiseViewCrash, ViewCrash } from "./ViewCrash";
+import { raiseCaughtError, ViewCrash } from "./ViewCrash";
 
 await pairFromUrl();
 
@@ -199,16 +199,13 @@ registerServiceWorker();
 
 render(
   () => (
-    <Errored
-      fallback={(error) => {
-        raiseViewCrash(error());
-        return <ViewCrash error={error()} />;
-      }}
-    >
+    <Errored fallback={(error) => <ViewCrash error={error()} />}>
       <TreflexProvider value={runtime}>
         <App state={runtime.state} />
       </TreflexProvider>
     </Errored>
   ),
   document.getElementById("root") as HTMLElement,
+  undefined,
+  { onError: raiseCaughtError },
 );

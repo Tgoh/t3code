@@ -21,6 +21,7 @@ import { ExternalLink } from "./icons";
 import type { IWireTurnItem } from "./Infrastructure/wire";
 import { ViewedImage } from "./Markdown";
 import type { IToolDetail } from "./ToolDetail";
+import { Caught } from "./ui/Caught";
 import { ADDED_TEXT, REMOVED_TEXT } from "./ui/notes";
 import { formatWorkspaceRelativePath } from "./workLog";
 import { useWorkspaceRoot } from "./workspaceRoot";
@@ -80,9 +81,11 @@ function StructuredValue(props: {
   return (
     <Show when={text()}>
       <pre class={`m-0 max-h-80 overflow-auto text-muted-foreground ${MONO}`}>
-        <Show when={language()} fallback={text()}>
-          {(held) => <HighlightedText text={text()} language={held()} />}
-        </Show>
+        <Caught fallback={text()}>
+          <Show when={language()} fallback={text()}>
+            {(held) => <HighlightedText text={text()} language={held()} />}
+          </Show>
+        </Caught>
       </pre>
     </Show>
   );
@@ -94,7 +97,9 @@ function ShellCommand(props: { command: string }) {
   return (
     <Show when={code()}>
       <div class="text-foreground/85">
-        <HighlightedText text={code()} language={commandHighlightLanguage(code())} />
+        <Caught fallback={code()}>
+          <HighlightedText text={code()} language={commandHighlightLanguage(code())} />
+        </Caught>
       </div>
     </Show>
   );
