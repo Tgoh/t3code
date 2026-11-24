@@ -6467,19 +6467,29 @@ function pagesServer() {
     refreshUsageRates: () => {
       calls.push({ Type: "refreshUsageRates" });
     },
-    usageSummary: (effect: { Input: Record<string, unknown> }, action?: IActionContext) => {
-      calls.push({ Type: "usageSummary", Input: effect.Input });
+    usageSummary: (
+      effect: { EnvironmentId: string; Input: Record<string, unknown> },
+      action?: IActionContext,
+    ) => {
+      calls.push({
+        Type: "usageSummary",
+        EnvironmentId: effect.EnvironmentId,
+        Input: effect.Input,
+      });
       const sources = [{ refreshing: state.Refreshing && effect.Input.provisional === true }];
       const summary = { buckets: [], sources, contractVersion: 6 };
       if (!state.Hold) return summary;
       state.Hold = false;
       return new Promise((resolve, reject) => {
         release = () => resolve(summary);
-        action?.signal.addEventListener("abort", () => reject(thrownOf(Cause.interrupt())));
+        action?.signal.addEventListener("abort", () => {
+          calls.push({ Type: "usageSummaryAborted" });
+          reject(thrownOf(Cause.interrupt()));
+        });
       });
     },
-    archivedShell: () => {
-      calls.push({ Type: "archivedShell" });
+    archivedShell: (effect: { EnvironmentId: string }) => {
+      calls.push({ Type: "archivedShell", EnvironmentId: effect.EnvironmentId });
       return ARCHIVE;
     },
     threadCommand: (effect: { Command: IThreadCommand }) => {
@@ -6523,6 +6533,7 @@ describe("the usage and archive pages", () => {
     await show(server, { Kind: "usage" });
     await show(server, { Kind: "usage" });
     expect(fake.usageReads()).toMatchObject([{ provisional: true }]);
+    expect(fake.of("usageSummary")[0]?.EnvironmentId).toBe(ENV);
     expect(fake.of("refreshProviders")).toEqual([{ Type: "refreshProviders", Automatic: true }]);
     const held = server.environment().Local.UsagePage!;
     expect(held.Usage?.Days).toBe(30);
@@ -6576,6 +6587,24 @@ describe("the usage and archive pages", () => {
     expect(fake.usageReads()[1]).toEqual(fake.usageReads()[0]);
     await server.runtime.dispatch(refreshUsage, page.$Id, true);
     expect(fake.of("refreshProviders")).toEqual([{ Type: "refreshProviders", Automatic: false }]);
+    expect(fake.calls.some((call) => call.Type === "serverConfig")).toBe(false);
+  });
+
+  it("a refresh whose read a newer window overtook leaves the newer window's summary", async () => {
+    const fake = pagesServer();
+    const server = await connect(undefined, null, fake.commands);
+    await choose(server, "cost", 30);
+    await show(server, { Kind: "usage" });
+    const page = server.environment().Local.UsagePage!;
+    fake.state.Hold = true;
+    const refresh = server.runtime.dispatch(refreshUsage, page.$Id, false);
+    await settled();
+    await choose(server, "cost", 7);
+    expect(server.environment().Local.UsagePage?.Usage?.Days).toBe(7);
+    fake.release();
+    await refresh;
+    await settled();
+    expect(server.environment().Local.UsagePage?.Usage?.Days).toBe(7);
   });
 
   it("drop a usage read a newer window replaced, silently, though its request ends interrupted", async () => {
@@ -6585,6 +6614,9 @@ describe("the usage and archive pages", () => {
     await choose(server, "cost", 30);
     await show(server, { Kind: "usage" });
     await choose(server, "cost", 7);
+    fake.release();
+    await settled();
+    expect(fake.of("usageSummaryAborted")).toHaveLength(1);
     expect(server.environment().Local.UsagePage?.Usage?.Days).toBe(7);
     expect(server.takeFailures()).toEqual([]);
   });
@@ -6610,7 +6642,7 @@ describe("the usage and archive pages", () => {
     const server = await connect(undefined, null, fake.commands);
     await show(server, { Kind: "settings", Page: "archived" });
     await show(server, { Kind: "settings", Page: "archived" });
-    expect(fake.of("archivedShell")).toHaveLength(1);
+    expect(fake.of("archivedShell")).toEqual([{ Type: "archivedShell", EnvironmentId: ENV }]);
     const held = server.environment().Local.ArchivePage!;
     expect(held.Archived).toEqual(ARCHIVE);
     await show(server, null);
@@ -6626,7 +6658,7 @@ describe("the usage and archive pages", () => {
     await settled();
     expect(fake.calls.slice(-2)).toEqual([
       { Type: "threadCommand", Command: { Kind: "unarchive" } },
-      { Type: "archivedShell" },
+      { Type: "archivedShell", EnvironmentId: ENV },
     ]);
     fake.state.Refused = true;
     await server.runtime.dispatch(archivedThreadCommand, server.envId(), "t-9", "delete");

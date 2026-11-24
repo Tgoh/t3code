@@ -80,6 +80,7 @@ function openFiles() {
     value: () => value!,
     emitted,
     methods: handlers!,
+    supply: supply!,
     ctx,
     pick: async (name: string) => {
       const file = new File([name], `${name}.txt`, { type: "text/plain" });
@@ -152,5 +153,24 @@ describe("composerFiles", () => {
     const files = openFiles();
     expect(await files.methods.stored(files.ctx, ["kept", "broken"])).toHaveLength(1);
     expect(files.emitted).toEqual([{ Lost: ["broken"] }]);
+  });
+
+  it("shows a supplied image as preparing while kept files are still being held again", () => {
+    keep([
+      {
+        Id: "kept",
+        Kind: "image",
+        Name: "kept.png",
+        MimeType: "image/png",
+        SizeBytes: 8,
+        PastedText: false,
+        DataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      },
+    ]);
+    vi.stubGlobal("fetch", () => new Promise(() => {}));
+    const files = openFiles();
+    const image = new File(["png"], "paste.png", { type: "image/png" });
+    void files.supply([{ Kind: "image", File: image, PastedText: false }]);
+    expect(files.value().Preparing.map((file) => file.Name)).toEqual(["paste.png"]);
   });
 });

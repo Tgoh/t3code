@@ -285,7 +285,6 @@ export function* writeSetting(draft: IEnvironment, write: ISettingWrite): IOpenG
 
 // Follows the automatic refresh in apps/web/src/components/usage/UsagePage.tsx, which runs when
 // the limits show and skips an environment refreshed in the last five minutes.
-/** Asks the server to re-probe its providers as the limits show, in the header or on the Usage page. */
 export function* autoRefreshLimits(draft: IEnvironment): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
   yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: true }));

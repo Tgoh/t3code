@@ -372,7 +372,6 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     for (const id of Array.from(held.keys())) release(id, true);
   });
 
-  // Holds what the thread's draft kept, under the ids its state has.
   const kept = storedDraftFiles(params.ThreadId);
   const restored = Promise.all(kept.map((stored) => restoreOne(stored).catch(() => null))).then(
     (entries) => {
@@ -382,6 +381,8 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
         else if (r.signal.aborted) {
           entry.Abort.abort();
           if (entry.PreviewUrl) URL.revokeObjectURL(entry.PreviewUrl);
+          // A file entry's upload is the stored one, which the draft still names.
+          if (entry.File !== null && entry.Minted !== null) deleteUpload(entry.Minted);
         } else hold(entry);
       }
       show();
@@ -415,13 +416,13 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   };
 
   r.onSupply(async (admitted) => {
-    await restored;
     const ids = admitted.map(({ Kind, File: file }) => {
       const id = randomId();
       if (Kind === "image") preparing.set(id, file.name || "image");
       return id;
     });
     if (preparing.size > 0) show();
+    await restored;
     const picked: IPickedFile[] = [];
     let error: string | null = null;
     for (const [index, { Kind, File: file, PastedText }] of admitted.entries()) {

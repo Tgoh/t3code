@@ -45,9 +45,11 @@ import {
 import UsagePage, {
   type IUsageMetric,
   type IUsagePage,
+  METRICS as USAGE_METRICS,
   RefreshingUsage,
   usageDays,
   usageMetric,
+  WINDOW_DAYS,
 } from "./UsagePage";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
@@ -68,7 +70,6 @@ import {
   tokenTypeSegments,
 } from "./usageChart";
 
-// Follows apps/web/src/components/usage/usageShortcuts.ts and usageProviders.ts.
 const loading = "m-0 px-4 text-[13px] text-muted-foreground";
 const HEADING = "m-0 flex items-center gap-2 text-[14px] font-medium";
 const TOTAL_TERM = "text-[12px] text-muted-foreground";
@@ -83,17 +84,16 @@ const FIGURE = `${CELL} pl-6 text-right whitespace-nowrap text-muted-foreground`
 const STRONG_FIGURE = `${CELL} pl-6 text-right whitespace-nowrap text-foreground`;
 const EMPTY_CELL = `${CELL} pl-6 text-center whitespace-nowrap text-muted-foreground`;
 
-const METRICS: Array<{ Value: IUsageMetric; Label: string }> = [
-  { Value: "cost", Label: "Cost" },
-  { Value: "tokens", Label: "Tokens" },
-  { Value: "limits", Label: "Limits" },
-];
-const WINDOWS = [
-  { Days: 1, Label: "Past 24h" },
-  { Days: 7, Label: "7 days" },
-  { Days: 30, Label: "30 days" },
-  { Days: 90, Label: "90 days" },
-];
+const METRIC_LABELS: Record<IUsageMetric, string> = {
+  cost: "Cost",
+  tokens: "Tokens",
+  limits: "Limits",
+};
+const METRICS = USAGE_METRICS.map((metric) => ({ Value: metric, Label: METRIC_LABELS[metric] }));
+const WINDOWS = WINDOW_DAYS.map((days) => ({
+  Days: days,
+  Label: days === 1 ? "Past 24h" : `${days} days`,
+}));
 const PROVIDERS: Record<UsageProviderKind, { Label: string; Color: string; Driver: string }> = {
   codex: { Label: "Codex", Color: "var(--foreground)", Driver: "codex" },
   claude: { Label: "Claude Code", Color: "#d97757", Driver: "claudeAgent" },

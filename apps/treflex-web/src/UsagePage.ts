@@ -14,8 +14,8 @@ import {
 
 // Follows apps/web/src/components/usage/usageShortcuts.ts and usageProviders.ts.
 export type IUsageMetric = "cost" | "tokens" | "limits";
-const METRICS: readonly IUsageMetric[] = ["cost", "tokens", "limits"];
-const WINDOW_DAYS: readonly number[] = [1, 7, 30, 90];
+export const METRICS: readonly IUsageMetric[] = ["cost", "tokens", "limits"];
+export const WINDOW_DAYS: readonly number[] = [1, 7, 30, 90];
 
 export const usageMetric = (held: string): IUsageMetric =>
   METRICS.find((metric) => metric === held) ?? "limits";
@@ -41,6 +41,8 @@ export function getDefaultUsagePage(environmentId: string): Omit<IUsagePage, "$I
 
 // Follows the provisional read in packages/client-runtime/src/state/server.ts (usage summary query).
 function* readWindow(draft: IUsagePage, window: IUsageWindow): IOpenGenerator {
+  const asked = JSON.stringify(window);
+  const current = () => draft.Window !== null && JSON.stringify(draft.Window) === asked;
   const read = (extra: Partial<IWireUsageInput>) =>
     open(
       usageSummaryEffect({
@@ -49,9 +51,11 @@ function* readWindow(draft: IUsagePage, window: IUsageWindow): IOpenGenerator {
       }),
     );
   let summary = yield* read({ provisional: true });
+  if (!current()) return;
   draft.Usage = { Days: window.Days, Input: { ...window.Input }, Summary: summary };
   if (!summary.sources.some((source) => source.refreshing === true)) return;
   summary = yield* read({ awaitRefresh: true });
+  if (!current()) return;
   draft.Usage = { Days: window.Days, Input: { ...window.Input }, Summary: summary };
 }
 
@@ -78,7 +82,7 @@ export function* refreshUsage(draft: IUsagePage, limits: boolean): IOpenGenerato
   }
   yield* open(refreshUsageRatesEffect({ EnvironmentId: environmentId }));
   const window = draft.Window;
-  if (window !== null) yield* readWindow(draft, window);
+  if (window !== null) yield* readWindow(draft, { Days: window.Days, Input: { ...window.Input } });
 }
 export const RefreshingUsage = workTag("Usage/Refreshing");
 RefreshingUsage.mark(refreshUsage, loadUsage);
