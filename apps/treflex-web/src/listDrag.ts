@@ -1,5 +1,5 @@
 // @effect-diagnostics globalTimers:off -- Pointer handling in the view, outside any Effect runtime.
-import { createSignal, onCleanup } from "solid-js";
+import { createSignal, onCleanup, onFlush } from "solid-js";
 
 import { dropGap, moveProject } from "./projectOrder";
 
@@ -88,7 +88,7 @@ export function createListDrag(options: {
       setDragging(id);
       window.getSelection()?.removeAllRanges();
       document.documentElement.style.userSelect = "none";
-      queueMicrotask(moveGhost);
+      onFlush(moveGhost);
     };
     const place = () => {
       if (measured === null) return;

@@ -1,4 +1,5 @@
 import type { VcsStatusResult } from "@t3tools/contracts";
+import { children, createComponent, createRenderEffect, createRoot, flush } from "solid-js";
 import {
   createTestRuntime,
   guids,
@@ -10,6 +11,7 @@ import {
   registerDataSource,
   settled,
 } from "treflex";
+import { TreflexProvider } from "treflex-solid";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -21,15 +23,22 @@ import {
   type IGitWork,
   runGitAction,
 } from "./GitWork";
-import type { IGitActionOutcome, IGitActionRequest } from "./Infrastructure/sourceControlEffects";
+import type {
+  IBranchRef,
+  IGitActionOutcome,
+  IGitActionRequest,
+} from "./Infrastructure/sourceControlEffects";
 import type { IToastRequest } from "./Infrastructure/toasts";
 import type { ICheckout } from "./checkout";
 import {
+  BranchList,
   branchMatchesQuery,
   changesTotals,
+  getDefaultBranchList,
   getDefaultThreadDetails,
   type IThreadDetails,
   selectBranch,
+  useBranchList,
 } from "./ThreadDetails";
 import type { IReplica } from "./ThreadSession";
 import { detailsLayout } from "./threadDetailsLayout";
@@ -227,6 +236,82 @@ describe("branchMatchesQuery", () => {
     expect(branchMatchesQuery("treflex-main", " Main ")).toBe(true);
     expect(branchMatchesQuery("treflex-main", "new-feature")).toBe(false);
     expect(branchMatchesQuery("feature/my-branch", "my branch")).toBe(true);
+  });
+});
+
+describe("the branch picker's list", () => {
+  const MAIN: IBranchRef = {
+    Name: "main",
+    IsRemote: false,
+    Current: true,
+    IsDefault: true,
+    WorktreePath: null,
+  };
+
+  function picker(listBranches: (effect: { Cwd: string; Query: string }) => unknown) {
+    const queries: Array<[string, string]> = [];
+    const runtime = createTestRuntime<IEntity>(
+      { $Id: "Root" },
+      {
+        listBranches: (effect: { Cwd: string; Query: string }) => {
+          queries.push([effect.Cwd, effect.Query]);
+          return listBranches(effect);
+        },
+      },
+    );
+    let list!: ReturnType<typeof useBranchList>;
+    const Picker = BranchList.provider(() => {
+      list = useBranchList(() => CHECKOUT);
+      return null;
+    }, getDefaultBranchList);
+    const close = createRoot((dispose) => {
+      const view = children(() =>
+        createComponent(TreflexProvider, {
+          value: runtime,
+          get children() {
+            return createComponent(Picker, {});
+          },
+        }),
+      );
+      createRenderEffect(view, () => {});
+      return dispose;
+    });
+    flush();
+    return { runtime, queries, list: () => list, close };
+  }
+
+  it("lists the checkout's refs as it opens and searches on each query", async () => {
+    const open = picker((effect) => (effect.Query === "" ? [MAIN] : []));
+    await settled();
+    expect(open.queries).toEqual([[CHECKOUT.Cwd, ""]]);
+    expect(open.list().state).toMatchObject({ Branches: [MAIN], Error: null });
+    open.list().load("nope");
+    await settled();
+    expect(open.queries.at(-1)).toEqual([CHECKOUT.Cwd, "nope"]);
+    expect(open.list().state.Branches).toEqual([]);
+    open.close();
+  });
+
+  it("holds a failed load's error only while it's open", async () => {
+    const open = picker(() => {
+      throw serverFailure("not a repository");
+    });
+    await settled();
+    const held = open.list().state;
+    expect(held).toMatchObject({ Branches: [], Error: "not a repository" });
+    open.close();
+    expect(open.runtime.locate(held)).toBeUndefined();
+  });
+
+  it("drops a load still in flight when it closes", async () => {
+    let answer: ((refs: IBranchRef[]) => void) | null = null;
+    const open = picker(() => new Promise((resolve) => (answer = resolve)));
+    await settled();
+    const held = open.list().state;
+    open.close();
+    answer!([MAIN]);
+    await settled();
+    expect(open.runtime.locate(held)).toBeUndefined();
   });
 });
 

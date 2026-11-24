@@ -7,6 +7,7 @@ import {
   createUniqueId,
   omit,
   onCleanup,
+  onSettled,
   type Setter,
   Show,
   untrack,
@@ -228,12 +229,15 @@ export function DialogSurface(
       props.initialFocus === undefined ? initialFocusTarget(surface) : props.initialFocus(surface);
     (target ?? surface).focus({ preventScroll: true });
   };
+  onSettled(() => {
+    const element = untrack(dialog);
+    if (element !== undefined) open(element);
+  });
   return (
     <dialog
       ref={(element) => {
         setDialog(element);
         presence.track(element);
-        queueMicrotask(() => open(element));
       }}
       class={DIALOG_ROOT}
       role={root.alert ? "alertdialog" : undefined}

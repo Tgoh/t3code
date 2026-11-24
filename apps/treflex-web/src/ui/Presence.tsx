@@ -4,6 +4,7 @@ import {
   createContext,
   createRenderEffect,
   createSignal,
+  onFlush,
   Show,
   untrack,
   useContext,
@@ -79,7 +80,7 @@ export function Presence<T>(props: {
           await Promise.allSettled(running.map((animation) => animation.finished));
         }
       };
-      queueMicrotask(
+      onFlush(
         () =>
           void settle().then(() => {
             if (run !== generation) return;
@@ -99,7 +100,8 @@ export function Presence<T>(props: {
         return;
       }
       element.setAttribute(STARTING, "");
-      requestAnimationFrame(() => element.removeAttribute(STARTING));
+      // One frame can run before the browser ever computed the starting style.
+      requestAnimationFrame(() => requestAnimationFrame(() => element.removeAttribute(STARTING)));
     },
     exiting: ending,
   };

@@ -521,6 +521,7 @@ export function QueuedMessage(props: { runId: string }) {
 function UserRow(props: IRowProps) {
   const { thread, item, inherited } = useRow(props);
   const environment = Environment.use();
+  const session = ThreadSession.use();
   const message = () => {
     const held = item();
     return held?.type === "user_message" ? held : null;
@@ -544,7 +545,7 @@ function UserRow(props: IRowProps) {
         );
   });
   const steer = () => steerLabel(message()?.inputIntent, message()?.status);
-  const [expanded, setExpanded] = createSignal(false);
+  const expanded = () => session.state.ExpandedRows[props.id] === true;
   const attachments = () => message()?.attachments ?? [];
   const createdAt = () => {
     const held = message();
@@ -603,7 +604,7 @@ function UserRow(props: IRowProps) {
             <FoldHeader
               fold={held()}
               expanded={expanded()}
-              onToggle={() => setExpanded((open) => !open)}
+              onToggle={() => void session.toggleRowExpanded(props.id)}
             />
             <Show when={expanded()}>
               <div class="flex max-h-96 flex-col gap-2 overflow-auto px-3 pb-3">

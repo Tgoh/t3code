@@ -39,7 +39,6 @@ import {
 
 import { followActivity, reportActivity } from "./Activity";
 import { address, type IAddress } from "./Infrastructure/address";
-import type { IDeviceActivity } from "./Infrastructure/clientActivity";
 import {
   cloneControlEffect,
   forkThreadEffect,
@@ -188,7 +187,6 @@ export interface IEnvironment extends IEntity {
     Preferences: IPreferences;
     Shelves: IShelves;
     SystemDark: boolean;
-    Activity: IDeviceActivity;
     ViewportDebug: boolean;
     /** The editor this device last opened with, as stock stores it. */
     Editor: string | null;
@@ -224,7 +222,6 @@ export function* newEnvironment(
       SettledShown: SETTLED_PAGE,
     },
     SystemDark: false,
-    Activity: { Visible: false, Focused: false, RecentlyInteracted: false },
     ViewportDebug: false,
     Editor: yield* storedEditorEffect(),
     Dictation: dictation,
@@ -329,6 +326,7 @@ function* sessionOf(
   yield* openResource(session, "Composer/Files", {
     Type: "composerFiles",
     EnvironmentId: draft.EnvironmentId,
+    ThreadId: threadId,
   });
   yield* restoreDraft(session);
   return session;
@@ -883,11 +881,7 @@ export function* openMode(draft: IEnvironment): ISelectorGenerator<IRemoteOpenMo
 
 /** The editors the server reports installed, which change only with a server restart. */
 export function* editors(draft: IEnvironment): ISelectorGenerator<IEditors> {
-  return editorChoices(
-    draft.Replica.Config?.availableEditors ?? [],
-    draft.Local.Editor,
-    typeof navigator === "undefined" ? "" : navigator.platform,
-  );
+  return editorChoices(draft.Replica.Config?.availableEditors ?? [], draft.Local.Editor);
 }
 
 // Follows handleAddProjectForEnvironment in apps/web/src/components/CommandPalette.tsx.

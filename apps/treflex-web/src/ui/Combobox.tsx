@@ -4,6 +4,7 @@ import {
   createUniqueId,
   omit,
   onCleanup,
+  onFlush,
   onSettled,
   untrack,
   useContext,
@@ -77,7 +78,7 @@ export function openComboboxFromKeys(event: KeyboardEvent, open: () => void): vo
   event.preventDefault();
   pendingOpenHighlight = event.key === "ArrowDown" ? "first" : "last";
   open();
-  queueMicrotask(() => (pendingOpenHighlight = null));
+  onFlush(() => (pendingOpenHighlight = null));
 }
 
 /** The combobox's trigger: a press or ArrowDown and ArrowUp call `onOpen` with it. */
@@ -224,12 +225,12 @@ function comboboxNavigation(options: {
       opening = null;
       if (query.trim() === "") {
         pending = false;
-        queueMicrotask(() => highlightSelected(null));
+        onFlush(() => highlightSelected(null));
         return;
       }
       pending = true;
       scrollToTop();
-      queueMicrotask(() => sync());
+      onFlush(() => sync());
     },
     onMouseMove: (event: MouseEvent) => {
       const item = itemAt(event.target);

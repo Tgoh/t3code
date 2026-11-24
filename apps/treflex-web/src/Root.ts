@@ -2,6 +2,7 @@ import {
   type IActionGenerator,
   type IEntity,
   type IReceiverId,
+  type IRuntime,
   type ISerializedThrow,
   receiver,
   start,
@@ -11,6 +12,7 @@ import { createEntityFeature } from "treflex-solid";
 import { type IEnvironment, init, newEnvironment } from "./Environment";
 import { environmentInfo } from "./Infrastructure/environmentInfo";
 import { toast } from "./Infrastructure/toasts";
+import { restoreFiles } from "./ThreadSession";
 
 export interface IRoot extends IEntity {
   readonly $Receiver?: IReceiverId<IRoot>;
@@ -66,3 +68,11 @@ export const RootReceiver = receiver<IRoot>("RootReceiver")({
 });
 
 export default createEntityFeature<IRoot>("Root")({ load });
+
+/** The `repair` a restore passes: each draft's files reopen holding only what its draft kept. */
+export function repairDraftFiles(runtime: IRuntime<IRoot>) {
+  const sessions = runtime.state.Environments.flatMap((environment) =>
+    Object.values(environment.Local.ThreadSessions),
+  );
+  return Promise.all(sessions.map((session) => runtime.dispatch(restoreFiles, session.$Id)));
+}

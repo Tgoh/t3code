@@ -5,7 +5,7 @@ import {
   type SnoozePreset,
 } from "@t3tools/client-runtime/state/thread-settled";
 import { findSearchTokenRanges, type SearchRange } from "@t3tools/shared/paletteSearch";
-import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
+import { createMemo, createSignal, For, Match, onSettled, Show, Switch, untrack } from "solid-js";
 
 import { ProjectBadge, ProviderIcon } from "./brand";
 import Environment from "./Environment";
@@ -205,6 +205,12 @@ export type ICardSection = "active" | "pinned" | "snoozed" | "settled";
 
 export function RenameInput(props: { title: string; onDone: (title: string | null) => void }) {
   const [finished, setFinished] = createSignal(false);
+  const [input, setInput] = createSignal<HTMLInputElement>();
+  onSettled(() => {
+    const element = untrack(input);
+    element?.focus();
+    element?.select();
+  });
   const finish = (title: string | null) => {
     if (finished()) return;
     setFinished(true);
@@ -215,12 +221,7 @@ export function RenameInput(props: { title: string; onDone: (title: string | nul
       class="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 py-0 text-[14px] leading-[18px] font-medium outline-none focus:border-foreground"
       aria-label="Thread title"
       value={props.title}
-      ref={(input) =>
-        queueMicrotask(() => {
-          input.focus();
-          input.select();
-        })
-      }
+      ref={setInput}
       onClick={(event) => event.stopPropagation()}
       onBlur={(event) => finish(event.currentTarget.value)}
       onKeyDown={(event) => {

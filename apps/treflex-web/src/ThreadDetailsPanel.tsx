@@ -19,6 +19,7 @@ import {
 } from "solid-js";
 
 import { editorIcon } from "./editorIcons";
+import { editorLabel } from "./editors";
 import { editorUnavailableReason } from "./remoteOpen";
 import Environment from "./Environment";
 import {
@@ -63,12 +64,15 @@ import { lineageTitles } from "./lineageTitles";
 import { useOverlays } from "./overlays";
 import type { IBranchRef } from "./Infrastructure/sourceControlEffects";
 import ThreadDetails, {
+  BranchList,
   blockedByWorktree,
   branchMatchesQuery,
   changesTotals,
+  getDefaultBranchList,
   type IThreadDetails,
   loadBranches,
   SwitchingBranch,
+  useBranchList,
 } from "./ThreadDetails";
 import { SourceControlIcon } from "./sourceControlIcon";
 import ThreadSession, { mergeBack } from "./ThreadSession";
@@ -674,6 +678,7 @@ function BranchPicker(props: {
   query: string;
   loading: boolean;
   empty: boolean;
+  error: string | null;
   onQuery: (query: string) => void;
   onClose: () => void;
   children: JSX.Element;
@@ -709,11 +714,105 @@ function BranchPicker(props: {
           <Show when={props.loading}>
             <ComboboxStatus>Loading refs...</ComboboxStatus>
           </Show>
+          <Show when={props.error}>{(error) => <ComboboxStatus>{error()}</ComboboxStatus>}</Show>
         </div>
       </ComboboxPopup>
     </Combobox>
   );
 }
+
+const BranchMenu = BranchList.provider(
+  (props: { trigger: HTMLElement; value: string | null; onClose: () => void }) => {
+    const details = ThreadDetails.use();
+    const list = useBranchList(() => ({
+      EnvironmentId: details.state.EnvironmentId,
+      Cwd: details.state.Cwd,
+    }));
+    const loading = useInFlight(loadBranches, () => list.state);
+    const [query, setQuery] = createSignal("");
+    const cwd = () => details.state.Cwd;
+    const exactBranch = () => {
+      const trimmed = query().trim();
+      return list.state.Branches?.find((ref) => ref.Name === trimmed);
+    };
+    const matching = createMemo(() =>
+      (list.state.Branches ?? []).filter((ref) => branchMatchesQuery(ref.Name, query())),
+    );
+    const badge = (ref: IBranchRef) =>
+      ref.Current
+        ? "current"
+        : blockedByWorktree(ref, cwd())
+          ? "worktree"
+          : ref.IsRemote
+            ? "remote"
+            : ref.IsDefault
+              ? "default"
+              : null;
+    return (
+      <BranchPicker
+        trigger={props.trigger}
+        value={props.value}
+        query={query()}
+        loading={loading() && list.state.Branches === null}
+        empty={list.state.Branches?.length === 0 && query().trim() === ""}
+        error={list.state.Error}
+        onQuery={(next) => {
+          setQuery(next);
+          list.load(next);
+        }}
+        onClose={props.onClose}
+      >
+        <For each={matching()}>
+          {(ref) => {
+            const blocked = () => blockedByWorktree(ref, cwd());
+            const row = () => (
+              <ComboboxItem
+                value={ref.Name}
+                disabled={blocked()}
+                onClick={() => {
+                  void details.selectBranch(ref);
+                  props.onClose();
+                }}
+              >
+                <div class="flex w-full min-w-0 items-center justify-between gap-2">
+                  <span class="min-w-0 flex-1 truncate">{ref.Name}</span>
+                  <Show when={badge(ref)}>
+                    {(held) => (
+                      <span class="shrink-0 text-3xs text-muted-foreground/45">{held()}</span>
+                    )}
+                  </Show>
+                </div>
+              </ComboboxItem>
+            );
+            return (
+              <Show when={blocked()} fallback={row()}>
+                <span
+                  class="block w-full cursor-not-allowed"
+                  data-tip={`Checked out in ${ref.WorktreePath}`}
+                  data-tip-side="left"
+                >
+                  {row()}
+                </span>
+              </Show>
+            );
+          }}
+        </For>
+        <Show when={query().trim() !== "" && exactBranch() === undefined}>
+          <ComboboxItem
+            value={`__create_new_branch__:${query().trim()}`}
+            onClick={() => {
+              void details.createBranch(query());
+              props.onClose();
+            }}
+          >
+            <span class="truncate">Create new ref "{query().trim()}"</span>
+          </ComboboxItem>
+        </Show>
+      </BranchPicker>
+    );
+  },
+  getDefaultBranchList,
+);
 
 interface IDetailsProps {
   /** The thread's branch, which stands in for git status until status arrives. */
@@ -731,7 +830,6 @@ const Body = (props: IDetailsProps) => {
   const environment = Environment.use();
   const status = useResource(() => details.state, "Details/Status");
   const switchingBranch = useInFlight(SwitchingBranch, () => details.state);
-  const loadingBranches = useInFlight(loadBranches, () => details.state);
   const busy = useInFlight(GitRunning, () => work.state);
   const git = () => status.value()?.Status ?? null;
   const cwd = () => details.state.Cwd;
@@ -742,7 +840,6 @@ const Body = (props: IDetailsProps) => {
   const [branchPicker, setBranchPicker] = createSignal<HTMLElement | null>(null);
   const [committing, setCommitting] = createSignal(false);
   const [addingScript, setAddingScript] = createSignal(false);
-  const [branchQuery, setBranchQuery] = createSignal("");
   createEffect(
     () => props.shown,
     (shown) => {
@@ -770,10 +867,11 @@ const Body = (props: IDetailsProps) => {
     const status = git();
     return status === null ? props.branch : status.refName;
   };
-  const editorLabel = () => {
-    const editors = environment.editors();
-    const preferred = editors.Available.find((editor) => editor.Id === editors.Preferred);
-    return preferred === undefined ? "Open in editor" : `Open in ${preferred.Label}`;
+  const preferredLabel = () => {
+    const preferred = environment.editors().Preferred;
+    return preferred === null
+      ? "Open in editor"
+      : `Open in ${editorLabel(preferred, navigator.platform)}`;
   };
   // Follows OpenInPicker in apps/web/src/components/chat/OpenInPicker.tsx, whose editors run on the
   // server's machine only when this client is on it.
@@ -818,29 +916,8 @@ const Body = (props: IDetailsProps) => {
     closeMenu();
     void session.runScript(script);
   };
-  const openBranches = (trigger: HTMLElement) => {
-    if (branchPicker() !== null) return setBranchPicker(null);
-    setBranchQuery("");
-    setBranchPicker(trigger);
-    void details.loadBranches("");
-  };
-  const exactBranch = () => {
-    const query = branchQuery().trim();
-    return details.state.Branches?.find((ref) => ref.Name === query);
-  };
-  const matchingBranches = createMemo(() =>
-    (details.state.Branches ?? []).filter((ref) => branchMatchesQuery(ref.Name, branchQuery())),
-  );
-  const branchBadge = (ref: IBranchRef) =>
-    ref.Current
-      ? "current"
-      : blockedByWorktree(ref, cwd())
-        ? "worktree"
-        : ref.IsRemote
-          ? "remote"
-          : ref.IsDefault
-            ? "default"
-            : null;
+  const openBranches = (trigger: HTMLElement) =>
+    setBranchPicker(branchPicker() === null ? trigger : null);
   const pendingCopy = () => {
     const pending = work.defaultBranchConfirm()?.Request;
     if (pending === undefined) return null;
@@ -887,7 +964,7 @@ const Body = (props: IDetailsProps) => {
         </div>
         <Show when={environment.editors().Available.length > 0}>
           <SplitRow
-            label={editorUnavailable() === null ? editorLabel() : "Open in editor"}
+            label={editorUnavailable() === null ? preferredLabel() : "Open in editor"}
             icon={
               <EditorIcon
                 editor={editorUnavailable() === null ? (environment.editors().Preferred ?? "") : ""}
@@ -941,7 +1018,6 @@ const Body = (props: IDetailsProps) => {
             </span>
             <ChevronDown class="ml-auto" />
           </ComboboxTrigger>
-          <Show when={details.state.BranchError}>{(error) => <p class={ERROR}>{error()}</p>}</Show>
           <Show
             when={!busy() && noticeLabel() === null}
             fallback={
@@ -1031,9 +1107,9 @@ const Body = (props: IDetailsProps) => {
               <Show when={open.Kind === "editor" && editorUnavailable() === null}>
                 <For each={environment.editors().Available}>
                   {(editor) => (
-                    <MenuItem onClick={() => openEditor(editor.Id)}>
-                      <EditorIcon editor={editor.Id} />
-                      <MenuItemLabel>{editor.Label}</MenuItemLabel>
+                    <MenuItem onClick={() => openEditor(editor)}>
+                      <EditorIcon editor={editor} />
+                      <MenuItemLabel>{editorLabel(editor, navigator.platform)}</MenuItemLabel>
                     </MenuItem>
                   )}
                 </For>
@@ -1098,65 +1174,11 @@ const Body = (props: IDetailsProps) => {
 
       <Presence when={branchPicker()}>
         {(trigger) => (
-          <BranchPicker
+          <BranchMenu
             trigger={trigger()}
             value={branchName()}
-            query={branchQuery()}
-            loading={loadingBranches() && details.state.Branches === null}
-            empty={details.state.Branches?.length === 0 && branchQuery().trim() === ""}
-            onQuery={(query) => {
-              setBranchQuery(query);
-              void details.loadBranches(query);
-            }}
             onClose={() => setBranchPicker(null)}
-          >
-            <For each={matchingBranches()}>
-              {(ref) => {
-                const blocked = () => blockedByWorktree(ref, cwd());
-                const row = () => (
-                  <ComboboxItem
-                    value={ref.Name}
-                    disabled={blocked()}
-                    onClick={() => {
-                      setBranchPicker(null);
-                      void details.selectBranch(ref);
-                    }}
-                  >
-                    <div class="flex w-full min-w-0 items-center justify-between gap-2">
-                      <span class="min-w-0 flex-1 truncate">{ref.Name}</span>
-                      <Show when={branchBadge(ref)}>
-                        {(badge) => (
-                          <span class="shrink-0 text-3xs text-muted-foreground/45">{badge()}</span>
-                        )}
-                      </Show>
-                    </div>
-                  </ComboboxItem>
-                );
-                return (
-                  <Show when={blocked()} fallback={row()}>
-                    <span
-                      class="block w-full cursor-not-allowed"
-                      data-tip={`Checked out in ${ref.WorktreePath}`}
-                      data-tip-side="left"
-                    >
-                      {row()}
-                    </span>
-                  </Show>
-                );
-              }}
-            </For>
-            <Show when={branchQuery().trim() !== "" && exactBranch() === undefined}>
-              <ComboboxItem
-                value={`__create_new_branch__:${branchQuery().trim()}`}
-                onClick={() => {
-                  setBranchPicker(null);
-                  void details.createBranch(branchQuery());
-                }}
-              >
-                <span class="truncate">Create new ref "{branchQuery().trim()}"</span>
-              </ComboboxItem>
-            </Show>
-          </BranchPicker>
+          />
         )}
       </Presence>
 

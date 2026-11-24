@@ -5,7 +5,16 @@ import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { useInFlight } from "treflex-solid";
 import type { JSX } from "@solidjs/web";
-import { type Accessor, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
+import {
+  type Accessor,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onSettled,
+  Show,
+  untrack,
+} from "solid-js";
 
 import { SECOND, useTick } from "./AgentElapsed";
 import {
@@ -283,6 +292,7 @@ function QueuedRow(props: { runId: string }) {
   const session = ThreadSession.use();
   const queueing = useInFlight(queueAction, () => session.state);
   const [editing, setEditing] = createSignal<string | null>(null);
+  const [editor, setEditor] = createSignal<HTMLTextAreaElement>();
   const message = () => runMessage(thread.state, props.runId);
   const editable = () => message()?.context?.guest === undefined;
   const workflow = () => session.queueWorkflow();
@@ -301,7 +311,7 @@ function QueuedRow(props: { runId: string }) {
             aria-label="Edit queued message"
             rows={3}
             value={editing() ?? ""}
-            ref={(element) => queueMicrotask(() => element.focus())}
+            ref={setEditor}
             onInput={(event) => setEditing(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -351,7 +361,10 @@ function QueuedRow(props: { runId: string }) {
               aria-label="Edit queued message"
               data-tip="Edit"
               disabled={queueing()}
-              onClick={() => setEditing(message()?.text ?? "")}
+              onClick={() => {
+                setEditing(message()?.text ?? "");
+                onSettled(() => untrack(editor)?.focus());
+              }}
             >
               <PenLine />
             </Button>

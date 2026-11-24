@@ -662,17 +662,25 @@ export function* restoreDraft(draft: IThreadSession): IActionGenerator {
     draft.ModelSelection = stored.ModelSelection;
     draft.RuntimeMode = stored.RuntimeMode;
   }
-  yield* start(restoreFiles, draft);
+  yield* restoreFiles(draft);
 }
 
-export function* restoreFiles(draft: IThreadSession): IOpenGenerator {
+/**
+ * Replaces the draft's files with what this browser kept, under the ids the files resource holds
+ * them by. A restore's repair runs it too, since its resource reopens holding only those.
+ */
+export function* restoreFiles(draft: IThreadSession): IActionGenerator {
   const stored = yield* storedDraftFilesEffect({ ThreadId: draft.ThreadId });
-  if (stored.length === 0) return;
-  const files = resource(draft, "Composer/Files");
-  const restored = yield* open(files.restore(stored));
-  if (restored === undefined) return;
-  draft.Attachments.unshift(...restored);
-  if (restored.length < stored.length) {
+  const lost = draft.Attachments.some((file) => !stored.some((kept) => kept.Id === file.Id));
+  draft.Attachments = stored.map(({ Id, Kind, Name, MimeType, SizeBytes, PastedText }) => ({
+    Id,
+    Kind,
+    Name,
+    MimeType,
+    SizeBytes,
+    PastedText,
+  }));
+  if (lost) {
     yield* toast({
       Kind: "warning",
       Title: "Some attachments were not restored",
@@ -680,7 +688,6 @@ export function* restoreFiles(draft: IThreadSession): IOpenGenerator {
       Thread: { EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
     });
   }
-  yield* start(storeFiles, draft);
 }
 
 const heldSendMark = (draft: IThreadSession) =>

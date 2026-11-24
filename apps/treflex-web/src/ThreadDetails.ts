@@ -1,7 +1,16 @@
 import type { VcsStatusResult } from "@t3tools/contracts";
 import { sanitizeNewRefName } from "@t3tools/shared/git";
-import { type IOpenGenerator, latest, leading, open, openResource, workTag } from "treflex";
-import { createEntityFeature } from "treflex-solid";
+import {
+  type IEntity,
+  type IOpenGenerator,
+  latest,
+  leading,
+  open,
+  openResource,
+  workTag,
+} from "treflex";
+import { createComponentFeature, createEntityFeature } from "treflex-solid";
+import { onSettled } from "solid-js";
 
 import type { IThreadPart } from "./checkout";
 import { serverError } from "./Infrastructure/serverError";
@@ -22,12 +31,10 @@ declare module "treflex" {
 
 /**
  * The details card's data for one checkout while its thread is shown. A new one is minted when
- * the checkout moves, which stops a branch load or switch made against the old one.
+ * the checkout moves, which stops a switch made against the old one.
  */
 export interface IThreadDetails extends IThreadPart {
   Cwd: string;
-  Branches: IBranchRef[] | null;
-  BranchError: string | null;
 }
 
 export function getDefaultThreadDetails(
@@ -39,8 +46,6 @@ export function getDefaultThreadDetails(
     EnvironmentId: environmentId,
     ThreadId: threadId,
     Cwd: cwd,
-    Branches: null,
-    BranchError: null,
   };
 }
 
@@ -97,17 +102,48 @@ export function* refreshStatus(draft: IThreadDetails): IOpenGenerator {
 }
 leading(refreshStatus);
 
-export function* loadBranches(draft: IThreadDetails, query: string): IOpenGenerator {
-  draft.BranchError = null;
-  const request = { EnvironmentId: draft.EnvironmentId, Cwd: draft.Cwd, Query: query };
+/** The open branch picker's refs, which go when it closes. */
+export interface IBranchList extends IEntity {
+  Branches: IBranchRef[] | null;
+  Error: string | null;
+}
+
+export function getDefaultBranchList(): Omit<IBranchList, "$Id"> {
+  return { Branches: null, Error: null };
+}
+
+export function* loadBranches(
+  draft: IBranchList,
+  checkout: { EnvironmentId: string; Cwd: string },
+  query: string,
+): IOpenGenerator {
+  draft.Error = null;
+  const request = { EnvironmentId: checkout.EnvironmentId, Cwd: checkout.Cwd, Query: query };
   try {
     draft.Branches = yield* open(listBranchesEffect(request));
   } catch (error) {
     draft.Branches = [];
-    draft.BranchError = serverError(error).message;
+    draft.Error = serverError(error).message;
   }
 }
 latest(loadBranches);
+
+export const BranchList = createComponentFeature<IBranchList>("Details/BranchList")(
+  { loadBranches },
+  {},
+);
+
+export function useBranchList(checkout: () => { EnvironmentId: string; Cwd: string }) {
+  const list = BranchList.use();
+  const load = (query: string) => void list.loadBranches(checkout(), query);
+  onSettled(() => load(""));
+  return {
+    get state() {
+      return list.state;
+    },
+    load,
+  };
+}
 
 // Follows the switch and create failures in apps/web/src/components/BranchToolbarBranchSelector.tsx.
 function* switchTo(draft: IThreadDetails, refName: string, create: boolean): IOpenGenerator {
@@ -176,6 +212,6 @@ export const SwitchingBranch = workTag("Details/SwitchingBranch");
 SwitchingBranch.mark(selectBranch, createBranch);
 
 export default createEntityFeature<IThreadDetails>("ThreadDetails")(
-  { refreshStatus, loadBranches, selectBranch, createBranch },
+  { refreshStatus, selectBranch, createBranch },
   {},
 );

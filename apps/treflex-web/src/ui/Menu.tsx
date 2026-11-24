@@ -6,6 +6,7 @@ import {
   createSignal,
   omit,
   onCleanup,
+  onFlush,
   Show,
   untrack,
   useContext,
@@ -91,7 +92,7 @@ export function openMenuFromKeys(event: KeyboardEvent, open: () => void): void {
   event.preventDefault();
   pendingHighlight = event.key === "ArrowDown" ? "first" : "last";
   open();
-  queueMicrotask(() => (pendingHighlight = null));
+  onFlush(() => (pendingHighlight = null));
 }
 
 interface IMenuLevel {

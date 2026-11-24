@@ -1,7 +1,6 @@
 import type { JSX } from "@solidjs/web";
-import { createSignal, omit, onCleanup, untrack } from "solid-js";
+import { createSignal, omit, onCleanup, onSettled, untrack } from "solid-js";
 
-import { cleanupRef } from "./cleanupRef";
 import { overrides } from "./merge";
 import { trackScrollOverflow } from "./scrollOverflow";
 
@@ -122,12 +121,16 @@ export function ScrollArea(
     "hideScrollbars",
     "chainVerticalScroll",
   );
+  const [viewport, setViewport] = createSignal<HTMLDivElement>();
+  onSettled(() => {
+    const element = untrack(viewport);
+    if (element === undefined) return;
+    return trackScrollOverflow(element, { tabIndex: untrack(() => props.viewportTabIndex) });
+  });
   return (
     <div {...rest} class={scrollAreaClass({ radius: props.radius, class: props.class })}>
       <div
-        ref={cleanupRef((element: HTMLDivElement) =>
-          trackScrollOverflow(element, { tabIndex: untrack(() => props.viewportTabIndex) }),
-        )}
+        ref={setViewport}
         class={scrollAreaViewportClass(props)}
         data-slot="scroll-area-viewport"
       >

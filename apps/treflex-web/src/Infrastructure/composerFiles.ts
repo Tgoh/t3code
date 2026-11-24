@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off -- A resource's progress delay, outside any Effect runtime.
+// @effect-diagnostics globalTimers:off cryptoRandomUUID:off -- A resource's timers and ids, outside any Effect runtime.
 import {
   EnvironmentRegistry,
   type EnvironmentSupervisor,
@@ -17,7 +17,7 @@ import type { IResourceImplementation } from "treflex";
 import { attachmentKey, type IAdmittedFile, type IAttachmentKind } from "../attachmentIntake";
 import { errorText } from "../errorText";
 import type { IWireAttachment } from "./commandEffects";
-import type { IStoredAttachment } from "./draftMemory";
+import { type IStoredAttachment, storedDraftFiles } from "./draftMemory";
 import { connectionRuntime } from "./connection";
 import { prepareImageForAttachment } from "./imagePreparation";
 import { serverFailure, serverFetch, settle } from "./serverError";
@@ -29,7 +29,6 @@ export interface IPickedFile {
   MimeType: string;
   SizeBytes: number;
   PastedText: boolean;
-  PreviewUrl: string | null;
 }
 
 export type IFileStatus =
@@ -39,12 +38,14 @@ export type IFileStatus =
 export interface IComposerFilesView {
   Preparing: Array<{ Id: string; Name: string }>;
   Status: Record<string, IFileStatus>;
+  /** Image previews by attachment id; they don't outlive this instance. */
+  Previews: Record<string, string>;
 }
 
 declare module "treflex" {
   interface IResourceTypeRegistry {
     composerFiles: {
-      Params: { EnvironmentId: string };
+      Params: { EnvironmentId: string; ThreadId: string };
       Value: IComposerFilesView;
       Methods: {
         upload(id: string): IWireAttachment;
@@ -52,7 +53,6 @@ declare module "treflex" {
         remove(id: string): void;
         forget(ids: string[]): void;
         stored(ids: string[]): IStoredAttachment[];
-        restore(files: IStoredAttachment[]): IPickedFile[];
         recall(attachments: IWireAttachment[]): IPickedFile[];
       };
       Supply: ReadonlyArray<IAdmittedFile>;
@@ -135,10 +135,8 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   const environmentId = EnvironmentId.make(params.EnvironmentId);
   const held = new Map<string, IHeldFile>();
   const preparing = new Map<string, string>();
-  let nextId = 0;
   let active = 0;
   const waiting: Array<() => void> = [];
-  const mintId = () => `file-${(nextId += 1)}`;
   const rpc = <A, E>(effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>) =>
     settle(
       connectionRuntime.runPromiseExit(
@@ -153,7 +151,9 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   const show = () => {
     if (r.signal.aborted) return;
     const status: Record<string, IFileStatus> = {};
+    const previews: Record<string, string> = {};
     for (const [id, entry] of held) {
+      if (entry.PreviewUrl !== null) previews[id] = entry.PreviewUrl;
       if (entry.Status === null) continue;
       if (entry.Status.Phase === "uploading" && !entry.ShowProgress) continue;
       status[id] = entry.Status;
@@ -161,6 +161,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     r.expose({
       Preparing: Array.from(preparing, ([Id, Name]) => ({ Id, Name })),
       Status: status,
+      Previews: previews,
     });
   };
   show();
@@ -245,7 +246,6 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
       MimeType: entry.MimeType,
       SizeBytes: entry.SizeBytes,
       PastedText: entry.PastedText,
-      PreviewUrl: entry.PreviewUrl,
     };
   };
 
@@ -254,7 +254,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     file: File | null,
     described: Pick<IHeldFile, "Name" | "MimeType" | "SizeBytes" | "PastedText">,
     keys: string[],
-    id = mintId(),
+    id: string = crypto.randomUUID(),
   ): IHeldFile => ({
     ...described,
     Id: id,
@@ -272,6 +272,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
 
   const storedOf = async (entry: IHeldFile): Promise<IStoredAttachment | null> => {
     const described = {
+      Id: entry.Id,
       Kind: entry.Kind,
       Name: entry.Name,
       MimeType: entry.MimeType,
@@ -295,7 +296,8 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
         () => null,
       );
       if (file === null) return null;
-      const entry = heldFile(stored.Kind, file, stored, [await keyOf(stored.Kind, file)]);
+      const keys = [await keyOf(stored.Kind, file)];
+      const entry = heldFile(stored.Kind, file, stored, keys, stored.Id);
       entry.DataUrl = stored.DataUrl;
       startUpload(entry);
       return entry;
@@ -306,7 +308,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
       type: stored.MimeType,
       size: stored.SizeBytes,
     });
-    const entry = heldFile(stored.Kind, null, stored, [key]);
+    const entry = heldFile(stored.Kind, null, stored, [key], stored.Id);
     entry.Minted = stored.AttachmentId;
     entry.Upload = Promise.resolve(stored.AttachmentId);
     return entry;
@@ -367,6 +369,19 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     for (const id of Array.from(held.keys())) release(id, true);
   });
 
+  // Every open, a reopen after a restore included, holds what the thread's draft kept, under the
+  // ids its state has; every method and supply waits for it.
+  const restored = Promise.all(
+    storedDraftFiles(params.ThreadId).map((stored) => restoreOne(stored).catch(() => null)),
+  ).then((entries) => {
+    for (const entry of entries) {
+      if (entry === null) continue;
+      hold(entry);
+      if (r.signal.aborted) release(entry.Id, false);
+    }
+    show();
+  });
+
   /** Fits an image to the provider's limits; null drops it as a repeat or a removal. */
   const prepareImage = async (id: string, source: File): Promise<IHeldFile | string | null> => {
     if (!preparing.has(id)) return null;
@@ -393,8 +408,9 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   };
 
   r.onSupply(async (admitted) => {
+    await restored;
     const ids = admitted.map(({ Kind, File: file }) => {
-      const id = mintId();
+      const id = crypto.randomUUID();
       if (Kind === "image") preparing.set(id, file.name || "image");
       return id;
     });
@@ -432,6 +448,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
 
   r.methods({
     upload: async (_ctx, id) => {
+      await restored;
       const entry = held.get(id);
       if (entry === undefined) {
         throw serverFailure("That file is no longer held. Attach it again.");
@@ -453,29 +470,30 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
         ...(entry.PastedText ? { source: { _tag: "pasted-text" } } : {}),
       } as IWireAttachment;
     },
-    retry: (_ctx, id) => {
+    retry: async (_ctx, id) => {
+      await restored;
       const entry = held.get(id);
       if (entry?.Status?.Phase === "failed") startUpload(entry);
     },
-    remove: (_ctx, id) => release(id, true),
-    forget: (_ctx, ids) => {
+    remove: async (_ctx, id) => {
+      await restored;
+      release(id, true);
+    },
+    forget: async (_ctx, ids) => {
+      await restored;
       for (const id of ids) release(id, false);
     },
     stored: async (_ctx, ids) => {
+      await restored;
       const entries = ids.flatMap((id) => held.get(id) ?? []);
       const stored = await Promise.all(entries.map(storedOf));
       return stored.filter((file) => file !== null);
-    },
-    restore: async (_ctx, files) => {
-      const entries = await Promise.all(files.map(restoreOne));
-      const picked = entries.filter((entry) => entry !== null).map(hold);
-      show();
-      return picked;
     },
     recall: async (_ctx, attachments) => {
       const entries = await Promise.all(attachments.map(download));
       const picked = entries.map(hold);
       for (const entry of entries) startUpload(entry);
+      show();
       return picked;
     },
   });

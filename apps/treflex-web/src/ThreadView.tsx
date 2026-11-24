@@ -416,7 +416,7 @@ const ThreadConversation = ThreadSession.provider<{
       // Only the trim's own shift, so the scroll event it causes isn't read as the user scrolling up
       // and a scroll-up in the same frame still is.
       if (trimmed)
-        queueMicrotask(() => {
+        onFlush(() => {
           lastPosition = { ...lastPosition, Top: lastPosition.Top + scroller.scrollTop - before };
         });
     },
@@ -443,7 +443,7 @@ const ThreadConversation = ThreadSession.provider<{
     const boundary = head.nextElementSibling;
     setStuck(false);
     growTo(0, false);
-    queueMicrotask(() => {
+    onFlush(() => {
       const target = forward
         ? tabbableFrom(content, head, true)
         : tabbableFrom(content, boundary, false);

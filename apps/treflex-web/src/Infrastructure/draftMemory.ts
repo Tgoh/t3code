@@ -12,6 +12,7 @@ export interface IStoredDraft {
 
 /** An image keeps its bytes, as stock's draft store does; a file keeps only its finished upload. */
 export interface IStoredAttachment {
+  Id: string;
   Kind: IAttachmentKind;
   Name: string;
   MimeType: string;
@@ -104,9 +105,17 @@ export const storeDraftImpl = implementation(storeDraftEffect, (effect) =>
   write(TEXT_PREFIX + effect.ThreadId, effect.Draft),
 );
 
-export const storedDraftFilesImpl = implementation(
-  storedDraftFilesEffect,
-  (effect) => readJson<IStoredAttachment[]>(FILES_PREFIX + effect.ThreadId) ?? [],
+/** Read by the files resource too, which holds the same files under the same ids. */
+export function storedDraftFiles(threadId: string): IStoredAttachment[] {
+  const files = readJson<Array<Omit<IStoredAttachment, "Id"> & { Id?: string }>>(
+    FILES_PREFIX + threadId,
+  );
+  // Entries kept before attachments had stored ids.
+  return (files ?? []).map((file, index) => ({ ...file, Id: file.Id ?? `stored-${index}` }));
+}
+
+export const storedDraftFilesImpl = implementation(storedDraftFilesEffect, (effect) =>
+  storedDraftFiles(effect.ThreadId),
 );
 
 export const storeDraftFilesImpl = implementation(storeDraftFilesEffect, (effect) =>

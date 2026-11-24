@@ -523,6 +523,8 @@ function FindBar(props: {
   onClose: () => void;
 }) {
   const [query, setQuery] = createSignal("");
+  const [input, setInput] = createSignal<HTMLInputElement>();
+  onSettled(() => untrack(input)?.focus());
   const count = () => {
     const held = props.results;
     if (held === null || query() === "") return "";
@@ -538,7 +540,7 @@ function FindBar(props: {
         placeholder="Find"
         aria-label="Find in terminal"
         value={query()}
-        ref={(element) => queueMicrotask(() => element.focus())}
+        ref={setInput}
         onInput={(event) => {
           setQuery(event.currentTarget.value);
           props.onQuery(event.currentTarget.value, "typed");

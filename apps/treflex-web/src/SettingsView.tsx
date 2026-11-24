@@ -188,11 +188,9 @@ function SettingsNav(props: { page: string }) {
     void environment
       .openView({ Kind: "settings", Page: item.Page })
       .then(() =>
-        queueMicrotask(() =>
-          document
-            .querySelector(`[data-setting-id="${item.Id}"]`)
-            ?.scrollIntoView({ block: "center" }),
-        ),
+        document
+          .querySelector(`[data-setting-id="${item.Id}"]`)
+          ?.scrollIntoView({ block: "center" }),
       );
   };
   const onKeyDown = (event: KeyboardEvent) => {

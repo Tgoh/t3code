@@ -27,6 +27,7 @@ import {
   type ITestRuntimeOptions,
   settled,
 } from "treflex";
+import { createSnapshot, restoreTestRuntime } from "treflex/snapshot";
 import { pinOrderKeyBetween } from "@t3tools/shared/pinOrderKey";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
 
@@ -153,7 +154,7 @@ import {
   timelineIds,
 } from "./OpenThread";
 import { registerReceivers } from "./receivers";
-import { getDefaultRoot, type IRoot, load } from "./Root";
+import { getDefaultRoot, type IRoot, load, repairDraftFiles } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
 import {
   answerRequest,
@@ -241,7 +242,6 @@ import {
   setTerminalHeight,
   TerminalShellReceiver,
 } from "./Terminal";
-import { loadBranches } from "./ThreadDetails";
 import {
   assistantItem,
   commandItem,
@@ -374,102 +374,101 @@ async function connect(
     KeybindingReports: [] as unknown[][],
   };
   let guid = 0;
-  const runtime = createTestRuntime<IRoot>(
-    getDefaultRoot("Root"),
-    {
-      environmentInfo: () => ({
-        Authenticated: true,
-        BootstrapMethods: ["one-time-token"],
-        EnvironmentId: ENV,
-        Label: "Test",
-        FileAttachmentLimit: null,
-        Hostname: "localhost",
-      }),
-      generateGuid: () => `guid-${(guid += 1)}`,
-      address: () => copy(history.entries[history.index]!),
-      writeAddress: (effect: { Address: IAddress; Push: boolean }) => {
-        const next = copy(effect.Address);
-        if (JSON.stringify(next) === JSON.stringify(history.entries[history.index])) return;
-        if (!effect.Push) history.entries[history.index] = next;
-        else {
-          history.entries.splice(history.index + 1, Infinity, next);
-          history.index += 1;
-        }
-      },
-      storedClientSettings: () => null,
-      rememberedModels: () => models,
-      rememberModel: (effect: { Selection: IWireModelSelection }) => {
-        models.Last = effect.Selection;
-      },
-      // Selecting a thread sends a visit.
-      threadCommand: () => {},
-      refreshVcsStatus: () => {},
-      reportActivity: () => {},
-      ...commands,
-      threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
-      storedDraft: (effect: { ThreadId: string }) => stored.Drafts.get(effect.ThreadId) ?? null,
-      storedNewThread: (effect: { ProjectId: string }) =>
-        [...stored.Drafts].find(([, held]) => held.NewThreadProjectId === effect.ProjectId)?.[0] ??
-        null,
-      storeDraft: (effect: { ThreadId: string; Draft: IStoredDraft | null }) => {
-        if (effect.Draft === null) stored.Drafts.delete(effect.ThreadId);
-        else stored.Drafts.set(effect.ThreadId, effect.Draft);
-      },
-      storedDraftFiles: (effect: { ThreadId: string }) => stored.Files.get(effect.ThreadId) ?? [],
-      storeDraftFiles: (effect: { ThreadId: string; Files: IStoredAttachment[] }) => {
-        if (effect.Files.length === 0) stored.Files.delete(effect.ThreadId);
-        else stored.Files.set(effect.ThreadId, effect.Files);
-      },
-      storedPreferences: () => copy(device.Preferences),
-      storePreferences: (effect: { Patch: Partial<IPreferences> }) => {
-        device.Preferences = { ...device.Preferences, ...copy(effect.Patch) };
-      },
-      storedEditor: () => device.Editor,
-      storeEditor: (effect: { Editor: string }) => {
-        device.Editor = effect.Editor;
-      },
-      clockNow: () => device.Now,
-      toast: ({ Type: _type, ...request }: IToastRequest & { Type: string }) => {
-        toasts.push(request);
-      },
-      rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
-      rememberTerminal: (effect: { ThreadId: string; Terminal: IRememberedTerminal | null }) => {
-        if (effect.Terminal === null) terminals.delete(effect.ThreadId);
-        else terminals.set(effect.ThreadId, copy(effect.Terminal));
-      },
+  const effects = {
+    environmentInfo: () => ({
+      Authenticated: true,
+      BootstrapMethods: ["one-time-token"],
+      EnvironmentId: ENV,
+      Label: "Test",
+      FileAttachmentLimit: null,
+      Hostname: "localhost",
+    }),
+    generateGuid: () => `guid-${(guid += 1)}`,
+    address: () => copy(history.entries[history.index]!),
+    writeAddress: (effect: { Address: IAddress; Push: boolean }) => {
+      const next = copy(effect.Address);
+      if (JSON.stringify(next) === JSON.stringify(history.entries[history.index])) return;
+      if (!effect.Push) history.entries[history.index] = next;
+      else {
+        history.entries.splice(history.index + 1, Infinity, next);
+        history.index += 1;
+      }
     },
-    {
-      allowFailures,
-      resources: {
-        ...resources,
-        methods: {
-          "Terminal/Session": {
-            setScheme: (_ctx: unknown, scheme: IColorScheme) => void device.Schemes.push(scheme),
-          },
-          "Device/Appearance": {
-            apply: (_ctx: unknown, scheme: IColorScheme) => void device.Applied.push(scheme),
-          },
-          "Project/Favicons": {
-            request: (_ctx: unknown, target: IProjectFaviconTarget) =>
-              void device.Favicons.push(target),
-          },
-          "Notify/Device": {
-            setMode: (_ctx: unknown, mode: INotificationMode, inApp: boolean) => {
-              device.NotifyModes.push(mode);
-              device.InApp.push(inApp);
-            },
-            show: (_ctx: unknown, note: INotificationShow) => void device.Notified.push(note),
-            opened: (_ctx: unknown, threadId: string) => void device.Opened.push(threadId),
-          },
-          "Keybindings/Warning": {
-            report: (_ctx: unknown, ...report: unknown[]) =>
-              void device.KeybindingReports.push(report),
-          },
-          ...resources?.methods,
+    storedClientSettings: () => null,
+    rememberedModels: () => models,
+    rememberModel: (effect: { Selection: IWireModelSelection }) => {
+      models.Last = effect.Selection;
+    },
+    // Selecting a thread sends a visit.
+    threadCommand: () => {},
+    refreshVcsStatus: () => {},
+    reportActivity: () => {},
+    ...commands,
+    threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
+    storedDraft: (effect: { ThreadId: string }) => stored.Drafts.get(effect.ThreadId) ?? null,
+    storedNewThread: (effect: { ProjectId: string }) =>
+      [...stored.Drafts].find(([, held]) => held.NewThreadProjectId === effect.ProjectId)?.[0] ??
+      null,
+    storeDraft: (effect: { ThreadId: string; Draft: IStoredDraft | null }) => {
+      if (effect.Draft === null) stored.Drafts.delete(effect.ThreadId);
+      else stored.Drafts.set(effect.ThreadId, effect.Draft);
+    },
+    storedDraftFiles: (effect: { ThreadId: string }) => stored.Files.get(effect.ThreadId) ?? [],
+    storeDraftFiles: (effect: { ThreadId: string; Files: IStoredAttachment[] }) => {
+      if (effect.Files.length === 0) stored.Files.delete(effect.ThreadId);
+      else stored.Files.set(effect.ThreadId, effect.Files);
+    },
+    storedPreferences: () => copy(device.Preferences),
+    storePreferences: (effect: { Patch: Partial<IPreferences> }) => {
+      device.Preferences = { ...device.Preferences, ...copy(effect.Patch) };
+    },
+    storedEditor: () => device.Editor,
+    storeEditor: (effect: { Editor: string }) => {
+      device.Editor = effect.Editor;
+    },
+    clockNow: () => device.Now,
+    toast: ({ Type: _type, ...request }: IToastRequest & { Type: string }) => {
+      toasts.push(request);
+    },
+    rememberedTerminal: (effect: { ThreadId: string }) => terminals.get(effect.ThreadId) ?? null,
+    rememberTerminal: (effect: { ThreadId: string; Terminal: IRememberedTerminal | null }) => {
+      if (effect.Terminal === null) terminals.delete(effect.ThreadId);
+      else terminals.set(effect.ThreadId, copy(effect.Terminal));
+    },
+  };
+  const options = (more?: ITestRuntimeOptions["resources"]) => ({
+    allowFailures,
+    resources: {
+      ...resources,
+      methods: {
+        "Terminal/Session": {
+          setScheme: (_ctx: unknown, scheme: IColorScheme) => void device.Schemes.push(scheme),
         },
+        "Device/Appearance": {
+          apply: (_ctx: unknown, scheme: IColorScheme) => void device.Applied.push(scheme),
+        },
+        "Project/Favicons": {
+          request: (_ctx: unknown, target: IProjectFaviconTarget) =>
+            void device.Favicons.push(target),
+        },
+        "Notify/Device": {
+          setMode: (_ctx: unknown, mode: INotificationMode, inApp: boolean) => {
+            device.NotifyModes.push(mode);
+            device.InApp.push(inApp);
+          },
+          show: (_ctx: unknown, note: INotificationShow) => void device.Notified.push(note),
+          opened: (_ctx: unknown, threadId: string) => void device.Opened.push(threadId),
+        },
+        "Keybindings/Warning": {
+          report: (_ctx: unknown, ...report: unknown[]) =>
+            void device.KeybindingReports.push(report),
+        },
+        ...resources?.methods,
+        ...more?.methods,
       },
     },
-  );
+  });
+  const runtime = createTestRuntime<IRoot>(getDefaultRoot("Root"), effects, options());
   const clock = runtime.provideExternal("Minute", { read: () => device.Now });
   const strayWriters = new Set<string | null>();
   tapReplicaWriters(runtime, (name) => {
@@ -512,6 +511,18 @@ async function connect(
   };
   return {
     runtime,
+    /** Restores a snapshot of this runtime as a reload would, with `resources` as the reopened ones. */
+    restore: (more?: ITestRuntimeOptions["resources"]) =>
+      restoreTestRuntime<IRoot>(createSnapshot(runtime), {
+        rootId: "Root",
+        effectStubs: effects,
+        options: options(more),
+        setup: (restored) => {
+          restored.provideExternal("Minute", { read: () => device.Now });
+          registerReceivers(restored);
+        },
+        repair: repairDraftFiles,
+      }),
     takeFailures: () => failures.splice(0),
     takeToasts: () => toasts.splice(0),
     clock,
@@ -4500,9 +4511,9 @@ describe("drafts", () => {
     MimeType: "image/png",
     SizeBytes: 4,
     PastedText: false,
-    PreviewUrl: null,
   });
   const storedOf = (name: string): IStoredAttachment => ({
+    Id: name,
     Kind: "image",
     Name: name,
     MimeType: "image/png",
@@ -4510,24 +4521,24 @@ describe("drafts", () => {
     PastedText: false,
     DataUrl: `data:image/png;base64,${name}`,
   });
-  const fileStubs = (restored: string[][]) => ({
+  /** `held` is what the resource holds, as a reopened one holds only what its thread's draft kept. */
+  const fileStubs = (held: Set<string> | null = null) => ({
     methods: {
       "Composer/Files": {
-        stored: (_ctx: unknown, ids: string[]) => ids.map((id) => storedOf(id)),
-        restore: (_ctx: unknown, files: IStoredAttachment[]) => {
-          restored.push(files.map((file) => file.Name));
-          return files.map((file, index) => picked(`restored-${index}`, file.Name));
-        },
+        stored: (_ctx: unknown, ids: string[]) =>
+          ids.filter((id) => held?.has(id) ?? true).map((id) => storedOf(id)),
         forget: () => undefined,
         remove: () => undefined,
-        upload: (_ctx: unknown, id: string) => ({ type: "image", id: `upload-${id}` }),
+        upload: (_ctx: unknown, id: string) => {
+          if (!(held?.has(id) ?? true)) throw serverFailure("That file is no longer held.");
+          return { type: "image", id: `upload-${id}` };
+        },
       },
     },
   });
 
   it("a thread's text and files come back in a fresh client, and a send clears them", async () => {
-    const restored: string[][] = [];
-    const first = await connect(undefined, null, {}, undefined, fileStubs(restored));
+    const first = await connect(undefined, null, {}, undefined, fileStubs());
     await first.open();
     await first.runtime.dispatch(setDraft, first.sessionId(), "half written");
     await first.runtime.dispatch(addAttachments, first.sessionId(), [picked("file-1", "a")], null);
@@ -4540,19 +4551,53 @@ describe("drafts", () => {
       null,
       { startTurn: (effect: IStartTurn) => void sent.push(effect) },
       first.stored,
-      fileStubs(restored),
+      fileStubs(),
     );
     await second.open();
     await settled();
     expect(second.session().Draft).toBe("half written");
-    expect(restored).toEqual([["file-1"]]);
-    expect(second.session().Attachments.map((file) => file.Name)).toEqual(["file-1"]);
+    expect(second.session().Attachments.map((file) => file.Id)).toEqual(["file-1"]);
 
     await second.runtime.dispatch(send, second.sessionId());
     await settled();
-    expect(sent[0]!.Attachments.map((file) => file.id)).toEqual(["upload-restored-0"]);
+    expect(sent[0]!.Attachments.map((file) => file.id)).toEqual(["upload-file-1"]);
     expect(second.stored.Files.has(THREAD_ID)).toBe(false);
     expect(second.stored.Drafts.has(THREAD_ID)).toBe(false);
+  });
+
+  it("a restore rebuilds each draft's files from what it kept, so they send, and the next change keeps them", async () => {
+    const sent: IStartTurn[] = [];
+    const first = await connect(
+      undefined,
+      null,
+      { startTurn: (effect: IStartTurn) => void sent.push(effect) },
+      undefined,
+      fileStubs(new Set(["a"])),
+    );
+    await first.open();
+    const pick = [picked("a", "a"), picked("still-uploading", "b")];
+    await first.runtime.dispatch(addAttachments, first.sessionId(), pick, null);
+    await settled();
+    expect(first.stored.Files.get(THREAD_ID)?.map((file) => file.Id)).toEqual(["a"]);
+    first.takeToasts();
+
+    const reopened = new Set(first.stored.Files.get(THREAD_ID)!.map((file) => file.Id));
+    const { runtime, result } = await first.restore(fileStubs(reopened));
+    expect(result.repairError).toBeUndefined();
+    const session = () => runtime.state.Environments[0]!.Local.ThreadSessions[THREAD_ID]!;
+    expect(session().Attachments.map((file) => file.Id)).toEqual(["a"]);
+    expect(first.takeToasts().map((toast) => toast.Title)).toEqual([
+      "Some attachments were not restored",
+    ]);
+
+    reopened.add("c");
+    await runtime.dispatch(addAttachments, session().$Id, [picked("c", "c")], null);
+    await settled();
+    expect(first.stored.Files.get(THREAD_ID)?.map((file) => file.Id)).toEqual(["a", "c"]);
+    await runtime.dispatch(send, session().$Id);
+    await settled();
+    expect(session().SendError).toBeUndefined();
+    expect(sent[0]!.Attachments.map((file) => file.id)).toEqual(["upload-a", "upload-c"]);
   });
 
   const held = (server: Awaited<ReturnType<typeof connect>>) =>
@@ -4565,7 +4610,7 @@ describe("drafts", () => {
       null,
       { startTurn: (effect: IStartTurn) => void sent.push(effect) },
       undefined,
-      fileStubs([]),
+      fileStubs(),
     );
     await server.open();
     await server.runtime.dispatch(setDraft, server.sessionId(), "look at this");
@@ -4597,7 +4642,7 @@ describe("drafts", () => {
       null,
       { startTurn: (effect: IStartTurn) => void sent.push(effect) },
       undefined,
-      fileStubs([]),
+      fileStubs(),
     );
     await server.open();
     await server.runtime.dispatch(setDraft, server.sessionId(), "hi");
@@ -4629,7 +4674,7 @@ describe("drafts", () => {
   });
 
   it("a held send keeps waiting through an error that changed nothing in the draft", async () => {
-    const server = await connect(undefined, null, {}, undefined, fileStubs([]));
+    const server = await connect(undefined, null, {}, undefined, fileStubs());
     await server.open();
     await server.runtime.dispatch(setDraft, server.sessionId(), "hi");
     await server.runtime.dispatch(holdSend, server.sessionId(), "auto");
@@ -4643,7 +4688,7 @@ describe("drafts", () => {
       null,
       { startTurn: () => new Promise(() => {}) },
       undefined,
-      fileStubs([]),
+      fileStubs(),
     );
     await server.open();
     await server.runtime.dispatch(setDraft, server.sessionId(), "first");
@@ -5938,13 +5983,7 @@ describe("work started by events", () => {
         availableEditors: ["zed", "vscode"],
       },
     });
-    expect(listed()).toEqual({
-      Available: [
-        { Id: "vscode", Label: "VS Code" },
-        { Id: "zed", Label: "Zed" },
-      ],
-      Preferred: "vscode",
-    });
+    expect(listed()).toEqual({ Available: ["vscode", "zed"], Preferred: "vscode" });
     await server.runtime.dispatch(preferEditor, server.envId(), "zed");
     expect(listed().Preferred).toBe("zed");
     expect(server.device.Editor).toBe("zed");
@@ -6486,12 +6525,12 @@ describe("rewinding and forking", () => {
                 MimeType: "image/png",
                 SizeBytes: 4,
                 PastedText: false,
-                PreviewUrl: null,
               }));
             },
             remove: (_ctx: unknown, id: string) => void removed.push(id),
             stored: (_ctx: unknown, ids: string[]): IStoredAttachment[] =>
               ids.map((id) => ({
+                Id: id,
                 Kind: "image",
                 Name: id,
                 MimeType: "image/png",
@@ -7049,10 +7088,7 @@ describe("client activity", () => {
   }
 
   it("opens git status from selectThread, closes it on leave or under a page, and reports each change at once", async () => {
-    let answerBranches: ((refs: unknown[]) => void) | null = null;
-    const { server, reports } = await reporting({
-      listBranches: () => new Promise((resolve) => (answerBranches = resolve)),
-    });
+    const { server, reports } = await reporting();
     const status = () =>
       server.runtime
         .resources()
@@ -7074,8 +7110,6 @@ describe("client activity", () => {
     expect(status()).toEqual(["/repo"]);
     expect(lastScopes()).toEqual([{ type: "vcs-status", cwd: "/repo" }]);
 
-    const stale = server.session().Details!.$Id;
-    const loading = server.runtime.dispatch(loadBranches, stale, "");
     const projection = emptyProjection();
     await server.sendThread(
       snapshotOf(
@@ -7086,9 +7120,7 @@ describe("client activity", () => {
     await settled();
     expect(status()).toEqual(["/repo/wt"]);
     expect(lastScopes()).toEqual([{ type: "vcs-status", cwd: "/repo/wt" }]);
-    answerBranches!([{ Name: "old", IsRemote: false, Current: true, IsDefault: true }]);
-    await loading;
-    expect(server.session().Details).toMatchObject({ Cwd: "/repo/wt", Branches: null });
+    expect(server.session().Details).toMatchObject({ Cwd: "/repo/wt" });
 
     await server.runtime.dispatch(openView, server.envId(), { Kind: "settings", Page: "general" });
     await settled();
@@ -7145,8 +7177,8 @@ describe("client activity", () => {
     expect(reports.at(-1)?.Scopes).toEqual([{ type: "provider-status" }]);
   });
 
-  it("reports the device's visibility, focus and interaction as each changes", async () => {
-    const { reports, deliver } = await reporting();
+  it("reports the device's visibility, focus and interaction as each changes, outside saved state", async () => {
+    const { server, reports, deliver } = await reporting();
     await deliver({
       Type: "Device/Activity",
       Visible: true,
@@ -7163,5 +7195,6 @@ describe("client activity", () => {
     });
     expect(reports).toHaveLength(2);
     expect(reports[1]).toMatchObject({ Visible: false, Focused: false, RecentlyInteracted: false });
+    expect(server.environment().Local).not.toHaveProperty("Activity");
   });
 });

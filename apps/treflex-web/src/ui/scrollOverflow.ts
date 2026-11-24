@@ -76,9 +76,7 @@ export function trackScrollOverflow(
   observer.observe(viewport);
   viewport.addEventListener("scroll", measure, { passive: true });
   // The content's size moves the overflow without resizing the viewport.
-  queueMicrotask(() => {
-    for (const child of viewport.children) observer.observe(child);
-  });
+  for (const child of viewport.children) observer.observe(child);
   return () => {
     observer.disconnect();
     viewport.removeEventListener("scroll", measure);

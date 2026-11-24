@@ -18,6 +18,7 @@ import {
   createUniqueId,
   For,
   Match,
+  onFlush,
   Show,
   Switch,
   untrack,
@@ -144,7 +145,7 @@ export function AddProjectPalette(props: { onClose: () => void }) {
   const [list, setList] = createSignal<HTMLElement>();
 
   const focusInput = () =>
-    queueMicrotask(() => {
+    onFlush(() => {
       const element = input();
       element?.focus();
       element?.setSelectionRange(element.value.length, element.value.length);

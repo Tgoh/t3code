@@ -479,6 +479,7 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
     answering() ? [] : held().Attachments.filter((file) => file.Kind === "file");
   const preparing = () => (answering() ? [] : (files.value()?.Preparing ?? []));
   const fileStatus = (id: string) => files.value()?.Status[id];
+  const preview = (id: string) => files.value()?.Previews[id];
   const [pasteAsTextUntil, setPasteAsTextUntil] = createSignal(0);
   const noProvider = () => environment.state.Replica.Providers.length === 0;
   const placeholder = () => {
@@ -818,7 +819,18 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             <For each={images()}>
               {(file) => (
                 <li class="relative size-14 overflow-hidden rounded-xl">
-                  <Show when={file.PreviewUrl}>
+                  <Show
+                    when={preview(file.Id)}
+                    fallback={
+                      <span
+                        class="flex size-full items-center justify-center bg-muted outline -outline-offset-1 outline-(--media-ring) [&_svg]:size-5"
+                        role="img"
+                        aria-label={file.Name}
+                      >
+                        <FileIcon />
+                      </span>
+                    }
+                  >
                     {(url) => (
                       <img
                         src={url()}

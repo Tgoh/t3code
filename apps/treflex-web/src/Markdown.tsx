@@ -952,10 +952,15 @@ const INLINE: Record<string, Component<ITokenProps>> = {
 };
 
 function Blocks(props: { tokens: Token[]; loose?: boolean }) {
+  const path = useContext(BlockPath);
   const blocks = createMemo(() => blockTokens(props.tokens, props.loose));
   return (
     <For each={blocks()} keyed={false}>
-      {(token) => <Dynamic component={BLOCK[token().type] ?? TextToken} token={token()} />}
+      {(token, index) => (
+        <BlockPath value={childPath(path, index)}>
+          <Dynamic component={BLOCK[token().type] ?? TextToken} token={token()} />
+        </BlockPath>
+      )}
     </For>
   );
 }
@@ -1012,6 +1017,7 @@ function ListItem(props: { item: Tokens.ListItem }) {
 }
 
 function ListToken(props: ITokenProps) {
+  const path = useContext(BlockPath);
   const list = () => of<Tokens.List>(props);
   const lastNumber = () => Number(list().start || 1) + list().items.length - 1;
   return (
@@ -1021,7 +1027,11 @@ function ListToken(props: ITokenProps) {
       class={{ "wide-markers": list().ordered && lastNumber() >= 10 }}
     >
       <For each={list().items} keyed={false}>
-        {(item) => <ListItem item={item()} />}
+        {(item, index) => (
+          <BlockPath value={childPath(path, index)}>
+            <ListItem item={item()} />
+          </BlockPath>
+        )}
       </For>
     </Dynamic>
   );
@@ -1070,10 +1080,12 @@ function TableToken(props: ITokenProps) {
   );
 }
 
-// Hands each code block in a top-level block the next key in document order. A message's blocks
-// remount as its turn settles and as the timeline windows, so the session keeps a keyed block's
-// wrap choice.
-const CodeBlockKey = createContext<() => string | null>(() => null);
+// A block's place in its row, from the top-level block down through each nested block and list
+// item. A message's blocks remount as its turn settles and as the timeline windows, so the session
+// keeps a code block's wrap choice by this path.
+const BlockPath = createContext<string | null>(null);
+const childPath = (path: string | null, index: number) =>
+  path === null ? null : `${path}.${index}`;
 
 function CodeTitle(props: { fence: IFence }) {
   const languageFile = () => languageFileName(props.fence.Language);
@@ -1112,7 +1124,7 @@ function CodeToken(props: ITokenProps) {
   const fence = createMemo(() => fenceOf(code().lang), {
     equals: (a, b) => a.Language === b.Language && a.Title === b.Title,
   });
-  const key = useContext(CodeBlockKey)();
+  const key = useContext(BlockPath);
   const session = key === null ? null : ThreadSession.use();
   const [unkeyedWrap, setUnkeyedWrap] = createSignal<boolean | null>(null);
   const wrapped = () =>
@@ -1217,15 +1229,13 @@ function TopBlock(props: { token: Token; fromUser: boolean; key: string | null }
       : null,
   );
   const blockKey = untrack(() => props.key);
-  let codeBlocks = 0;
-  const nextCodeKey = () => (blockKey === null ? null : `${blockKey}:${codeBlocks++}`);
   return (
     <Show
       when={html()}
       fallback={
-        <CodeBlockKey value={nextCodeKey}>
+        <BlockPath value={blockKey}>
           <Dynamic component={BLOCK[props.token.type] ?? TextToken} token={props.token} />
-        </CodeBlockKey>
+        </BlockPath>
       }
     >
       {(markup) => <RawHtml class="contents" markup={markup()} />}

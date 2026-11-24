@@ -6,6 +6,7 @@ import {
   createUniqueId,
   flush,
   omit,
+  onFlush,
   Show,
   untrack,
   useContext,
@@ -103,12 +104,12 @@ export function CollapsiblePanel(
       if (open) {
         if (untrack(ending)) {
           setEnding(false);
-          queueMicrotask(() => after(run, () => setHeight("auto")));
+          onFlush(() => after(run, () => setHeight("auto")));
           return;
         }
         setStarting(true);
         setMounted(true);
-        queueMicrotask(() => {
+        onFlush(() => {
           const element = panel();
           if (run !== generation || element === undefined) return;
           // Reading the height also gives the panel its no-height starting style to move from.
@@ -129,7 +130,7 @@ export function CollapsiblePanel(
       }
       setStarting(false);
       setHeight(`${element.scrollHeight}px`);
-      queueMicrotask(() => {
+      onFlush(() => {
         if (run !== generation) return;
         // The measured height must be the transition's start, so it's applied before the ending style.
         void element.offsetHeight;
