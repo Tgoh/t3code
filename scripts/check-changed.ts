@@ -480,7 +480,13 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
           if (yield* fs.exists(inRoot(manifest))) yield* copy(manifest);
         }
       }
-      for (const extra of ["apps/mobile/deps", "apps/web/deps", "patches", ".pnpmfile.cjs"]) {
+      for (const extra of [
+        "apps/mobile/deps",
+        "apps/web/deps",
+        "apps/treflex-web/vendor",
+        "patches",
+        ".pnpmfile.cjs",
+      ]) {
         if (yield* fs.exists(inRoot(extra))) yield* copy(extra);
       }
       const result = yield* vp(["install", "--lockfile-only", "--ignore-scripts"], temp);

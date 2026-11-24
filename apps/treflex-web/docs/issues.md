@@ -8,10 +8,6 @@ The repo pins Node 26.12.1 and the server needs 24.10 or later, but `vp` stays i
 
 Workaround: use Node 26.13.0 through nvm. The pin in `package.json` isn't enforced, and `vp i` and `vp run dev` work on it.
 
-## Setup: `vp run check:changed` fails its unused-patches step
-
-The step runs when a change touches a dependency file: `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.pnpmfile.cjs`, `patches/`, `apps/{mobile,web}/deps/` or any `package.json`. It installs in a temp copy of the repo, which has no `apps/treflex-web/vendor/treflex-eslint-0.3.0.tgz`, so the install fails. The fix is in `scripts/check-changed.ts`: its `extra` copy list lacks `apps/treflex-web/vendor`.
-
 ## Gap: the connection runtime has one public door
 
 `client-runtime` exports the session factory only as a type, so reusing the supervisor means building the whole `Connection` layer. That layer requires the relay client, DPoP signer, SSH gateway, cloud session and stores, none of which one cookie-authenticated environment uses. `Infrastructure/connection.ts` mocks them, and a mock dies if it's ever called. Adding a remote environment means replacing these mocks.
