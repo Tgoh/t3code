@@ -32,7 +32,7 @@ From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its
 
 ## 3. Missing features
 
-Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
+Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view. **On hold until the client moves to treflex 0.4.0** (Tam, 2026-11-24): 0.4.0 changes the public API, so anything built on 0.3 now would be ported twice.
 
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:
@@ -82,7 +82,7 @@ Each item groups related gaps from `issues.md`, which lists them in full. They c
 
 Any time; none of it touches the client.
 
-- **Where threads get stuck, and where bugs come from.** Tam asked (2026-11-23) for a review of the worktree threads' transcripts: failed and repeated tool calls, setup and port trouble, waits, rework after review, and which kinds of bug reviewers keep finding or Tam finds after a merge (the Solid 2 read-after-write lag and the iPhone-only scroll and keyboard bugs, for example). Start from the `/getfriction` skill over this project's transcripts, add the review findings from the merged branches, and turn each cause into a fix: a line in this app's `CLAUDE.md` or README, a change to the brief template or the `/build` skill, a script fix, a lint rule or a permission rule. The goal is faster builds and fewer tokens per thread.
+- **Where threads get stuck, and where bugs come from.** **In progress** on `treflex/friction-review`; its treflex findings feed 0.4.0. Tam asked (2026-11-23) for a review of the worktree threads' transcripts: failed and repeated tool calls, setup and port trouble, waits, rework after review, and which kinds of bug reviewers keep finding or Tam finds after a merge (the Solid 2 read-after-write lag and the iPhone-only scroll and keyboard bugs, for example). Start from the `/getfriction` skill over this project's transcripts, add the review findings from the merged branches, and turn each cause into a fix: a line in this app's `CLAUDE.md` or README, a change to the brief template or the `/build` skill, a script fix, a lint rule or a permission rule. The goal is faster builds and fewer tokens per thread.
 - **Make `vp run check:changed` pass for this app.** Whenever a change touches a dependency file, its unused-patches step fails, which hides real failures: it installs in a temp copy that can't find `vendor/treflex-eslint-0.3.0.tgz`. Add `apps/treflex-web/vendor` to the `extra` copy list in `scripts/check-changed.ts`, an upstream script, so keep the change small. See "Setup: `vp run check:changed` fails its unused-patches step" in `issues.md`.
 
 - **Record the verdicts.** Add treflex's verdicts to the "Feedback for treflex" section of `issues.md`. The friction write-up is at `G:\Sorted\Code\t3code-dev-home\notes\treflex-friction-from-t3code-port.md`, and the treflex side's verdicts are in the reflex repo's `docs/wip` (commit 2b37348).
