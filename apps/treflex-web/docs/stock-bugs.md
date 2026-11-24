@@ -77,7 +77,7 @@ Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) 
 
 ## Editors: some opens skip the remote-open check
 
-- **Where:** the keybindings warning's Open `keybindings.json` (`apps/web/src/components/KeybindingsConfigWarning.tsx`), the Keybindings settings' open button (`openKeybindingsFile` in `components/settings/KeybindingsSettings.tsx`), terminal path links (`openTerminalPath` in `components/ThreadTerminalDrawer.tsx`) and a diff file in a repository outside the thread's folder (`openDiffFile` in `components/DiffPanel.tsx`). Each calls `useOpenInPreferredEditor`, which checks the operate scope but not `useRemoteOpenState`.
+- **Where:** the keybindings warning's Open `keybindings.json` (`apps/web/src/components/KeybindingsConfigWarning.tsx`), the Keybindings settings' open button (`openKeybindingsFile` in `components/settings/KeybindingsSettings.tsx`), terminal path links (`openTerminalPath` in `components/ThreadTerminalDrawer.tsx`) and a diff file in a repository's Git scope or in a turn's repository outside the thread's folder (`openDiffFile` and `repositoryFileTarget` in `components/DiffPanel.tsx`). Each calls `useOpenInPreferredEditor`, which checks the operate scope but not `useRemoteOpenState`.
 - **What goes wrong:** from a phone, or any browser that reaches the server by a non-loopback address, these open an editor on the server's machine and show nothing, while file links and the details card's Open in editor apply the check and offer a preview or say why they can't.
 - **Status:** found by reading the code, not reproduced.
-- **Treflex:** shares it for the warning, terminal links and outside-folder diff files, where it follows stock. It has no Keybindings settings button.
+- **Treflex:** shares it for the warning, terminal links and those diff files, where it follows stock. It has no Keybindings settings button.

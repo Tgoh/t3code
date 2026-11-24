@@ -325,7 +325,7 @@ function PreviewImage(props: { src: string; name: string; onError: () => void })
 
 type IMediaKind = IWorkspaceMediaKind;
 
-/** A signed media file: its URL is this view's, signed again when it fails near its expiry. */
+/** A signed media file, whose URL is this view's. */
 function SignedMedia(props: {
   kind: IMediaKind;
   resource: AssetResource;
@@ -333,7 +333,7 @@ function SignedMedia(props: {
   /** The workspace changes seen since the file opened; 0 for an attachment. */
   revision: number;
 }) {
-  const media = useMediaUrl(props.resource);
+  const media = useMediaUrl(untrack(() => props.resource));
   // Follows WorkspaceVideoPreview and WorkspaceAudioPreview, which sign the URL again on each
   // workspace change but load it only when the file's revision changed.
   createEffect(
@@ -344,7 +344,7 @@ function SignedMedia(props: {
     { defer: true },
   );
   const playbackKey = createMemo(() => media.state.FileRevision ?? String(props.revision));
-  const signed = () => media.state.Url !== null;
+  const signed = createMemo(() => media.state.Url !== null);
   const src = createMemo(() => {
     if (props.kind === "image") {
       return media.state.Url === null ? null : revisionedUrl(media.state.Url, null, props.revision);
@@ -369,7 +369,7 @@ function SignedMedia(props: {
           message={failure()}
           onRetry={() => {
             setErroredSrc(null);
-            void media.reload();
+            void media.retry();
           }}
         />
       }
@@ -415,7 +415,7 @@ function SignedMedia(props: {
 }
 
 function SaveAction(props: { resource: AssetResource; name: string }) {
-  const media = useMediaUrl(props.resource);
+  const media = useMediaUrl(untrack(() => props.resource));
   return (
     <Show when={media.state.Url}>
       {(url) => (
@@ -632,7 +632,6 @@ function WorkspaceFile(props: {
   const binary = () => readError()?.Failure === "binary_file";
   const markdown = () => isMarkdownPreviewFile(path());
   const [handledReveal, setHandledReveal] = createSignal<number | null>(null);
-  // Stock reveals each request once, so a reread or a remounted source view keeps the scroll.
   const [revealedId, setRevealedId] = createSignal<number | null>(null);
   const revealHandled = () =>
     props.panel.RevealLine === null || handledReveal() === props.panel.RevealId;

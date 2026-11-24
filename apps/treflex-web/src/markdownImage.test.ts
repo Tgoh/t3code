@@ -13,6 +13,7 @@ import {
   markdownImageTarget,
   mediaLinkTarget,
   opensInEditor,
+  retryMediaUrl,
   webMediaLinkTarget,
 } from "./markdownImage";
 import { createMarkdownLexer } from "./markdownTokens";
@@ -203,5 +204,23 @@ describe("loadMediaUrl", () => {
     await runtime.dispatch(mediaFailed, "Media", "env-1", resource);
     expect(asked).toHaveLength(1);
     expect(runtime.state).toMatchObject({ Url: "/api/assets/renewed", Failed: false });
+  });
+
+  it("clears the URL on a retry, so a view keyed on it waits for the new one", async () => {
+    let release!: () => void;
+    const { runtime } = media(
+      () => {
+        return new Promise<IAssetUrl>((resolve) => {
+          release = () => resolve({ Url: "/api/assets/retried", ExpiresAt: HOUR });
+        }) as never;
+      },
+      { Url: "/api/assets/expired", ExpiresAt: HOUR, Failed: true },
+    );
+    const retried = runtime.dispatch(retryMediaUrl, "Media", "env-1", resource);
+    await Promise.resolve();
+    expect(runtime.state).toMatchObject({ Url: null, Failed: false });
+    release();
+    await retried;
+    expect(runtime.state).toMatchObject({ Url: "/api/assets/retried", Failed: false });
   });
 });

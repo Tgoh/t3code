@@ -202,7 +202,6 @@ import {
   openDiff,
   openFile,
   closeFile,
-  fileLoading,
   reloadFile,
   queueAction,
   runScript,
@@ -5422,7 +5421,6 @@ describe("the files preview", () => {
     const server = await withRepo({ readProjectFile: () => reply() });
     await server.sendThread(snapshotOf(emptyProjection(), 1));
     const file = () => server.session().Panels.File;
-    const loading = () => server.runtime.processSelector(fileLoading, () => server.session());
     await server.runtime.dispatch(openFile, server.sessionId(), "logo.bin", null);
     await settled();
     expect(file()?.Read).toEqual(refusal);
@@ -5439,11 +5437,9 @@ describe("the files preview", () => {
     reply = () => new Promise((done) => (resolve = done));
     await server.runtime.dispatch(reloadFile, server.sessionId());
     expect(file()?.Read).toBeNull();
-    expect(loading()).toBe(true);
     resolve(text("hello"));
     await settled();
     expect(file()?.Read).toEqual(text("hello"));
-    expect(loading()).toBe(false);
   });
 
   it("reads a sent attachment's text only for a kind shown as text, and reopens the one shown in place", async () => {
@@ -5480,7 +5476,6 @@ describe("the files preview", () => {
     );
     await settled();
     expect(file()).toMatchObject({ Source: { Id: "a-2" }, Read: null });
-    expect(server.runtime.processSelector(fileLoading, () => server.session())).toBe(false);
     expect(asked).toEqual(["a-1 inline"]);
   });
 

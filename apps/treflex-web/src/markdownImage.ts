@@ -50,6 +50,16 @@ export function* loadMediaUrl(
   }
 }
 
+/** Signs again from scratch, so a view keyed on the URL sees the new one. */
+export function* retryMediaUrl(
+  draft: IMediaUrl,
+  environmentId: string,
+  resource: AssetResource,
+): IActionGenerator {
+  draft.Url = null;
+  yield* loadMediaUrl(draft, environmentId, resource);
+}
+
 /**
  * A lazy image, or a video seeking, loads from its URL long after it was signed. One that failed
  * near or past its expiry is signed again; a fresh URL that fails is a missing file.

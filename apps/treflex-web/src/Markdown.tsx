@@ -56,6 +56,7 @@ import {
   imageSizeStyle,
   EMPTY_MEDIA_URL,
   loadMediaUrl,
+  retryMediaUrl,
   mediaFailed,
   markdownImageTarget,
   mediaLinkTarget,
@@ -517,6 +518,7 @@ export function useMediaUrl(resource: AssetResource) {
   return {
     state: local.state,
     reload: load,
+    retry: () => local.dispatch(retryMediaUrl, environment.state.EnvironmentId, resource),
     failed: () => void local.dispatch(mediaFailed, environment.state.EnvironmentId, resource),
   };
 }
@@ -634,7 +636,7 @@ function FileMedia(props: {
   alt: string;
   standalone: boolean;
 }) {
-  const media = useMediaUrl(props.resource);
+  const media = useMediaUrl(untrack(() => props.resource));
   const src = () => (media.state.Url === null ? null : media.state.Url + props.fragment);
   return (
     <Show
@@ -684,7 +686,7 @@ export function ViewedImage(props: {
   alt: string;
   size: IToolImageSize;
 }) {
-  const media = useMediaUrl(props.resource);
+  const media = useMediaUrl(untrack(() => props.resource));
   return (
     <ShownImage
       src={media.state.Url === null ? null : media.state.Url + props.fragment}
@@ -755,7 +757,7 @@ function ViewerContent(props: {
 }
 
 function FileViewerContent(props: { kind: IMediaKind; resource: AssetResource; name: string }) {
-  const media = useMediaUrl(props.resource);
+  const media = useMediaUrl(untrack(() => props.resource));
   return (
     <ViewerContent
       kind={props.kind}

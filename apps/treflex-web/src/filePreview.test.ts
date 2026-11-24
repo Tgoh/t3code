@@ -138,10 +138,11 @@ describe("a reread", () => {
       Cwd: null,
     }) as const;
 
-  it("keeps the shown contents through a dropped read or a refusal, unless the path stopped being a file", () => {
+  it("keeps the shown contents through a dropped read or a refusal, unless the path stopped being a text file", () => {
     expect(keptRead(shown, { Kind: "failed", Message: "socket closed" })).toBe(shown);
     expect(keptRead(shown, refusal("operation_failed"))).toBe(shown);
     expect(keptRead(shown, refusal("path_not_file"))).toEqual(refusal("path_not_file"));
+    expect(keptRead(shown, refusal("binary_file"))).toEqual(refusal("binary_file"));
     expect(keptRead(null, refusal("operation_failed"))).toEqual(refusal("operation_failed"));
   });
 

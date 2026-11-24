@@ -581,7 +581,6 @@ export interface IPanels {
   /** The thread has a turn to diff. */
   Diff: boolean;
   DiffOpen: boolean;
-  FileOpen: boolean;
   RightPanelOpen: boolean;
   TerminalEntityId: string;
   /** The focused shell's entity while the drawer is open, which split, new and close act on. */
@@ -599,7 +598,6 @@ export function* panels(draft: IThreadSession): ISelectorGenerator<IPanels> {
     Terminal: thread?.Thread != null,
     Diff: thread !== undefined && latestDiffTurn(thread) !== null,
     DiffOpen: diffOpen,
-    FileOpen: fileOpen,
     RightPanelOpen:
       diffOpen || fileOpen || draft.Panels.Side !== null || draft.Panels.Launcher.Open,
     SideChats:
@@ -1933,11 +1931,6 @@ export function* closeFile(draft: IThreadSession): IActionGenerator {
   draft.Panels.File = null;
 }
 
-export function* fileLoading(draft: IThreadSession): ISelectorGenerator<boolean> {
-  const panel = draft.Panels.File;
-  return panel !== null && panel.Read === null && (yield* inFlight(loadFile, panel));
-}
-
 export function* detailsOpen(draft: IThreadSession): ISelectorGenerator<boolean> {
   const selection = yield* getData(draft, "Selection");
   return selection?.Preferences.DetailsOpen ?? true;
@@ -2146,7 +2139,6 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     rewindConfirm,
     mergeBackRunId,
     diffLoading,
-    fileLoading,
     diffSettings,
     diffGitRepositories,
     diffRepositoryRoot,

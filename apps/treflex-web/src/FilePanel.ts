@@ -88,14 +88,31 @@ function* readFile(draft: IFilePanel, source: IFileSource): IOpenGenerator<IFile
   }
 }
 
-// Follows useProjectFileQuery in apps/web/src/components/files/projectFilesQueryState.ts, whose
-// failed refresh keeps the last contents unless the path stopped being a file.
+function sameRead(held: IFileRead, next: IFileRead): boolean {
+  if (held.Kind === "text" && next.Kind === "text") {
+    return (
+      held.Contents === next.Contents &&
+      held.ByteLength === next.ByteLength &&
+      held.Truncated === next.Truncated
+    );
+  }
+  if (held.Kind === "attachment" && next.Kind === "attachment") {
+    return held.Text === next.Text && held.Truncated === next.Truncated;
+  }
+  return false;
+}
+
+// Follows useProjectFileQuery in apps/web/src/components/files/projectFilesQueryState.ts and the
+// branch order in FilePreviewPanel.tsx: a failed refresh keeps the last contents unless the path
+// stopped being a file or turned binary.
 export function keptRead(held: IFileRead | null, next: IFileRead): IFileRead | null {
   const shown = held?.Kind === "text" || held?.Kind === "attachment";
-  if (!shown) return next;
+  if (held === null || !shown) return next;
   if (next.Kind === "failed") return held;
-  if (next.Kind === "error") return next.Failure === "path_not_file" ? next : held;
-  return JSON.stringify(next) === JSON.stringify(held) ? held : next;
+  if (next.Kind === "error") {
+    return next.Failure === "path_not_file" || next.Failure === "binary_file" ? next : held;
+  }
+  return sameRead(held, next) ? held : next;
 }
 
 export function* loadFile(draft: IFilePanel): IOpenGenerator {

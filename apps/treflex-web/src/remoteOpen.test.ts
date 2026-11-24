@@ -10,7 +10,6 @@ describe("where editors open", () => {
     ["127.0.0.1", TAILSCALE, "local-exec"],
     ["[::1]", undefined, "local-exec"],
     [" LocalHost ", undefined, "local-exec"],
-    // A tailnet or LAN address is another machine's browser, even on the server's own PC.
     ["box.tail.ts.net", undefined, "remote-unavailable"],
     ["192.168.1.20", [], "remote-unavailable"],
     ["box.tail.ts.net", TAILSCALE, "remote-links"],
