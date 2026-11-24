@@ -302,7 +302,9 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
       const keys = [await keyOf(stored.Kind, file)];
       const entry = heldFile(stored.Kind, file, stored, keys, stored.Id);
       entry.DataUrl = stored.DataUrl;
-      startUpload(entry);
+      // Opens before the connection is up, so the send starts the upload.
+      entry.Upload = Promise.reject(serverFailure("Not uploaded yet."));
+      entry.Upload.catch(() => undefined);
       return entry;
     }
     if (stored.AttachmentId === undefined) return null;

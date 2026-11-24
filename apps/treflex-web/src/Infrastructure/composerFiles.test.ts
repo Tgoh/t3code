@@ -4,11 +4,16 @@ import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { composerFiles, type IComposerFilesView } from "./composerFiles";
 import type { IStoredAttachment } from "./draftMemory";
 
+const server = vi.hoisted(() => ({ connected: true }));
+
 vi.mock("./connection", async () => {
   const Exit = await import("effect/Exit");
   return {
     connectionRuntime: {
-      runPromiseExit: async () => Exit.succeed({ attachmentId: "minted", relativeUrl: "/upload" }),
+      runPromiseExit: async () =>
+        server.connected
+          ? Exit.succeed({ attachmentId: "minted", relativeUrl: "/upload" })
+          : Exit.fail({ message: "host is not connected." }),
     },
   };
 });
@@ -56,12 +61,14 @@ function openFiles() {
   const abort = new AbortController();
   onTestFinished(() => abort.abort());
   let value: IComposerFilesView | undefined;
+  const exposed: IComposerFilesView[] = [];
   const emitted: unknown[] = [];
   let handlers: Parameters<IResourceContext<"composerFiles">["methods"]>[0] | undefined;
   let supply: Parameters<IResourceContext<"composerFiles">["onSupply"]>[0] | undefined;
   const r = {
     expose: (next: IComposerFilesView) => {
       value = next;
+      exposed.push(next);
     },
     methods: (next: typeof handlers) => {
       handlers = next;
@@ -79,6 +86,7 @@ function openFiles() {
   return {
     value: () => value!,
     emitted,
+    exposed,
     methods: handlers!,
     supply: supply!,
     ctx,
@@ -172,5 +180,29 @@ describe("composerFiles", () => {
     const image = new File(["png"], "paste.png", { type: "image/png" });
     void files.supply([{ Kind: "image", File: image, PastedText: false }]);
     expect(files.value().Preparing.map((file) => file.Name)).toEqual(["paste.png"]);
+  });
+
+  it("leaves a kept image's upload to the send, so opening before the connection fails nothing", async () => {
+    vi.stubGlobal("XMLHttpRequest", AcceptingXhr);
+    server.connected = false;
+    onTestFinished(() => {
+      server.connected = true;
+    });
+    keep([
+      {
+        Id: "kept",
+        Kind: "image",
+        Name: "kept.png",
+        MimeType: "image/png",
+        SizeBytes: 8,
+        PastedText: false,
+        DataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      },
+    ]);
+    const files = openFiles();
+    expect((await files.methods.stored(files.ctx, ["kept"]))[0]?.DataUrl).toBeDefined();
+    server.connected = true;
+    expect((await files.methods.upload(files.ctx, "kept")).id).toBe("minted");
+    expect(files.exposed.map((value) => value.Status["kept"]?.Phase)).not.toContain("failed");
   });
 });
