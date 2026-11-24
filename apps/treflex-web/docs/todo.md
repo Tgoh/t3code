@@ -32,7 +32,7 @@ From a pass over `issues.md` for gaps Tam hits in daily use. Each item names its
 
 ## 3. Missing features
 
-Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view.
+Each item groups related gaps from `issues.md`, which lists them in full. They can run in parallel, apart from items that touch the same view. **On hold until the client moves to treflex 0.4.0** (Tam, 2026-11-24): 0.4.0 changes the public API, so anything built on 0.3 now would be ported twice.
 
 - **Stock features from the 2026-11-22 sync,** Tam's picks:
   - **What's left of side threads.** Subagents and side chats open beside the thread or in its place. Still missing:
