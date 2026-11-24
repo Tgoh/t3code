@@ -12,7 +12,6 @@ import {
   createSignal,
   For,
   Match,
-  onCleanup,
   Show,
   Switch,
   untrack,
@@ -69,6 +68,7 @@ import { PanelHeader } from "./RightPanel";
 import ThreadSession from "./ThreadSession";
 import { Button } from "./ui/Button";
 import { Presence } from "./ui/Presence";
+import { cleanupRef } from "./ui/cleanupRef";
 import { ScrollArea } from "./ui/ScrollArea";
 import { Spinner } from "./ui/Spinner";
 import { toastManager } from "./ui/toastStore";
@@ -232,12 +232,12 @@ function PreviewImage(props: { src: string; name: string; onError: () => void })
   const [natural, setNatural] = createSignal({ Width: 0, Height: 0 });
   const [viewport, setViewport] = createSignal({ Width: 0, Height: 0 });
   const [zoom, setZoom] = createSignal<number | null>(null);
-  const observe = (node: HTMLDivElement) => {
+  const observe = cleanupRef((node: HTMLDivElement) => {
     const update = () => setViewport({ Width: node.clientWidth, Height: node.clientHeight });
     const observer = new ResizeObserver(update);
     observer.observe(node);
-    onCleanup(() => observer.disconnect());
-  };
+    return () => observer.disconnect();
+  });
   const fit = () => {
     const { Width: width, Height: height } = natural();
     if (width === 0) return 1;
@@ -404,8 +404,17 @@ function SignedVideo(props: { resource: AssetResource; name: string; revision: n
     "video",
     () => props.revision,
   );
-  const [playback, setPlayback] = createSignal<IPlaybackSource | null>(null);
   const [playing, setPlaying] = createSignal(false);
+  // Written by the player's events, and moved on by a revision change while paused.
+  const [playback, setPlayback] = createSignal<IPlaybackSource | null>((held) =>
+    followRevision({
+      held: held ?? null,
+      latest: latest(),
+      revision: revisionKey(),
+      sourceFailed: media.state.Failed,
+      playing: playing(),
+    }),
+  );
   const [failedSrc, setFailedSrc] = createSignal<string | null>(null);
   const [retrying, setRetrying] = createSignal(false);
   const [attempt, setAttempt] = createSignal(0);
@@ -415,19 +424,6 @@ function SignedVideo(props: { resource: AssetResource; name: string; revision: n
     return held === null ? revisionKey() : held.Revision;
   };
   const failed = () => videoFailed(src(), failedSrc(), media.state.Failed);
-  createEffect(
-    () =>
-      followRevision({
-        held: playback(),
-        latest: latest(),
-        revision: revisionKey(),
-        sourceFailed: media.state.Failed,
-        playing: playing(),
-      }),
-    (next) => {
-      if (next !== untrack(playback)) setPlayback(next);
-    },
-  );
   const retry = async () => {
     if (retrying()) return;
     setRetrying(true);
@@ -518,23 +514,18 @@ function SignedAudio(props: { resource: AssetResource; name: string; revision: n
     "audio",
     () => props.revision,
   );
-  const [loaded, setLoaded] = createSignal<IPlaybackSource | null>(null);
   const [playing, setPlaying] = createSignal(false);
+  const [loaded, setLoaded] = createSignal<IPlaybackSource | null>((held) =>
+    followRevision({
+      held: held ?? null,
+      latest: latest(),
+      revision: revisionKey(),
+      sourceFailed: false,
+      playing: playing(),
+    }),
+  );
   const [failedUrl, setFailedUrl] = createSignal<string | null>(null);
   const failed = () => media.state.Failed || (latest() !== null && failedUrl() === latest());
-  createEffect(
-    () =>
-      followRevision({
-        held: loaded(),
-        latest: latest(),
-        revision: revisionKey(),
-        sourceFailed: false,
-        playing: playing(),
-      }),
-    (next) => {
-      if (next !== untrack(loaded)) setLoaded(next);
-    },
-  );
   const src = () => playerSource(loaded(), latest());
   return (
     <Show
