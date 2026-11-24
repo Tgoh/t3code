@@ -1,9 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 
-type FunctionNode =
-  | ESTree.ArrowFunctionExpression
-  | ESTree.FunctionExpression
-  | ESTree.FunctionDeclaration;
+type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function;
 
 const MESSAGE =
   "Solid 2 throws `CLEANUP_IN_FORBIDDEN_SCOPE` for `onCleanup` inside a ref callback, which crashes the view. Wrap the ref in `cleanupRef` from `src/ui/cleanupRef.ts` and return the teardown instead.";
