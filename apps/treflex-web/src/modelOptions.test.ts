@@ -2,12 +2,14 @@ import type { ProviderOptionDescriptor } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { IProviderOption, IWireModelSelection } from "./Infrastructure/commandEffects";
+import type { IWireServerConfig } from "./Infrastructure/settings";
 import {
   applyModelPreferences,
   compatibleRuntimeMode,
   dispatchSelection,
   FAVORITES_TAB,
   initialPickerTab,
+  instanceBadges,
   type ISelectDescriptor,
   legacyStartsExpanded,
   modelChangeBlock,
@@ -315,5 +317,52 @@ describe("the model list", () => {
       "d",
     ]);
     expect(applyModelPreferences(models, undefined)).toEqual(models);
+  });
+});
+
+describe("instance badges", () => {
+  const instance = (instanceId: string, driver: string, fields: object = {}) => ({
+    instanceId,
+    driver,
+    enabled: true,
+    ...fields,
+  });
+  const badges = (providers: object[], providerInstances: object = {}) =>
+    instanceBadges({
+      providers,
+      settings: { providerInstances },
+    } as unknown as IWireServerConfig);
+
+  it("badges instances that share a driver, and one with an accent alone", () => {
+    expect(
+      badges([
+        instance("claudeAgent", "claudeAgent"),
+        instance("claude_alt", "claudeAgent", { displayName: "Claude Alt" }),
+        instance("codex", "codex"),
+        instance("cursor", "cursor", { accentColor: " #2563eb " }),
+        instance("grok", "grok", { accentColor: "blue" }),
+      ]),
+    ).toEqual({
+      claudeAgent: { Name: "Claude", Initials: "CL" },
+      claude_alt: { Name: "Claude Alt", Initials: "CA" },
+      cursor: { Name: "Cursor", Initials: "CU", Accent: "#2563eb" },
+    });
+  });
+
+  it("tells ACP Registry instances apart by the agent their settings name", () => {
+    const providers = [
+      instance("acp_one", "acpRegistry"),
+      instance("acp_two", "acpRegistry"),
+      instance("acp_three", "acpRegistry"),
+    ];
+    expect(
+      Object.keys(
+        badges(providers, {
+          acp_one: { driver: "acpRegistry", config: { agentId: "gemini" } },
+          acp_two: { driver: "acpRegistry", config: { agentId: "gemini" } },
+          acp_three: { driver: "acpRegistry", config: { agentId: "goose" } },
+        }),
+      ),
+    ).toEqual(["acp_one", "acp_two"]);
   });
 });

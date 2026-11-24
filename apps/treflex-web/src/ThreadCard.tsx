@@ -41,9 +41,11 @@ import Shell, {
   isBusy,
   type ISidebarStatus,
   isSnoozed,
+  runtimeStatus,
   sidebarStatus,
   workingStartedAt,
 } from "./Shell";
+import type { IInstanceBadge } from "./modelOptions";
 import { modelDisplay } from "./ThreadSession";
 import { relativeTime, shortTimestamp, timeUntil } from "./timestamps";
 import {
@@ -138,6 +140,7 @@ function ThreadHoverCard(props: {
   thread: IWireThreadShell;
   projectName: string;
   model: IModelDisplay;
+  badge: IInstanceBadge | undefined;
   previousProviders: string[];
   status: ISidebarStatus;
   statusText: string;
@@ -171,8 +174,10 @@ function ThreadHoverCard(props: {
           )}
         </Show>
         <div class={hoverLine}>
-          <ProviderIcon driver={props.model.Driver} size={12} />
-          <span>{props.model.Name}</span>
+          <ProviderIcon driver={props.model.Driver} size={12} badge={props.badge} dot />
+          <span>
+            {props.badge ? `${props.model.Name} · ${props.badge.Name}` : props.model.Name}
+          </span>
         </div>
         <Show when={props.previousProviders.length > 0}>
           <div class={hoverLine}>
@@ -269,7 +274,14 @@ export function ThreadCard(props: {
   const selected = () => shell.sidebarRowThreadId() === props.thread.id;
   const now = () => environment.minute();
   const providers = () => environment.state.Replica.Providers;
-  const model = () => modelDisplay(providers(), props.thread.modelSelection);
+  // Follows resolveThreadProviderStack in packages/client-runtime/src/state/models.ts.
+  const instanceId = () =>
+    runtimeStatus(props.thread) === null
+      ? props.thread.modelSelection.instanceId
+      : props.thread.providerInstanceId;
+  const model = () =>
+    modelDisplay(providers(), { ...props.thread.modelSelection, instanceId: instanceId() });
+  const badge = () => environment.state.Replica.InstanceBadges[instanceId()];
   const projectName = () =>
     shell.state.Projects[props.thread.projectId]?.title ?? "Unknown project";
   const select = () => {
@@ -311,13 +323,13 @@ export function ThreadCard(props: {
     get model() {
       return model();
     },
+    get badge() {
+      return badge();
+    },
     get previousProviders() {
       return (props.thread.providerInstanceHistory ?? [])
-        .filter((instanceId) => instanceId !== props.thread.modelSelection.instanceId)
-        .map(
-          (instanceId) =>
-            providers().find((provider) => provider.InstanceId === instanceId)?.Name ?? instanceId,
-        );
+        .filter((held) => held !== instanceId())
+        .map((held) => providers().find((provider) => provider.InstanceId === held)?.Name ?? held);
     },
     get status() {
       return status();
@@ -357,7 +369,7 @@ export function ThreadCard(props: {
   const provider = () => (
     <Show when={props.showProvider}>
       <span class="flex h-5 flex-none items-center">
-        <ProviderIcon driver={model().Driver} size={14} />
+        <ProviderIcon driver={model().Driver} size={14} badge={badge()} />
       </span>
     </Show>
   );

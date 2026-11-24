@@ -1,4 +1,8 @@
 import {
+  normalizeProviderAccentColor,
+  providerInstanceInitials,
+} from "@t3tools/client-runtime/state/provider-instance-display";
+import {
   EnvironmentId,
   type ServerProvider,
   type UsageLimitSourceSnapshots,
@@ -12,6 +16,8 @@ import {
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
 import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
+
+import type { IInstanceBadge } from "./modelOptions";
 
 export type ILimitTone = "normal" | "warning" | "danger";
 
@@ -59,6 +65,23 @@ export interface ILimitInstance {
   Key: string;
   Label: string;
   Pool: LimitPool;
+  /** The bars' colour in place of the driver's. */
+  Accent: string | undefined;
+  Badge: IInstanceBadge | undefined;
+}
+
+// Follows AccountAvatar and PoolBar's segment colour in apps/web/src/components/usage/UsageLimitsPooled.tsx.
+function instanceBranding(account: LimitAccount): Pick<ILimitInstance, "Accent" | "Badge"> {
+  const accent = normalizeProviderAccentColor(account.accentColor);
+  const badge =
+    account.redeem === null || account.displayName === null
+      ? undefined
+      : {
+          Name: account.displayName,
+          Initials: providerInstanceInitials(account.displayName),
+          ...(accent === undefined ? {} : { Accent: accent }),
+        };
+  return { Accent: accent, Badge: badge };
 }
 
 function instanceLabel(account: LimitAccount, driverLabels: Readonly<Record<string, string>>) {
@@ -80,6 +103,7 @@ export function instanceLimitPools(
         Key: account.key,
         Label: instanceLabel(account, driverLabels),
         Pool: own,
+        ...instanceBranding(account),
       })),
     ),
   );

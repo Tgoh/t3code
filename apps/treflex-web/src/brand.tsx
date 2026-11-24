@@ -1,4 +1,5 @@
 import { getProviderClient } from "@t3tools/client-runtime/provider-clients";
+import { providerAccentForegroundColor } from "@t3tools/client-runtime/state/provider-instance-display";
 import type { ProjectIconColor } from "@t3tools/contracts";
 import type { IconNode } from "lucide";
 import { useResource } from "treflex-solid";
@@ -8,6 +9,7 @@ import Environment from "./Environment";
 import { Icon } from "./Icon";
 import { FolderCode } from "./icons";
 import type { IWireProject } from "./Infrastructure/wire";
+import type { IInstanceBadge } from "./modelOptions";
 import {
   faviconKey,
   faviconTarget,
@@ -174,9 +176,70 @@ export function ProjectBadge(props: { project: IWireProject | undefined; size?: 
   );
 }
 
-// Paths copy OpenAI and ClaudeAI in apps/web/src/components/Icons.tsx.
-export function ProviderIcon(props: { driver: string | undefined; size?: number | undefined }) {
+const BADGE =
+  "pointer-events-none absolute z-10 flex items-center justify-center rounded-full border font-semibold leading-none shadow-sm data-accent:bg-(--provider-accent) data-accent:text-(--provider-accent-foreground) not-data-accent:bg-card not-data-accent:text-muted-foreground";
+
+// Stock's badge on a 20px mark (the model picker's rail shrinks it for an accent), the one its
+// 16px call sites pass, and its `size="compact"`.
+function badgeSize(size: number, accent: boolean, dot: boolean): string {
+  if (dot) return "right-0 bottom-0 size-2 px-0";
+  if (size >= 20) {
+    return accent
+      ? "right-0 bottom-0 h-3 min-w-3 px-0.5 text-5xs"
+      : "right-0 bottom-0 h-3.5 min-w-3.5 px-0.5 text-4xs";
+  }
+  if (size >= 16) return "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs";
+  return "right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs";
+}
+
+// Follows ProviderInstanceIcon in apps/web/src/components/chat/ProviderInstanceIcon.tsx.
+export function ProviderIcon(props: {
+  driver: string | undefined;
+  size?: number | undefined;
+  badge?: IInstanceBadge | undefined;
+  /** An empty badge, drawn only for an instance with an accent. */
+  dot?: boolean;
+  /** What the badge's border cuts it out of. */
+  surface?: string;
+}) {
   const size = () => props.size ?? 16;
+  const badge = () =>
+    !hasProviderIcon(props.driver) || (props.dot && props.badge?.Accent === undefined)
+      ? undefined
+      : props.badge;
+  return (
+    <Show when={badge()} fallback={<ProviderMark driver={props.driver} size={size()} />}>
+      {(held) => (
+        <span
+          class="relative isolate inline-flex shrink-0 items-center justify-center overflow-visible"
+          data-instance-badge=""
+          style={
+            held().Accent === undefined
+              ? undefined
+              : {
+                  "--provider-accent": held().Accent,
+                  "--provider-accent-foreground": providerAccentForegroundColor(held().Accent!),
+                }
+          }
+        >
+          <ProviderMark driver={props.driver} size={size()} />
+          <span
+            class={`${BADGE} ${badgeSize(size(), held().Accent !== undefined, props.dot === true)}`}
+            style={{ "border-color": props.surface ?? "var(--card)" }}
+            data-accent={held().Accent === undefined ? undefined : ""}
+            aria-hidden="true"
+          >
+            {props.dot ? null : held().Initials}
+          </span>
+        </span>
+      )}
+    </Show>
+  );
+}
+
+// Paths copy OpenAI and ClaudeAI in apps/web/src/components/Icons.tsx.
+function ProviderMark(props: { driver: string | undefined; size: number }) {
+  const size = () => props.size;
   return (
     <>
       <Show when={props.driver === "claudeAgent"}>

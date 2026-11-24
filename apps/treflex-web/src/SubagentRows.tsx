@@ -42,7 +42,13 @@ const STATUS_VISUALS: Record<IStatus, { Dot: string; Label: string }> = {
   interrupted: { Dot: "bg-muted-foreground/60", Label: "Stopped" },
 };
 
-function SubagentAvatar(props: { driver: string | undefined; status?: IStatus | undefined }) {
+function SubagentAvatar(props: {
+  driver: string | undefined;
+  instanceId: string | undefined;
+  status?: IStatus | undefined;
+}) {
+  const environment = Environment.use();
+  const badges = () => environment.state.Replica.InstanceBadges;
   return (
     <span
       aria-hidden="true"
@@ -52,12 +58,17 @@ function SubagentAvatar(props: { driver: string | undefined; status?: IStatus | 
         when={hasProviderIcon(props.driver)}
         fallback={<Bot class="size-3.5 text-muted-foreground" />}
       >
-        <ProviderIcon driver={props.driver} size={14} />
+        <ProviderIcon
+          driver={props.driver}
+          size={14}
+          badge={props.instanceId === undefined ? undefined : badges()[props.instanceId]}
+        />
       </Show>
       <Show when={props.status}>
         {(status) => (
           <span
-            class={`absolute -right-px -bottom-px size-2 rounded-full ring-2 ring-background ${STATUS_VISUALS[status()].Dot}`}
+            class={`absolute -right-px size-2 rounded-full ring-2 ring-background data-badged:-top-px not-data-badged:-bottom-px ${STATUS_VISUALS[status()].Dot}`}
+            data-badged={Object.keys(badges()).length > 0 ? "" : undefined}
           />
         )}
       </Show>
@@ -104,6 +115,7 @@ function SubagentCard(props: ICardProps) {
     <>
       <SubagentAvatar
         driver={remote() === undefined ? props.item.driver : undefined}
+        instanceId={remote() === undefined ? props.item.providerInstanceId : undefined}
         status={status() ?? undefined}
       />
       <span class="min-w-0 flex-1">
@@ -239,6 +251,7 @@ export function SubagentGroup(props: { rowKey: string; ids: string[]; expanded: 
             {(item, index) => (
               <SubagentAvatar
                 driver={item.remoteChild === undefined ? item.driver : undefined}
+                instanceId={item.remoteChild === undefined ? item.providerInstanceId : undefined}
                 status={agents().length === 1 ? agents()[index()]?.status : undefined}
               />
             )}

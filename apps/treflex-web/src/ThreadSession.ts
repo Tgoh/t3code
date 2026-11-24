@@ -91,6 +91,7 @@ import type { IAppearanceMode } from "./colorScheme";
 import {
   compatibleRuntimeMode,
   dispatchSelection,
+  type IInstanceBadge,
   modelChangeBlock,
   pickedSelection,
   providerOf,
@@ -186,6 +187,8 @@ export const DEFAULT_RUNTIME_MODE: IWireRuntimeMode = "full-access";
 
 export interface IReplica extends IEntity {
   Providers: IProviderOption[];
+  /** By instance id, only for the instances whose icon carries a badge. */
+  InstanceBadges: Record<string, IInstanceBadge>;
   ModelFavorites: IModelFavorite[];
   Shell: IShell;
   OpenThreads: Record<string, IOpenThread>;

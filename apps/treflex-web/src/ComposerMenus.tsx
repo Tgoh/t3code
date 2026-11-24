@@ -107,7 +107,7 @@ const STAR_ON_HOVER =
 const EFFORT_ROW =
   "flex min-h-8 w-full flex-none cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left text-[14px] text-foreground hover:bg-foreground/9 focus-visible:bg-foreground/9 [&>svg]:size-3.5 [&>svg]:flex-none";
 const PROVIDER_TAB =
-  "relative flex aspect-square w-full flex-none cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-foreground enabled:hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:after:absolute aria-pressed:after:top-[calc(50%-10px)] aria-pressed:after:right-0 aria-pressed:after:h-5 aria-pressed:after:w-[3px] aria-pressed:after:rounded-full aria-pressed:after:bg-primary [&_svg]:size-5";
+  "relative flex aspect-square w-full flex-none cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-foreground enabled:hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:after:absolute aria-pressed:after:top-[calc(50%-10px)] aria-pressed:after:right-0 aria-pressed:after:h-5 aria-pressed:after:w-[3px] aria-pressed:after:rounded-full aria-pressed:after:bg-primary [&_svg]:size-5 [--badge-surface:color-mix(in_oklab,var(--muted)_30%,transparent)] aria-pressed:not-hover:not-focus:[--badge-surface:var(--background)] enabled:hover:[--badge-surface:var(--muted)] enabled:focus:[--badge-surface:var(--muted)]";
 const PICKER_GRID =
   "group/picker grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_11.75rem] grid-rows-[minmax(0,1fr)_auto] [grid-template-areas:'providers_models_effort'_'footer_footer_footer'] data-searching:grid-cols-[minmax(0,1fr)_11.75rem] data-searching:[grid-template-areas:'models_effort'_'footer_footer'] max-sm:grid-cols-[auto_minmax(0,1fr)] max-sm:grid-rows-[minmax(0,1fr)_minmax(0,auto)_auto] max-sm:[grid-template-areas:'providers_models'_'providers_effort'_'footer_footer'] max-sm:data-searching:grid-cols-[minmax(0,1fr)_11.75rem] max-sm:data-searching:[grid-template-areas:'models_effort'_'footer_footer']";
 
@@ -292,7 +292,11 @@ export function ModelPicker() {
         data-tip={suffix()?.Detail ?? undefined}
         onClick={() => setOpen(!open())}
       >
-        <ProviderIcon driver={session.effectiveModelDriver()} />
+        <ProviderIcon
+          driver={session.effectiveModelDriver()}
+          badge={environment.state.Replica.InstanceBadges[selection()?.instanceId ?? ""]}
+          surface="var(--composer-surface)"
+        />
         <span class={LABEL}>{name()}</span>
         <Show when={suffix()}>
           {(shown) => (
@@ -339,13 +343,25 @@ export function ModelPicker() {
   );
 }
 
-function ProviderGlyph(props: { driver: string | undefined; name: string; size?: number }) {
+function ProviderGlyph(props: {
+  driver: string | undefined;
+  instanceId: string;
+  name: string;
+  size: number;
+  surface: string;
+}) {
+  const environment = Environment.use();
   return (
     <Show
       when={hasProviderIcon(props.driver)}
       fallback={<span class="text-[13px] font-semibold">{props.name.slice(0, 1)}</span>}
     >
-      <ProviderIcon driver={props.driver} size={props.size} />
+      <ProviderIcon
+        driver={props.driver}
+        size={props.size}
+        badge={environment.state.Replica.InstanceBadges[props.instanceId]}
+        surface={props.surface}
+      />
     </Show>
   );
 }
@@ -385,7 +401,13 @@ function ModelListRow(props: {
       onClick={props.onChoose}
     >
       <span class="inline-flex size-4 flex-none items-center justify-center">
-        <ProviderGlyph driver={props.model.Driver} name={props.model.ProviderName} size={16} />
+        <ProviderGlyph
+          driver={props.model.Driver}
+          instanceId={props.model.InstanceId}
+          name={props.model.ProviderName}
+          size={16}
+          surface="var(--popover)"
+        />
       </span>
       <div class="flex min-w-0 flex-1 items-center gap-2 text-left">
         <div class="min-w-0 truncate text-sm font-normal leading-snug">
@@ -575,7 +597,13 @@ function PickerContent(props: { traits: ITraits | null; onClose: () => void }) {
               disabled={blockOf(provider.InstanceId) !== null}
               onClick={() => pickTab(provider.InstanceId)}
             >
-              <ProviderGlyph driver={provider.Driver} name={provider.Name} />
+              <ProviderGlyph
+                driver={provider.Driver}
+                instanceId={provider.InstanceId}
+                name={provider.Name}
+                size={20}
+                surface="var(--badge-surface)"
+              />
             </button>
           )}
         </For>
