@@ -7064,6 +7064,37 @@ describe("dictation", () => {
     expect(sent).toEqual([]);
   });
 
+  it("a restore mid-recording starts with no recording and forgets the queued send", async () => {
+    const sent: IStartTurn[] = [];
+    const { server, methods, phase, voiceId } = await dictating(READY, {
+      startTurn: (effect: IStartTurn) => void sent.push(effect),
+    });
+    await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
+    await phase("recording");
+    await server.runtime.dispatch(sendAfterDictation, voiceId(), THREAD_ID, "auto");
+
+    const { runtime } = await server.restore();
+    const voice = () => runtime.state.Environments[0]!.Local.Dictation;
+    const state = () => runtime.processSelector(recording, voice) as IRecording;
+    expect(state()).toMatchObject({ ThreadId: null, Phase: "idle", SubmitMode: null });
+    const envId = runtime.state.Environments[0]!.$Id;
+    await runtime.dispatch(startDictation, envId, THREAD_ID, EMPTY);
+    expect(methods()).toEqual(["start", "stop", "start"]);
+
+    const deliver = (message: object) =>
+      runtime.dispatch(
+        DictationReceiver.handle,
+        voice().$Id,
+        { Type: "Voice/Dictation", ...message } as never,
+        { publisher: { Id: voice().$Id } },
+      );
+    await deliver({ Kind: "state", ThreadId: THREAD_ID, Phase: "recording", Error: null });
+    await deliver({ Kind: "commit", ThreadId: THREAD_ID, Before: "", Text: "not yet" });
+    await settled();
+    expect(sent).toEqual([]);
+    expect(runtime.state.Environments[0]!.Local.ThreadSessions[THREAD_ID]!.Draft).toBe("not yet");
+  });
+
   it("deleting the recording's thread cancels it", async () => {
     const { server, methods, phase } = await dictating(READY, { threadCommand: () => undefined });
     await server.runtime.dispatch(startDictation, server.envId(), THREAD_ID, EMPTY);
