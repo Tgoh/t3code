@@ -71,6 +71,14 @@ describe("the time format setting", () => {
   });
 });
 
+describe("a time that isn't a date", () => {
+  it.each(["", "not a time", undefined as unknown as string])("renders %j as empty", (iso) => {
+    expect(shortTimestamp(iso)).toBe("");
+    expect(fullTimestamp(iso)).toBe("");
+    expect(dayAwareTimestamp(iso)).toBe("");
+  });
+});
+
 describe("relativeTimeAgo", () => {
   const then = "2026-11-07T15:00:00.000Z";
   const after = (ms: number) => Date.parse(then) + ms;

@@ -49,9 +49,16 @@ function ordinalSuffix(day: number): string {
   return day % 10 === 3 ? "rd" : "th";
 }
 
+// Follows parseTimestampDate in apps/web/src/timestampFormat.ts.
+function parsed(iso: string): Date | null {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 // Follows formatDayAwareTimestamp in apps/web/src/timestampFormat.ts.
 export function dayAwareTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
-  const date = new Date(iso);
+  const date = parsed(iso);
+  if (date === null) return "";
   const now = new Date();
   const wallClock = wallClockAsUtc(date);
   const time = timeFormatter(format).format(wallClock);
@@ -65,12 +72,14 @@ export function dayAwareTimestamp(iso: string, format: ITimestampFormat = "local
 
 // Follows formatShortTimestamp in apps/web/src/timestampFormat.ts.
 export function shortTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
-  return timeFormatter(format).format(wallClockAsUtc(new Date(iso)));
+  const date = parsed(iso);
+  return date === null ? "" : timeFormatter(format).format(wallClockAsUtc(date));
 }
 
 // Follows formatChatTimestampTooltip in apps/web/src/timestampFormat.ts.
 export function fullTimestamp(iso: string, format: ITimestampFormat = "locale"): string {
-  const date = new Date(iso);
+  const date = parsed(iso);
+  if (date === null) return "";
   const wallClock = wallClockAsUtc(date);
   const day = date.getDate();
   return `${timeFormatter(format).format(wallClock)}, ${day}${ordinalSuffix(day)} ${monthFormatter.format(wallClock)} ${date.getFullYear()}`;
