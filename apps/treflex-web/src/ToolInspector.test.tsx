@@ -33,10 +33,10 @@ describe("ToolInspector", () => {
       () => (
         <Errored fallback="crashed">
           <p>header</p>
-          <For each={items()}>
+          <For each={items()} keyed={false}>
             {(item) => (
               <section>
-                <ToolInspector id="row" item={item} detail={undefined} liveOutput={false} />
+                <ToolInspector id="row" item={item()} detail={undefined} liveOutput={false} />
               </section>
             )}
           </For>
@@ -58,8 +58,10 @@ describe("ToolInspector", () => {
     expect(onError).toHaveBeenCalledTimes(2);
     expect(logged).not.toHaveBeenCalled();
 
+    const row = host.querySelectorAll("section")[1];
     setItems([command("echo ok", '{"ok":1}'), command("echo fine", '{"fine":1}')]);
     flush();
+    expect(host.querySelectorAll("section")[1]).toBe(row);
     expect(rows()[1]?.join("")).toContain("<b>echo fine</b>");
     expect(rows()[1]?.join("")).toContain('<b>{"fine":1}</b>');
     dispose();

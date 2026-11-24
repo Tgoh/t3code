@@ -10,7 +10,7 @@ Workaround: use Node 26.13.0 through nvm. The pin in `package.json` isn't enforc
 
 ## Setup: `vp run check:changed` fails its unused-patches step
 
-The step installs in a temp copy of the repo, which has no `apps/treflex-web/vendor/treflex-eslint-0.3.0.tgz`, so the install fails. The other steps pass. Fixing it means a change to upstream's root config.
+The step runs when a change touches a dependency file: `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.pnpmfile.cjs`, `patches/`, `apps/{mobile,web}/deps/` or any `package.json`. It installs in a temp copy of the repo, which has no `apps/treflex-web/vendor/treflex-eslint-0.3.0.tgz`, so the install fails. The fix is in `scripts/check-changed.ts`: its `extra` copy list lacks `apps/treflex-web/vendor`.
 
 ## Gap: the connection runtime has one public door
 
