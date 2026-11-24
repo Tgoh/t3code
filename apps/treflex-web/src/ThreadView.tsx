@@ -44,9 +44,7 @@ import {
   firstAfterChange,
   followAfterScroll,
   grow,
-  type IScrollPosition,
   INITIAL_ROWS,
-  keepsWindow,
   trimToTail,
 } from "./timelineWindow";
 
@@ -70,6 +68,10 @@ export const CHAT_STAGE =
 
 const CONTENT_COLUMN =
   "mx-auto w-full max-w-(--chat-content-max-width) min-w-0 in-[.chat-stage.with-details]:max-w-[min(var(--chat-content-max-width),var(--details-lane,100%))] in-[.chat-stage.with-details]:translate-x-(--details-shift)";
+
+// The scroller's only flex child: `mb-auto` puts a short thread at the top of the column-reverse
+// scroller, and the bottom padding keeps the end clear of the composer lane.
+const TIMELINE_COLUMN = `${CONTENT_COLUMN} mb-auto shrink-0 pt-2 pb-[calc(var(--composer-height,0px)+var(--turn-status-height))]`;
 
 const NOTICE =
   "mx-auto my-0 w-full max-w-(--chat-content-max-width) py-1 text-[14px] text-warning-foreground";
@@ -238,46 +240,29 @@ const ThreadConversation = ThreadSession.provider<{
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
   let head!: HTMLDivElement;
+  let pending!: HTMLDivElement;
   let stage!: HTMLDivElement;
   let lane!: HTMLDivElement;
   const saved = untrack(() => session.state.Scroll);
   const [stuck, setStuck] = createSignal(saved === null);
-  const position = (): IScrollPosition => ({
-    Top: scroller.scrollTop,
-    Height: scroller.scrollHeight,
-    ClientHeight: scroller.clientHeight,
-  });
-  let lastPosition: IScrollPosition = { Top: 0, Height: 0, ClientHeight: 0 };
-  // iOS Safari overwrites a scroll change made while a finger is down and stops momentum at one
-  // made during it, so nothing above the viewport changes until a touch and its momentum end.
-  let touching = false;
-  let coasting = false;
-  let gesture: AbortController | undefined;
-  let quietTimer: ReturnType<typeof setTimeout> | undefined;
-  let heldGrow = false;
-  let heldTop = false;
-  let dragging = false;
+  // The scroller is column-reverse, so scrollTop is 0 at the end and negative above it.
+  const fromEnd = () => -scroller.scrollTop;
+  const at = () => `end+${Math.round(fromEnd())}`;
+  let lastFromEnd = 0;
   const scrollToEnd = () => {
-    scroller.scrollTop = scroller.scrollHeight;
+    scroller.scrollTop = 0;
   };
+  const roomAbove = () => scroller.scrollHeight - scroller.clientHeight - fromEnd() > 1;
   const statusRows = createMemo(() => checklistRows(checklist()));
-  // The status band sits outside the lane's box, so the lane's observer misses its resize.
-  createEffect(
-    statusRows,
-    () => {
-      if (untrack(stuck)) scrollToEnd();
-    },
-    { defer: true },
-  );
   const onComposerSend = () => {
     release();
     setStuck(true);
+    releaseTail("send");
     scrollToEnd();
   };
 
-  const firstVisible = (): Element | null => {
-    const children = content.children;
-    const top = scroller.getBoundingClientRect().top;
+  const firstBelow = (parent: Element, top: number): Element | null => {
+    const children = parent.children;
     let low = 0;
     let high = children.length;
     while (low < high) {
@@ -285,52 +270,98 @@ const ThreadConversation = ThreadSession.provider<{
       if (children[middle]!.getBoundingClientRect().bottom > top) high = middle;
       else low = middle + 1;
     }
-    const found = children[low] ?? null;
-    return found === head ? head.nextElementSibling : found;
+    return children[low] ?? null;
   };
-  let correcting = false;
-  const keepStill = (cause: string) => {
-    if (correcting) return;
-    const anchor = firstVisible();
-    if (anchor === null) return;
-    const before = anchor.getBoundingClientRect().top;
-    correcting = true;
-    // Measured after the patch, so native anchoring has applied; the difference is 0 where it did.
-    onFlush(() => {
-      correcting = false;
-      if (!anchor.isConnected) return;
-      const shift = anchor.getBoundingClientRect().top - before;
-      if (shift !== 0) scroller.scrollBy(0, shift);
-      if (isTracing())
-        trace(
-          `correct ${cause} anchor ${before.toFixed(1)}>${(before + shift).toFixed(1)} by ${shift.toFixed(1)} now ${anchor.getBoundingClientRect().top.toFixed(1)} top ${Math.round(scroller.scrollTop)}`,
-        );
+  // The head grows upwards as earlier rows load, so it never anchors.
+  const firstVisible = (): Element | null => {
+    const top = scroller.getBoundingClientRect().top;
+    let block = firstBelow(content, top);
+    if (block === head) block = head.nextElementSibling;
+    if (block instanceof HTMLElement && block.dataset.response !== undefined)
+      return firstBelow(block, top) ?? block;
+    return block;
+  };
+  const offsetOf = (row: Element) =>
+    row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+  let anchor: { Row: Element; Offset: number; ScrollTop: number } | null = null;
+  const pickAnchor = () => {
+    const row = firstVisible();
+    anchor =
+      row === null ? null : { Row: row, Offset: offsetOf(row), ScrollTop: scroller.scrollTop };
+  };
+  // Growth above the anchor moves nothing; growth at or below it pushes it up. A scroll event can run
+  // after a layout change and before the observers, so the reader's own scroll is taken out of the shift.
+  const keepAnchor = (cause: string) => {
+    const held = anchor;
+    if (held !== null && held.Row.isConnected && !stuck()) {
+      const expected = held.Offset - (scroller.scrollTop - held.ScrollTop);
+      const shift = offsetOf(held.Row) - expected;
+      if (Math.abs(shift) >= 0.5) {
+        const from = at();
+        scroller.scrollBy(0, shift);
+        if (isTracing()) traceCorrection(cause, held.Row, expected, shift, from);
+      }
+    }
+    pickAnchor();
+  };
+  const traceCorrection = (
+    cause: string,
+    row: Element,
+    expected: number,
+    shift: number,
+    from: string,
+  ) => {
+    const phase = touching ? " touch" : coasting ? " coast" : "";
+    trace(
+      `correct ${cause} anchor ${expected.toFixed(1)}>${(expected + shift).toFixed(1)} by ${shift.toFixed(1)} now ${offsetOf(row).toFixed(1)} ${from}>${at()}${phase}`,
+    );
+    // A dropped write shows here as the anchor back at its shifted place.
+    requestAnimationFrame(() => {
+      if (row.isConnected) trace(`frame anchor ${offsetOf(row).toFixed(1)} ${at()}`);
     });
   };
-  // `flow-root` on the head keeps the Load earlier row's margin inside the measured height.
-  const freezeHead = () => {
-    if (head.style.height !== "") return;
-    head.style.height = `${head.offsetHeight}px`;
-    head.style.overflow = "clip";
+
+  // iOS Safari drops a scroll write made during a touch and stops momentum at one made during it, so
+  // while the reader is up the thread the tail's height is held until the gesture goes quiet.
+  // `flow-root` on the held elements keeps their margins inside the held height.
+  let touching = false;
+  let coasting = false;
+  let gesture: AbortController | undefined;
+  let quietTimer: ReturnType<typeof setTimeout> | undefined;
+  let heldTail: HTMLElement[] = [];
+  let resizeCause = "resize";
+  const tailHeight = (elements: readonly HTMLElement[]) =>
+    elements.reduce((sum, element) => sum + element.getBoundingClientRect().height, 0);
+  const holdTail = () => {
+    if (heldTail.length > 0) return;
+    const last = pending.previousElementSibling;
+    heldTail = last instanceof HTMLElement && last !== head ? [last, pending] : [pending];
+    for (const element of heldTail) {
+      element.style.height = `${element.getBoundingClientRect().height}px`;
+      element.style.overflow = "clip";
+    }
+    if (isTracing()) trace(`tail held ${tailHeight(heldTail).toFixed(1)} ${at()}`);
+  };
+  const releaseTail = (cause: string) => {
+    if (heldTail.length === 0) return;
+    const held = heldTail;
+    heldTail = [];
+    const before = isTracing() ? tailHeight(held) : 0;
+    for (const element of held) {
+      element.style.height = "";
+      element.style.overflow = "";
+    }
+    if (!isTracing()) return;
+    const grew = tailHeight(held) - before;
+    trace(`tail released ${cause} grew ${grew.toFixed(1)} ${at()}`);
+    if (grew !== 0) resizeCause = `release ${cause}`;
   };
   const settle = (cause: string) => {
     coasting = false;
     clearTimeout(quietTimer);
     quietTimer = undefined;
-    const top = heldTop;
-    const more = heldGrow;
-    heldTop = false;
-    heldGrow = false;
-    trace(
-      `quiet ${cause} top ${Math.round(scroller.scrollTop)}${top ? " +top" : ""}${more ? " +grow" : ""}`,
-    );
-    if (head.style.height === "" && !top && !more) return;
-    const isStuck = untrack(stuck);
-    if (!isStuck) keepStill("insert");
-    head.style.height = "";
-    head.style.overflow = "";
-    // Following the end, the reader has left the top, and a grow now would raise the trim floor.
-    if (!isStuck && (top || more)) growTo(top ? 0 : grow(untrack(timeline).First), false);
+    trace(`quiet ${cause} ${at()}`);
+    releaseTail(cause);
   };
   // Momentum can pause its scroll events while still moving, so quiet also needs an unmoved scrollTop.
   const awaitQuiet = () => {
@@ -343,7 +374,7 @@ const ThreadConversation = ThreadSession.provider<{
     }, MOMENTUM_QUIET_MS);
   };
   const onScrollEnd = () => {
-    trace(`scrollend top ${Math.round(scroller.scrollTop)}`);
+    trace(`scrollend ${at()}`);
     if (!coasting) return;
     const top = scroller.scrollTop;
     requestAnimationFrame(() => {
@@ -356,16 +387,11 @@ const ThreadConversation = ThreadSession.provider<{
     gesture = undefined;
     touching = false;
     coasting = true;
-    trace(`${ended.type} top ${Math.round(scroller.scrollTop)}`);
+    trace(`${ended.type} ${at()}`);
     awaitQuiet();
   };
   const reachTop = () => {
-    if (touching || coasting) {
-      if (!heldGrow) trace(`grow held first ${untrack(timeline).First}`);
-      heldGrow = true;
-      return;
-    }
-    trace(`grow first ${untrack(timeline).First}`);
+    trace(`grow first ${untrack(timeline).First} ${at()}`);
     growTo(grow(untrack(timeline).First), untrack(stuck));
   };
 
@@ -386,39 +412,20 @@ const ThreadConversation = ThreadSession.provider<{
   }
   const placed = (held: ITimelineWindow, ids: readonly string[], isStuck: boolean) => {
     const moved = firstAfterChange(held.Ids, ids, held.First, saved?.RowId ?? null);
-    return { moved, first: snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved) };
+    return snap(ids, isStuck ? trimToTail(ids.length, moved, held.Floor) : moved);
   };
   const [timeline, setTimeline] = createSignal<ITimelineWindow>(
     untrack(() => {
       const empty = { Ids: [], First: 0, Floor: INITIAL_ROWS };
       const ids = thread.timelineIds();
-      return { ...empty, Ids: ids, First: placed(empty, ids, stuck()).first };
+      return { ...empty, Ids: ids, First: placed(empty, ids, stuck()) };
     }),
   );
   createRenderEffect(
     () => thread.timelineIds(),
     (ids) => {
       const held = untrack(timeline);
-      const isStuck = untrack(stuck);
-      const pinned = (touching || coasting) && !isStuck && (held.First === 0 || heldTop);
-      const oldTop = pinned && held.Ids.length > 0 ? ids.indexOf(held.Ids[held.First]!) : -1;
-      if (oldTop > 0) {
-        heldTop = true;
-        trace(`page held ${oldTop} rows`);
-        setTimeline({ ...held, Ids: ids, First: oldTop });
-        return;
-      }
-      const { moved, first } = placed(held, ids, isStuck);
-      if (!isStuck && !keepsWindow(held.Ids, held.First, ids, first)) keepStill("rows");
-      const trimmed = held.Ids.length > 0 && first !== moved;
-      const before = trimmed ? scroller.scrollTop : 0;
-      setTimeline({ ...held, Ids: ids, First: first });
-      // Only the trim's own shift, so the scroll event it causes isn't read as the user scrolling up
-      // and a scroll-up in the same frame still is.
-      if (trimmed)
-        onFlush(() => {
-          lastPosition = { ...lastPosition, Top: lastPosition.Top + scroller.scrollTop - before };
-        });
+      setTimeline({ ...held, Ids: ids, First: placed(held, ids, untrack(stuck)) });
     },
     { defer: true },
   );
@@ -437,7 +444,6 @@ const ThreadConversation = ThreadSession.provider<{
       First: snap(held.Ids, target),
       Floor: isStuck ? Math.max(held.Floor, held.Ids.length - target) : held.Floor,
     }));
-    if (!isStuck) keepStill("grow");
   };
   const showAll = (forward: boolean) => {
     const boundary = head.nextElementSibling;
@@ -478,17 +484,14 @@ const ThreadConversation = ThreadSession.provider<{
   // History pages the server sent before the thread expired aren't fetched again, so a place
   // in them is gone and the return follows the end instead.
   let restoring = saved !== null;
-  // Rows below the place can still be growing when it's put back, which clamps the scroll short
-  // (and at the end, where a clamped scroll would read as following it), so it's put back again
-  // as they grow, until the reader scrolls.
+  // Rows can still be growing when the place is put back, which moves it or clamps the scroll
+  // short, so it's put back again as they grow, until the reader scrolls.
   let holding: HTMLElement | null = null;
   const putBack = () => {
     if (holding === null || saved === null || !holding.isConnected) return;
-    scroller.scrollBy(
-      0,
-      holding.getBoundingClientRect().top - scroller.getBoundingClientRect().top - saved.Offset,
-    );
-    lastPosition = position();
+    scroller.scrollBy(0, offsetOf(holding) - saved.Offset);
+    lastFromEnd = fromEnd();
+    pickAnchor();
   };
   const release = () => {
     restoring = false;
@@ -523,21 +526,26 @@ const ThreadConversation = ThreadSession.provider<{
     },
   );
   onSettled(() => {
+    const keepPlace = (cause: string) => {
+      if (holding !== null) putBack();
+      else keepAnchor(cause);
+    };
     const observer = new ResizeObserver(() => {
-      if (stuck()) scrollToEnd();
-      else putBack();
+      const cause = resizeCause;
+      resizeCause = "resize";
+      keepPlace(cause);
     });
-    observer.observe(content);
+    // Border box: the composer and status band heights are the content's bottom padding.
+    observer.observe(content, { box: "border-box" });
     const laneObserver = new ResizeObserver(() => {
       stage.style.setProperty("--composer-height", `${lane.offsetHeight}px`);
-      if (stuck()) scrollToEnd();
     });
     // Border box: the keyboard changes only the lane's bottom padding.
     laneObserver.observe(lane, { box: "border-box" });
     // The stage shrinks under an opening keyboard with no change to the content or the lane.
     const stageObserver = new ResizeObserver(() => {
       props.onStageSize?.({ Width: stage.clientWidth, Height: stage.clientHeight });
-      if (stuck()) scrollToEnd();
+      keepPlace("stage");
     });
     stageObserver.observe(stage);
     scroller.addEventListener("scrollend", onScrollEnd);
@@ -579,36 +587,39 @@ const ThreadConversation = ThreadSession.provider<{
         </Show>
         {props.children}
         <div
-          class="min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-x-hidden overflow-y-auto px-[calc(var(--gutter)-var(--app-scrollbar-width))] pt-2 pb-[calc(var(--composer-height,0px)+var(--turn-status-height))] [mask-image:linear-gradient(to_bottom,transparent_0,black_1.5rem)] focus-visible:outline-none"
+          class="flex min-h-0 flex-1 flex-col-reverse [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] overflow-x-hidden overflow-y-auto px-[calc(var(--gutter)-var(--app-scrollbar-width))] [mask-image:linear-gradient(to_bottom,transparent_0,black_1.5rem)] focus-visible:outline-none"
           ref={scroller}
           data-timeline
           data-tip-scroll-dismiss
           tabindex={-1}
           onScroll={() => {
-            traceScroll(scroller.scrollTop, scroller.scrollHeight);
+            traceScroll(fromEnd(), scroller.scrollHeight);
             if (coasting) awaitQuiet();
             if (holding !== null) {
-              lastPosition = position();
+              lastFromEnd = fromEnd();
               return;
             }
-            const next = position();
-            const follow = followAfterScroll(lastPosition, next, touching || dragging);
+            keepAnchor("scroll");
+            const next = fromEnd();
+            const follow = followAfterScroll(lastFromEnd, next);
             const nowStuck = follow === "stick" ? true : follow === "detach" ? false : stuck();
             setStuck(nowStuck);
-            lastPosition = next;
+            lastFromEnd = next;
+            if (nowStuck) releaseTail("stuck");
+            else if (touching || coasting) holdTail();
             if (!restoring) remember(nowStuck);
           }}
           onWheel={(event) => {
             release();
-            if (event.deltaY < 0 && scroller.scrollTop > 0) setStuck(false);
+            if (event.deltaY < 0 && roomAbove()) setStuck(false);
           }}
           onKeyDown={(event) => {
             release();
-            if (SCROLL_UP_KEYS.has(event.key) && scroller.scrollTop > 0) setStuck(false);
+            if (SCROLL_UP_KEYS.has(event.key) && roomAbove()) setStuck(false);
           }}
           onTouchStart={(event) => {
             release();
-            trace(`touchstart ${event.touches.length} top ${Math.round(scroller.scrollTop)}`);
+            trace(`touchstart ${event.touches.length} ${at()}`);
             if (!touching) {
               gesture?.abort();
               gesture = new AbortController();
@@ -617,7 +628,7 @@ const ThreadConversation = ThreadSession.provider<{
             coasting = false;
             clearTimeout(quietTimer);
             quietTimer = undefined;
-            freezeHead();
+            if (!stuck()) holdTail();
             // A touch ends on the element it started on, which a re-render can take out of the scroller.
             const started = event.target instanceof Element ? event.target : scroller;
             const signal = gesture!.signal;
@@ -629,14 +640,11 @@ const ThreadConversation = ThreadSession.provider<{
           }}
           onPointerDown={(event) => {
             // A press on the scroller itself, not on a row, is its scrollbar.
-            if (event.target !== scroller) return;
-            release();
-            dragging = true;
-            document.addEventListener("pointerup", () => (dragging = false), { once: true });
+            if (event.target === scroller) release();
           }}
         >
-          <div class={CONTENT_COLUMN} ref={content}>
-            <div class="flow-root" ref={head}>
+          <div class={TIMELINE_COLUMN} ref={content}>
+            <div ref={head}>
               <Show
                 when={reachedTop()}
                 fallback={
@@ -654,18 +662,19 @@ const ThreadConversation = ThreadSession.provider<{
             </div>
             <For each={responses()?.Starts}>
               {(start) => (
-                <>
-                  <span class="block h-0" data-response={start} />
+                <div class="flow-root" data-response={start}>
                   <TimelineResponse
                     ids={responses()?.Segments[start] ?? []}
                     latest={start === lastStart()}
                   />
-                </>
+                </div>
               )}
             </For>
-            <For each={thread.pendingApprovalIds()}>
-              {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
-            </For>
+            <div class="flow-root" ref={pending}>
+              <For each={thread.pendingApprovalIds()}>
+                {(id) => <PendingApproval state={thread.state.RuntimeRequests[id]!} />}
+              </For>
+            </div>
             <Show when={thread.state.Thread !== null && thread.state.Timeline.length === 0}>
               <p class="py-12 text-center text-sm text-muted-foreground">
                 Send a message to start the conversation.

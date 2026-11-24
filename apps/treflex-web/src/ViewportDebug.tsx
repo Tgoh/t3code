@@ -21,10 +21,8 @@ function sample(probe: HTMLElement): Array<[string, string]> {
   const lane = document.querySelector<HTMLElement>(".composer-lane");
   const timeline = document.querySelector<HTMLElement>("[data-timeline]");
   const insets = getComputedStyle(probe);
-  const toEnd =
-    timeline === null
-      ? undefined
-      : timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight;
+  // The timeline is bottom-anchored: its scrollTop is 0 at the end and negative above it.
+  const toEnd = timeline === null ? undefined : -timeline.scrollTop;
   return [
     ["visual h", px(viewport?.height)],
     ["visual top", px(viewport?.offsetTop)],

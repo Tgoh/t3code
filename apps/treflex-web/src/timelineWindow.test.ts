@@ -7,7 +7,6 @@ import {
   grow,
   INITIAL_ROWS,
   initialFirst,
-  keepsWindow,
   trimToTail,
 } from "./timelineWindow";
 
@@ -60,15 +59,6 @@ describe("the timeline window", () => {
     expect(firstAfterChange(ids(50, 100), ids(0, 100), 0)).toBe(0);
   });
 
-  it("tells a plain append below the window from a change within it", () => {
-    const before = ids(0, 100);
-    expect(keepsWindow(before, 40, ids(0, 102), 40)).toBe(true);
-    expect(keepsWindow(before, 40, ["new", ...before], 41)).toBe(true);
-    expect(keepsWindow(before, 40, ["new", ...before], 40)).toBe(false);
-    expect(keepsWindow(before, 40, before.toSpliced(70, 0, "new"), 40)).toBe(false);
-    expect(keepsWindow(before, 40, before.toSpliced(70, 1), 40)).toBe(false);
-  });
-
   it("grows a chunk at a time down to the top", () => {
     expect(grow(100)).toBe(100 - CHUNK_ROWS);
     expect(grow(10)).toBe(0);
@@ -85,17 +75,15 @@ describe("the timeline window", () => {
 });
 
 describe("following the end", () => {
-  const at = (Top: number, Height = 2_000, ClientHeight = 500) => ({ Top, Height, ClientHeight });
-
-  it("sticks near the end and detaches on a move up with no size change", () => {
-    expect(followAfterScroll(at(1_000), at(1_480), false)).toBe("stick");
-    expect(followAfterScroll(at(1_000), at(900), false)).toBe("detach");
-    expect(followAfterScroll(at(900), at(1_000), false)).toBe("keep");
+  it("sticks near the end, including an overscroll past it", () => {
+    expect(followAfterScroll(500, 20)).toBe("stick");
+    expect(followAfterScroll(500, -30)).toBe("stick");
   });
 
-  it("keeps following when a shrink lowers scrollTop, unless the user is scrolling", () => {
-    const clamped = at(1_200, 1_900, 500);
-    expect(followAfterScroll(at(1_500, 2_000, 400), clamped, false)).toBe("keep");
-    expect(followAfterScroll(at(1_500, 2_000, 400), clamped, true)).toBe("detach");
+  it("detaches on a move away from the end and keeps on a move towards it", () => {
+    expect(followAfterScroll(20, 100)).toBe("detach");
+    expect(followAfterScroll(500, 600)).toBe("detach");
+    expect(followAfterScroll(600, 500)).toBe("keep");
+    expect(followAfterScroll(600, 600)).toBe("keep");
   });
 });

@@ -30,7 +30,7 @@ export function trace(text: string) {
 }
 
 /** Scroll events come every frame, so they're kept at most one per `SCROLL_GAP_MS`, with a count of the dropped ones. */
-export function traceScroll(top: number, height: number) {
+export function traceScroll(fromEnd: number, height: number) {
   if (!recording) return;
   const now = performance.now();
   if (now - lastScrollAt < SCROLL_GAP_MS) {
@@ -39,7 +39,7 @@ export function traceScroll(top: number, height: number) {
   }
   lastScrollAt = now;
   push(
-    `scroll ${Math.round(top)}/${Math.round(height)}${skippedScrolls > 0 ? ` +${skippedScrolls}` : ""}`,
+    `scroll end+${Math.round(fromEnd)}/${Math.round(height)}${skippedScrolls > 0 ? ` +${skippedScrolls}` : ""}`,
   );
   skippedScrolls = 0;
 }
