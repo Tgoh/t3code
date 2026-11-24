@@ -249,8 +249,14 @@ const ThreadConversation = ThreadSession.provider<{
   const fromEnd = () => -scroller.scrollTop;
   const at = () => `end+${Math.round(fromEnd())}`;
   let lastFromEnd = 0;
+  // Scroll events from the view's own writes aren't the reader scrolling.
+  let ownTop: number | null = null;
+  const wrote = () => {
+    ownTop = scroller.scrollTop;
+  };
   const scrollToEnd = () => {
     scroller.scrollTop = 0;
+    wrote();
   };
   const roomAbove = () => scroller.scrollHeight - scroller.clientHeight - fromEnd() > 1;
   const statusRows = createMemo(() => checklistRows(checklist()));
@@ -290,15 +296,19 @@ const ThreadConversation = ThreadSession.provider<{
       row === null ? null : { Row: row, Offset: offsetOf(row), ScrollTop: scroller.scrollTop };
   };
   // Growth above the anchor moves nothing; growth at or below it pushes it up. A scroll event can run
-  // after a layout change and before the observers, so the reader's own scroll is taken out of the shift.
+  // after a layout change and before the observers, so the reader's own scroll is taken out of the
+  // shift. A shrunk scroll range pulls scrollTop towards 0 by itself, which isn't the reader's scroll.
   const keepAnchor = (cause: string) => {
     const held = anchor;
     if (held !== null && held.Row.isConnected && !stuck()) {
-      const expected = held.Offset - (scroller.scrollTop - held.ScrollTop);
+      const range = scroller.scrollHeight - scroller.clientHeight;
+      const clamp = Math.max(0, -held.ScrollTop - range);
+      const expected = held.Offset - (scroller.scrollTop - held.ScrollTop - clamp);
       const shift = offsetOf(held.Row) - expected;
       if (Math.abs(shift) >= 0.5) {
         const from = at();
         scroller.scrollBy(0, shift);
+        wrote();
         if (isTracing()) traceCorrection(cause, held.Row, expected, shift, from);
       }
     }
@@ -311,7 +321,7 @@ const ThreadConversation = ThreadSession.provider<{
     shift: number,
     from: string,
   ) => {
-    const phase = touching ? " touch" : coasting ? " coast" : "";
+    const phase = touching ? " touch" : scrolling ? " scrolling" : "";
     trace(
       `correct ${cause} anchor ${expected.toFixed(1)}>${(expected + shift).toFixed(1)} by ${shift.toFixed(1)} now ${offsetOf(row).toFixed(1)} ${from}>${at()}${phase}`,
     );
@@ -321,25 +331,33 @@ const ThreadConversation = ThreadSession.provider<{
     });
   };
 
-  // iOS Safari drops a scroll write made during a touch and stops momentum at one made during it, so
-  // while the reader is up the thread the tail's height is held until the gesture goes quiet.
-  // `flow-root` on the held elements keeps their margins inside the held height.
+  // iOS Safari drops a scroll write made mid-touch and stops momentum at one, so while the reader is
+  // up the thread the tail's height is held until scrolling goes quiet. Any scroll engages it: iOS
+  // doesn't always send touchstart for a re-flick or a status bar tap. `flow-root` on the held
+  // elements keeps their margins inside the held height.
   let touching = false;
-  let coasting = false;
+  let scrolling = false;
   let gesture: AbortController | undefined;
   let quietTimer: ReturnType<typeof setTimeout> | undefined;
   let heldTail: HTMLElement[] = [];
   let resizeCause = "resize";
+  // The content's bottom padding is the composer and status band, which grow mid-turn too.
   const tailHeight = (elements: readonly HTMLElement[]) =>
-    elements.reduce((sum, element) => sum + element.getBoundingClientRect().height, 0);
+    elements.reduce(
+      (sum, element) => sum + element.getBoundingClientRect().height,
+      parseFloat(getComputedStyle(content).paddingBottom),
+    );
   const holdTail = () => {
     if (heldTail.length > 0) return;
     const last = pending.previousElementSibling;
     heldTail = last instanceof HTMLElement && last !== head ? [last, pending] : [pending];
-    for (const element of heldTail) {
-      element.style.height = `${element.getBoundingClientRect().height}px`;
+    const heights = heldTail.map((element) => element.getBoundingClientRect().height);
+    const padding = getComputedStyle(content).paddingBottom;
+    heldTail.forEach((element, index) => {
+      element.style.height = `${heights[index]}px`;
       element.style.overflow = "clip";
-    }
+    });
+    content.style.paddingBottom = padding;
     if (isTracing()) trace(`tail held ${tailHeight(heldTail).toFixed(1)} ${at()}`);
   };
   const releaseTail = (cause: string) => {
@@ -351,34 +369,37 @@ const ThreadConversation = ThreadSession.provider<{
       element.style.height = "";
       element.style.overflow = "";
     }
+    content.style.paddingBottom = "";
     if (!isTracing()) return;
     const grew = tailHeight(held) - before;
     trace(`tail released ${cause} grew ${grew.toFixed(1)} ${at()}`);
     if (grew !== 0) resizeCause = `release ${cause}`;
   };
   const settle = (cause: string) => {
-    coasting = false;
+    scrolling = false;
     clearTimeout(quietTimer);
     quietTimer = undefined;
     trace(`quiet ${cause} ${at()}`);
     releaseTail(cause);
   };
   // Momentum can pause its scroll events while still moving, so quiet also needs an unmoved scrollTop.
+  // A finger resting without moving isn't quiet; its touchend arms the timer again.
   const awaitQuiet = () => {
     clearTimeout(quietTimer);
     const top = scroller.scrollTop;
     quietTimer = setTimeout(() => {
       quietTimer = undefined;
+      if (touching) return;
       if (scroller.scrollTop === top) settle("timeout");
       else awaitQuiet();
     }, MOMENTUM_QUIET_MS);
   };
   const onScrollEnd = () => {
     trace(`scrollend ${at()}`);
-    if (!coasting) return;
+    if (!scrolling || touching) return;
     const top = scroller.scrollTop;
     requestAnimationFrame(() => {
-      if (coasting && scroller.scrollTop === top) settle("scrollend");
+      if (scrolling && !touching && scroller.scrollTop === top) settle("scrollend");
     });
   };
   const endTouch = (ended: Event) => {
@@ -386,9 +407,8 @@ const ThreadConversation = ThreadSession.provider<{
     gesture?.abort();
     gesture = undefined;
     touching = false;
-    coasting = true;
     trace(`${ended.type} ${at()}`);
-    awaitQuiet();
+    if (scrolling) awaitQuiet();
   };
   const reachTop = () => {
     trace(`grow first ${untrack(timeline).First} ${at()}`);
@@ -490,6 +510,7 @@ const ThreadConversation = ThreadSession.provider<{
   const putBack = () => {
     if (holding === null || saved === null || !holding.isConnected) return;
     scroller.scrollBy(0, offsetOf(holding) - saved.Offset);
+    wrote();
     lastFromEnd = fromEnd();
     pickAnchor();
   };
@@ -526,9 +547,15 @@ const ThreadConversation = ThreadSession.provider<{
     },
   );
   onSettled(() => {
+    // Column-reverse keeps the distance from the end, so a reader stuck short of it would stay short.
+    // Not while scrolling, where iOS drops the write.
     const keepPlace = (cause: string) => {
       if (holding !== null) putBack();
-      else keepAnchor(cause);
+      else if (!stuck()) keepAnchor(cause);
+      else {
+        if (!touching && !scrolling && fromEnd() >= 1) scrollToEnd();
+        pickAnchor();
+      }
     };
     const observer = new ResizeObserver(() => {
       const cause = resizeCause;
@@ -550,7 +577,6 @@ const ThreadConversation = ThreadSession.provider<{
     stageObserver.observe(stage);
     scroller.addEventListener("scrollend", onScrollEnd);
     return () => {
-      coasting = false;
       clearTimeout(quietTimer);
       gesture?.abort();
       scroller.removeEventListener("scrollend", onScrollEnd);
@@ -594,7 +620,12 @@ const ThreadConversation = ThreadSession.provider<{
           tabindex={-1}
           onScroll={() => {
             traceScroll(fromEnd(), scroller.scrollHeight);
-            if (coasting) awaitQuiet();
+            const own = ownTop !== null && scroller.scrollTop === ownTop;
+            ownTop = null;
+            if (!own) {
+              scrolling = true;
+              awaitQuiet();
+            }
             if (holding !== null) {
               lastFromEnd = fromEnd();
               return;
@@ -606,7 +637,7 @@ const ThreadConversation = ThreadSession.provider<{
             setStuck(nowStuck);
             lastFromEnd = next;
             if (nowStuck) releaseTail("stuck");
-            else if (touching || coasting) holdTail();
+            else if (scrolling) holdTail();
             if (!restoring) remember(nowStuck);
           }}
           onWheel={(event) => {
@@ -625,10 +656,6 @@ const ThreadConversation = ThreadSession.provider<{
               gesture = new AbortController();
             }
             touching = true;
-            coasting = false;
-            clearTimeout(quietTimer);
-            quietTimer = undefined;
-            if (!stuck()) holdTail();
             // A touch ends on the element it started on, which a re-render can take out of the scroller.
             const started = event.target instanceof Element ? event.target : scroller;
             const signal = gesture!.signal;

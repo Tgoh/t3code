@@ -352,7 +352,7 @@ Keep test clients on 5735: `localStorage` is per port, so choices such as groupi
 
 To test what the driver will serve, including the service worker, build and preview on another port: `vp build`, then `vp preview --port 5747 --strictPort`. `localhost` counts as secure, so the worker registers without HTTPS. The worker outlives the server on its port, so unregister it in DevTools before running the dev server there again.
 
-To see what the timeline does on a phone, turn on **Layout debug** in a thread's menu. The overlay shows live layout numbers and records touches, scroll events, held and inserted rows, and each scroll correction with its anchor's position before and after. Scroll on the phone, tap **Copy trace**, and paste it into a thread. **Clear** empties the recorder, which keeps the last 600 entries and records only while the overlay is on.
+To see what the timeline does on a phone, turn on **Layout debug** in a thread's menu. The overlay shows live layout numbers and records touches, scroll events and their end, window grows, tail holds and releases, and each scroll correction with its cause, its anchor's position before and after, and where the anchor sits a frame later. Scroll on the phone, tap **Copy trace**, and paste it into a thread. **Clear** empties the recorder, which keeps the last 600 entries and records only while the overlay is on.
 
 Work in the reflex repo doesn't reach this client until it's published. To move to a new release, read its breaking-changes record in the reflex repo's `docs/wip`, set both versions in `package.json`, and run `vp i`.
 
