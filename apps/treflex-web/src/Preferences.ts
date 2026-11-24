@@ -23,7 +23,9 @@ import {
   workingShelfShown,
 } from "./Shell";
 import { type ISidebarLayout, layoutSidebar, SETTLED_PAGE } from "./sidebarLayout";
+import { autoRefreshLimits } from "./Settings";
 import { followColorScheme } from "./Terminal";
+import { loadUsage, usageDays, usageMetric } from "./UsagePage";
 import { liveScope } from "./threadSearch";
 
 declare module "treflex" {
@@ -41,9 +43,18 @@ export function* setPreferences(
   draft: IEnvironment,
   patch: Partial<IPreferences>,
 ): IActionGenerator {
+  const held = draft.Local.Preferences.Usage;
+  const days = usageDays(held.Days);
+  const limits = usageMetric(held.Metric) === "limits";
   Object.assign(draft.Local.Preferences, patch);
   yield* storePreferencesEffect({ Patch: patch });
   if (patch.GroupByProject !== undefined) yield* start(followInbox, draft.Replica.Shell);
+  const page = draft.Local.UsagePage;
+  if (patch.Usage === undefined || page === null) return;
+  const nextDays = usageDays(patch.Usage.Days);
+  if (nextDays !== days) yield* start(loadUsage, page, nextDays);
+  if (!limits && usageMetric(patch.Usage.Metric) === "limits")
+    yield* start(autoRefreshLimits, draft);
 }
 
 const toggled = (held: readonly string[], id: string, on: boolean) =>

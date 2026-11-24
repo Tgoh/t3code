@@ -30,7 +30,7 @@ import {
   mergeUsage,
 } from "@t3tools/shared/usageMerge";
 import { useInFlight } from "treflex-solid";
-import { createMemo, createSignal, For, Show, untrack } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 
 import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
@@ -42,7 +42,13 @@ import {
   instanceLimitPools,
   limitPresentations,
 } from "./limits";
-import UsagePage, { getDefaultUsagePage, RefreshingUsage, useUsagePage } from "./UsagePage";
+import UsagePage, {
+  type IUsageMetric,
+  type IUsagePage,
+  RefreshingUsage,
+  usageDays,
+  usageMetric,
+} from "./UsagePage";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
 import { Alert, AlertTitle } from "./ui/Alert";
@@ -63,7 +69,6 @@ import {
 } from "./usageChart";
 
 // Follows apps/web/src/components/usage/usageShortcuts.ts and usageProviders.ts.
-type IMetric = "cost" | "tokens" | "limits";
 const loading = "m-0 px-4 text-[13px] text-muted-foreground";
 const HEADING = "m-0 flex items-center gap-2 text-[14px] font-medium";
 const TOTAL_TERM = "text-[12px] text-muted-foreground";
@@ -78,7 +83,7 @@ const FIGURE = `${CELL} pl-6 text-right whitespace-nowrap text-muted-foreground`
 const STRONG_FIGURE = `${CELL} pl-6 text-right whitespace-nowrap text-foreground`;
 const EMPTY_CELL = `${CELL} pl-6 text-center whitespace-nowrap text-muted-foreground`;
 
-const METRICS: Array<{ Value: IMetric; Label: string }> = [
+const METRICS: Array<{ Value: IUsageMetric; Label: string }> = [
   { Value: "cost", Label: "Cost" },
   { Value: "tokens", Label: "Tokens" },
   { Value: "limits", Label: "Limits" },
@@ -115,32 +120,19 @@ const PACE_COLOR: Record<LimitPace, string> = {
   under: "bg-success",
 };
 
-const shownMetric = (held: string): IMetric =>
-  METRICS.find((entry) => entry.Value === held)?.Value ?? "limits";
-
-const shownDays = (held: number): number =>
-  WINDOWS.some((entry) => entry.Days === held) ? held : 30;
+type IUsageShown = NonNullable<IUsagePage["Usage"]>;
 
 const metricField = (metric: "cost" | "tokens"): "costUsd" | "totalTokens" =>
   metric === "cost" ? "costUsd" : "totalTokens";
 
 export const UsageView = UsagePage.provider(() => {
   const environment = Environment.use();
-  const environmentId = untrack(() => environment.state.EnvironmentId);
-  const metric = () => shownMetric(environment.state.Local.Preferences.Usage.Metric);
-  const days = () => shownDays(environment.state.Local.Preferences.Usage.Days);
-  const { page, input, load } = useUsagePage(
-    environmentId,
-    untrack(() => ({ Days: days(), Limits: metric() === "limits" })),
-  );
+  const page = UsagePage.use();
+  const metric = () => usageMetric(environment.state.Local.Preferences.Usage.Metric);
+  const days = () => usageDays(environment.state.Local.Preferences.Usage.Days);
   const refreshing = useInFlight(RefreshingUsage, () => page.state);
-  const choose = (nextMetric: IMetric, nextDays: number) => {
-    const daysChanged = nextDays !== days();
-    const limitsShown = nextMetric === "limits" && metric() !== "limits";
+  const choose = (nextMetric: IUsageMetric, nextDays: number) =>
     void environment.setPreferences({ Usage: { Metric: nextMetric, Days: nextDays } });
-    if (daysChanged) load(nextDays);
-    if (limitsShown) void page.autoRefreshLimits(environmentId);
-  };
   const choosePeriod = (value: string | undefined) => {
     const picked = WINDOWS.find((entry) => String(entry.Days) === value);
     if (picked !== undefined) choose(metric(), picked.Days);
@@ -149,11 +141,10 @@ export const UsageView = UsagePage.provider(() => {
     const picked = METRICS.find((entry) => entry.Value === value);
     if (picked !== undefined) choose(picked.Value, days());
   };
-  const shown = () => page.state.Usage;
-  const merged = createMemo((): MergedUsage | null => {
-    const held = shown();
+  const merged = createMemo((): { Merged: MergedUsage; Held: IUsageShown } | null => {
+    const held = page.state.Usage;
     if (held === null) return null;
-    return mergeUsage(
+    const merged = mergeUsage(
       [
         {
           environmentId: EnvironmentId.make(environment.state.EnvironmentId),
@@ -163,9 +154,11 @@ export const UsageView = UsagePage.provider(() => {
       ],
       USAGE_CONTRACT_VERSION,
     );
+    return { Merged: merged, Held: held };
   });
   const windowLabel = () => {
-    const held = input();
+    const held = page.state.Window?.Input;
+    if (held === undefined) return "";
     return held.resolution === "hour"
       ? "Past 24 hours"
       : `${formatDayShort(held.sinceDay)} to ${formatDayShort(held.untilDay)}`;
@@ -248,12 +241,7 @@ export const UsageView = UsagePage.provider(() => {
             data-tip={metric() === "limits" ? "Refresh limits" : "Refresh usage"}
             aria-busy={refreshing() ? "true" : "false"}
             disabled={refreshing()}
-            onClick={() =>
-              void page.refreshUsage(
-                environmentId,
-                metric() === "limits" ? null : { Key: String(days()), Input: input() },
-              )
-            }
+            onClick={() => void page.refreshUsage(metric() === "limits")}
           >
             <RefreshIcon size="sm" refreshing={refreshing()} />
           </Button>
@@ -277,13 +265,13 @@ export const UsageView = UsagePage.provider(() => {
             <Show when={merged()} fallback={<UsageSkeleton />}>
               {(usage) => (
                 <UsageOverview
-                  usage={usage()}
+                  usage={usage().Merged}
                   metric={metric() === "cost" ? "cost" : "tokens"}
-                  input={input()}
+                  input={usage().Held.Input}
                   messages={usageSourceMessages(
-                    (shown()?.Summary.sources ?? []) as unknown as UsageSummary["sources"],
+                    usage().Held.Summary.sources as unknown as UsageSummary["sources"],
                   )}
-                  stale={shown()?.Key !== String(days())}
+                  stale={usage().Held.Days !== days()}
                 />
               )}
             </Show>
@@ -292,7 +280,7 @@ export const UsageView = UsagePage.provider(() => {
       </ScrollArea>
     </div>
   );
-}, getDefaultUsagePage);
+});
 
 function UsageSkeleton() {
   return (
@@ -857,8 +845,8 @@ function UsageLimits(props: { config: ILimitSources | null }) {
             No provider on the selected environments reports subscription limits.
           </p>
         </Show>
-        <For each={instances()}>
-          {(instance) => <LimitInstanceSection instance={instance} now={now()} />}
+        <For each={instances()} keyed={(instance) => instance.Key}>
+          {(instance) => <LimitInstanceSection instance={instance()} now={now()} />}
         </For>
         <Show when={notices().length > 0}>
           <Alert variant="warning" controlAlignment="first-line">
@@ -932,17 +920,17 @@ function LimitInstanceSection(props: { instance: ILimitInstance; now: number }) 
         <ProviderIcon driver={props.instance.Pool.driver} size={16} />
         {props.instance.Label}
       </h2>
-      <For each={displayLimitWindows(props.instance.Pool)}>
+      <For each={displayLimitWindows(props.instance.Pool)} keyed={(window) => window.id}>
         {(window) => (
           <div class="grid grid-cols-[11rem_minmax(0,1fr)] items-center gap-x-6 gap-y-3 rounded-[10px] border border-border/60 p-4 max-md:grid-cols-[minmax(0,1fr)]">
             <div class="flex flex-col gap-1">
-              <span class="text-[14px] font-medium">{window.label}</span>
+              <span class="text-[14px] font-medium">{window().label}</span>
               <span class="flex items-baseline gap-2">
                 <span class="text-[30px] font-semibold tabular-nums">
-                  {window.remainingPercent}%
+                  {window().remainingPercent}%
                 </span>
                 <span class="text-[14px] text-muted-foreground">left</span>
-                <Show when={window.pace}>
+                <Show when={window().pace}>
                   {(pace) => (
                     <span
                       class={`size-2 rounded-full ${PACE_COLOR[pace()]}`}
@@ -956,11 +944,11 @@ function LimitInstanceSection(props: { instance: ILimitInstance; now: number }) 
               <div class="h-5 overflow-hidden rounded-[6px] border border-border bg-muted">
                 <span
                   class="block h-full opacity-85"
-                  style={{ width: windowLeft(window), "background-color": color() }}
+                  style={{ width: windowLeft(window()), "background-color": color() }}
                 />
               </div>
               <span class="text-[11px] text-muted-foreground">
-                {windowResets(window, props.now)}
+                {windowResets(window(), props.now)}
               </span>
             </div>
           </div>

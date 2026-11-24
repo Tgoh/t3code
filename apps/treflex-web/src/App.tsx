@@ -397,8 +397,8 @@ const EnvironmentMain = Dictation.provider(() => {
         >
           {(view) => <SettingsView page={view().Page} />}
         </Match>
-        <Match when={environment.state.Local.View?.Kind === "usage"}>
-          <UsageView />
+        <Match when={environment.state.Local.UsagePage} keyed>
+          {(page) => <UsageView state={page} />}
         </Match>
         <Match when={environment.selectedOpenThread()} keyed>
           {(thread) => <ThreadView state={thread} />}

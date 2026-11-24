@@ -7,20 +7,13 @@ import { implementation, type IResourceImplementation } from "treflex";
 
 import { reportActivityEffect } from "./clientActivity";
 import { inEnvironment } from "./commandsImpl";
+import { randomId } from "./randomId";
 
 // Follows apps/web/src/lib/backgroundActivityReporter.ts.
 const CLIENT_ID_STORAGE_KEY = "t3.backgroundActivity.clientId";
 const REPORT_TIMEOUT_MS = 15_000;
 const LEASE_TTL_MS = 45_000;
 const RECENT_INTERACTION_WINDOW_MS = LEASE_TTL_MS;
-
-function randomId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 
 function clientId(): string {
   try {

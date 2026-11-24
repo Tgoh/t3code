@@ -1,4 +1,5 @@
 import {
+  entity,
   type IActionGenerator,
   type IOpenGenerator,
   type ISelectorGenerator,
@@ -7,6 +8,7 @@ import {
   start,
 } from "treflex";
 
+import { getDefaultArchivePage, type IArchivePage, loadArchived } from "./ArchivePage";
 import type { IEnvironment } from "./Environment";
 import { type IAddressView, writeAddressEffect } from "./Infrastructure/address";
 import {
@@ -31,6 +33,13 @@ import {
 import type { INotificationMode } from "./threadNotifications";
 import { closeDetailsPopover, followCheckout } from "./ThreadSession";
 import type { ITimestampFormat } from "./timestamps";
+import {
+  getDefaultUsagePage,
+  type IUsagePage,
+  loadUsage,
+  usageDays,
+  usageMetric,
+} from "./UsagePage";
 import { loadModels } from "./VoiceModels";
 
 /**
@@ -66,6 +75,7 @@ export function* showView(draft: IEnvironment, view: IAddressView | null): IActi
   const next: IAddressView | null =
     view?.Kind === "settings" ? { Kind: "settings", Page: builtSettingsPage(view.Page) } : view;
   draft.Local.View = next;
+  if (yield* placePages(draft, next)) yield* loadPages(draft);
   if (next === null) return;
   const covered = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
   if (covered !== undefined) yield* start(closeDetailsPopover, covered);
@@ -76,6 +86,34 @@ export function* showView(draft: IEnvironment, view: IAddressView | null): IActi
     draft.Local.Preferences.VoiceDestination === "server"
   )
     yield* start(loadModels, draft.Local.Dictation);
+}
+
+/** Makes the shown page's entity and removes the other's, returning whether it made one. */
+function* placePages(draft: IEnvironment, view: IAddressView | null): IActionGenerator<boolean> {
+  const local = draft.Local;
+  const usage = view?.Kind === "usage";
+  const archive = view?.Kind === "settings" && view.Page === "archived";
+  if (!usage && local.UsagePage !== null) local.UsagePage = null;
+  if (!archive && local.ArchivePage !== null) local.ArchivePage = null;
+  if (usage && local.UsagePage === null) {
+    local.UsagePage = yield* entity<IUsagePage>(getDefaultUsagePage(draft.EnvironmentId));
+    return true;
+  }
+  if (archive && local.ArchivePage === null) {
+    local.ArchivePage = yield* entity<IArchivePage>(getDefaultArchivePage(draft.EnvironmentId));
+    return true;
+  }
+  return false;
+}
+
+/** Reads what the open page shows. A restore's repair runs it too, since a load it cut short is dropped. */
+export function* loadPages(draft: IEnvironment): IActionGenerator {
+  const { UsagePage, ArchivePage, Preferences } = draft.Local;
+  if (UsagePage !== null) {
+    yield* start(loadUsage, UsagePage, usageDays(Preferences.Usage.Days));
+    if (usageMetric(Preferences.Usage.Metric) === "limits") yield* start(autoRefreshLimits, draft);
+  }
+  if (ArchivePage !== null) yield* start(loadArchived, ArchivePage);
 }
 
 export function* loadSettings(draft: IEnvironment): IActionGenerator {
@@ -245,7 +283,9 @@ export function* writeSetting(draft: IEnvironment, write: ISettingWrite): IOpenG
   else yield* updateServerSettings(draft, write.Patch);
 }
 
-/** The header's limits popover asks the server to re-probe, as the Usage page's limits tab does. */
+// Follows the automatic refresh in apps/web/src/components/usage/UsagePage.tsx, which runs when
+// the limits show and skips an environment refreshed in the last five minutes.
+/** Asks the server to re-probe its providers as the limits show, in the header or on the Usage page. */
 export function* autoRefreshLimits(draft: IEnvironment): IOpenGenerator {
   const environmentId = draft.EnvironmentId;
   yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: true }));

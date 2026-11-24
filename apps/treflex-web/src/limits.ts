@@ -55,6 +55,8 @@ export function limitPresentations(
 }
 
 export interface ILimitInstance {
+  /** The instance's account key, stable while its figures change. */
+  Key: string;
   Label: string;
   Pool: LimitPool;
 }
@@ -75,6 +77,7 @@ export function instanceLimitPools(
   return collectLimitPools(collectLimitAccounts(presentations), now).flatMap((pool) =>
     pool.accounts.flatMap((account) =>
       collectLimitPools([account], now).map((own) => ({
+        Key: account.key,
         Label: instanceLabel(account, driverLabels),
         Pool: own,
       })),

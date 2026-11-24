@@ -88,6 +88,8 @@ import {
   toggleViewportDebug,
 } from "./Preferences";
 import { type IShelves, SETTLED_PAGE } from "./sidebarLayout";
+import { type IArchivePage, loadArchived } from "./ArchivePage";
+import type { IUsagePage } from "./UsagePage";
 import { getDefaultTerminal, type ITerminal } from "./Terminal";
 import { type IWireClientSettings, storedClientSettingsEffect } from "./Infrastructure/settings";
 import { rememberTerminalEffect } from "./Infrastructure/terminalMemory";
@@ -143,6 +145,7 @@ import {
 import {
   applyTranscript,
   checkRewind,
+  ComposerFilesReceiver,
   detachThread,
   followCheckout,
   followWorkspace,
@@ -191,6 +194,8 @@ export interface IEnvironment extends IEntity {
     /** The editor this device last opened with, as stock stores it. */
     Editor: string | null;
     Dictation: IDictation;
+    UsagePage: IUsagePage | null;
+    ArchivePage: IArchivePage | null;
   };
 }
 
@@ -225,6 +230,8 @@ export function* newEnvironment(
     ViewportDebug: false,
     Editor: yield* storedEditorEffect(),
     Dictation: dictation,
+    UsagePage: null,
+    ArchivePage: null,
   });
   return yield* entity<IEnvironment>({
     EnvironmentId: environmentId,
@@ -323,7 +330,7 @@ function* sessionOf(
     Terminal: terminal,
   });
   const session = draft.Local.ThreadSessions[threadId]!;
-  yield* openResource(session, "Composer/Files", {
+  yield* openResource(session, "Composer/Files", ComposerFilesReceiver, {
     Type: "composerFiles",
     EnvironmentId: draft.EnvironmentId,
     ThreadId: threadId,
@@ -647,6 +654,17 @@ export function* threadCommand(
   if (command.Kind === "delete" && command.OnlyIfUnused !== true)
     yield* forgetSession(draft, threadId);
   return true;
+}
+
+/** An unarchive or delete from the Archive page, which reads the archive again once it's taken. */
+export function* archivedThreadCommand(
+  draft: IEnvironment,
+  threadId: string,
+  kind: "unarchive" | "delete",
+): IOpenGenerator {
+  if (!(yield* threadCommand(draft, threadId, { Kind: kind }))) return;
+  const page = draft.Local.ArchivePage;
+  if (page !== null) yield* start(loadArchived, page);
 }
 
 // Follows the reorder-pinned plan in apps/web/src/components/Sidebar.tsx, which writes the moved
@@ -1180,6 +1198,7 @@ export default createEntityFeature<IEnvironment>("Environment")(
     startSideChat,
     newThread,
     threadCommand,
+    archivedThreadCommand,
     reorderPin,
     settleThread,
     settleThreads,

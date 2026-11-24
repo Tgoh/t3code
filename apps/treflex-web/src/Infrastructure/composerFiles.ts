@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off cryptoRandomUUID:off -- A resource's timers and ids, outside any Effect runtime.
+// @effect-diagnostics globalTimers:off -- A resource's progress delay, outside any Effect runtime.
 import {
   EnvironmentRegistry,
   type EnvironmentSupervisor,
@@ -20,6 +20,7 @@ import type { IWireAttachment } from "./commandEffects";
 import { type IStoredAttachment, storedDraftFiles } from "./draftMemory";
 import { connectionRuntime } from "./connection";
 import { prepareImageForAttachment } from "./imagePreparation";
+import { randomId } from "./randomId";
 import { serverFailure, serverFetch, settle } from "./serverError";
 
 export interface IPickedFile {
@@ -47,6 +48,8 @@ declare module "treflex" {
     composerFiles: {
       Params: { EnvironmentId: string; ThreadId: string };
       Value: IComposerFilesView;
+      /** The kept files an open couldn't hold again. */
+      Message: { Lost: string[] };
       Methods: {
         upload(id: string): IWireAttachment;
         retry(id: string): void;
@@ -254,7 +257,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     file: File | null,
     described: Pick<IHeldFile, "Name" | "MimeType" | "SizeBytes" | "PastedText">,
     keys: string[],
-    id: string = crypto.randomUUID(),
+    id: string = randomId(),
   ): IHeldFile => ({
     ...described,
     Id: id,
@@ -358,7 +361,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     if (entry === undefined) return;
     held.delete(id);
     if (entry.PreviewUrl) URL.revokeObjectURL(entry.PreviewUrl);
-    if (entry.Status !== null) show();
+    if (entry.Status !== null || entry.PreviewUrl !== null) show();
     if (!discard) return;
     entry.Abort.abort();
     if (entry.Minted !== null) deleteUpload(entry.Minted);
@@ -369,18 +372,22 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
     for (const id of Array.from(held.keys())) release(id, true);
   });
 
-  // Every open, a reopen after a restore included, holds what the thread's draft kept, under the
-  // ids its state has; every method and supply waits for it.
-  const restored = Promise.all(
-    storedDraftFiles(params.ThreadId).map((stored) => restoreOne(stored).catch(() => null)),
-  ).then((entries) => {
-    for (const entry of entries) {
-      if (entry === null) continue;
-      hold(entry);
-      if (r.signal.aborted) release(entry.Id, false);
-    }
-    show();
-  });
+  // Holds what the thread's draft kept, under the ids its state has.
+  const kept = storedDraftFiles(params.ThreadId);
+  const restored = Promise.all(kept.map((stored) => restoreOne(stored).catch(() => null))).then(
+    (entries) => {
+      const lost: string[] = [];
+      for (const [index, entry] of entries.entries()) {
+        if (entry === null) lost.push(kept[index]!.Id);
+        else if (r.signal.aborted) {
+          entry.Abort.abort();
+          if (entry.PreviewUrl) URL.revokeObjectURL(entry.PreviewUrl);
+        } else hold(entry);
+      }
+      show();
+      if (lost.length > 0 && !r.signal.aborted) void r.emit({ Lost: lost });
+    },
+  );
 
   /** Fits an image to the provider's limits; null drops it as a repeat or a removal. */
   const prepareImage = async (id: string, source: File): Promise<IHeldFile | string | null> => {
@@ -410,7 +417,7 @@ export const composerFiles: IResourceImplementation<"composerFiles"> = (params, 
   r.onSupply(async (admitted) => {
     await restored;
     const ids = admitted.map(({ Kind, File: file }) => {
-      const id = crypto.randomUUID();
+      const id = randomId();
       if (Kind === "image") preparing.set(id, file.name || "image");
       return id;
     });

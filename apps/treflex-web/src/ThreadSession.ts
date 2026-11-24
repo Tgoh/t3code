@@ -36,6 +36,7 @@ import {
   openResource,
   pendingAsks,
   publishToNearest,
+  isEnded,
   receiver,
   resource,
   select,
@@ -680,15 +681,26 @@ export function* restoreFiles(draft: IThreadSession): IActionGenerator {
     SizeBytes,
     PastedText,
   }));
-  if (lost) {
-    yield* toast({
-      Kind: "warning",
-      Title: "Some attachments were not restored",
-      Description: "They didn't finish uploading before the page closed. Attach them again.",
-      Thread: { EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
-    });
-  }
+  if (lost) yield* lostFilesToast(draft);
 }
+
+function* lostFilesToast(draft: IThreadSession): IActionGenerator {
+  yield* toast({
+    Kind: "warning",
+    Title: "Some attachments were not restored",
+    Description: "They didn't finish uploading before the page closed. Attach them again.",
+    Thread: { EnvironmentId: draft.EnvironmentId, ThreadId: draft.ThreadId },
+  });
+}
+
+export const ComposerFilesReceiver = receiver<IThreadSession>("ComposerFilesReceiver")({
+  *"Composer/Files"(draft, message) {
+    if (isEnded(message)) return;
+    draft.Attachments = draft.Attachments.filter((file) => !message.Lost.includes(file.Id));
+    yield* lostFilesToast(draft);
+    yield* start(storeFiles, draft);
+  },
+});
 
 const heldSendMark = (draft: IThreadSession) =>
   transient(draft, "Composer/HeldSend", { Mode: null as IDispatchMode | null });

@@ -7,15 +7,17 @@ export interface IEditors {
 }
 
 // Follows getLocalFileManagerName in apps/web/src/lib/utils.ts.
-export function fileManagerName(platform: string): string {
+function fileManagerName(platform: string): string {
   if (isMacPlatform(platform)) return "Finder";
   if (/^win(dows)?/i.test(platform)) return "File Explorer";
   return "Files";
 }
 
+const stockLabel = (editor: EditorId) =>
+  EDITORS.find((candidate) => candidate.id === editor)?.label ?? editor;
+
 export function editorLabel(editor: EditorId, platform: string): string {
-  if (editor === "file-manager") return fileManagerName(platform);
-  return EDITORS.find((candidate) => candidate.id === editor)?.label ?? editor;
+  return editor === "file-manager" ? fileManagerName(platform) : stockLabel(editor);
 }
 
 // Follows resolveAndPersistPreferredEditor in apps/web/src/editorPreferences.ts; the caller persists.
@@ -43,7 +45,7 @@ export function openInEditorLabel(editors: IEditors): string {
   const preferred = editors.Preferred;
   return preferred === null || preferred === "file-manager"
     ? "Open in editor"
-    : `Open in ${editorLabel(preferred, "")}`;
+    : `Open in ${stockLabel(preferred)}`;
 }
 
 // Follows `revealInFileManager` in markdownServerConfigFields in

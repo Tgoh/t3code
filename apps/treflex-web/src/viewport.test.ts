@@ -112,6 +112,12 @@ describe("createSidebarSheet", () => {
     sidebar.toggle();
     flush();
     expect(saved).toEqual([false, true]);
+    setCollapsed(false);
+    flush();
+    expect(sidebar.collapsed()).toBe(false);
+    setCollapsed(true);
+    flush();
+    expect(sidebar.collapsed()).toBe(true);
 
     setSheet(true);
     flush();

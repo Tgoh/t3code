@@ -7,6 +7,7 @@ import {
   type OrchestrationV2ThreadProjection,
   ServerSettings,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
@@ -17,6 +18,7 @@ import {
   createTestRuntime,
   defineEffect,
   EntityReplacedError,
+  type IActionContext,
   type IActionGenerator,
   type IEffect,
   type IEntity,
@@ -34,6 +36,7 @@ import { describe, expect, it, onTestFinished } from "vite-plus/test";
 import {
   addFolder,
   addProjectSettings,
+  archivedThreadCommand,
   archiveThread,
   cloneProject,
   closeSideThread,
@@ -78,6 +81,7 @@ import {
 import { downloadModel, POLL_MS, selectModel, VoiceModelsReceiver } from "./VoiceModels";
 import { pull, runGitAction } from "./GitWork";
 import { loadEarlier } from "./HistoryWindow";
+import { refreshUsage } from "./UsagePage";
 import {
   autoRefreshLimits,
   chooseNotificationMode,
@@ -118,7 +122,7 @@ import type {
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
-import { serverFailure } from "./Infrastructure/serverError";
+import { serverFailure, thrownOf } from "./Infrastructure/serverError";
 import type { IToastRequest } from "./Infrastructure/toasts";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
 import type { IPreferences } from "./Infrastructure/preferences";
@@ -154,7 +158,7 @@ import {
   timelineIds,
 } from "./OpenThread";
 import { registerReceivers } from "./receivers";
-import { getDefaultRoot, type IRoot, load, repairDraftFiles } from "./Root";
+import { getDefaultRoot, type IRoot, load, repairRestore } from "./Root";
 import { type IQuestion, questionProgress } from "./questions";
 import {
   answerRequest,
@@ -221,6 +225,7 @@ import {
   setRuntimeMode,
   STOP_PENDING_MAX_MS,
   StopReceiver,
+  ComposerFilesReceiver,
   stoppingRun,
   stopRun,
   codeWrapped,
@@ -403,6 +408,10 @@ async function connect(
     threadCommand: () => {},
     refreshVcsStatus: () => {},
     reportActivity: () => {},
+    // Opening the Usage or Archive page reads it.
+    usageSummary: () => ({ buckets: [], sources: [], contractVersion: 6 }),
+    refreshProviders: () => {},
+    archivedShell: () => ({ projects: [], threads: [] }),
     ...commands,
     threadHistoryPage: (effect: { Cursor: string }) => historyPage!(effect.Cursor),
     storedDraft: (effect: { ThreadId: string }) => stored.Drafts.get(effect.ThreadId) ?? null,
@@ -519,9 +528,12 @@ async function connect(
         options: options(more),
         setup: (restored) => {
           restored.provideExternal("Minute", { read: () => device.Now });
+          tapReplicaWriters(restored, (name) => {
+            if (!REPLICA_WRITERS.has(name)) strayWriters.add(name);
+          });
           registerReceivers(restored);
         },
-        repair: repairDraftFiles,
+        repair: repairRestore,
       }),
     takeFailures: () => failures.splice(0),
     takeToasts: () => toasts.splice(0),
@@ -4600,6 +4612,27 @@ describe("drafts", () => {
     expect(sent[0]!.Attachments.map((file) => file.id)).toEqual(["upload-a", "upload-c"]);
   });
 
+  it("drops the kept files the files resource couldn't hold again, from the draft and the store", async () => {
+    const reopened = new Set(["a"]);
+    const stored = { Drafts: new Map(), Files: new Map([[THREAD_ID, ["a", "b"].map(storedOf)]]) };
+    const server = await connect(undefined, null, {}, stored, fileStubs(reopened));
+    await server.open();
+    await settled();
+    expect(server.session().Attachments.map((file) => file.Id)).toEqual(["a", "b"]);
+    await server.runtime.dispatch(
+      ComposerFilesReceiver.handle,
+      server.sessionId(),
+      { Type: "Composer/Files", Lost: ["b"] } as never,
+      { publisher: { Id: server.sessionId() } },
+    );
+    await settled();
+    expect(server.session().Attachments.map((file) => file.Id)).toEqual(["a"]);
+    expect(server.stored.Files.get(THREAD_ID)?.map((file) => file.Id)).toEqual(["a"]);
+    expect(server.takeToasts().map((toast) => toast.Title)).toEqual([
+      "Some attachments were not restored",
+    ]);
+  });
+
   const held = (server: Awaited<ReturnType<typeof connect>>) =>
     server.runtime.processSelector(heldSend, () => server.session());
 
@@ -6416,6 +6449,193 @@ describe("settings and usage", () => {
   });
 });
 
+const ARCHIVE = { projects: [], threads: [{ id: "t-9" }] };
+
+function pagesServer() {
+  const calls: Array<{ Type: string; [key: string]: unknown }> = [];
+  const state = {
+    Refreshing: false,
+    Refused: false,
+    /** Holds the next usage read until the action asking for it is stopped, or `release` runs. */
+    Hold: false,
+  };
+  let release: (() => void) | null = null;
+  const commands = {
+    refreshProviders: (effect: { Automatic: boolean }) => {
+      calls.push({ Type: "refreshProviders", Automatic: effect.Automatic });
+    },
+    refreshUsageRates: () => {
+      calls.push({ Type: "refreshUsageRates" });
+    },
+    usageSummary: (effect: { Input: Record<string, unknown> }, action?: IActionContext) => {
+      calls.push({ Type: "usageSummary", Input: effect.Input });
+      const sources = [{ refreshing: state.Refreshing && effect.Input.provisional === true }];
+      const summary = { buckets: [], sources, contractVersion: 6 };
+      if (!state.Hold) return summary;
+      state.Hold = false;
+      return new Promise((resolve, reject) => {
+        release = () => resolve(summary);
+        action?.signal.addEventListener("abort", () => reject(thrownOf(Cause.interrupt())));
+      });
+    },
+    archivedShell: () => {
+      calls.push({ Type: "archivedShell" });
+      return ARCHIVE;
+    },
+    threadCommand: (effect: { Command: IThreadCommand }) => {
+      if (effect.Command.Kind === "visit") return;
+      calls.push({ Type: "threadCommand", Command: effect.Command });
+      if (state.Refused) throw serverFailure("The thread is busy.");
+    },
+  };
+  return {
+    calls,
+    state,
+    commands,
+    release: () => release?.(),
+    of: (type: string) => calls.filter((call) => call.Type === type),
+    usageReads: () =>
+      calls
+        .filter((call) => call.Type === "usageSummary")
+        .map((call) => call.Input as Record<string, unknown>),
+  };
+}
+
+describe("the usage and archive pages", () => {
+  const show = async (server: Awaited<ReturnType<typeof connect>>, view: IAddressView | null) => {
+    await server.runtime.dispatch(openView, server.envId(), view);
+    await settled();
+  };
+  const choose = async (
+    server: Awaited<ReturnType<typeof connect>>,
+    metric: string,
+    days: number,
+  ) => {
+    await server.runtime.dispatch(setPreferences, server.envId(), {
+      Usage: { Metric: metric, Days: days },
+    });
+    await settled();
+  };
+
+  it("the usage page reads its window as it opens, re-probes the limits it opens on, and drops its summary as it closes", async () => {
+    const fake = pagesServer();
+    const server = await connect(undefined, null, fake.commands);
+    await show(server, { Kind: "usage" });
+    await show(server, { Kind: "usage" });
+    expect(fake.usageReads()).toMatchObject([{ provisional: true }]);
+    expect(fake.of("refreshProviders")).toEqual([{ Type: "refreshProviders", Automatic: true }]);
+    const held = server.environment().Local.UsagePage!;
+    expect(held.Usage?.Days).toBe(30);
+    await show(server, { Kind: "settings", Page: "general" });
+    expect(server.environment().Local.UsagePage).toBeNull();
+    expect(server.runtime.locate(held)).toBeUndefined();
+  });
+
+  it("a usage preference change reads the new window on the page, and switching to limits re-probes them", async () => {
+    const fake = pagesServer();
+    const server = await connect(undefined, null, fake.commands);
+    await choose(server, "cost", 7);
+    expect(fake.calls).toEqual([]);
+    await show(server, { Kind: "usage" });
+    expect(fake.usageReads()).toHaveLength(1);
+    expect(fake.of("refreshProviders")).toEqual([]);
+    await choose(server, "tokens", 1);
+    expect(fake.usageReads()).toHaveLength(2);
+    expect(fake.usageReads()[1]).toMatchObject({ resolution: "hour", provisional: true });
+    expect(server.environment().Local.UsagePage?.Usage?.Days).toBe(1);
+    await choose(server, "limits", 1);
+    expect(fake.usageReads()).toHaveLength(2);
+    expect(fake.of("refreshProviders")).toEqual([{ Type: "refreshProviders", Automatic: true }]);
+  });
+
+  it("show a provisional usage summary, then wait for the refresh it reports", async () => {
+    const fake = pagesServer();
+    fake.state.Refreshing = true;
+    const server = await connect(undefined, null, fake.commands);
+    await show(server, { Kind: "usage" });
+    const [provisional, refreshed] = fake.usageReads();
+    expect(provisional).toMatchObject({ provisional: true });
+    expect(refreshed).toMatchObject({ awaitRefresh: true });
+    expect({ ...refreshed, awaitRefresh: undefined }).toEqual({
+      ...provisional,
+      provisional: undefined,
+    });
+  });
+
+  it("refresh limits by re-probing the providers, and usage by refreshing prices and reading the same window again", async () => {
+    const fake = pagesServer();
+    const server = await connect(undefined, null, fake.commands);
+    await choose(server, "cost", 30);
+    await show(server, { Kind: "usage" });
+    const page = server.environment().Local.UsagePage!;
+    await server.runtime.dispatch(refreshUsage, page.$Id, false);
+    expect(fake.calls.slice(-2).map((call) => call.Type)).toEqual([
+      "refreshUsageRates",
+      "usageSummary",
+    ]);
+    expect(fake.usageReads()[1]).toEqual(fake.usageReads()[0]);
+    await server.runtime.dispatch(refreshUsage, page.$Id, true);
+    expect(fake.of("refreshProviders")).toEqual([{ Type: "refreshProviders", Automatic: false }]);
+  });
+
+  it("drop a usage read a newer window replaced, silently, though its request ends interrupted", async () => {
+    const fake = pagesServer();
+    fake.state.Hold = true;
+    const server = await connect(undefined, null, fake.commands);
+    await choose(server, "cost", 30);
+    await show(server, { Kind: "usage" });
+    await choose(server, "cost", 7);
+    expect(server.environment().Local.UsagePage?.Usage?.Days).toBe(7);
+    expect(server.takeFailures()).toEqual([]);
+  });
+
+  it("a restore on the usage page brings it back and reads its window again", async () => {
+    const fake = pagesServer();
+    fake.state.Hold = true;
+    const server = await connect(undefined, null, fake.commands);
+    await show(server, { Kind: "usage" });
+    expect(server.environment().Local.UsagePage?.Usage).toBeNull();
+    const { runtime } = await server.restore();
+    await settled();
+    const restored = (runtime.state.Environments[0] as IEnvironment).Local;
+    expect(restored.View).toEqual({ Kind: "usage" });
+    expect(restored.UsagePage?.Usage?.Days).toBe(30);
+    expect(fake.usageReads()).toHaveLength(2);
+    fake.release();
+    await settled();
+  });
+
+  it("the archive page reads the archive as it opens, and drops it as it closes", async () => {
+    const fake = pagesServer();
+    const server = await connect(undefined, null, fake.commands);
+    await show(server, { Kind: "settings", Page: "archived" });
+    await show(server, { Kind: "settings", Page: "archived" });
+    expect(fake.of("archivedShell")).toHaveLength(1);
+    const held = server.environment().Local.ArchivePage!;
+    expect(held.Archived).toEqual(ARCHIVE);
+    await show(server, null);
+    expect(server.environment().Local.ArchivePage).toBeNull();
+    expect(server.runtime.locate(held)).toBeUndefined();
+  });
+
+  it("unarchive or delete from the archive with stock's command, and read the archive again only when it's taken", async () => {
+    const fake = pagesServer();
+    const server = await connect(undefined, null, fake.commands);
+    await show(server, { Kind: "settings", Page: "archived" });
+    await server.runtime.dispatch(archivedThreadCommand, server.envId(), "t-9", "unarchive");
+    await settled();
+    expect(fake.calls.slice(-2)).toEqual([
+      { Type: "threadCommand", Command: { Kind: "unarchive" } },
+      { Type: "archivedShell" },
+    ]);
+    fake.state.Refused = true;
+    await server.runtime.dispatch(archivedThreadCommand, server.envId(), "t-9", "delete");
+    await settled();
+    expect(fake.calls.at(-1)).toEqual({ Type: "threadCommand", Command: { Kind: "delete" } });
+    expect(server.takeToasts()).toMatchObject([{ Title: "Failed to delete thread" }]);
+  });
+});
+
 describe("rewinding and forking", () => {
   const INSTANCE = "devReplay";
   const ATTACHMENT = { type: "image", id: "a-1", name: "shot.png", mimeType: "image/png" };
@@ -7088,7 +7308,13 @@ describe("dictation", () => {
         { Type: "Voice/Dictation", ...message } as never,
         { publisher: { Id: voice().$Id } },
       );
-    await deliver({ Kind: "state", ThreadId: THREAD_ID, Phase: "recording", Error: null });
+    await deliver({
+      Kind: "state",
+      ThreadId: THREAD_ID,
+      Phase: "recording",
+      Error: null,
+      ErrorAction: null,
+    });
     await deliver({ Kind: "commit", ThreadId: THREAD_ID, Before: "", Text: "not yet" });
     await settled();
     expect(sent).toEqual([]);
@@ -7208,8 +7434,8 @@ describe("client activity", () => {
     expect(reports.at(-1)?.Scopes).toEqual([{ type: "provider-status" }]);
   });
 
-  it("reports the device's visibility, focus and interaction as each changes, outside saved state", async () => {
-    const { server, reports, deliver } = await reporting();
+  it("reports the device's visibility, focus and interaction as each changes", async () => {
+    const { reports, deliver } = await reporting();
     await deliver({
       Type: "Device/Activity",
       Visible: true,
@@ -7226,6 +7452,5 @@ describe("client activity", () => {
     });
     expect(reports).toHaveLength(2);
     expect(reports[1]).toMatchObject({ Visible: false, Focused: false, RecentlyInteracted: false });
-    expect(server.environment().Local).not.toHaveProperty("Activity");
   });
 });

@@ -9,7 +9,7 @@ import { PreferencesReceiver } from "./Preferences";
 import { type IRoot, RootReceiver } from "./Root";
 import { ShellReceiver } from "./Shell";
 import { TerminalReceiver, TerminalShellReceiver } from "./Terminal";
-import { RewindReceiver, StopReceiver } from "./ThreadSession";
+import { ComposerFilesReceiver, RewindReceiver, StopReceiver } from "./ThreadSession";
 import { VoiceModelsReceiver } from "./VoiceModels";
 
 export function registerReceivers(runtime: IRuntime<IRoot>) {
@@ -21,6 +21,7 @@ export function registerReceivers(runtime: IRuntime<IRoot>) {
   runtime.registerReceiver(TerminalShellReceiver);
   runtime.registerReceiver(RewindReceiver);
   runtime.registerReceiver(StopReceiver);
+  runtime.registerReceiver(ComposerFilesReceiver);
   runtime.registerReceiver(GitReceiver);
   runtime.registerReceiver(PreferencesReceiver);
   runtime.registerReceiver(ActivityReceiver);

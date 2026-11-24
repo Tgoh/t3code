@@ -9,11 +9,10 @@ import {
   onCleanup,
   Show,
   Switch as SolidSwitch,
-  untrack,
 } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 
-import ArchivedThreads, { getDefaultArchivedThreads, useArchivedThreads } from "./ArchivedThreads";
+import ArchivePage from "./ArchivePage";
 import { ProjectBadge, ProviderIcon } from "./brand";
 import type { IAppearanceMode } from "./colorScheme";
 import Environment from "./Environment";
@@ -160,8 +159,8 @@ export function SettingsView(props: { page: string }) {
               <Match when={page() === "keybindings"}>
                 <KeybindingsPage />
               </Match>
-              <Match when={page() === "archived"}>
-                <ArchivedPage />
+              <Match when={environment.state.Local.ArchivePage} keyed>
+                {(archive) => <ArchivedPage state={archive} />}
               </Match>
               <Match when={page() === "about"}>
                 <AboutPage />
@@ -1213,13 +1212,11 @@ function KeybindingsPage() {
 
 type IArchivedThread = IWireArchivedShell["threads"][number];
 
-const ArchivedPage = ArchivedThreads.provider(() => {
+const ArchivedPage = ArchivePage.provider(() => {
   const environment = Environment.use();
-  const page = useArchivedThreads(
-    untrack(() => environment.state.EnvironmentId),
-    environment.threadCommand,
-  );
-  const command = page.command;
+  const page = ArchivePage.use();
+  const command = (threadId: string, kind: "unarchive" | "delete") =>
+    void environment.archivedThreadCommand(threadId, kind);
   const groups = createMemo(() => {
     const archived = page.state.Archived;
     if (archived === null) return null;
@@ -1331,7 +1328,7 @@ const ArchivedPage = ArchivedThreads.provider(() => {
       )}
     </Show>
   );
-}, getDefaultArchivedThreads);
+});
 
 function AboutPage() {
   const environment = Environment.use();

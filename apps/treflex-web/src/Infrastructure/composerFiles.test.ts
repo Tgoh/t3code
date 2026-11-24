@@ -4,9 +4,32 @@ import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { composerFiles, type IComposerFilesView } from "./composerFiles";
 import type { IStoredAttachment } from "./draftMemory";
 
-vi.mock("./connection", () => ({
-  connectionRuntime: { runPromiseExit: () => new Promise(() => {}) },
-}));
+vi.mock("./connection", async () => {
+  const Exit = await import("effect/Exit");
+  return {
+    connectionRuntime: {
+      runPromiseExit: async () => Exit.succeed({ attachmentId: "minted", relativeUrl: "/upload" }),
+    },
+  };
+});
+
+/** An upload endpoint that accepts every post. */
+class AcceptingXhr {
+  status = 0;
+  timeout = 0;
+  upload = { addEventListener: () => undefined };
+  #loaded = () => {};
+  open() {}
+  setRequestHeader() {}
+  abort() {}
+  addEventListener(type: string, listener: () => void) {
+    if (type === "load") this.#loaded = listener;
+  }
+  send() {
+    this.status = 200;
+    queueMicrotask(() => this.#loaded());
+  }
+}
 
 const THREAD = "thread-1";
 const STORED_KEY = `reflex-web:draft-files:${THREAD}`;
@@ -33,6 +56,7 @@ function openFiles() {
   const abort = new AbortController();
   onTestFinished(() => abort.abort());
   let value: IComposerFilesView | undefined;
+  const emitted: unknown[] = [];
   let handlers: Parameters<IResourceContext<"composerFiles">["methods"]>[0] | undefined;
   let supply: Parameters<IResourceContext<"composerFiles">["onSupply"]>[0] | undefined;
   const r = {
@@ -45,6 +69,7 @@ function openFiles() {
     onSupply: (next: typeof supply) => {
       supply = next;
     },
+    emit: async (message: unknown) => void emitted.push(message),
     signal: abort.signal,
     ownerId: "session-1",
     resumeFrom: undefined,
@@ -53,6 +78,7 @@ function openFiles() {
   const ctx = { signal: abort.signal };
   return {
     value: () => value!,
+    emitted,
     methods: handlers!,
     ctx,
     pick: async (name: string) => {
@@ -87,7 +113,8 @@ describe("composerFiles", () => {
     expect(stored.map((file) => file.Id)).toEqual([first.Id]);
   });
 
-  it("shows a stored image's preview in its value by id, until the image is removed", async () => {
+  it("shows a stored image's preview in its value by id, until the uploaded image is removed", async () => {
+    vi.stubGlobal("XMLHttpRequest", AcceptingXhr);
     keep([
       {
         Id: "image-1",
@@ -103,7 +130,27 @@ describe("composerFiles", () => {
     const stored = await files.methods.stored(files.ctx, ["image-1"]);
     expect(stored.map((file) => file.Id)).toEqual(["image-1"]);
     expect(files.value().Previews["image-1"]).toMatch(/^blob:/);
+    expect((await files.methods.upload(files.ctx, "image-1")).id).toBe("minted");
+    expect(files.value().Status["image-1"]).toBeUndefined();
     await files.methods.remove(files.ctx, "image-1");
     expect(files.value().Previews["image-1"]).toBeUndefined();
+  });
+
+  it("tells its owner which kept files it couldn't hold again", async () => {
+    keep([
+      storedFile("kept", "a.txt"),
+      {
+        Id: "broken",
+        Kind: "image",
+        Name: "shot.png",
+        MimeType: "image/png",
+        SizeBytes: 8,
+        PastedText: false,
+        DataUrl: "data:nonsense",
+      },
+    ]);
+    const files = openFiles();
+    expect(await files.methods.stored(files.ctx, ["kept", "broken"])).toHaveLength(1);
+    expect(files.emitted).toEqual([{ Lost: ["broken"] }]);
   });
 });

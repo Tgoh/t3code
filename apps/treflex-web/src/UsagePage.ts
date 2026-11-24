@@ -1,9 +1,9 @@
-// @effect-diagnostics globalDate:off -- View-only usage windows, outside any Effect runtime.
+// @effect-diagnostics globalDate:off -- Usage windows from the clockNow effect, outside any Effect runtime.
 import { makeWindow } from "@t3tools/shared/usageFormat";
 import { type IEntity, type IOpenGenerator, latest, open, workTag } from "treflex";
-import { createComponentFeature } from "treflex-solid";
-import { createSignal, onSettled } from "solid-js";
+import { createEntityFeature } from "treflex-solid";
 
+import { clockNowEffect } from "./Infrastructure/preferences";
 import {
   type IWireUsageInput,
   type IWireUsageSummary,
@@ -12,76 +12,75 @@ import {
   usageSummaryEffect,
 } from "./Infrastructure/settings";
 
-export interface IUsagePage extends IEntity {
-  Usage: { Key: string; Summary: IWireUsageSummary } | null;
+// Follows apps/web/src/components/usage/usageShortcuts.ts and usageProviders.ts.
+export type IUsageMetric = "cost" | "tokens" | "limits";
+const METRICS: readonly IUsageMetric[] = ["cost", "tokens", "limits"];
+const WINDOW_DAYS: readonly number[] = [1, 7, 30, 90];
+
+export const usageMetric = (held: string): IUsageMetric =>
+  METRICS.find((metric) => metric === held) ?? "limits";
+
+export const usageDays = (held: number): number => (WINDOW_DAYS.includes(held) ? held : 30);
+
+interface IUsageWindow {
+  Days: number;
+  Input: IWireUsageInput;
 }
 
-export function getDefaultUsagePage(): Omit<IUsagePage, "$Id"> {
-  return { Usage: null };
+/** The Usage page's reads, which `showView` makes as the page opens and removes as it closes. */
+export interface IUsagePage extends IEntity {
+  EnvironmentId: string;
+  /** The window last asked for; `Usage` holds an earlier one's until its read lands. */
+  Window: IUsageWindow | null;
+  Usage: (IUsageWindow & { Summary: IWireUsageSummary }) | null;
+}
+
+export function getDefaultUsagePage(environmentId: string): Omit<IUsagePage, "$Id"> {
+  return { EnvironmentId: environmentId, Window: null, Usage: null };
 }
 
 // Follows the provisional read in packages/client-runtime/src/state/server.ts (usage summary query).
-export function* loadUsage(
-  draft: IUsagePage,
-  environmentId: string,
-  key: string,
-  input: IWireUsageInput,
-): IOpenGenerator {
+function* readWindow(draft: IUsagePage, window: IUsageWindow): IOpenGenerator {
   const read = (extra: Partial<IWireUsageInput>) =>
-    open(usageSummaryEffect({ EnvironmentId: environmentId, Input: { ...input, ...extra } }));
+    open(
+      usageSummaryEffect({
+        EnvironmentId: draft.EnvironmentId,
+        Input: { ...window.Input, ...extra },
+      }),
+    );
   let summary = yield* read({ provisional: true });
-  draft.Usage = { Key: key, Summary: summary };
+  draft.Usage = { Days: window.Days, Input: { ...window.Input }, Summary: summary };
   if (!summary.sources.some((source) => source.refreshing === true)) return;
   summary = yield* read({ awaitRefresh: true });
-  draft.Usage = { Key: key, Summary: summary };
+  draft.Usage = { Days: window.Days, Input: { ...window.Input }, Summary: summary };
+}
+
+export function* loadUsage(draft: IUsagePage, days: number): IOpenGenerator {
+  const now = yield* clockNowEffect();
+  const window = {
+    Days: days,
+    Input: makeWindow(days, new Date(now), days === 1 ? "hour" : "day") as IWireUsageInput,
+  };
+  draft.Window = window;
+  yield* readWindow(draft, window);
 }
 latest(loadUsage);
 
 /**
  * Limits ask the server to re-probe its providers, whose new limits arrive on the config stream;
- * anything else refreshes prices and reads the window again.
+ * anything else refreshes prices and reads the held window again.
  */
-export function* refreshUsage(
-  draft: IUsagePage,
-  environmentId: string,
-  usage: { Key: string; Input: IWireUsageInput } | null,
-): IOpenGenerator {
-  if (usage === null) {
+export function* refreshUsage(draft: IUsagePage, limits: boolean): IOpenGenerator {
+  const environmentId = draft.EnvironmentId;
+  if (limits) {
     yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: false }));
     return;
   }
   yield* open(refreshUsageRatesEffect({ EnvironmentId: environmentId }));
-  yield* loadUsage(draft, environmentId, usage.Key, usage.Input);
+  const window = draft.Window;
+  if (window !== null) yield* readWindow(draft, window);
 }
 export const RefreshingUsage = workTag("Usage/Refreshing");
 RefreshingUsage.mark(refreshUsage, loadUsage);
 
-// Follows the automatic refresh in apps/web/src/components/usage/UsagePage.tsx, which runs when
-// the limits show and skips an environment refreshed in the last five minutes.
-export function* autoRefreshLimits(_draft: IEntity, environmentId: string): IOpenGenerator {
-  yield* open(refreshProvidersEffect({ EnvironmentId: environmentId, Automatic: true }));
-}
-
-const UsagePage = createComponentFeature<IUsagePage>("Settings/UsagePage")(
-  { loadUsage, refreshUsage, autoRefreshLimits },
-  {},
-);
-export default UsagePage;
-
-export const windowInput = (days: number): IWireUsageInput =>
-  makeWindow(days, new Date(), days === 1 ? "hour" : "day") as IWireUsageInput;
-
-export function useUsagePage(environmentId: string, opening: { Days: number; Limits: boolean }) {
-  const page = UsagePage.use();
-  const [input, setInput] = createSignal(windowInput(opening.Days));
-  const load = (days: number) => {
-    const next = windowInput(days);
-    setInput(next);
-    void page.loadUsage(environmentId, String(days), next);
-  };
-  onSettled(() => {
-    load(opening.Days);
-    if (opening.Limits) void page.autoRefreshLimits(environmentId);
-  });
-  return { page, input, load };
-}
+export default createEntityFeature<IUsagePage>("UsagePage")({ refreshUsage }, {});

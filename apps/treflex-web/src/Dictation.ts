@@ -81,7 +81,7 @@ const IDLE: IRecording = {
   HoldError: false,
 };
 
-// A restore can't reopen a live microphone, so a recording is never saved.
+// A restore can't reopen a live microphone.
 const recordingMark = (draft: IDictation) => transient(draft, "Voice/Recording", IDLE);
 
 export const STALE_DRAFT =

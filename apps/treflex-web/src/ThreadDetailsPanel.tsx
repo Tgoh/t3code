@@ -754,7 +754,9 @@ const BranchMenu = BranchList.provider(
         value={props.value}
         query={query()}
         loading={loading() && list.state.Branches === null}
-        empty={list.state.Branches?.length === 0 && query().trim() === ""}
+        empty={
+          list.state.Error === null && list.state.Branches?.length === 0 && query().trim() === ""
+        }
         error={list.state.Error}
         onQuery={(next) => {
           setQuery(next);
@@ -837,7 +839,8 @@ const Body = (props: IDetailsProps) => {
     Kind: "editor" | "git" | "scripts";
     Anchor: IMenuAnchor;
   } | null>(null);
-  const [branchPicker, setBranchPicker] = createSignal<HTMLElement | null>(null);
+  // A fresh object per open, so a reopen during the exit remounts the picker and reloads.
+  const [branchPicker, setBranchPicker] = createSignal<{ Trigger: HTMLElement } | null>(null);
   const [committing, setCommitting] = createSignal(false);
   const [addingScript, setAddingScript] = createSignal(false);
   createEffect(
@@ -917,7 +920,7 @@ const Body = (props: IDetailsProps) => {
     void session.runScript(script);
   };
   const openBranches = (trigger: HTMLElement) =>
-    setBranchPicker(branchPicker() === null ? trigger : null);
+    setBranchPicker(branchPicker() === null ? { Trigger: trigger } : null);
   const pendingCopy = () => {
     const pending = work.defaultBranchConfirm()?.Request;
     if (pending === undefined) return null;
@@ -1172,10 +1175,10 @@ const Body = (props: IDetailsProps) => {
         }}
       </Presence>
 
-      <Presence when={branchPicker()}>
-        {(trigger) => (
+      <Presence when={branchPicker()} keyed>
+        {(open) => (
           <BranchMenu
-            trigger={trigger()}
+            trigger={open().Trigger}
             value={branchName()}
             onClose={() => setBranchPicker(null)}
           />
