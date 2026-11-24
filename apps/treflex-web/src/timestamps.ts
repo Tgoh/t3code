@@ -78,7 +78,6 @@ export function fullTimestamp(iso: string, format: ITimestampFormat = "locale"):
 
 export const MINUTE = 60_000;
 
-// Solid components run once, so React's purity rule, which flags Date.now in a component, doesn't apply.
 export const clockNow = () => Date.now();
 
 export function relativeTime(iso: string, now: number): string {
@@ -88,6 +87,12 @@ export function relativeTime(iso: string, now: number): string {
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
+// Follows relativeElapsedLabel in apps/web/src/timestampFormat.ts.
+export function relativeTimeAgo(iso: string, now: number): string {
+  const elapsed = relativeTime(iso, now);
+  return elapsed === "now" ? "just now" : `${elapsed} ago`;
 }
 
 export function timeUntil(iso: string, now: number): string {

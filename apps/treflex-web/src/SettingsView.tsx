@@ -57,7 +57,7 @@ import Shell from "./Shell";
 import { SidebarToggle } from "./Sidebar";
 import { ThreadConfirmDialog } from "./ThreadCard";
 import { isNotificationMode } from "./threadNotifications";
-import { relativeTime } from "./timestamps";
+import { relativeTimeAgo } from "./timestamps";
 import { Badge } from "./ui/Badge";
 import { Button, buttonVariants, InlineButton } from "./ui/Button";
 import {
@@ -1278,7 +1278,7 @@ const ArchivedPage = ArchivePage.provider(() => {
                   {(thread) => (
                     <SettingsRowFrame
                       title={thread.title}
-                      description={`Archived ${relativeTime(thread.archivedAt ?? thread.createdAt, now())} ago · Created ${relativeTime(thread.createdAt, now())} ago`}
+                      description={`Archived ${relativeTimeAgo(thread.archivedAt ?? thread.createdAt, now())} · Created ${relativeTimeAgo(thread.createdAt, now())}`}
                       control={
                         <span class="inline-flex gap-1.5">
                           <Button

@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off -- Times built only to format them.
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { dayAwareTimestamp, fullTimestamp, shortTimestamp } from "./timestamps";
+import { dayAwareTimestamp, fullTimestamp, relativeTimeAgo, shortTimestamp } from "./timestamps";
 
 // Node re-resolves the default zone when TZ is assigned, like a browser after the OS zone changes.
 function useTimeZone(timeZone: string): Disposable {
@@ -68,5 +68,19 @@ describe("the time format setting", () => {
   it("keeps 12-hour and 24-hour apart", () => {
     using _zone = useTimeZone("UTC");
     expect(shortTimestamp(afternoon, "12-hour")).not.toBe(shortTimestamp(afternoon, "24-hour"));
+  });
+});
+
+describe("relativeTimeAgo", () => {
+  const then = "2026-11-07T15:00:00.000Z";
+  const after = (ms: number) => Date.parse(then) + ms;
+
+  it.each([
+    [59_000, "just now"],
+    [60_000, "1m ago"],
+    [3 * 3_600_000, "3h ago"],
+    [2 * 86_400_000, "2d ago"],
+  ])("words %ims as %s", (elapsed, label) => {
+    expect(relativeTimeAgo(then, after(elapsed))).toBe(label);
   });
 });

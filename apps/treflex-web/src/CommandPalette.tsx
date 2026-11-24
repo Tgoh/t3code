@@ -41,7 +41,7 @@ import { orderProjects, toSortableThread } from "./projectOrder";
 import { type IPaletteView, useNavigation } from "./navigation";
 import Shell, { activityAt, isSnoozed, sidebarStatus } from "./Shell";
 import { rankMessages, threadSubject } from "./threadSearch";
-import { relativeTime } from "./timestamps";
+import { relativeTimeAgo } from "./timestamps";
 import { CommandDialog, CommandDialogPopup, CommandGroup, CommandList } from "./ui/Command";
 
 const META_TEXT = "min-w-0 truncate";
@@ -118,7 +118,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
       Thread: threadSubject(thread, environment.state.EnvironmentId, title),
       ThreadId: thread.id,
       Icon: "thread",
-      ...(activity === null ? {} : { Timestamp: relativeTime(activity, now) }),
+      ...(activity === null ? {} : { Timestamp: relativeTimeAgo(activity, now) }),
       ...(current ? { Secondary: true } : {}),
     };
   };
@@ -271,7 +271,7 @@ export const CommandPalette = Shell.provider((props: { view: IPaletteView }) => 
           ...rest,
           Snippet: match.snippet,
           ...(match.messageCreatedAt
-            ? { Timestamp: relativeTime(match.messageCreatedAt, now) }
+            ? { Timestamp: relativeTimeAgo(match.messageCreatedAt, now) }
             : {}),
         },
       ];
