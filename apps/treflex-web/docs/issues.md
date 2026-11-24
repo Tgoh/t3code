@@ -24,6 +24,10 @@ An action's `catch` takes only a `ServerError`, which `settle` makes from an Eff
 
 `createEnvironmentRpcCommand` and its `permissionAtom` take an atom runtime, so they don't fit without one. Commands go through `client-runtime/operations` and `request`, run with `EnvironmentRegistry.run`. That skips the client's permission check, so a connection without the scope learns from the server's refusal. `startThreadTurn` also needs `SecureRandom` provided, even when given a command id.
 
+## Limit: the timeline's scroll corrections on iOS
+
+The timeline scroller is bottom-anchored (`column-reverse`), so rows loading above need no scroll write and a phone can fling to the top in one go. Growth at or below the reader needs a correction, and iOS drops a scroll write during a touch and stops a fling at one. So the tail is held while the reader scrolls up. A row between the viewport and the tail that grows mid-gesture, such as a lazy iframe or an image settling as you scroll down into it, still gets a correction that iOS may drop. If bottom-anchoring ever has to go, the idle hold it replaced is at `c4593035d3`. Virtualizing doesn't help, because stock's LegendList corrects with an immediate `scrollBy` on the web too.
+
 ## Limit: providers exercised
 
 Replay and one provider are verified. A real Claude Haiku turn from this client completed with a file-change approval approved in the same tab, and a pasted image and an attached Markdown file each reached the provider, which answered correctly. `devReplay`'s ACP agent refuses image prompts, so an image turn there fails with "The provider could not start this turn". Codex and the other providers haven't been run from this client.
