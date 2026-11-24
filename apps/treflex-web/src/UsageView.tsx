@@ -15,7 +15,12 @@ import {
   formatUsd,
   usageSourceMessages,
 } from "@t3tools/shared/usageFormat";
-import { displayLimitWindows, type LimitPace, type LimitPool } from "@t3tools/shared/usageLimits";
+import {
+  displayLimitWindows,
+  type LimitPace,
+  type LimitPool,
+  type LimitPoolWindow,
+} from "@t3tools/shared/usageLimits";
 import { collectLimitNotices, formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import {
   type DailyTotals,
@@ -31,7 +36,12 @@ import { ProviderIcon } from "./brand";
 import Environment from "./Environment";
 import { ChartNoAxesColumn, TriangleAlert, X } from "./icons";
 import type { IWireUsageInput } from "./Infrastructure/settings";
-import { type ILimitSources, limitPools, limitPresentations } from "./limits";
+import {
+  type ILimitInstance,
+  type ILimitSources,
+  instanceLimitPools,
+  limitPresentations,
+} from "./limits";
 import UsagePage, { getDefaultUsagePage, RefreshingUsage, useUsagePage } from "./UsagePage";
 import { SidebarToggle } from "./Sidebar";
 import { clockNow } from "./timestamps";
@@ -825,7 +835,7 @@ function UsageChart(props: {
   );
 }
 
-const LIMIT_DRIVER_LABELS: Record<string, string> = Object.fromEntries(
+export const LIMIT_DRIVER_LABELS: Record<string, string> = Object.fromEntries(
   Object.values(PROVIDERS).map((entry) => [entry.Driver, entry.Label]),
 );
 
@@ -835,17 +845,21 @@ function UsageLimits(props: { config: ILimitSources | null }) {
   const now = createMemo(() => Math.max(environment.minute(), clockNow()));
   const presentations = () =>
     limitPresentations(environment.state.EnvironmentId, environment.state.Label, props.config);
-  const pools = createMemo(() => limitPools(presentations(), now()));
+  const instances = createMemo(() =>
+    instanceLimitPools(presentations(), now(), LIMIT_DRIVER_LABELS),
+  );
   const notices = createMemo(() => collectLimitNotices(presentations()));
   return (
     <Show when={props.config} fallback={<p class={loading}>Reading limits…</p>}>
       <div class="flex flex-col gap-8">
-        <Show when={pools().length === 0 && notices().length === 0}>
+        <Show when={instances().length === 0 && notices().length === 0}>
           <p class={loading}>
             No provider on the selected environments reports subscription limits.
           </p>
         </Show>
-        <For each={pools()}>{(pool) => <LimitPoolSection pool={pool} now={now()} />}</For>
+        <For each={instances()}>
+          {(instance) => <LimitInstanceSection instance={instance} now={now()} />}
+        </For>
         <Show when={notices().length > 0}>
           <Alert variant="warning" controlAlignment="first-line">
             <TriangleAlert />
@@ -859,26 +873,28 @@ function UsageLimits(props: { config: ILimitSources | null }) {
   );
 }
 
-const poolLabel = (pool: LimitPool) => LIMIT_DRIVER_LABELS[pool.driver] ?? String(pool.driver);
 const poolColor = (pool: LimitPool) =>
   Object.values(PROVIDERS).find((entry) => entry.Driver === pool.driver)?.Color ?? "var(--primary)";
+const windowLeft = (window: LimitPoolWindow) => `${Math.max(0, window.remainingPercent)}%`;
+const windowResets = (window: LimitPoolWindow, now: number) =>
+  window.members[0] === undefined ? "" : (formatResetsIn(window.members[0].window, now) ?? "");
 
 /** The Limits tab's figures in one column, for a popover. */
-export function LimitsSummary(props: { pools: readonly LimitPool[]; now: number }) {
+export function LimitsSummary(props: { instances: readonly ILimitInstance[]; now: number }) {
   return (
     <Show
-      when={props.pools.length > 0}
+      when={props.instances.length > 0}
       fallback={<p class="m-0 text-[13px] text-muted-foreground">No limits reported.</p>}
     >
       <div class="flex flex-col gap-3">
-        <For each={props.pools}>
-          {(pool) => (
+        <For each={props.instances}>
+          {(instance) => (
             <section class="flex flex-col gap-2">
               <h2 class="m-0 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
-                <ProviderIcon driver={pool.driver} size={12} />
-                {poolLabel(pool)}
+                <ProviderIcon driver={instance.Pool.driver} size={12} />
+                {instance.Label}
               </h2>
-              <For each={displayLimitWindows(pool)}>
+              <For each={displayLimitWindows(instance.Pool)}>
                 {(window) => (
                   <div class="flex flex-col gap-1">
                     <span class="flex items-baseline gap-2 text-[13px]">
@@ -889,18 +905,14 @@ export function LimitsSummary(props: { pools: readonly LimitPool[]; now: number 
                       <span
                         class="block h-full opacity-85"
                         style={{
-                          width: `${Math.max(0, window.remainingPercent)}%`,
-                          "background-color": poolColor(pool),
+                          width: windowLeft(window),
+                          "background-color": poolColor(instance.Pool),
                         }}
                       />
                     </span>
-                    <Show when={window.members[0]}>
-                      {(member) => (
-                        <span class="text-[11px] text-muted-foreground">
-                          {formatResetsIn(member().window, props.now) ?? ""}
-                        </span>
-                      )}
-                    </Show>
+                    <span class="text-[11px] text-muted-foreground">
+                      {windowResets(window, props.now)}
+                    </span>
                   </div>
                 )}
               </For>
@@ -912,16 +924,15 @@ export function LimitsSummary(props: { pools: readonly LimitPool[]; now: number 
   );
 }
 
-function LimitPoolSection(props: { pool: LimitPool; now: number }) {
-  const label = () => poolLabel(props.pool);
-  const color = () => poolColor(props.pool);
+function LimitInstanceSection(props: { instance: ILimitInstance; now: number }) {
+  const color = () => poolColor(props.instance.Pool);
   return (
     <section class="flex flex-col gap-3">
       <h2 class={HEADING}>
-        <ProviderIcon driver={props.pool.driver} size={16} />
-        {label()}
+        <ProviderIcon driver={props.instance.Pool.driver} size={16} />
+        {props.instance.Label}
       </h2>
-      <For each={displayLimitWindows(props.pool)}>
+      <For each={displayLimitWindows(props.instance.Pool)}>
         {(window) => (
           <div class="grid grid-cols-[11rem_minmax(0,1fr)] items-center gap-x-6 gap-y-3 rounded-[10px] border border-border/60 p-4 max-md:grid-cols-[minmax(0,1fr)]">
             <div class="flex flex-col gap-1">
@@ -941,25 +952,16 @@ function LimitPoolSection(props: { pool: LimitPool; now: number }) {
                 </Show>
               </span>
             </div>
-            <div class="grid auto-cols-[minmax(0,1fr)] grid-flow-col gap-1">
-              <For each={window.members}>
-                {(member) => (
-                  <div class="flex flex-col gap-1">
-                    <div class="h-5 overflow-hidden rounded-[6px] border border-border bg-muted">
-                      <span
-                        class="block h-full opacity-85"
-                        style={{
-                          width: `${Math.max(0, 100 - member.window.usedPercent)}%`,
-                          "background-color": color(),
-                        }}
-                      />
-                    </div>
-                    <span class="text-[11px] text-muted-foreground">
-                      {formatResetsIn(member.window, props.now) ?? ""}
-                    </span>
-                  </div>
-                )}
-              </For>
+            <div class="flex flex-col gap-1">
+              <div class="h-5 overflow-hidden rounded-[6px] border border-border bg-muted">
+                <span
+                  class="block h-full opacity-85"
+                  style={{ width: windowLeft(window), "background-color": color() }}
+                />
+              </div>
+              <span class="text-[11px] text-muted-foreground">
+                {windowResets(window, props.now)}
+              </span>
             </div>
           </div>
         )}

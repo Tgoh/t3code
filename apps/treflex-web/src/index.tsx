@@ -22,7 +22,9 @@ import {
 import { provideMinute } from "./Infrastructure/clock";
 import { commandOutput } from "./Infrastructure/commandOutput";
 import {
+  assetTextImpl,
   assetUrlImpl,
+  readProjectFileImpl,
   browseFoldersImpl,
   cloneControlImpl,
   closeTerminalImpl,
@@ -132,6 +134,8 @@ runtime.registerImplementation(taskFolderImpl);
 runtime.registerImplementation(turnItemImpl);
 runtime.registerImplementation(mcpAppImpl);
 runtime.registerImplementation(assetUrlImpl);
+runtime.registerImplementation(assetTextImpl);
+runtime.registerImplementation(readProjectFileImpl);
 runtime.registerImplementation(closeTerminalImpl);
 runtime.registerImplementation(rememberedTerminalImpl);
 runtime.registerImplementation(rememberTerminalImpl);

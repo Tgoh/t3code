@@ -2,6 +2,13 @@
 
 Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) while porting or comparing. Some may be worth reporting or fixing upstream. Each entry says where the bug is, what goes wrong, whether it was reproduced, and whether treflex has the same bug.
 
+## Timeline: earlier rows can jump the view on iOS mid-scroll
+
+- **Where:** `ScrollAdjust` in `@legendapp/list` 3.7.3 (`react.mjs`), which `MessagesTimeline.tsx` drives with `maintainVisibleContentPosition={{ data: true, size: true }}` on a scroller set to `[overflow-anchor:none]`.
+- **What goes wrong:** when rows are added or resized above the viewport, it corrects with `el.scrollBy` straight away. Its `isDragging` and `isMomentumScrolling` checks are fed only by React Native's scroll callbacks, so on the web they never hold a correction back. iOS Safari overwrites a scroll change made while a finger is panning, and stops momentum at one made while flinging. So a correction during a touch is lost (the view jumps by the inserted height) or cuts the fling short.
+- **Status:** found by reading the code on 2026-11-23. Tam confirmed it on an iPhone the same day: stock hitches on every row that lands above the view while scrolling up.
+- **Treflex:** in `ThreadView.tsx`, rows above the viewport (a grow of the window, a history page, the Load earlier row) wait until the touch and its momentum end, then go in and are corrected in one step while nothing is moving.
+
 ## Diff panel: the turn picker offers turns the server refuses
 
 - **Where:** the Turn submenu in `apps/web/src/components/DiffPanel.tsx`, from `deriveThreadCheckpointSummaries` in `packages/client-runtime/src/state/threadCheckpoints.ts`, which lists every checkpoint with an `appRunOrdinal`.
@@ -67,3 +74,10 @@ Bugs found in stock T3 Code (`apps/web`, `packages/client-runtime`, the server) 
 - **Impact:** a second answer to the same request, which the server most likely rejects.
 - **Status:** found by reading the code, not reproduced.
 - **Treflex:** not affected. Each request is an entity with a `leading` answer action.
+
+## Editors: some opens skip the remote-open check
+
+- **Where:** the keybindings warning's Open `keybindings.json` (`apps/web/src/components/KeybindingsConfigWarning.tsx`), the Keybindings settings' open button (`openKeybindingsFile` in `components/settings/KeybindingsSettings.tsx`), terminal path links (`openTerminalPath` in `components/ThreadTerminalDrawer.tsx`) and a diff file in a repository's Git scope or in a turn's repository outside the thread's folder (`openDiffFile` and `repositoryFileTarget` in `components/DiffPanel.tsx`). Each calls `useOpenInPreferredEditor`, which checks the operate scope but not `useRemoteOpenState`.
+- **What goes wrong:** from a phone, or any browser that reaches the server by a non-loopback address, these open an editor on the server's machine and show nothing, while file links and the details card's Open in editor apply the check and offer a preview or say why they can't.
+- **Status:** found by reading the code, not reproduced.
+- **Treflex:** shares it for the warning, terminal links and those diff files, where it follows stock. It has no Keybindings settings button.

@@ -45,6 +45,7 @@ export function* load(draft: IRoot): IActionGenerator {
     info.EnvironmentId,
     info.Label,
     info.FileAttachmentLimit,
+    info.Hostname,
   );
   draft.Phase = "connected";
   draft.Environments.push(environment);

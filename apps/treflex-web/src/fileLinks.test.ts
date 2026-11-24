@@ -2,6 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   chipLabel,
+  chipPanelPath,
+  fileChipAction,
+  fileChipMenu,
   fileLinkFromCode,
   fileLinkFromHref,
   fileLinkPathsKey,
@@ -36,6 +39,14 @@ describe("fileLinkFromHref", () => {
 
   it("needs a workspace to place a relative path", () => {
     expect(fileLinkFromHref("src/a.ts", undefined)).toBeNull();
+  });
+
+  it("places a previewed file's relative links from its own folder, and a nested code path from the root", () => {
+    const docs = "/repo/docs";
+    expect(fileLinkFromHref("img/a.png", "/repo", docs)?.FilePath).toBe("/repo/docs/img/a.png");
+    expect(fileLinkFromHref("guide.md", "/repo", docs)?.FilePath).toBe("/repo/docs/guide.md");
+    expect(fileLinkFromCode("src/a.ts", "/repo", docs)?.FilePath).toBe("/repo/src/a.ts");
+    expect(fileLinkFromCode("./b.ts", "/repo", docs)?.FilePath).toBe("/repo/docs/b.ts");
   });
 });
 
@@ -108,5 +119,62 @@ describe("isEditorLinkHref", () => {
     ["not a url", false],
   ])("%s → %s", (href, expected) => {
     expect(isEditorLinkHref(href)).toBe(expected);
+  });
+});
+
+describe("opening a file chip", () => {
+  const link = (href: string) => fileLinkFromHref(href, CWD)!;
+
+  it("previews a workspace file by its relative path, and a host file outside it unless it's media", () => {
+    expect(chipPanelPath(link("src/a.ts:42"), CWD, false)).toBe("src/a.ts");
+    expect(chipPanelPath(link("src/shot.png"), CWD, true)).toBe("src/shot.png");
+    expect(chipPanelPath(link("G:\\Other\\b.cs"), CWD, false)).toBe("G:/Other/b.cs");
+    expect(chipPanelPath(link("G:\\Other\\b.png"), CWD, true)).toBeNull();
+    // The workspace folder itself has no preview, so its chip falls to the editor or the menu.
+    expect(chipPanelPath(fileLinkFromHref("./", "/repo")!, "/repo", false)).toBeNull();
+    expect(chipPanelPath(fileLinkFromCode("./", "/repo")!, "/repo", false)).toBeNull();
+  });
+
+  it.each([
+    // On the server's machine a modified tap opens the editor; anywhere else it previews.
+    [{ Editor: true, Modifier: true, PanelPath: "a.ts", Media: false }, "editor"],
+    [{ Editor: true, Modifier: false, PanelPath: "a.ts", Media: false }, "panel"],
+    [{ Editor: false, Modifier: true, PanelPath: "a.ts", Media: false }, "panel"],
+    // The panel outranks the media viewer, which takes only media it can't place.
+    [{ Editor: false, Modifier: false, PanelPath: "a.png", Media: true }, "panel"],
+    [{ Editor: false, Modifier: false, PanelPath: null, Media: true }, "media"],
+    [{ Editor: true, Modifier: false, PanelPath: null, Media: false }, "editor"],
+    // With nothing to open, a tap shows the menu of what's left: copying the paths.
+    [{ Editor: false, Modifier: false, PanelPath: null, Media: false }, "menu"],
+  ] as const)("decides %o as %s", (input, expected) => {
+    expect(fileChipAction(input)).toBe(expected);
+  });
+
+  it("offers the host's actions only on the host, and the relative path only inside the workspace", () => {
+    const ids = (input: Partial<Parameters<typeof fileChipMenu>[0]>) =>
+      fileChipMenu({
+        Link: link("src/a.ts:42"),
+        Cwd: CWD,
+        Media: false,
+        EditorLabel: null,
+        RevealLabel: null,
+        ...input,
+      }).map((item) => ("Value" in item ? [item.Id, item.Value] : item.Id));
+    expect(ids({})).toEqual([
+      ["copy-relative", "src\\a.ts:42"],
+      ["copy-full", "G:\\Work\\app\\src\\a.ts:42"],
+    ]);
+    expect(
+      ids({ Media: true, EditorLabel: "Open in VS Code", RevealLabel: "Reveal in File Explorer" }),
+    ).toEqual([
+      "preview-media",
+      "open",
+      "reveal",
+      ["copy-relative", "src\\a.ts:42"],
+      ["copy-full", "G:\\Work\\app\\src\\a.ts:42"],
+    ]);
+    expect(ids({ Link: link("/home/me/d.py:10:4") })).toEqual([
+      ["copy-full", "/home/me/d.py:10:4"],
+    ]);
   });
 });

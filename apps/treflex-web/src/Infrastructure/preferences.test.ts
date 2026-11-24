@@ -27,6 +27,7 @@ describe("this device's preferences", () => {
       "t3code:theme-appearance-mode": "dark",
       "t3code:usage-page-preferences:v1": '{"metric":"cost","windowDays":7}',
       "reflex-web:voice-destination": '"server"',
+      "t3code.renderMarkdown": "true",
     });
     expect(readPreferences()).toEqual({
       GroupByProject: false,
@@ -41,6 +42,7 @@ describe("this device's preferences", () => {
       AppearanceMode: "dark",
       Usage: { Metric: "cost", Days: 7 },
       VoiceDestination: "server",
+      RenderMarkdown: true,
     });
     vi.unstubAllGlobals();
   });
@@ -64,6 +66,7 @@ describe("this device's preferences", () => {
       AppearanceMode: "system",
       Usage: { Metric: "limits", Days: 30 },
       VoiceDestination: null,
+      RenderMarkdown: false,
     });
     vi.unstubAllGlobals();
   });

@@ -41,6 +41,7 @@ import {
   EnvironmentReceiver,
   type IEnvironment,
   keybindings,
+  openMode,
   newProject,
   newThread,
   openSideThread,
@@ -197,7 +198,11 @@ import {
   effectiveRuntimeMode,
   fitDetails,
   type IThreadSession,
+  openAttachment,
   openDiff,
+  openFile,
+  closeFile,
+  reloadFile,
   queueAction,
   runScript,
   selectDiffRepository,
@@ -319,6 +324,7 @@ const storedPreferences: IPreferences = {
   AppearanceMode: "system",
   Usage: { Metric: "limits", Days: 30 },
   VoiceDestination: "server",
+  RenderMarkdown: false,
 };
 
 interface IStoredDrafts {
@@ -377,6 +383,7 @@ async function connect(
         EnvironmentId: ENV,
         Label: "Test",
         FileAttachmentLimit: null,
+        Hostname: "localhost",
       }),
       generateGuid: () => `guid-${(guid += 1)}`,
       address: () => copy(history.entries[history.index]!),
@@ -5229,6 +5236,263 @@ describe("diffs", () => {
       event: event("checkpoint.captured", checkpoint(3, "run-outside-window")),
     } as IWireThreadItem);
     expect(diffTurns(server.thread()).map((turn) => turn.TurnCount)).toEqual([3]);
+  });
+});
+
+describe("the files preview", () => {
+  const withRepo = async (commands: Record<string, (effect: never) => unknown>) => {
+    const server = await connect(undefined, null, {
+      branchDiff: () => ({ Diff: "", HeadRef: null, BaseRef: null, Truncated: false }),
+      ...commands,
+    });
+    await server.sendShell({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 1,
+        projects: [{ id: "project-1", title: "One", workspaceRoot: "/repo" }],
+        threads: [],
+      },
+    } as unknown as IWireShellItem);
+    await server.open();
+    return server;
+  };
+  const text = (Contents: string) => ({
+    Kind: "text",
+    Contents,
+    ByteLength: Contents.length,
+    Truncated: false,
+  });
+
+  it("reads a linked file in the thread's folder, scrolls again on a second link, and trades places with the diff", async () => {
+    const asked: string[] = [];
+    const server = await withRepo({
+      readProjectFile: (effect: { Cwd: string; Path: string }) => {
+        asked.push(`${effect.Cwd} ${effect.Path}`);
+        return text(`read ${asked.length}`);
+      },
+    });
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1), run("run-2", 2, "running")],
+          checkpoints: [
+            {
+              id: "checkpoint-1",
+              threadId: THREAD_ID,
+              runId: "run-1",
+              appRunOrdinal: 1,
+              status: "ready",
+              files: [],
+            },
+          ],
+        } as never,
+        1,
+      ),
+    );
+    const panels = () => server.session().Panels;
+    await server.runtime.dispatch(openFile, server.sessionId(), "src/a.ts", 12);
+    await settled();
+    expect(panels().File).toMatchObject({
+      Source: { Kind: "workspace", Path: "src/a.ts", Cwd: "/repo" },
+      RevealLine: 12,
+      RevealId: 1,
+      Read: text("read 1"),
+    });
+    const held = panels().File!.$Id;
+    await server.runtime.dispatch(openFile, server.sessionId(), "src/a.ts/", 30);
+    await server.runtime.dispatch(openFile, server.sessionId(), ".", null);
+    await settled();
+    expect(panels().File).toMatchObject({ $Id: held, RevealLine: 30, RevealId: 2 });
+    expect(asked).toEqual(["/repo src/a.ts"]);
+
+    await server.runtime.dispatch(openDiff, server.sessionId(), "branch", null);
+    expect(panels().File).toBeNull();
+    await server.runtime.dispatch(openFile, server.sessionId(), "/elsewhere/b.ts", null);
+    await settled();
+    expect(panels().Diff).toBeNull();
+    expect(panels().File).toMatchObject({ RevealLine: null, Read: text("read 2") });
+
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("run.updated", run("run-2", 2)),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 3,
+      event: event("checkpoint.captured", {
+        id: "checkpoint-2",
+        threadId: THREAD_ID,
+        runId: "run-2",
+        appRunOrdinal: 2,
+        status: "ready",
+        files: [],
+      }),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toEqual(["/repo src/a.ts", "/repo /elsewhere/b.ts", "/repo /elsewhere/b.ts"]);
+    expect(panels().File?.Read).toEqual(text("read 3"));
+    await server.runtime.dispatch(closeRightPanel, server.sessionId());
+    expect(panels().File).toBeNull();
+  });
+
+  it("lets a second link and Try again in while a read is out, and rereads only text files when the workspace changes", async () => {
+    const asked: string[] = [];
+    const replies: Array<(value: unknown) => void> = [];
+    const server = await withRepo({
+      readProjectFile: (effect: { Path: string }) => {
+        asked.push(effect.Path);
+        return new Promise((resolve) => replies.push(resolve));
+      },
+    });
+    await server.sendThread(
+      snapshotOf(
+        {
+          ...emptyProjection(),
+          runs: [run("run-1", 1), run("run-2", 2, "running")],
+          checkpoints: [
+            {
+              id: "checkpoint-1",
+              threadId: THREAD_ID,
+              runId: "run-1",
+              appRunOrdinal: 1,
+              status: "ready",
+              files: [],
+            },
+          ],
+        } as never,
+        1,
+      ),
+    );
+    const file = () => server.session().Panels.File;
+    await server.runtime.dispatch(openFile, server.sessionId(), "src/a.ts", 3);
+    await server.runtime.dispatch(openFile, server.sessionId(), "src/a.ts", 9);
+    expect(file()).toMatchObject({ RevealLine: 9, RevealId: 2, Read: null });
+    await server.runtime.dispatch(reloadFile, server.sessionId());
+    await settled();
+    expect(asked).toEqual(["src/a.ts", "src/a.ts"]);
+    replies.at(-1)!(text("fresh"));
+    await settled();
+    expect(file()?.Read).toEqual(text("fresh"));
+
+    await server.runtime.dispatch(openFile, server.sessionId(), "shot.png", null);
+    replies.at(-1)!({
+      Kind: "error",
+      Message: "binary",
+      Failure: "binary_file",
+      Operation: null,
+      AttemptedPath: null,
+      Cwd: null,
+    });
+    await settled();
+    await server.sendThread({
+      kind: "event",
+      sequence: 2,
+      event: event("run.updated", run("run-2", 2)),
+    } as IWireThreadItem);
+    await server.sendThread({
+      kind: "event",
+      sequence: 3,
+      event: event("checkpoint.captured", {
+        id: "checkpoint-2",
+        threadId: THREAD_ID,
+        runId: "run-2",
+        appRunOrdinal: 2,
+        status: "ready",
+        files: [],
+      }),
+    } as IWireThreadItem);
+    await settled();
+    expect(asked).toEqual(["src/a.ts", "src/a.ts", "shot.png"]);
+    expect(file()?.Revision).toBeGreaterThan(0);
+  });
+
+  it("keeps the server's refusal as the file's answer, and a dropped read as a failure to retry", async () => {
+    const refusal = {
+      Kind: "error",
+      Message: "Failed to read",
+      Failure: "binary_file",
+      Operation: null,
+      AttemptedPath: "/repo/logo.bin",
+      Cwd: "/repo",
+    };
+    let reply: () => unknown = () => refusal;
+    const server = await withRepo({ readProjectFile: () => reply() });
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    const file = () => server.session().Panels.File;
+    await server.runtime.dispatch(openFile, server.sessionId(), "logo.bin", null);
+    await settled();
+    expect(file()?.Read).toEqual(refusal);
+    await server.runtime.dispatch(closeFile, server.sessionId());
+
+    reply = () => {
+      throw serverFailure("socket closed");
+    };
+    await server.runtime.dispatch(openFile, server.sessionId(), "notes.txt", null);
+    await settled();
+    expect(file()?.Read).toEqual({ Kind: "failed", Message: "socket closed" });
+
+    let resolve!: (value: unknown) => void;
+    reply = () => new Promise((done) => (resolve = done));
+    await server.runtime.dispatch(reloadFile, server.sessionId());
+    expect(file()?.Read).toBeNull();
+    resolve(text("hello"));
+    await settled();
+    expect(file()?.Read).toEqual(text("hello"));
+  });
+
+  it("reads a sent attachment's text only for a kind shown as text, and reopens the one shown in place", async () => {
+    const asked: string[] = [];
+    const server = await withRepo({
+      assetText: (effect: { Resource: { attachmentId: string; disposition: string } }) => {
+        asked.push(`${effect.Resource.attachmentId} ${effect.Resource.disposition}`);
+        return { Text: "# Notes", Truncated: true };
+      },
+    });
+    await server.sendThread(snapshotOf(emptyProjection(), 1));
+    const file = () => server.session().Panels.File;
+    const attachment = (Id: string, Name: string, MimeType: string) =>
+      ({ Kind: "attachment", Id, Name, MimeType, SizeBytes: 2_000_000 }) as const;
+    await server.runtime.dispatch(
+      openAttachment,
+      server.sessionId(),
+      attachment("a-1", "notes.md", "text/markdown"),
+    );
+    await settled();
+    expect(file()?.Read).toEqual({ Kind: "attachment", Text: "# Notes", Truncated: true });
+    const held = file()!.$Id;
+    await server.runtime.dispatch(
+      openAttachment,
+      server.sessionId(),
+      attachment("a-1", "notes.md", "text/markdown"),
+    );
+    expect(file()?.$Id).toBe(held);
+
+    await server.runtime.dispatch(
+      openAttachment,
+      server.sessionId(),
+      attachment("a-2", "deck.pdf", "application/pdf"),
+    );
+    await settled();
+    expect(file()).toMatchObject({ Source: { Id: "a-2" }, Read: null });
+    expect(asked).toEqual(["a-1 inline"]);
+  });
+
+  it("opens editors on the server's machine only for a client reaching it at a loopback address", async () => {
+    const local = await connect();
+    expect(local.runtime.processSelector(openMode, local.environment)).toBe("local-exec");
+    const remote = await connect(undefined, null, {
+      environmentInfo: () => ({
+        Authenticated: true,
+        BootstrapMethods: [],
+        EnvironmentId: ENV,
+        Label: "Test",
+        FileAttachmentLimit: null,
+        Hostname: "desk.tail.ts.net",
+      }),
+    });
+    expect(remote.runtime.processSelector(openMode, remote.environment)).toBe("remote-unavailable");
   });
 });
 

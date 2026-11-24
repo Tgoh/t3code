@@ -65,6 +65,7 @@ import { addProjectSettingsOf, type IAddProjectSettings } from "./addProjectPath
 import { editorChoices, type IEditors } from "./editors";
 import { getDefaultGitWork, type IGitWork } from "./GitWork";
 import { newThreadModelOverride } from "./newThreadDefaults";
+import { type IRemoteOpenMode, remoteOpenMode } from "./remoteOpen";
 import {
   clockNowEffect,
   type IPreferences,
@@ -178,6 +179,8 @@ export interface IEnvironment extends IEntity {
   EnvironmentId: string;
   Label: string;
   FileAttachmentLimit: number | null;
+  /** The server's hostname as this client reaches it, which says whether they share a machine. */
+  Hostname: string;
   Replica: IReplica;
   Local: ISelection & {
     ThreadSessions: Record<string, IThreadSession>;
@@ -197,6 +200,7 @@ export function* newEnvironment(
   environmentId: string,
   label: string,
   fileAttachmentLimit: number | null,
+  hostname: string,
 ): IActionGenerator<IEnvironment> {
   const shell = yield* entity<IShell>(getDefaultShell(environmentId));
   const replica = yield* entity<IReplica>({
@@ -229,6 +233,7 @@ export function* newEnvironment(
     EnvironmentId: environmentId,
     Label: label,
     FileAttachmentLimit: fileAttachmentLimit,
+    Hostname: hostname,
     Replica: replica,
     Local: local,
   });
@@ -402,6 +407,7 @@ function* showSideThread(
   if (held === threadId) return;
   host.Panels.Side = { ThreadId: threadId };
   host.Panels.Diff = null;
+  host.Panels.File = null;
   host.Panels.Launcher.Open = false;
   if (held !== undefined) yield* hideSideThread(draft, held, true);
   if (host.ThreadId === draft.Local.SelectedThreadId) yield* openThread(draft, threadId);
@@ -818,9 +824,15 @@ export function* removeProject(
 leading(removeProject);
 
 // Follows "Unable to reveal file" in apps/web/src/components/chat/MarkdownFileLink.tsx.
-export function* openInFileManager(draft: IEnvironment, path: string): IOpenGenerator {
+export function* openInFileManager(
+  draft: IEnvironment,
+  path: string,
+  reveal = false,
+): IOpenGenerator {
   try {
-    yield* open(openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path }));
+    yield* open(
+      openInFileManagerEffect({ EnvironmentId: draft.EnvironmentId, Path: path, Reveal: reveal }),
+    );
   } catch (error) {
     yield* toast({
       Kind: "error",
@@ -862,6 +874,11 @@ export function* openInEditor(
 export function* preferEditor(draft: IEnvironment, editor: string): IActionGenerator {
   draft.Local.Editor = editor;
   yield* storeEditorEffect({ Editor: editor });
+}
+
+/** Whether editors and file managers open on this client's machine, as stock decides it. */
+export function* openMode(draft: IEnvironment): ISelectorGenerator<IRemoteOpenMode> {
+  return remoteOpenMode(draft.Hostname, draft.Replica.Config?.remoteOpenTargets);
 }
 
 /** The editors the server reports installed, which change only with a server restart. */
@@ -1108,7 +1125,8 @@ export const EnvironmentReceiver = receiver<IEnvironment>("EnvironmentReceiver")
   },
   *"Thread/WorkspaceChanged"(draft, { ThreadId }) {
     const session = draft.Local.ThreadSessions[ThreadId];
-    if (session?.Panels.Diff != null) yield* start(followWorkspace, session);
+    if (session !== undefined && (session.Panels.Diff !== null || session.Panels.File !== null))
+      yield* start(followWorkspace, session);
   },
   *"Shell/ProjectsChanged"(draft) {
     const session = draft.Local.ThreadSessions[draft.Local.SelectedThreadId ?? ""];
@@ -1212,6 +1230,7 @@ export default createEntityFeature<IEnvironment>("Environment")(
     currentProjectRoot,
     activeProjects,
     keybindings,
+    openMode,
     addProjectSettings,
     editors,
     timestampFormat,

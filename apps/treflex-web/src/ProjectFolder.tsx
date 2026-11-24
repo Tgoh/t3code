@@ -94,10 +94,12 @@ export function ProjectMenu(props: {
         <PenLine />
         Rename
       </MenuItem>
-      <MenuItem onClick={() => environment.openInFileManager(props.project.workspaceRoot)}>
-        <FolderOpen />
-        Open in file manager
-      </MenuItem>
+      <Show when={environment.openMode() === "local-exec"}>
+        <MenuItem onClick={() => environment.openInFileManager(props.project.workspaceRoot)}>
+          <FolderOpen />
+          Open in file manager
+        </MenuItem>
+      </Show>
       <MenuItem onClick={props.onHide}>
         <EyeOff />
         Hide project

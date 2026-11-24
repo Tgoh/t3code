@@ -21,6 +21,8 @@ export interface IPreferences {
   Usage: { Metric: string; Days: number };
   /** Where dictated audio goes: this client's server, nowhere, or not yet chosen. */
   VoiceDestination: IVoiceDestination;
+  /** The Files preview shows a Markdown file rendered rather than as source. */
+  RenderMarkdown: boolean;
 }
 
 export type IVoiceDestination = "server" | "off" | null;
@@ -62,9 +64,10 @@ export const clockNowEffect = defineEffect<IClockNowEffect, number>("clockNow", 
   settles: "sync",
 });
 
-// The theme, usage, editor and sidebar width keys are stock's (THEME_APPEARANCE_MODE_STORAGE_KEY,
-// usagePagePreferences.ts, editorPreferences.ts, THREAD_SIDEBAR_WIDTH_STORAGE_KEY), so a browser on
-// stock's origin reads the same values.
+// The theme, usage, editor, sidebar width and rendered Markdown keys are stock's
+// (THEME_APPEARANCE_MODE_STORAGE_KEY, usagePagePreferences.ts, editorPreferences.ts,
+// THREAD_SIDEBAR_WIDTH_STORAGE_KEY, RENDER_MARKDOWN_STORAGE_KEY), so a browser on stock's origin
+// reads the same values.
 export const APPEARANCE_MODE_KEY = "t3code:theme-appearance-mode";
 const USAGE_KEY = "t3code:usage-page-preferences:v1";
 const EDITOR_KEY = "t3code:last-editor";
@@ -80,6 +83,7 @@ const KEYS = {
   DetailsOpen: "reflex-web:details-open",
   VoiceDestination: "reflex-web:voice-destination",
   CompactionDismissed: "reflex-web:compaction-dismissed",
+  RenderMarkdown: "t3code.renderMarkdown",
 } as const;
 
 function readJson(key: string): unknown {
@@ -142,6 +146,7 @@ export function readPreferences(): IPreferences {
       Days: typeof usage?.windowDays === "number" ? usage.windowDays : 30,
     },
     VoiceDestination: voiceDestination(readJson(KEYS.VoiceDestination)),
+    RenderMarkdown: readJson(KEYS.RenderMarkdown) === true,
   };
 }
 

@@ -7,6 +7,8 @@ export interface IEnvironmentInfo {
   EnvironmentId: string;
   Label: string;
   FileAttachmentLimit: number | null;
+  /** The server's hostname as this client reaches it. */
+  Hostname: string;
 }
 
 interface IEnvironmentInfoEffect extends IEffect {

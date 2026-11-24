@@ -6,7 +6,9 @@ import {
 import {
   collectLimitAccounts,
   collectLimitPools,
+  type LimitAccount,
   type LimitPool,
+  type LimitPoolWindow,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
 import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
@@ -52,8 +54,33 @@ export function limitPresentations(
   ]);
 }
 
-export const limitPools = (presentations: LimitPresentations, now: number) =>
-  collectLimitPools(collectLimitAccounts(presentations), now);
+export interface ILimitInstance {
+  Label: string;
+  Pool: LimitPool;
+}
+
+function instanceLabel(account: LimitAccount, driverLabels: Readonly<Record<string, string>>) {
+  const name = account.displayName ?? driverLabels[account.driver] ?? String(account.driver);
+  return account.environments.length === 0 && account.sourceLabel
+    ? `${name} · ${account.sourceLabel}`
+    : name;
+}
+
+/** One pool per provider instance, in stock's driver and account order. */
+export function instanceLimitPools(
+  presentations: LimitPresentations,
+  now: number,
+  driverLabels: Readonly<Record<string, string>>,
+): readonly ILimitInstance[] {
+  return collectLimitPools(collectLimitAccounts(presentations), now).flatMap((pool) =>
+    pool.accounts.flatMap((account) =>
+      collectLimitPools([account], now).map((own) => ({
+        Label: instanceLabel(account, driverLabels),
+        Pool: own,
+      })),
+    ),
+  );
+}
 
 export function limitTone(usedPercent: number): ILimitTone {
   if (usedPercent >= 90) return "danger";
@@ -61,23 +88,38 @@ export function limitTone(usedPercent: number): ILimitTone {
   return "normal";
 }
 
-const claudeWeekly = (pools: readonly LimitPool[]) =>
-  pools
-    .find((pool) => pool.driver === "claudeAgent")
-    ?.windows.find((window) => window.kind === "weekly" && window.id === CLAUDE_WEEKLY_ID);
+const claudeWeeklies = (instances: readonly ILimitInstance[]) =>
+  instances.flatMap((instance) => {
+    if (instance.Pool.driver !== "claudeAgent") return [];
+    const window = instance.Pool.windows.find(
+      (candidate) => candidate.kind === "weekly" && candidate.id === CLAUDE_WEEKLY_ID,
+    );
+    return window === undefined ? [] : [{ Label: instance.Label, Window: window }];
+  });
 
-export function weeklyLimit(pools: readonly LimitPool[]): IWeeklyLimit | null {
-  const window = claudeWeekly(pools);
-  if (window === undefined) return null;
-  const used = Math.max(0, Math.min(100, window.usedPercent));
+const percent = (value: number) => Math.max(0, Math.min(100, value));
+
+/** The Claude instance with the most weekly limit left. */
+export function weeklyLimit(instances: readonly ILimitInstance[]): IWeeklyLimit | null {
+  const most = claudeWeeklies(instances).reduce<LimitPoolWindow | null>(
+    (best, { Window }) =>
+      best === null || Window.remainingPercent > best.remainingPercent ? Window : best,
+    null,
+  );
+  if (most === null) return null;
+  const used = percent(most.usedPercent);
   return { UsedPercent: used, RemainingPercent: 100 - used, Tone: limitTone(used) };
 }
 
-export function weeklyLimitTip(pools: readonly LimitPool[], now: number): string {
-  const window = claudeWeekly(pools);
-  if (window === undefined) return "Weekly limit not reported";
-  const resets =
-    window.members[0] === undefined ? null : formatResetsIn(window.members[0].window, now);
-  const left = `Weekly limit: ${Math.max(0, Math.min(100, window.remainingPercent))}% left`;
-  return resets === null ? left : `${left} · ${resets}`;
+export function weeklyLimitTip(instances: readonly ILimitInstance[], now: number): string {
+  const weeklies = claudeWeeklies(instances);
+  if (weeklies.length === 0) return "Weekly limit not reported";
+  return weeklies
+    .map(({ Label, Window }) => {
+      const member = Window.members[0];
+      const resets = member === undefined ? null : formatResetsIn(member.window, now);
+      const left = `${weeklies.length === 1 ? "Weekly limit" : Label}: ${percent(Window.remainingPercent)}% left`;
+      return resets === null ? left : `${left} · ${resets}`;
+    })
+    .join("; ");
 }

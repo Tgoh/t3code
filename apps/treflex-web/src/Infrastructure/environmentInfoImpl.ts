@@ -26,6 +26,7 @@ async function readInfo() {
     EnvironmentId: descriptor.environmentId,
     Label: descriptor.label,
     FileAttachmentLimit: fileAttachmentLimit(descriptor.capabilities),
+    Hostname: location.hostname,
   };
 }
 

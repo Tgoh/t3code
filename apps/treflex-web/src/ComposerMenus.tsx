@@ -16,6 +16,7 @@ import {
   ShieldOff,
   Star,
   Workflow,
+  X,
   Zap,
 } from "./icons";
 import type { IWireRuntimeMode } from "./Infrastructure/commandEffects";
@@ -34,6 +35,7 @@ import { PopoverPopup } from "./ui/Popover";
 import { Presence } from "./ui/Presence";
 import { createScrollEnds, getVirtualizedScrollFadeClassName } from "./ui/ScrollArea";
 import { Switch } from "./ui/Switch";
+import { COARSE_POINTER_QUERY, createMediaQuery, PHONE_QUERY } from "./viewport";
 import {
   FAVORITES_TAB,
   type IBooleanDescriptor,
@@ -328,7 +330,7 @@ export function ModelPicker() {
             onClose={() => setOpen(false)}
           >
             <div class="flex h-96 max-h-(--available-height) w-[min(34rem,calc(100vw-16px))] flex-col max-sm:h-128">
-              <PickerContent traits={traits()} />
+              <PickerContent traits={traits()} onClose={() => setOpen(false)} />
             </div>
           </PopoverPopup>
         )}
@@ -420,7 +422,7 @@ function ModelListRow(props: {
   );
 }
 
-function PickerContent(props: { traits: ITraits | null }) {
+function PickerContent(props: { traits: ITraits | null; onClose: () => void }) {
   const environment = Environment.use();
   const session = ThreadSession.use();
   const providers = () => environment.state.Replica.Providers;
@@ -477,6 +479,7 @@ function PickerContent(props: { traits: ITraits | null }) {
   const [rail, setRail] = createSignal<HTMLDivElement>();
   const searching = () => query().trim() !== "";
   const { ends: scrollEnds, track: trackScroll } = createScrollEnds();
+  const touch = createMediaQuery(`${PHONE_QUERY}, ${COARSE_POINTER_QUERY}`);
   const activeKey = () => {
     const held = selection();
     return held === null ? null : modelKey(held.instanceId, held.model);
@@ -579,34 +582,49 @@ function PickerContent(props: { traits: ITraits | null }) {
       </div>
       <Combobox value={activeKey()} onItemHighlighted={setHighlighted}>
         <div class="flex min-h-0 flex-col border-r border-l border-border/70 bg-muted/40 [grid-area:models] group-data-searching/picker:border-l-0 max-sm:border-r-0">
-          <ComboboxSearchInput
-            data-model-search
-            ref={setSearch}
-            type="text"
-            placeholder="Search models..."
-            aria-label="Search models"
-            value={query()}
-            onInput={(event) => setQuery(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
-              if (
-                !searching() &&
-                ((event.key === "ArrowLeft" && !event.shiftKey && query() === "") ||
-                  (event.key === "Tab" && event.shiftKey))
-              ) {
-                event.preventDefault();
-                focusRail();
-              } else if (
-                event.key === "ArrowRight" &&
-                !event.shiftKey &&
-                event.currentTarget.selectionStart === query().length
-              ) {
-                const model = highlightedModel();
-                if (model !== undefined && !isSelected(model)) choose(model);
-                else if (focusEffort()) event.preventDefault();
-              }
-            }}
-          />
+          <div class="flex shrink-0 items-end">
+            <div class="min-w-0 flex-1">
+              <ComboboxSearchInput
+                data-model-search
+                ref={setSearch}
+                type="text"
+                placeholder="Search models..."
+                aria-label="Search models"
+                value={query()}
+                onInput={(event) => setQuery(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+                  if (
+                    !searching() &&
+                    ((event.key === "ArrowLeft" && !event.shiftKey && query() === "") ||
+                      (event.key === "Tab" && event.shiftKey))
+                  ) {
+                    event.preventDefault();
+                    focusRail();
+                  } else if (
+                    event.key === "ArrowRight" &&
+                    !event.shiftKey &&
+                    event.currentTarget.selectionStart === query().length
+                  ) {
+                    const model = highlightedModel();
+                    if (model !== undefined && !isSelected(model)) choose(model);
+                    else if (focusEffort()) event.preventDefault();
+                  }
+                }}
+              />
+            </div>
+            <Show when={touch()}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="me-2"
+                aria-label="Close"
+                onClick={props.onClose}
+              >
+                <X />
+              </Button>
+            </Show>
+          </div>
           <div class={`${MODEL_LIST} ${rowCount() > 0 ? "flex-1" : "h-0"}`}>
             <ComboboxListVirtualized inline aria-label="Models">
               <div

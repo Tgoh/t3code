@@ -4,7 +4,7 @@ import Environment from "./Environment";
 import { ChartNoAxesColumn, Ellipsis } from "./icons";
 import {
   type ILimitTone,
-  limitPools,
+  instanceLimitPools,
   limitPresentations,
   weeklyLimit,
   weeklyLimitTip,
@@ -15,7 +15,7 @@ import { Button } from "./ui/Button";
 import { MenuCheckboxItem, MenuPopup, MenuShortcut, openMenuFromKeys } from "./ui/Menu";
 import { PopoverPopup } from "./ui/Popover";
 import { Presence } from "./ui/Presence";
-import { LimitsSummary } from "./UsageView";
+import { LIMIT_DRIVER_LABELS, LimitsSummary } from "./UsageView";
 
 const TONE: Record<ILimitTone, string> = {
   normal: "text-foreground",
@@ -23,7 +23,7 @@ const TONE: Record<ILimitTone, string> = {
   danger: "text-destructive",
 };
 
-/** Claude's overall weekly limit as a ring of what's left, opening every limit's figures. */
+/** The weekly limit left on the Claude instance with the most, as a ring, opening every limit's figures. */
 export function UsageRing() {
   const environment = Environment.use();
   const sidebar = useSidebarSheet();
@@ -33,7 +33,8 @@ export function UsageRing() {
       environment.state.Label,
       environment.state.Replica.Config,
     );
-  const weekly = createMemo(() => weeklyLimit(limitPools(presentations(), environment.minute())), {
+  const instances = (now: number) => instanceLimitPools(presentations(), now, LIMIT_DRIVER_LABELS);
+  const weekly = createMemo(() => weeklyLimit(instances(environment.minute())), {
     equals: (left, right) => left?.UsedPercent === right?.UsedPercent && left?.Tone === right?.Tone,
   });
   const label = () => {
@@ -45,10 +46,7 @@ export function UsageRing() {
   // The reset countdown is read when the tip shows, since the minute clock would leave it stale.
   const freshTip = (event: Event) => {
     const now = clockNow();
-    (event.currentTarget as HTMLElement).dataset.tip = weeklyLimitTip(
-      limitPools(presentations(), now),
-      now,
-    );
+    (event.currentTarget as HTMLElement).dataset.tip = weeklyLimitTip(instances(now), now);
   };
   const [button, setButton] = createSignal<HTMLButtonElement>();
   const [open, setOpen] = createSignal<number | null>(null);
@@ -113,7 +111,7 @@ export function UsageRing() {
               onClose={() => setOpen(null)}
             >
               <div class="flex flex-col gap-3">
-                <LimitsSummary pools={limitPools(presentations(), now)} now={now} />
+                <LimitsSummary instances={instances(now)} now={now} />
                 <Button
                   variant="outline"
                   size="sm"

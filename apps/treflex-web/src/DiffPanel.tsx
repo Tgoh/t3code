@@ -1,4 +1,5 @@
 import {
+  isRelativePathInsideFolder,
   repositorySectionForPath,
   turnDiffSections,
 } from "@t3tools/client-runtime/state/thread-repositories";
@@ -16,6 +17,7 @@ import {
   renderablePatchSections,
 } from "./diffRendering";
 import Environment from "./Environment";
+import { diffPathForWorkspace } from "./filePreview";
 import {
   ArrowRight,
   ChevronDown,
@@ -253,21 +255,34 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
     else if (value.startsWith("turn:")) void session.openDiff("turn", Number(value.slice(5)));
   };
   const toggleFile = (key: string) => void session.setDiffFilesCollapsed([key], !collapsedOf(key));
-  // Follows `repositoryFileTarget` and `openDiffFile` in stock's DiffPanel.tsx.
-  const fileTarget = (path: string, projectRoot: string) => {
+  // Follows `repositoryFileTarget` and `openDiffFile` in stock's DiffPanel.tsx and
+  // openDiffFilePrimaryAction in apps/web/src/diffFileActions.ts: the Files preview reads below the
+  // thread's folder, so a repository outside it opens in the editor.
+  const outsideFolder = (path: string): string | null => {
     const repository = gitScope() ? gitRepository() : null;
     if (repository !== null) return joinPath(repository.Cwd, path);
     const match = repositorySectionForPath(repositorySections(), path);
-    if (match === null) return joinPath(session.diffRepositoryRoot() ?? projectRoot, path);
+    if (match === null || isRelativePathInsideFolder(match.section.relativePath)) return null;
     const cwd = gitRepositories().Repositories.find(
       (held) => held.RepositoryPath === match.section.repositoryPath,
     )?.Cwd;
-    return cwd === undefined ? joinPath(projectRoot, path) : joinPath(cwd, match.path);
+    return cwd === undefined ? match.path : joinPath(cwd, match.path);
   };
   const openFile = (path: string) => {
     const projectRoot = session.fileSearchRoot();
     if (projectRoot === null) return;
-    void environment.openInEditor(fileTarget(path, projectRoot), projectRoot);
+    const outside = outsideFolder(path);
+    if (outside !== null) {
+      void environment.openInEditor(outside, projectRoot);
+      return;
+    }
+    const inSection = repositorySectionForPath(repositorySections(), path) !== null;
+    const workspacePath = diffPathForWorkspace({
+      filePath: path,
+      workspaceRoot: projectRoot,
+      repositoryRoot: inSection ? undefined : (session.diffRepositoryRoot() ?? undefined),
+    });
+    if (workspacePath !== null) void session.openFile(workspacePath, null);
   };
   // Follows `comparisonHeadRef` and `comparisonBaseRef` in stock's DiffPanel.tsx.
   const headRef = () =>

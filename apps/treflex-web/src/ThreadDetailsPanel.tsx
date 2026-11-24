@@ -19,6 +19,7 @@ import {
 } from "solid-js";
 
 import { editorIcon } from "./editorIcons";
+import { editorUnavailableReason } from "./remoteOpen";
 import Environment from "./Environment";
 import {
   buildMenuItems,
@@ -774,6 +775,10 @@ const Body = (props: IDetailsProps) => {
     const preferred = editors.Available.find((editor) => editor.Id === editors.Preferred);
     return preferred === undefined ? "Open in editor" : `Open in ${preferred.Label}`;
   };
+  // Follows OpenInPicker in apps/web/src/components/chat/OpenInPicker.tsx, whose editors run on the
+  // server's machine only when this client is on it.
+  const editorUnavailable = () =>
+    editorUnavailableReason(environment.openMode(), environment.state.Label);
   const closeMenu = () => setMenu(null);
   const toggleMenu = (kind: "editor" | "git" | "scripts", anchor: IMenuAnchor) => {
     if (menu()?.Anchor.Trigger === anchor.Trigger) closeMenu();
@@ -869,19 +874,27 @@ const Body = (props: IDetailsProps) => {
         <div class={INERT_ROW} aria-label={`Run context: ${environment.state.Label}`}>
           <Server />
           <span class={LABEL}>{environment.state.Label || "This machine"}</span>
-          <button
-            class={ICON_ACTION}
-            aria-label="Open folder"
-            data-tip="Open folder"
-            onClick={() => void environment.openInFileManager(cwd())}
-          >
-            <Folder />
-          </button>
+          <Show when={editorUnavailable() === null}>
+            <button
+              class={ICON_ACTION}
+              aria-label="Open folder"
+              data-tip="Open folder"
+              onClick={() => void environment.openInFileManager(cwd())}
+            >
+              <Folder />
+            </button>
+          </Show>
         </div>
         <Show when={environment.editors().Available.length > 0}>
           <SplitRow
-            label={editorLabel()}
-            icon={<EditorIcon editor={environment.editors().Preferred ?? ""} />}
+            label={editorUnavailable() === null ? editorLabel() : "Open in editor"}
+            icon={
+              <EditorIcon
+                editor={editorUnavailable() === null ? (environment.editors().Preferred ?? "") : ""}
+              />
+            }
+            disabled={editorUnavailable() !== null}
+            tip={editorUnavailable() ?? undefined}
             menuLabel="Choose editor"
             onRun={() => openEditor(null)}
             onMenu={(anchor) => toggleMenu("editor", anchor)}
@@ -1008,7 +1021,14 @@ const Body = (props: IDetailsProps) => {
               class="w-(--anchor-width)"
               onClose={closeMenu}
             >
-              <Show when={open.Kind === "editor"}>
+              <Show when={open.Kind === "editor" ? editorUnavailable() : null}>
+                {(reason) => (
+                  <MenuItem disabled>
+                    <MenuItemLabel>{reason()}</MenuItemLabel>
+                  </MenuItem>
+                )}
+              </Show>
+              <Show when={open.Kind === "editor" && editorUnavailable() === null}>
                 <For each={environment.editors().Available}>
                   {(editor) => (
                     <MenuItem onClick={() => openEditor(editor.Id)}>

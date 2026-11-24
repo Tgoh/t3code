@@ -15,12 +15,19 @@ import { serverError } from "./Infrastructure/serverError";
 export interface IMediaUrl extends IEntity {
   Url: string | null;
   Size: IAssetUrl["Size"] | null;
+  FileRevision: string | null;
   /** When the server stops accepting `Url`, in epoch milliseconds. */
   ExpiresAt: number | null;
   Failed: boolean;
 }
 
-export const EMPTY_MEDIA_URL = { Url: null, Size: null, ExpiresAt: null, Failed: false };
+export const EMPTY_MEDIA_URL = {
+  Url: null,
+  Size: null,
+  FileRevision: null,
+  ExpiresAt: null,
+  Failed: false,
+};
 
 // Follows KEEP_URL_MIN_LIFE_MS in packages/client-runtime/src/state/assets.ts.
 export const MIN_URL_LIFE_MS = 5 * 60_000;
@@ -36,10 +43,21 @@ export function* loadMediaUrl(
     draft.Url = asset.Url;
     draft.ExpiresAt = asset.ExpiresAt;
     draft.Size = asset.Size ?? null;
+    draft.FileRevision = asset.FileRevision ?? null;
   } catch (error) {
     serverError(error);
     draft.Failed = true;
   }
+}
+
+/** Signs again from scratch, so a view keyed on the URL sees the new one. */
+export function* retryMediaUrl(
+  draft: IMediaUrl,
+  environmentId: string,
+  resource: AssetResource,
+): IActionGenerator {
+  draft.Url = null;
+  yield* loadMediaUrl(draft, environmentId, resource);
 }
 
 /**
