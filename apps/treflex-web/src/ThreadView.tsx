@@ -48,7 +48,7 @@ import {
   trimToTail,
 } from "./timelineWindow";
 
-import { isTracing, trace, traceScroll } from "./scrollTrace";
+import { endText, isTracing, trace, traceScroll } from "./scrollTrace";
 import { checklistRows, TurnStatus, useChecklist } from "./TurnStatus";
 import { Button } from "./ui/Button";
 import { BREADCRUMB, CRUMB_MUTED, CRUMB_SEPARATOR, CRUMB_TITLE, PageHeader } from "./ui/PageHeader";
@@ -247,14 +247,15 @@ const ThreadConversation = ThreadSession.provider<{
   const [stuck, setStuck] = createSignal(saved === null);
   // The scroller is column-reverse, so scrollTop is 0 at the end and negative above it.
   const fromEnd = () => -scroller.scrollTop;
-  const at = () => `end+${Math.round(fromEnd())}`;
+  const at = () => endText(fromEnd());
   let lastFromEnd = 0;
   // Scroll events from the view's own writes aren't the reader scrolling.
   let ownTop: number | null = null;
   const wrote = () => {
     ownTop = scroller.scrollTop;
   };
-  const scrollToEnd = () => {
+  const scrollToEnd = (cause: string) => {
+    trace(`to end ${cause} ${at()}`);
     scroller.scrollTop = 0;
     wrote();
   };
@@ -264,7 +265,7 @@ const ThreadConversation = ThreadSession.provider<{
     release();
     setStuck(true);
     releaseTail("send");
-    scrollToEnd();
+    scrollToEnd("send");
   };
 
   const firstBelow = (parent: Element, top: number): Element | null => {
@@ -289,20 +290,40 @@ const ThreadConversation = ThreadSession.provider<{
   };
   const offsetOf = (row: Element) =>
     row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-  let anchor: { Row: Element; Offset: number; ScrollTop: number } | null = null;
+  let anchor: {
+    Row: Element;
+    Offset: number;
+    ScrollTop: number;
+    ScrollHeight: number;
+    ClientHeight: number;
+  } | null = null;
   const pickAnchor = () => {
     const row = firstVisible();
     anchor =
-      row === null ? null : { Row: row, Offset: offsetOf(row), ScrollTop: scroller.scrollTop };
+      row === null
+        ? null
+        : {
+            Row: row,
+            Offset: offsetOf(row),
+            ScrollTop: scroller.scrollTop,
+            ScrollHeight: scroller.scrollHeight,
+            ClientHeight: scroller.clientHeight,
+          };
   };
-  // Growth above the anchor moves nothing; growth at or below it pushes it up. A scroll event can run
-  // after a layout change and before the observers, so the reader's own scroll is taken out of the
-  // shift. A shrunk scroll range pulls scrollTop towards 0 by itself, which isn't the reader's scroll.
-  const keepAnchor = (cause: string) => {
+  // Growth above the anchor moves nothing; growth at or below it pushes it up. Either changes the
+  // scroll range, so an unchanged range is a pure scroll. A scroll event can run after a layout change
+  // and before the observers, so the reader's own scroll is taken out of the shift, as is the pull
+  // towards 0 when the range shrinks. iOS overscroll past either end is never corrected.
+  const keepAnchor = (cause: string, repick = true) => {
+    const range = scroller.scrollHeight - scroller.clientHeight;
+    if (scroller.scrollTop < -range - 1 || scroller.scrollTop > 1) return;
     const held = anchor;
-    if (held !== null && held.Row.isConnected && !stuck()) {
-      const range = scroller.scrollHeight - scroller.clientHeight;
-      const clamp = Math.max(0, -held.ScrollTop - range);
+    const resized =
+      held !== null &&
+      (held.ScrollHeight !== scroller.scrollHeight || held.ClientHeight !== scroller.clientHeight);
+    if (held !== null && resized && held.Row.isConnected && !stuck()) {
+      const heldRange = held.ScrollHeight - held.ClientHeight;
+      const clamp = Math.max(0, Math.min(-held.ScrollTop, heldRange) - range);
       const expected = held.Offset - (scroller.scrollTop - held.ScrollTop - clamp);
       const shift = offsetOf(held.Row) - expected;
       if (Math.abs(shift) >= 0.5) {
@@ -311,8 +332,18 @@ const ThreadConversation = ThreadSession.provider<{
         wrote();
         if (isTracing()) traceCorrection(cause, held.Row, expected, shift, from);
       }
+      // The target rather than a re-measure, so neither scrollBy's rounding to device pixels nor a
+      // skipped sub-pixel shift adds up. A reader scroll with an unchanged range re-picks.
+      anchor = {
+        ...held,
+        Offset: expected,
+        ScrollTop: scroller.scrollTop,
+        ScrollHeight: scroller.scrollHeight,
+        ClientHeight: scroller.clientHeight,
+      };
+      return;
     }
-    pickAnchor();
+    if (repick || held === null || !held.Row.isConnected) pickAnchor();
   };
   const traceCorrection = (
     cause: string,
@@ -347,21 +378,39 @@ const ThreadConversation = ThreadSession.provider<{
       (sum, element) => sum + element.getBoundingClientRect().height,
       parseFloat(getComputedStyle(content).paddingBottom),
     );
+  const clip = (element: HTMLElement, height: number) => {
+    element.style.height = `${height}px`;
+    element.style.overflow = "clip";
+  };
+  // A response that lands while the tail is held goes in after the held one, so it's held at no
+  // height. Mutation records arrive before layout, so it never shows.
+  const tailInserts = new MutationObserver((records) => {
+    const first = heldTail[0];
+    if (first === undefined) return;
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!(node instanceof HTMLElement) || heldTail.includes(node)) continue;
+        if (!(first.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+        clip(node, 0);
+        heldTail.push(node);
+        trace(`tail held insert ${at()}`);
+      }
+    }
+  });
   const holdTail = () => {
     if (heldTail.length > 0) return;
     const last = pending.previousElementSibling;
     heldTail = last instanceof HTMLElement && last !== head ? [last, pending] : [pending];
     const heights = heldTail.map((element) => element.getBoundingClientRect().height);
     const padding = getComputedStyle(content).paddingBottom;
-    heldTail.forEach((element, index) => {
-      element.style.height = `${heights[index]}px`;
-      element.style.overflow = "clip";
-    });
+    heldTail.forEach((element, index) => clip(element, heights[index]!));
     content.style.paddingBottom = padding;
+    tailInserts.observe(content, { childList: true });
     if (isTracing()) trace(`tail held ${tailHeight(heldTail).toFixed(1)} ${at()}`);
   };
   const releaseTail = (cause: string) => {
     if (heldTail.length === 0) return;
+    tailInserts.disconnect();
     const held = heldTail;
     heldTail = [];
     const before = isTracing() ? tailHeight(held) : 0;
@@ -409,6 +458,8 @@ const ThreadConversation = ThreadSession.provider<{
     touching = false;
     trace(`${ended.type} ${at()}`);
     if (scrolling) awaitQuiet();
+    // A tap's click lands after this, so what it expands isn't clipped.
+    else releaseTail("tap");
   };
   const reachTop = () => {
     trace(`grow first ${untrack(timeline).First} ${at()}`);
@@ -542,7 +593,7 @@ const ThreadConversation = ThreadSession.provider<{
       } else {
         restoring = false;
         setStuck(true);
-        scrollToEnd();
+        scrollToEnd("restore");
       }
     },
   );
@@ -553,7 +604,7 @@ const ThreadConversation = ThreadSession.provider<{
       if (holding !== null) putBack();
       else if (!stuck()) keepAnchor(cause);
       else {
-        if (!touching && !scrolling && fromEnd() >= 1) scrollToEnd();
+        if (!touching && !scrolling && fromEnd() >= 1) scrollToEnd("stuck");
         pickAnchor();
       }
     };
@@ -623,6 +674,9 @@ const ThreadConversation = ThreadSession.provider<{
             const own = ownTop !== null && scroller.scrollTop === ownTop;
             ownTop = null;
             if (!own) {
+              // Any scroll of the reader's ends a restore, including ones with no input event: a
+              // status bar tap, find in page, a focus scroll.
+              release();
               scrolling = true;
               awaitQuiet();
             }
@@ -630,7 +684,7 @@ const ThreadConversation = ThreadSession.provider<{
               lastFromEnd = fromEnd();
               return;
             }
-            keepAnchor("scroll");
+            keepAnchor("scroll", !own);
             const next = fromEnd();
             const follow = followAfterScroll(lastFromEnd, next);
             const nowStuck = follow === "stick" ? true : follow === "detach" ? false : stuck();
@@ -656,6 +710,8 @@ const ThreadConversation = ThreadSession.provider<{
               gesture = new AbortController();
             }
             touching = true;
+            // Before the first scroll event, which iOS sends only once the pan passes its slop.
+            if (!stuck()) holdTail();
             // A touch ends on the element it started on, which a re-render can take out of the scroller.
             const started = event.target instanceof Element ? event.target : scroller;
             const signal = gesture!.signal;
@@ -717,7 +773,7 @@ const ThreadConversation = ThreadSession.provider<{
               class="absolute bottom-[calc(100%+var(--turn-status-height)+4px)] left-1/2 z-30 -translate-x-1/2"
               onClick={() => {
                 release();
-                scrollToEnd();
+                scrollToEnd("button");
               }}
             >
               <ChevronDown class="size-3.5" />

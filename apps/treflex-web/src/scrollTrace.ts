@@ -30,6 +30,12 @@ export function trace(text: string) {
 }
 
 /** Scroll events come every frame, so they're kept at most one per `SCROLL_GAP_MS`, with a count of the dropped ones. */
+/** A distance from the end as `end+120`, or `end-30` for an overscroll past it. */
+export function endText(fromEnd: number): string {
+  const distance = Math.round(fromEnd);
+  return `end${distance < 0 ? "" : "+"}${distance}`;
+}
+
 export function traceScroll(fromEnd: number, height: number) {
   if (!recording) return;
   const now = performance.now();
@@ -39,7 +45,7 @@ export function traceScroll(fromEnd: number, height: number) {
   }
   lastScrollAt = now;
   push(
-    `scroll end+${Math.round(fromEnd)}/${Math.round(height)}${skippedScrolls > 0 ? ` +${skippedScrolls}` : ""}`,
+    `scroll ${endText(fromEnd)}/${Math.round(height)}${skippedScrolls > 0 ? ` +${skippedScrolls}` : ""}`,
   );
   skippedScrolls = 0;
 }
