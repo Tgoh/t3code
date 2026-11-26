@@ -20,6 +20,7 @@ import {
 
 import { ProjectBadge, ProviderIcon } from "./brand";
 import { Composer, COMPOSER_LANE, COMPOSER_SURFACE, FileDropSection } from "./Composer";
+import type { IComposerScrollKey } from "./composerScroll";
 import Environment from "./Environment";
 import HistoryWindow, { loadEarlier } from "./HistoryWindow";
 import { type IThreadMenuItem, ThreadMenu, UsageRing } from "./HeaderActions";
@@ -64,6 +65,7 @@ const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
 const SCROLL_KEYS = new Set([...SCROLL_UP_KEYS, "ArrowDown", "PageDown", "End"]);
 
 const MOMENTUM_QUIET_MS = 150;
+const PAGE_ALIGNMENT_OFFSET_PX = 36;
 
 /** `chat-stage` and `with-details` have no rule: the timeline and the composer lane key on them. */
 export const CHAT_STAGE =
@@ -436,6 +438,7 @@ const ThreadConversation = ThreadSession.provider<{
   };
   const settle = (cause: string) => {
     scrolling = false;
+    pageTarget = null;
     clearTimeout(quietTimer);
     quietTimer = undefined;
     trace(`quiet ${cause} ${at()}`);
@@ -470,6 +473,51 @@ const ThreadConversation = ThreadSession.provider<{
     if (scrolling) awaitQuiet();
     // A tap's click lands after this, so what it expands isn't clipped.
     else releaseTail("tap");
+  };
+  // Chrome drops a keyboard scroll's smooth animation in this column-reverse scroller at any layout
+  // change, so the tail is held and Home's rows are added before it starts.
+  const beforeKeyScroll = (key: string) => {
+    const leaving = SCROLL_UP_KEYS.has(key) && roomAbove();
+    if (leaving) setStuck(false);
+    if (key === "Home" && !untrack(reachedTop)) {
+      growTo(0, false);
+      flush();
+    }
+    if (leaving || !stuck()) {
+      scrolling = true;
+      holdTail();
+      awaitQuiet();
+    }
+  };
+  // Repeated Page keys step from where the running animation is headed, not from where it is.
+  let pageTarget: number | null = null;
+  const scrollFromComposer = (key: IComposerScrollKey) => {
+    release();
+    if (key === "End") {
+      goToEnd("composer");
+      return;
+    }
+    const growsUp = key === "Home" && !untrack(reachedTop);
+    if (key === "PageDown" ? fromEnd() < 1 : !roomAbove() && !growsUp) return;
+    beforeKeyScroll(key);
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "instant"
+      : "smooth";
+    const top = -(scroller.scrollHeight - scroller.clientHeight);
+    if (key === "Home") {
+      pageTarget = null;
+      scroller.scrollTo({ top, behavior });
+      return;
+    }
+    const page = Math.max(
+      0,
+      scroller.clientHeight -
+        PAGE_ALIGNMENT_OFFSET_PX -
+        parseFloat(getComputedStyle(content).paddingBottom),
+    );
+    const from = pageTarget ?? scroller.scrollTop;
+    pageTarget = Math.min(0, Math.max(top, from + (key === "PageUp" ? -page : page)));
+    scroller.scrollTo({ top: pageTarget, behavior });
   };
   const reachTop = () => {
     trace(`grow first ${untrack(timeline).First} ${at()}`);
@@ -714,19 +762,7 @@ const ThreadConversation = ThreadSession.provider<{
             release();
             if (!SCROLL_KEYS.has(event.key) || event.defaultPrevented || isEditable(event.target))
               return;
-            const leaving = SCROLL_UP_KEYS.has(event.key) && roomAbove();
-            if (leaving) setStuck(false);
-            // Chrome drops a keyboard scroll's smooth animation in this column-reverse scroller at
-            // any layout change, so the tail is held and Home's rows are added before it starts.
-            if (event.key === "Home" && !untrack(reachedTop)) {
-              growTo(0, false);
-              flush();
-            }
-            if (leaving || !stuck()) {
-              scrolling = true;
-              holdTail();
-              awaitQuiet();
-            }
+            beforeKeyScroll(event.key);
           }}
           onTouchStart={(event) => {
             release();
@@ -811,7 +847,13 @@ const ThreadConversation = ThreadSession.provider<{
             <Show
               when={thread.pendingQuestionIds()[0]}
               keyed
-              fallback={<Composer active={turnState() !== null} onSend={() => goToEnd("send")} />}
+              fallback={
+                <Composer
+                  active={turnState() !== null}
+                  onSend={() => goToEnd("send")}
+                  onScrollKey={scrollFromComposer}
+                />
+              }
             >
               {(id) => (
                 <PendingQuestion
@@ -820,6 +862,7 @@ const ThreadConversation = ThreadSession.provider<{
                     <Composer
                       active={turnState() !== null}
                       onSend={() => goToEnd("send")}
+                      onScrollKey={scrollFromComposer}
                       question={answering}
                     />
                   )}

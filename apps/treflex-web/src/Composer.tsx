@@ -27,6 +27,7 @@ import {
 import { formatContextTokens } from "./compaction";
 import { CompactToggle, ModelPicker, PermissionsChip } from "./ComposerMenus";
 import { applyMenuItem, type IMenuItem, MENU_PLACEHOLDER } from "./composerMenu";
+import { composerScrollKey, type IComposerScrollKey } from "./composerScroll";
 import Dictation, { dictationBusy } from "./Dictation";
 import { DictationPill, DictationPreview, MicButton, useVoiceOffered } from "./DictationControls";
 import Environment from "./Environment";
@@ -460,7 +461,12 @@ function AnswerActions(props: { question: IAnswering }) {
   );
 }
 
-export function Composer(props: { active?: boolean; onSend?: () => void; question?: IAnswering }) {
+export function Composer(props: {
+  active?: boolean;
+  onSend?: () => void;
+  onScrollKey?: (key: IComposerScrollKey) => void;
+  question?: IAnswering;
+}) {
   const environment = Environment.use();
   const session = ThreadSession.use();
   const sending = useInFlight(sendAction, () => session.state);
@@ -949,6 +955,34 @@ export function Composer(props: { active?: boolean; onSend?: () => void; questio
             if (!answering() && (onMenuKey(event) || onHistoryKey(event))) {
               event.preventDefault();
               return;
+            }
+            if (props.onScrollKey !== undefined && !(focused() && menu.open() !== null)) {
+              const area = event.currentTarget;
+              const scrollKey = composerScrollKey(
+                {
+                  Key: event.key,
+                  Alt: event.altKey,
+                  Ctrl: event.ctrlKey,
+                  Meta: event.metaKey,
+                  Shift: event.shiftKey,
+                  Composing: event.isComposing,
+                  KeyCode: event.keyCode,
+                  DefaultPrevented: event.defaultPrevented,
+                },
+                {
+                  Text: area.value,
+                  SelectionStart: area.selectionStart,
+                  SelectionEnd: area.selectionEnd,
+                  ScrollTop: area.scrollTop,
+                  ScrollHeight: area.scrollHeight,
+                  ClientHeight: area.clientHeight,
+                },
+              );
+              if (scrollKey !== null) {
+                event.preventDefault();
+                props.onScrollKey(scrollKey);
+                return;
+              }
             }
             const modifier = composerRequiresModifier(
               environment.sendShortcut(),
