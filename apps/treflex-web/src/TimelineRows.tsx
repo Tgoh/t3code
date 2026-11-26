@@ -392,7 +392,8 @@ function ChangedFiles(props: {
   const hiddenCount = () => totals().count - listed().length;
   const hasFolders = () => listed().some((file) => /[/\\]/.test(file.path));
   const runId = () => props.item.runId ?? props.item.id;
-  const allExpanded = () => session.state.ChangedFilesExpanded[runId()] === true;
+  const open = () => session.state.ChangedFiles[runId()]?.Open === true;
+  const allExpanded = () => session.state.ChangedFiles[runId()]?.Expanded === true;
   const firstPath = () => {
     const held = groups();
     if (held === null) return props.item.files[0]?.path ?? null;
@@ -405,13 +406,22 @@ function ChangedFiles(props: {
   };
   return (
     <article class={`${props.class} min-w-0 rounded-lg bg-muted`} data-changed-files>
-      <header class="flex items-center gap-3 px-3 py-2 text-[12px] leading-4 font-medium">
-        <span>
-          {totals().count.toLocaleString()} changed file{totals().count === 1 ? "" : "s"}
-        </span>
-        <DiffCounts additions={totals().additions} deletions={totals().deletions} />
-        <span class="flex-1" />
-        <Show when={hasFolders()}>
+      <header class="flex items-center gap-1 pr-3 text-[12px] leading-4 font-medium">
+        <button
+          type="button"
+          class="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent py-2 pl-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          aria-expanded={open() ? "true" : "false"}
+          onClick={() => void session.toggleChangedFilesOpen(runId())}
+        >
+          <ChevronRight
+            class={`size-3.5 shrink-0 text-muted-foreground/70 group-hover:text-foreground/80 ${open() ? "rotate-90" : ""}`}
+          />
+          <span class="truncate">
+            {totals().count.toLocaleString()} changed file{totals().count === 1 ? "" : "s"}
+          </span>
+          <DiffCounts additions={totals().additions} deletions={totals().deletions} />
+        </button>
+        <Show when={open() && hasFolders()}>
           <Button
             size="icon-xs"
             variant="ghost-muted"
@@ -436,45 +446,47 @@ function ChangedFiles(props: {
           </Button>
         </Show>
       </header>
-      <div class="px-2 pt-0 pb-2">
-        <Show
-          when={groups()}
-          fallback={
-            <ChangedFilesTree
-              files={props.item.files}
-              depth={0}
-              allExpanded={allExpanded()}
-              disabled={props.turn === null}
-              onOpen={openTurnDiff}
-            />
-          }
-        >
-          {(held) => (
-            <For each={held()} keyed={(group) => group.Key}>
-              {(group) => (
-                <ChangedFilesGroupSection
-                  group={group()}
-                  allExpanded={allExpanded()}
-                  disabled={props.turn === null}
-                  onOpen={(path) => openTurnDiff(groupDiffPath(group(), path))}
-                />
-              )}
-            </For>
-          )}
-        </Show>
-      </div>
-      <Show when={hiddenCount() > 0}>
-        <div class="px-3 pb-2">
-          <Button
-            size="xs"
-            variant="ghost-muted"
-            disabled={props.turn === null}
-            onClick={() => openTurnDiff(firstPath())}
+      <Show when={open()}>
+        <div class="px-2 pt-0 pb-2">
+          <Show
+            when={groups()}
+            fallback={
+              <ChangedFilesTree
+                files={props.item.files}
+                depth={0}
+                allExpanded={allExpanded()}
+                disabled={props.turn === null}
+                onOpen={openTurnDiff}
+              />
+            }
           >
-            {hiddenCount().toLocaleString()} more file{hiddenCount() === 1 ? "" : "s"} in the full
-            diff
-          </Button>
+            {(held) => (
+              <For each={held()} keyed={(group) => group.Key}>
+                {(group) => (
+                  <ChangedFilesGroupSection
+                    group={group()}
+                    allExpanded={allExpanded()}
+                    disabled={props.turn === null}
+                    onOpen={(path) => openTurnDiff(groupDiffPath(group(), path))}
+                  />
+                )}
+              </For>
+            )}
+          </Show>
         </div>
+        <Show when={hiddenCount() > 0}>
+          <div class="px-3 pb-2">
+            <Button
+              size="xs"
+              variant="ghost-muted"
+              disabled={props.turn === null}
+              onClick={() => openTurnDiff(firstPath())}
+            >
+              {hiddenCount().toLocaleString()} more file{hiddenCount() === 1 ? "" : "s"} in the full
+              diff
+            </Button>
+          </div>
+        </Show>
       </Show>
     </article>
   );

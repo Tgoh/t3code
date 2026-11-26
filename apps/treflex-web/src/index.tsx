@@ -52,10 +52,7 @@ import {
   mcpAppImpl,
 } from "./Infrastructure/commandsImpl";
 import { composerFiles } from "./Infrastructure/composerFiles";
-import {
-  storeChangedFilesExpandedImpl,
-  storedChangedFilesExpandedImpl,
-} from "./Infrastructure/changedFilesMemory";
+import { storeChangedFilesImpl, storedChangedFilesImpl } from "./Infrastructure/changedFilesMemory";
 import { delayImpl } from "./Infrastructure/delay";
 import {
   dictation,
@@ -150,8 +147,8 @@ runtime.registerImplementation(storedNewThreadImpl);
 runtime.registerImplementation(storeDraftImpl);
 runtime.registerImplementation(storedDraftFilesImpl);
 runtime.registerImplementation(storeDraftFilesImpl);
-runtime.registerImplementation(storedChangedFilesExpandedImpl);
-runtime.registerImplementation(storeChangedFilesExpandedImpl);
+runtime.registerImplementation(storedChangedFilesImpl);
+runtime.registerImplementation(storeChangedFilesImpl);
 for (const sourceControlImpl of sourceControlImplementations) {
   runtime.registerImplementation(sourceControlImpl);
 }
