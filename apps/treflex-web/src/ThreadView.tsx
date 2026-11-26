@@ -7,6 +7,7 @@ import {
   createMemo,
   createRenderEffect,
   createSignal,
+  flush,
   For,
   lazy,
   Match,
@@ -23,6 +24,7 @@ import Environment from "./Environment";
 import HistoryWindow, { loadEarlier } from "./HistoryWindow";
 import { type IThreadMenuItem, ThreadMenu, UsageRing } from "./HeaderActions";
 import { ArrowUpLeft, ChevronDown, Maximize2 } from "./icons";
+import { isEditable } from "./keybindings";
 import { useNavigation } from "./navigation";
 import OpenThread, { timelineItem } from "./OpenThread";
 import { PendingApproval, PendingQuestion, UnansweredRequest } from "./RequestViews";
@@ -59,6 +61,7 @@ const DiffPanel = lazy(() => import("./DiffPanel"));
 const FilePreviewPanel = lazy(() => import("./FilePreviewPanel"));
 
 const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
+const SCROLL_KEYS = new Set([...SCROLL_UP_KEYS, "ArrowDown", "PageDown", "End"]);
 
 const MOMENTUM_QUIET_MS = 150;
 
@@ -698,8 +701,9 @@ const ThreadConversation = ThreadSession.provider<{
             const nowStuck = follow === "stick" ? true : follow === "detach" ? false : stuck();
             setStuck(nowStuck);
             lastFromEnd = next;
-            if (nowStuck) releaseTail("stuck");
-            else if (scrolling) holdTail();
+            if (!scrolling) {
+              if (nowStuck) releaseTail("stuck");
+            } else if (!nowStuck) holdTail();
             if (!restoring) remember(nowStuck);
           }}
           onWheel={(event) => {
@@ -708,7 +712,21 @@ const ThreadConversation = ThreadSession.provider<{
           }}
           onKeyDown={(event) => {
             release();
-            if (SCROLL_UP_KEYS.has(event.key) && roomAbove()) setStuck(false);
+            if (!SCROLL_KEYS.has(event.key) || event.defaultPrevented || isEditable(event.target))
+              return;
+            const leaving = SCROLL_UP_KEYS.has(event.key) && roomAbove();
+            if (leaving) setStuck(false);
+            // Chrome drops a keyboard scroll's smooth animation in this column-reverse scroller at
+            // any layout change, so the tail is held and Home's rows are added before it starts.
+            if (event.key === "Home" && !untrack(reachedTop)) {
+              growTo(0, false);
+              flush();
+            }
+            if (leaving || !stuck()) {
+              scrolling = true;
+              holdTail();
+              awaitQuiet();
+            }
           }}
           onTouchStart={(event) => {
             release();
