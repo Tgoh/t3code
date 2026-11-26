@@ -122,6 +122,7 @@ import type {
 } from "./Infrastructure/commandEffects";
 import type { IPickedFile } from "./Infrastructure/composerFiles";
 import type { IStoredAttachment, IStoredDraft } from "./Infrastructure/draftMemory";
+import type { IChangedFilesCard } from "./Infrastructure/changedFilesMemory";
 import { serverFailure, thrownOf } from "./Infrastructure/serverError";
 import type { IToastRequest } from "./Infrastructure/toasts";
 import type { IRememberedModels } from "./Infrastructure/modelMemory";
@@ -235,6 +236,7 @@ import {
   toggleDetails,
   toggleRightPanel,
   toggleChangedFilesExpanded,
+  toggleChangedFilesOpen,
   toggleRowExpanded,
   sendAppMessage,
 } from "./ThreadSession";
@@ -336,7 +338,7 @@ const storedPreferences: IPreferences = {
 interface IStoredDrafts {
   Drafts: Map<string, IStoredDraft>;
   Files: Map<string, IStoredAttachment[]>;
-  ChangedFilesExpanded?: Map<string, Record<string, true>>;
+  ChangedFiles?: Map<string, Record<string, IChangedFilesCard>>;
 }
 
 async function connect(
@@ -429,11 +431,11 @@ async function connect(
       if (effect.Files.length === 0) stored.Files.delete(effect.ThreadId);
       else stored.Files.set(effect.ThreadId, effect.Files);
     },
-    storedChangedFilesExpanded: (effect: { ThreadId: string }) =>
-      stored.ChangedFilesExpanded?.get(effect.ThreadId) ?? {},
-    storeChangedFilesExpanded: (effect: { ThreadId: string; Expanded: Record<string, true> }) => {
-      stored.ChangedFilesExpanded ??= new Map();
-      stored.ChangedFilesExpanded.set(effect.ThreadId, copy(effect.Expanded));
+    storedChangedFiles: (effect: { ThreadId: string }) =>
+      copy(stored.ChangedFiles?.get(effect.ThreadId) ?? {}),
+    storeChangedFiles: (effect: { ThreadId: string; Cards: Record<string, IChangedFilesCard> }) => {
+      stored.ChangedFiles ??= new Map();
+      stored.ChangedFiles.set(effect.ThreadId, copy(effect.Cards));
     },
     storedPreferences: () => copy(device.Preferences),
     storePreferences: (effect: { Patch: Partial<IPreferences> }) => {
@@ -2840,14 +2842,26 @@ describe("selection", () => {
     expect(reloaded.session(draftId).NewThreadProjectId).toBe("project-1");
   });
 
-  it("keeps a changed files card's Expand all folders across a reload", async () => {
+  it("keeps a changed files card's open state and Expand all folders across a reload", async () => {
     const stored = { Drafts: new Map(), Files: new Map() };
     const server = await connect(undefined, THREAD_ID, {}, stored);
     await server.runtime.dispatch(toggleChangedFilesExpanded, server.sessionId(), "run-1");
     await server.runtime.dispatch(toggleChangedFilesExpanded, server.sessionId(), "run-2");
     await server.runtime.dispatch(toggleChangedFilesExpanded, server.sessionId(), "run-1");
+    await server.runtime.dispatch(toggleChangedFilesOpen, server.sessionId(), "run-2");
+    await server.runtime.dispatch(toggleChangedFilesOpen, server.sessionId(), "run-3");
+    await server.runtime.dispatch(toggleChangedFilesOpen, server.sessionId(), "run-4");
+    await server.runtime.dispatch(toggleChangedFilesOpen, server.sessionId(), "run-4");
     const reloaded = await connect(undefined, THREAD_ID, {}, stored);
-    expect(reloaded.session(THREAD_ID).ChangedFilesExpanded).toEqual({ "run-2": true });
+    expect(reloaded.session(THREAD_ID).ChangedFiles).toEqual({
+      "run-2": { Open: true, Expanded: true },
+      "run-3": { Open: true, Expanded: false },
+    });
+    await reloaded.runtime.dispatch(toggleChangedFilesOpen, reloaded.sessionId(), "run-2");
+    expect(reloaded.session(THREAD_ID).ChangedFiles["run-2"]).toEqual({
+      Open: false,
+      Expanded: true,
+    });
   });
 
   it("a thread the server doesn't have closes, and its address goes without a history entry", async () => {

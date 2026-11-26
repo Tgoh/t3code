@@ -83,8 +83,9 @@ import {
   storeDraftFilesEffect,
 } from "./Infrastructure/draftMemory";
 import {
-  storeChangedFilesExpandedEffect,
-  storedChangedFilesExpandedEffect,
+  type IChangedFilesCard,
+  storeChangedFilesEffect,
+  storedChangedFilesEffect,
 } from "./Infrastructure/changedFilesMemory";
 import {
   rememberedModelKey,
@@ -273,8 +274,11 @@ export interface IThreadSession extends IEntity {
   /** Present while the thread is shown and has a checkout, which is when its git status is open. */
   Details: IThreadDetails | null;
   ExpandedRows: Record<string, true>;
-  /** The runs whose changed files card has every folder expanded, kept across a reload as stock's. */
-  ChangedFilesExpanded: Record<string, true>;
+  /**
+   * Changed files cards by run id, kept across a reload. A card missing here is closed to its
+   * header, which stock's never is; Expand all is kept as stock keeps it.
+   */
+  ChangedFiles: Record<string, IChangedFilesCard>;
   CommandOutputs: Record<string, ICommandOutputRow>;
   ToolDetails: Record<string, IToolDetail>;
   /** Whether a code block the person toggled wraps, by block key; others follow Word wrap. */
@@ -313,7 +317,7 @@ export function getDefaultThreadSession(
       Side: null,
     },
     ExpandedRows: {},
-    ChangedFilesExpanded: {},
+    ChangedFiles: {},
     CommandOutputs: {},
     ToolDetails: {},
     CodeWrap: {},
@@ -674,9 +678,23 @@ export function* restoreDraft(draft: IThreadSession): IActionGenerator {
     draft.RuntimeMode = stored.RuntimeMode;
   }
   yield* restoreFiles(draft);
-  draft.ChangedFilesExpanded = yield* storedChangedFilesExpandedEffect({
-    ThreadId: draft.ThreadId,
-  });
+  draft.ChangedFiles = yield* storedChangedFilesEffect({ ThreadId: draft.ThreadId });
+}
+
+function* toggleChangedFilesCard(
+  draft: IThreadSession,
+  runId: string,
+  choice: keyof IChangedFilesCard,
+): IActionGenerator {
+  const card = { Open: false, Expanded: false, ...draft.ChangedFiles[runId] };
+  card[choice] = !card[choice];
+  if (card.Open || card.Expanded) draft.ChangedFiles[runId] = card;
+  else delete draft.ChangedFiles[runId];
+  yield* storeChangedFilesEffect({ ThreadId: draft.ThreadId, Cards: { ...draft.ChangedFiles } });
+}
+
+export function* toggleChangedFilesOpen(draft: IThreadSession, runId: string): IActionGenerator {
+  yield* toggleChangedFilesCard(draft, runId, "Open");
 }
 
 // Follows setThreadChangedFilesExpanded in stock's apps/web/src/uiStateStore.ts.
@@ -684,12 +702,7 @@ export function* toggleChangedFilesExpanded(
   draft: IThreadSession,
   runId: string,
 ): IActionGenerator {
-  if (draft.ChangedFilesExpanded[runId]) delete draft.ChangedFilesExpanded[runId];
-  else draft.ChangedFilesExpanded[runId] = true;
-  yield* storeChangedFilesExpandedEffect({
-    ThreadId: draft.ThreadId,
-    Expanded: { ...draft.ChangedFilesExpanded },
-  });
+  yield* toggleChangedFilesCard(draft, runId, "Expanded");
 }
 
 /**
@@ -2140,6 +2153,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     advanceQuestion,
     setQuestionIndex,
     toggleRowExpanded,
+    toggleChangedFilesOpen,
     toggleChangedFilesExpanded,
     sendAppMessage,
     toggleCodeWrap,
