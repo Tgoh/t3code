@@ -172,10 +172,14 @@ function answerOf(
     : null;
 }
 
-/** A row's facts, or null for a row the timeline doesn't show (a waiting approval, an empty checkpoint). */
+/**
+ * A row's facts, or null for a row the timeline doesn't show (a waiting approval, a checkpoint
+ * with no changed files of its own and `changedRepositories` false).
+ */
 export function entryFacts(
   item: IWireTurnItem,
   attempt: IAttempt | null = null,
+  changedRepositories = false,
 ): IEntryFacts | null {
   if (
     turnItemIsWorkspacePreparation(item as unknown as OrchestrationV2TurnItem) &&
@@ -211,7 +215,7 @@ export function entryFacts(
     case "proposed_plan":
       return { ...base, Kind: "plan" };
     case "checkpoint":
-      return (item.filesTotal?.count ?? item.files.length) === 0
+      return (item.filesTotal?.count ?? item.files.length) === 0 && !changedRepositories
         ? null
         : { ...base, Kind: "checkpoint" };
     case "approval_request":
@@ -298,7 +302,8 @@ export interface IResponseInput {
 }
 
 export type ILayoutRow =
-  | { Kind: "item"; Key: string; Id: string; Meta: boolean }
+  /** `Files` is the id of the run's checkpoint, whose changed files a reply shows below its text. */
+  | { Kind: "item"; Key: string; Id: string; Meta: boolean; Files?: string }
   | { Kind: "single"; Key: string; Id: string }
   | { Kind: "group"; Key: string; Ids: string[]; Expanded: boolean; At: string }
   | { Kind: "subagents"; Key: string; Ids: string[]; Expanded: boolean }
@@ -311,7 +316,7 @@ export type ILayoutRow =
       /** The run is still working, so the view times it live. */
       Running: boolean;
     }
-  | { Kind: "meta"; Key: string; Id: string; Files: string | null }
+  | { Kind: "meta"; Key: string; Id: string }
   | { Kind: "attempt"; Key: string; Expanded: boolean }
   | { Kind: "compaction"; Key: string; Id: string; Age: string | null }
   /** A bare `/compact` prompt before its compaction arrives, `Pending` while its turn runs. */
@@ -765,6 +770,17 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
     }
     if (entry.ResumeAge !== null) askedAge.set(entry.RunId, entry.ResumeAge);
   }
+  // Follows turnDiffSummaryByAssistantMessageId: a run's changed files show on its last reply.
+  const lastReplies = new Map<string, string>();
+  for (const entry of entries) {
+    if (entry.Kind === "assistant" && entry.RunId !== null) lastReplies.set(entry.RunId, entry.Id);
+  }
+  const replyCards = new Map<string, string>();
+  for (const entry of entries) {
+    if (entry.Kind !== "checkpoint" || entry.RunId === null) continue;
+    const reply = lastReplies.get(entry.RunId);
+    if (reply !== undefined) replyCards.set(reply, entry.Id);
+  }
   const rows: ILayoutRow[] = [];
   const rowRuns: IRowRun[] = [];
   let subagents: {
@@ -862,17 +878,28 @@ export function layoutResponse(input: IResponseInput): ILayoutRow[] {
       continue;
     }
     if (entry.Kind !== "work") {
+      if (entry.Kind === "checkpoint" && entry.RunId !== null && lastReplies.has(entry.RunId))
+        continue;
       const meta =
         entry.Kind === "assistant" &&
         !(entry.RunId === null ? false : active.has(entry.RunId)) &&
         isTerminal(entries, index);
       const trail: ITrail =
-        entry.Kind === "checkpoint"
-          ? "files"
-          : entry.Kind === "user" || entry.Kind === "steer" || entry.Kind === "assistant"
-            ? "message"
-            : "other";
-      push({ Kind: "item", Key: entry.Id, Id: entry.Id, Meta: meta }, entry.RunId, trail);
+        entry.Kind === "user" || entry.Kind === "steer" || entry.Kind === "assistant"
+          ? "message"
+          : "other";
+      const files = replyCards.get(entry.Id);
+      push(
+        {
+          Kind: "item",
+          Key: entry.Id,
+          Id: entry.Id,
+          Meta: meta,
+          ...(files === undefined ? {} : { Files: files }),
+        },
+        entry.RunId,
+        trail,
+      );
       continue;
     }
     if (entry.Compaction) {
@@ -946,9 +973,9 @@ function isTerminal(entries: ReadonlyArray<IEntryFacts>, index: number): boolean
 
 /**
  * How a row counts when a reply's actions look for the work after it: a message ends the search, a
- * summary or a changed files card is trailing work, and a single work row is when it's a tool.
+ * summary is trailing work, and a single work row is when it's a tool.
  */
-type ITrail = "message" | "trailing" | "files" | "work" | "tool" | "other";
+type ITrail = "message" | "trailing" | "work" | "tool" | "other";
 
 interface IRowRun {
   RunId: string | null;
@@ -956,12 +983,10 @@ interface IRowRun {
 }
 
 // Follows attachTrailingToolGroupsToAssistant: a reply's copy and time move below the tool work
-// that followed it in its run. Where stock draws a changed files card above those actions, this
-// client folds the card into them, so a card the actions land on leaves the rows.
+// that followed it in its run.
 function placeMeta(rows: ILayoutRow[], runs: ReadonlyArray<IRowRun>): ILayoutRow[] {
   const after = new Map<number, ILayoutRow>();
   const moved = new Set<number>();
-  const absorbed = new Set<number>();
   for (const [index, row] of rows.entries()) {
     const runId = runs[index]!.RunId;
     if (row.Kind !== "item" || !row.Meta || runId === null) continue;
@@ -976,15 +1001,11 @@ function placeMeta(rows: ILayoutRow[], runs: ReadonlyArray<IRowRun>): ILayoutRow
     }
     if (last < 0) continue;
     moved.add(index);
-    const card = rows[last]!;
-    const files = runs[last]!.Trail === "files" && card.Kind === "item" ? card.Id : null;
-    if (files !== null) absorbed.add(last);
-    after.set(last, { Kind: "meta", Key: `meta:${row.Id}`, Id: row.Id, Files: files });
+    after.set(last, { Kind: "meta", Key: `meta:${row.Id}`, Id: row.Id });
   }
   const result: ILayoutRow[] = [];
   for (const [index, row] of rows.entries()) {
-    if (!absorbed.has(index))
-      result.push(moved.has(index) && row.Kind === "item" ? { ...row, Meta: false } : row);
+    result.push(moved.has(index) && row.Kind === "item" ? { ...row, Meta: false } : row);
     const meta = after.get(index);
     if (meta !== undefined) result.push(meta);
   }

@@ -1,4 +1,67 @@
-import type { OrchestrationV2CheckpointFileSummary } from "@t3tools/contracts";
+import {
+  changedFileTotals,
+  repositoryFilePath,
+  type TurnChangesSource,
+} from "@t3tools/client-runtime/state/thread-repositories";
+import type {
+  OrchestrationV2CheckpointFileSummary,
+  OrchestrationV2CheckpointFileTotals,
+} from "@t3tools/contracts";
+
+/** One folder's share of a turn that changed tracked repositories. */
+export interface IChangedFilesGroup {
+  Key: string;
+  Name: string;
+  /** Paths relative to this group's folder. */
+  Files: ReadonlyArray<
+    Pick<OrchestrationV2CheckpointFileSummary, "path" | "additions" | "deletions">
+  >;
+  Totals: OrchestrationV2CheckpointFileTotals;
+  /** The folder from the thread's folder; undefined when the diff can't be opened at a file. */
+  RelativePath: string | undefined;
+  /** Shown in place of the files when they can't be listed. */
+  Note: string | null;
+}
+
+/**
+ * Follows `AssistantChangedFilesSectionInner` in stock's TimelineAssistantRows.tsx: null for a turn
+ * without repositories, which lists its own files as one tree.
+ */
+export function changedFilesGroups(
+  turn: TurnChangesSource,
+  rootName: string,
+): IChangedFilesGroup[] | null {
+  if (turn.repositories === undefined) return null;
+  return [
+    ...(turn.files.length === 0
+      ? []
+      : [
+          {
+            Key: ".",
+            Name: rootName,
+            Files: turn.files,
+            Totals: changedFileTotals(turn),
+            RelativePath: "",
+            Note: null,
+          },
+        ]),
+    ...turn.repositories.map((repository) => ({
+      Key: repository.scopeId as string,
+      Name: repository.name,
+      Files: repository.files,
+      Totals: changedFileTotals(repository),
+      RelativePath: repository.relativePath,
+      Note: repository.baselineMissing
+        ? "This turn's changes in this repository cannot be listed."
+        : null,
+    })),
+  ];
+}
+
+/** A group's file as the turn diff names it, from the thread's folder. */
+export function groupDiffPath(group: IChangedFilesGroup, path: string): string | null {
+  return group.RelativePath === undefined ? null : repositoryFilePath(group.RelativePath, path);
+}
 
 export interface IDiffStat {
   additions: number;

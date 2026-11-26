@@ -13,6 +13,8 @@ export interface IDiffPanel extends IEntity {
   Scope: IDiffScope;
   TurnCount: number | null;
   Latest: boolean;
+  /** The file a turn diff opened at, named from the thread's folder; it shows expanded. */
+  File: string | null;
   /** The repository section a turn diff shows, by key; null shows them all. */
   Repository: string | null;
   /** The tracked repository the branch and working tree scopes read; null is the thread's folder. */

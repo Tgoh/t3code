@@ -12,6 +12,7 @@ import DiffCodeView from "./DiffCodeView";
 import {
   diffLineStat,
   fileDiffEntries,
+  fileDiffPath,
   type IRenderablePatch,
   renderablePatch,
   renderablePatchSections,
@@ -229,7 +230,15 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
     const held = patch();
     return held?.Kind === "files" ? fileDiffEntries(held.Files) : [];
   });
-  const collapsedOf = (key: string) => panel().Collapsed[key] ?? settings().FilesCollapsed;
+  // Follows `revealDiffFile` in stock's DiffPanel.tsx: the file a view opened the diff at shows
+  // expanded until it's collapsed by hand.
+  const revealed = createMemo(() => {
+    const file = panel().File;
+    if (file === null) return null;
+    return entries().find((entry) => fileDiffPath(entry.FileDiff) === file)?.Key ?? null;
+  });
+  const collapsedOf = (key: string) =>
+    panel().Collapsed[key] ?? (key === revealed() ? false : settings().FilesCollapsed);
   const shownFiles = createMemo(() =>
     entries().map((entry) => ({ Entry: entry, Collapsed: collapsedOf(entry.Key) })),
   );
@@ -562,6 +571,7 @@ export function DiffPanel(props: { panel: IDiffPanel }) {
                 split={settings().Split}
                 wrap={wrap()}
                 scheme={environment.colorScheme()}
+                reveal={revealed()}
                 onToggle={toggleFile}
                 onOpen={openFile}
               />

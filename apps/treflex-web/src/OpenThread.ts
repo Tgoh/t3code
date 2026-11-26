@@ -1,7 +1,9 @@
 import { applyThreadPullRequestLinkUpdate } from "@t3tools/client-runtime/thread-pull-requests";
 import {
+  deriveTurnRepositoryChanges,
   isRepositoryCheckpointScope,
   threadChangedRepositories,
+  type TurnRepositoryChanges,
 } from "@t3tools/client-runtime/state/thread-repositories";
 import {
   isQueuedProviderThreadPlaceholder,
@@ -804,6 +806,29 @@ export function gitRepositories(draft: IOpenThread): IGitRepository[] {
   }));
 }
 
+/** The tracked repositories each run changed, as stock's turn diff summaries carry them. */
+export function* turnRepositories(
+  draft: IOpenThread,
+): ISelectorGenerator<ReadonlyMap<string, ReadonlyArray<TurnRepositoryChanges>>> {
+  return deriveTurnRepositoryChanges({
+    checkpoints: Object.values(draft.Checkpoints),
+    checkpointScopes: Object.values(draft.CheckpointScopes),
+  } as never);
+}
+
+/** A file change's path in its run's checkpoint, the path the turn diff names it by. */
+export function fileChangePath(
+  draft: IOpenThread,
+  item: Extract<IWireTurnItem, { type: "file_change" }>,
+): string | null {
+  const name = item.fileName.replaceAll("\\", "/");
+  return (
+    checkpointOfRun(draft, item.runId)?.files.find(
+      (held) => name === held.path || name.endsWith(`/${held.path}`),
+    )?.path ?? null
+  );
+}
+
 // The turn a row's diff belongs to, which is the checkpoint's appRunOrdinal: what getTurnDiff counts.
 export function diffTurnOf(draft: IOpenThread, item: IWireTurnItem): number | null {
   const checkpoint =
@@ -833,10 +858,8 @@ export function fileChangeCounts(
   if (item.additions !== undefined || item.deletions !== undefined) {
     return { additions: item.additions ?? 0, deletions: item.deletions ?? 0 };
   }
-  const name = item.fileName.replaceAll("\\", "/");
-  const file = checkpointOfRun(draft, item.runId)?.files.find(
-    (held) => name === held.path || name.endsWith(`/${held.path}`),
-  );
+  const path = fileChangePath(draft, item);
+  const file = checkpointOfRun(draft, item.runId)?.files.find((held) => held.path === path);
   return file === undefined ? null : { additions: file.additions, deletions: file.deletions };
 }
 
@@ -960,5 +983,6 @@ export default createEntityFeature<IOpenThread>("OpenThread")(
     requestItems,
     threadSynchronized,
     timelineIds,
+    turnRepositories,
   },
 );

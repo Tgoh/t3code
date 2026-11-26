@@ -106,7 +106,7 @@ const shape = (rows: ILayoutRow[]) =>
   rows.map((row) => {
     switch (row.Kind) {
       case "item":
-        return row.Meta ? `${row.Id} +meta` : row.Id;
+        return `${row.Id}${row.Files === undefined ? "" : ` +files ${row.Files}`}${row.Meta ? " +meta" : ""}`;
       case "single":
         return `single ${row.Id}`;
       case "group":
@@ -116,7 +116,7 @@ const shape = (rows: ILayoutRow[]) =>
       case "fold":
         return row.Running ? "fold running" : `fold ${row.Label}`;
       case "meta":
-        return `meta ${row.Id}${row.Files === null ? "" : ` with ${row.Files}`}`;
+        return `meta ${row.Id}`;
       case "attempt":
         return row.Expanded ? "attempt open" : "attempt";
       case "compaction":
@@ -139,7 +139,24 @@ describe("the timeline's turn folds", () => {
   ];
 
   it("folds a settled turn's work under one row, keeping the answer and its changed files", () => {
-    expect(shape(layout(turn))).toEqual(["u", "fold Worked for 15s", "a2", "meta a2 with cp"]);
+    expect(shape(layout(turn))).toEqual(["u", "fold Worked for 15s", "a2 +files cp +meta"]);
+  });
+
+  it("keeps the changed files under the reply when its actions move below later work", () => {
+    const trailing = [...turn.slice(0, 7), command("c4", 7), checkpoint("cp", 8)];
+    expect(shape(layout(trailing, { expanded: ["fold:run-1"] })).slice(-3)).toEqual([
+      "a2 +files cp",
+      "single c4",
+      "meta a2",
+    ]);
+  });
+
+  it("shows a run's changed files as their own row when the run has no reply", () => {
+    expect(shape(layout([user("u", 0), command("c", 1), checkpoint("cp", 2)]))).toEqual([
+      "u",
+      "fold Worked for 15s",
+      "cp",
+    ]);
   });
 
   it("keeps a rendered page out of the fold", () => {
@@ -180,15 +197,14 @@ describe("the timeline's turn folds", () => {
     expect(shape(layout([...turn, late], { run: null }))[1]).toBe("fold Worked for 6s");
   });
 
-  it("opens into work groups, a lone tool as its own row, and moves the reply's actions below its work", () => {
+  it("opens into work groups and a lone tool as its own row", () => {
     expect(shape(layout(turn, { expanded: ["fold:run-1"] }))).toEqual([
       "u",
       "fold Worked for 15s",
       "group t,c1,c2",
       "a1",
       "single c3",
-      "a2",
-      "meta a2 with cp",
+      "a2 +files cp +meta",
     ]);
   });
 

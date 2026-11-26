@@ -234,6 +234,7 @@ import {
   toggleQuestionOption,
   toggleDetails,
   toggleRightPanel,
+  toggleChangedFilesExpanded,
   toggleRowExpanded,
   sendAppMessage,
 } from "./ThreadSession";
@@ -335,6 +336,7 @@ const storedPreferences: IPreferences = {
 interface IStoredDrafts {
   Drafts: Map<string, IStoredDraft>;
   Files: Map<string, IStoredAttachment[]>;
+  ChangedFilesExpanded?: Map<string, Record<string, true>>;
 }
 
 async function connect(
@@ -426,6 +428,12 @@ async function connect(
     storeDraftFiles: (effect: { ThreadId: string; Files: IStoredAttachment[] }) => {
       if (effect.Files.length === 0) stored.Files.delete(effect.ThreadId);
       else stored.Files.set(effect.ThreadId, effect.Files);
+    },
+    storedChangedFilesExpanded: (effect: { ThreadId: string }) =>
+      stored.ChangedFilesExpanded?.get(effect.ThreadId) ?? {},
+    storeChangedFilesExpanded: (effect: { ThreadId: string; Expanded: Record<string, true> }) => {
+      stored.ChangedFilesExpanded ??= new Map();
+      stored.ChangedFilesExpanded.set(effect.ThreadId, copy(effect.Expanded));
     },
     storedPreferences: () => copy(device.Preferences),
     storePreferences: (effect: { Patch: Partial<IPreferences> }) => {
@@ -2832,6 +2840,16 @@ describe("selection", () => {
     expect(reloaded.session(draftId).NewThreadProjectId).toBe("project-1");
   });
 
+  it("keeps a changed files card's Expand all folders across a reload", async () => {
+    const stored = { Drafts: new Map(), Files: new Map() };
+    const server = await connect(undefined, THREAD_ID, {}, stored);
+    await server.runtime.dispatch(toggleChangedFilesExpanded, server.sessionId(), "run-1");
+    await server.runtime.dispatch(toggleChangedFilesExpanded, server.sessionId(), "run-2");
+    await server.runtime.dispatch(toggleChangedFilesExpanded, server.sessionId(), "run-1");
+    const reloaded = await connect(undefined, THREAD_ID, {}, stored);
+    expect(reloaded.session(THREAD_ID).ChangedFilesExpanded).toEqual({ "run-2": true });
+  });
+
   it("a thread the server doesn't have closes, and its address goes without a history entry", async () => {
     const server = await connect(undefined, THREAD_ID);
     const gone = server.disposed(server.openId());
@@ -4877,6 +4895,23 @@ describe("diffs", () => {
       [0, 1, true],
       [1, 2, true],
     ]);
+  });
+
+  it("opens a turn's diff at a file, and lets go of it once a repository is picked", async () => {
+    const server = await connect(undefined, null, {
+      threadDiff: () => ({ Diff: "patch", Repositories: [] }),
+    });
+    await server.open();
+    await server.sendThread(withCheckpoints());
+    const panel = () => server.session().Panels.Diff;
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1, "src/hello.txt");
+    expect(panel()).toMatchObject({ TurnCount: 1, File: "src/hello.txt" });
+    await server.runtime.dispatch(selectDiffRepository, server.sessionId(), "scope-demo");
+    expect(panel()?.File).toBeNull();
+    await server.runtime.dispatch(openDiff, server.sessionId(), "turn", 1, " ");
+    expect(panel()?.File).toBeNull();
+    await server.runtime.dispatch(openDiff, server.sessionId(), "branch", null, "src/hello.txt");
+    expect(panel()?.File).toBeNull();
   });
 
   it("opens on the branch's changes, read from the latest changed repository where the thread folder isn't one", async () => {

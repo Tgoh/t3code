@@ -4,6 +4,11 @@ import {
   workEntryDisplayIndicatesToolFailure,
 } from "@t3tools/client-runtime/work-log/presentation";
 import { IDLE_COMPACTING_LABELS } from "@t3tools/client-runtime/user-message";
+import {
+  turnChanges,
+  turnHasChanges,
+  type TurnRepositoryChanges,
+} from "@t3tools/client-runtime/state/thread-repositories";
 import type { AssetResource } from "@t3tools/contracts";
 import { htmlRenderReferencesEqual } from "@t3tools/shared/htmlRender";
 import { mcpAppReferencesEqual } from "@t3tools/shared/mcpApp";
@@ -31,6 +36,7 @@ import {
   FileDiff,
   FileSearch,
   Folder,
+  FolderGit2,
   FolderOpen,
   GitFork,
   Globe,
@@ -61,10 +67,17 @@ import { HtmlRenderFrame } from "./HtmlRender";
 import { McpAppFrame } from "./McpApp";
 import { ItemRequestRow } from "./ItemRequestViews";
 import { FileIcon, Markdown } from "./Markdown";
-import { buildChangedFilesTree, visibleChangedRows } from "./changedFilesTree";
+import {
+  buildChangedFilesTree,
+  changedFilesGroups,
+  groupDiffPath,
+  type IChangedFilesGroup,
+  visibleChangedRows,
+} from "./changedFilesTree";
 import OpenThread, {
   diffTurnOf,
   fileChangeCounts,
+  fileChangePath,
   isRowVisible,
   runMessage,
   timelineItem,
@@ -353,77 +366,45 @@ function DiffCounts(props: { additions: number; deletions: number }) {
   );
 }
 
-function checkpointTotals(item: IWireCheckpoint) {
-  return (
-    item.filesTotal ?? {
-      count: item.files.length,
-      additions: item.files.reduce((total, file) => total + file.additions, 0),
-      deletions: item.files.reduce((total, file) => total + file.deletions, 0),
-    }
-  );
-}
-
-function FilesSummary(props: { id: string }) {
-  const { thread, item } = useRow(props);
-  const session = ThreadSession.use();
-  const checkpoint = () => {
-    const held = item();
-    return held?.type === "checkpoint" ? held : null;
-  };
-  return (
-    <Show when={checkpoint()}>
-      {(held) => {
-        const totals = () => checkpointTotals(held());
-        const turn = () => diffTurnOf(thread.state, held());
-        return (
-          <button
-            class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-0 disabled:cursor-default enabled:hover:bg-accent enabled:hover:text-foreground [&_svg]:size-3.5"
-            data-tip={turn() === null ? undefined : "Open this turn's diff"}
-            disabled={turn() === null}
-            onClick={() => {
-              const at = turn();
-              if (at !== null) session.openDiff("turn", at);
-            }}
-          >
-            <FileDiff />
-            {totals().count} file{totals().count === 1 ? "" : "s"}
-            <DiffCounts additions={totals().additions} deletions={totals().deletions} />
-          </button>
-        );
-      }}
-    </Show>
-  );
-}
-
 const CHANGED_ROW =
   "flex h-7 w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent py-1.5 pr-2 text-left hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5 [&_svg]:shrink-0";
 
-// Follows ChangedFilesCard and ChangedFilesTree in stock's
-// apps/web/src/components/chat/ChangedFilesTree.tsx. The server sends at most 200 files and
-// `filesTotal` for the rest.
-function ChangedFiles(props: { id: string; item: IWireCheckpoint; turn: number | null }) {
+// Follows ChangedFilesCard, ChangedFilesGroupSection and ChangedFilesTree in stock's
+// apps/web/src/components/chat/ChangedFilesTree.tsx. The server sends at most 200 files per
+// folder and `filesTotal` for the rest.
+function ChangedFiles(props: {
+  item: IWireCheckpoint;
+  turn: number | null;
+  repositories: ReadonlyArray<TurnRepositoryChanges> | undefined;
+  class: string;
+}) {
   const session = ThreadSession.use();
-  const totals = () => checkpointTotals(props.item);
-  const hiddenCount = () => totals().count - props.item.files.length;
-  const tree = createMemo(() => buildChangedFilesTree(props.item.files));
-  const hasFolders = () => tree().some((node) => node.kind === "directory");
-  const expandedKey = () => `${props.id}:folders`;
-  const allExpanded = () => session.state.ExpandedRows[expandedKey()] === true;
-  // A folder's own toggle lasts until the all-folders toggle flips, as stock's overrides do.
-  const [overrides, setOverrides] = createSignal<{ all: boolean; open: Record<string, boolean> }>({
-    all: false,
-    open: {},
+  const source = () => ({
+    files: props.item.files,
+    ...(props.item.filesTotal === undefined ? {} : { filesTotal: props.item.filesTotal }),
+    ...(props.repositories === undefined ? {} : { repositories: props.repositories }),
   });
-  const openOverrides = () => (overrides().all === allExpanded() ? overrides().open : {});
-  const rows = () => visibleChangedRows(tree(), openOverrides(), allExpanded());
-  const isOpen = (path: string) => openOverrides()[path] ?? allExpanded();
-  const toggleFolder = (path: string) =>
-    setOverrides({ all: allExpanded(), open: { ...openOverrides(), [path]: !isOpen(path) } });
-  const openTurnDiff = () => {
-    if (props.turn !== null) void session.openDiff("turn", props.turn);
+  const totals = () => turnChanges(source()).totals;
+  const groups = createMemo(() =>
+    changedFilesGroups(source(), session.projectName() ?? "Project folder"),
+  );
+  const listed = () => groups()?.flatMap((group) => group.Files) ?? props.item.files;
+  const hiddenCount = () => totals().count - listed().length;
+  const hasFolders = () => listed().some((file) => /[/\\]/.test(file.path));
+  const runId = () => props.item.runId ?? props.item.id;
+  const allExpanded = () => session.state.ChangedFilesExpanded[runId()] === true;
+  const firstPath = () => {
+    const held = groups();
+    if (held === null) return props.item.files[0]?.path ?? null;
+    const first = held.find((group) => group.Files.length > 0);
+    const path = first?.Files[0]?.path;
+    return first === undefined || path === undefined ? null : groupDiffPath(first, path);
+  };
+  const openTurnDiff = (path: string | null) => {
+    if (props.turn !== null) void session.openDiff("turn", props.turn, path);
   };
   return (
-    <article class="mx-1 mb-12 min-w-0 rounded-lg bg-muted" data-changed-files>
+    <article class={`${props.class} min-w-0 rounded-lg bg-muted`} data-changed-files>
       <header class="flex items-center gap-3 px-3 py-2 text-[12px] leading-4 font-medium">
         <span>
           {totals().count.toLocaleString()} changed file{totals().count === 1 ? "" : "s"}
@@ -436,7 +417,7 @@ function ChangedFiles(props: { id: string; item: IWireCheckpoint; turn: number |
             variant="ghost-muted"
             aria-label={allExpanded() ? "Collapse all folders" : "Expand all folders"}
             data-tip={allExpanded() ? "Collapse all folders" : "Expand all folders"}
-            onClick={() => void session.toggleRowExpanded(expandedKey())}
+            onClick={() => void session.toggleChangedFilesExpanded(runId())}
           >
             <Show when={allExpanded()} fallback={<ChevronsUpDown class="size-3" />}>
               <ChevronsDownUp class="size-3" />
@@ -448,7 +429,7 @@ function ChangedFiles(props: { id: string; item: IWireCheckpoint; turn: number |
             size="xs"
             variant="ghost-muted"
             data-tip="Open this turn's diff"
-            onClick={openTurnDiff}
+            onClick={() => openTurnDiff(firstPath())}
           >
             <FileDiff class="size-3" />
             Open diff
@@ -456,51 +437,31 @@ function ChangedFiles(props: { id: string; item: IWireCheckpoint; turn: number |
         </Show>
       </header>
       <div class="px-2 pt-0 pb-2">
-        <For each={rows()} keyed={(row) => `${row.node.kind}:${row.node.path}`}>
-          {(row) => {
-            const padding = () => `${8 + row().depth * 14}px`;
-            // The key fixes kind, path and name; only the stat changes while a row is mounted.
-            const node = untrack(() => row().node);
-            const stat = () => row().node.stat;
-            return node.kind === "directory" ? (
-              <button
-                type="button"
-                class={`${CHANGED_ROW} group text-muted-foreground`}
-                style={{ "padding-left": padding() }}
-                aria-expanded={isOpen(node.path) ? "true" : "false"}
-                onClick={() => toggleFolder(node.path)}
-              >
-                <ChevronRight class={isOpen(node.path) ? "rotate-90" : ""} />
-                <Show when={isOpen(node.path)} fallback={<Folder />}>
-                  <FolderOpen />
-                </Show>
-                <span class="min-w-0 truncate font-mono text-[11px] leading-4 group-hover:text-foreground">
-                  {node.name}
-                </span>
-                <span class="flex-1" />
-                <DiffCounts additions={stat().additions} deletions={stat().deletions} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                class={`${CHANGED_ROW} group`}
-                style={{ "padding-left": padding() }}
-                disabled={props.turn === null}
-                data-tip={node.path}
-                onClick={openTurnDiff}
-              >
-                <Show when={hasFolders() || row().depth > 0}>
-                  <span aria-hidden="true" class="size-3.5 shrink-0" />
-                </Show>
-                <FileIcon path={node.path} class="size-3.5 shrink-0" />
-                <span class="min-w-0 flex-1 truncate font-mono text-[12px] leading-4 text-[color-mix(in_srgb,var(--foreground)_85%,transparent)] group-hover:text-foreground">
-                  {node.name}
-                </span>
-                <DiffCounts additions={stat().additions} deletions={stat().deletions} />
-              </button>
-            );
-          }}
-        </For>
+        <Show
+          when={groups()}
+          fallback={
+            <ChangedFilesTree
+              files={props.item.files}
+              depth={0}
+              allExpanded={allExpanded()}
+              disabled={props.turn === null}
+              onOpen={openTurnDiff}
+            />
+          }
+        >
+          {(held) => (
+            <For each={held()} keyed={(group) => group.Key}>
+              {(group) => (
+                <ChangedFilesGroupSection
+                  group={group()}
+                  allExpanded={allExpanded()}
+                  disabled={props.turn === null}
+                  onOpen={(path) => openTurnDiff(groupDiffPath(group(), path))}
+                />
+              )}
+            </For>
+          )}
+        </Show>
       </div>
       <Show when={hiddenCount() > 0}>
         <div class="px-3 pb-2">
@@ -508,7 +469,7 @@ function ChangedFiles(props: { id: string; item: IWireCheckpoint; turn: number |
             size="xs"
             variant="ghost-muted"
             disabled={props.turn === null}
-            onClick={openTurnDiff}
+            onClick={() => openTurnDiff(firstPath())}
           >
             {hiddenCount().toLocaleString()} more file{hiddenCount() === 1 ? "" : "s"} in the full
             diff
@@ -516,6 +477,126 @@ function ChangedFiles(props: { id: string; item: IWireCheckpoint; turn: number |
         </div>
       </Show>
     </article>
+  );
+}
+
+function ChangedFilesGroupSection(props: {
+  group: IChangedFilesGroup;
+  allExpanded: boolean;
+  disabled: boolean;
+  onOpen: (path: string) => void;
+}) {
+  const [collapsed, setCollapsed] = createSignal(false);
+  return (
+    <section data-changed-files-group={props.group.Name}>
+      <button
+        type="button"
+        class={`${CHANGED_ROW} group pl-2`}
+        aria-expanded={collapsed() ? "false" : "true"}
+        onClick={() => setCollapsed(!collapsed())}
+      >
+        <ChevronRight
+          class={`text-muted-foreground/70 group-hover:text-foreground/80 ${collapsed() ? "" : "rotate-90"}`}
+        />
+        <FolderGit2 class="text-muted-foreground/75" />
+        <span class="min-w-0 truncate font-mono text-[11px] leading-4 text-foreground/90">
+          {props.group.Name}
+        </span>
+        <span class="flex-1" />
+        <Show when={props.group.Totals.additions > 0 || props.group.Totals.deletions > 0}>
+          <DiffCounts
+            additions={props.group.Totals.additions}
+            deletions={props.group.Totals.deletions}
+          />
+        </Show>
+      </button>
+      <Show when={!collapsed()}>
+        <Show
+          when={props.group.Note}
+          fallback={
+            <ChangedFilesTree
+              files={props.group.Files}
+              depth={1}
+              allExpanded={props.allExpanded}
+              disabled={props.disabled || props.group.RelativePath === undefined}
+              onOpen={props.onOpen}
+            />
+          }
+        >
+          {(note) => (
+            <p class="py-1.5 pr-2 pl-[38px] text-[11px] text-muted-foreground">{note()}</p>
+          )}
+        </Show>
+      </Show>
+    </section>
+  );
+}
+
+function ChangedFilesTree(props: {
+  files: IChangedFilesGroup["Files"];
+  depth: number;
+  allExpanded: boolean;
+  disabled: boolean;
+  onOpen: (path: string) => void;
+}) {
+  const tree = createMemo(() => buildChangedFilesTree(props.files));
+  const hasFolders = () => tree().some((node) => node.kind === "directory");
+  // A folder's own toggle lasts until the all-folders toggle flips, as stock's overrides do.
+  const [overrides, setOverrides] = createSignal<{ all: boolean; open: Record<string, boolean> }>({
+    all: false,
+    open: {},
+  });
+  const openOverrides = () => (overrides().all === props.allExpanded ? overrides().open : {});
+  const rows = () => visibleChangedRows(tree(), openOverrides(), props.allExpanded);
+  const isOpen = (path: string) => openOverrides()[path] ?? props.allExpanded;
+  const toggleFolder = (path: string) =>
+    setOverrides({ all: props.allExpanded, open: { ...openOverrides(), [path]: !isOpen(path) } });
+  return (
+    <For each={rows()} keyed={(row) => `${row.node.kind}:${row.node.path}`}>
+      {(row) => {
+        const padding = () => `${8 + (props.depth + row().depth) * 14}px`;
+        // The key fixes kind, path and name; only the stat changes while a row is mounted.
+        const node = untrack(() => row().node);
+        const stat = () => row().node.stat;
+        return node.kind === "directory" ? (
+          <button
+            type="button"
+            class={`${CHANGED_ROW} group text-muted-foreground`}
+            style={{ "padding-left": padding() }}
+            aria-expanded={isOpen(node.path) ? "true" : "false"}
+            onClick={() => toggleFolder(node.path)}
+          >
+            <ChevronRight class={isOpen(node.path) ? "rotate-90" : ""} />
+            <Show when={isOpen(node.path)} fallback={<Folder />}>
+              <FolderOpen />
+            </Show>
+            <span class="min-w-0 truncate font-mono text-[11px] leading-4 group-hover:text-foreground">
+              {node.name}
+            </span>
+            <span class="flex-1" />
+            <DiffCounts additions={stat().additions} deletions={stat().deletions} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            class={`${CHANGED_ROW} group`}
+            style={{ "padding-left": padding() }}
+            disabled={props.disabled}
+            data-tip={node.path}
+            onClick={() => props.onOpen(node.path)}
+          >
+            <Show when={hasFolders() || props.depth + row().depth > 0}>
+              <span aria-hidden="true" class="size-3.5 shrink-0" />
+            </Show>
+            <FileIcon path={node.path} class="size-3.5 shrink-0" />
+            <span class="min-w-0 flex-1 truncate font-mono text-[12px] leading-4 text-[color-mix(in_srgb,var(--foreground)_85%,transparent)] group-hover:text-foreground">
+              {node.name}
+            </span>
+            <DiffCounts additions={stat().additions} deletions={stat().deletions} />
+          </button>
+        );
+      }}
+    </For>
   );
 }
 
@@ -816,7 +897,7 @@ export function RewindDialog() {
 }
 
 /** A reply's copy and time, shown on the last reply of a settled response. */
-export function MessageMeta(props: IRowProps & { standalone?: boolean; files?: string | null }) {
+export function MessageMeta(props: IRowProps & { standalone?: boolean }) {
   const { item } = useRow(props);
   const text = () => {
     const held = item();
@@ -840,18 +921,17 @@ export function MessageMeta(props: IRowProps & { standalone?: boolean; files?: s
           </>
         )}
       </Show>
-      <Show when={props.files}>{(id) => <FilesSummary id={id()} />}</Show>
     </div>
   );
 }
 
 const MESSAGE_TONES: Record<string, string> = {
   assistant:
-    "group/row min-w-0 px-1 pt-0.5 pb-[18px] [&_.chat-markdown]:text-[color-mix(in_srgb,var(--foreground)_90%,transparent)] [&:has(+[data-changed-files])]:pb-0",
+    "group/row min-w-0 px-1 pt-0.5 pb-[18px] [&_.chat-markdown]:text-[color-mix(in_srgb,var(--foreground)_90%,transparent)]",
   plan: "mb-4 min-w-0 rounded-xl border border-border bg-card px-4 py-3",
 };
 
-function MessageRow(props: IRowProps & { meta: boolean }) {
+function MessageRow(props: IRowProps & { meta: boolean; files?: string | undefined }) {
   const { item, inherited } = useRow(props);
   const view = createMemo(() => {
     const held = item();
@@ -868,6 +948,9 @@ function MessageRow(props: IRowProps & { meta: boolean }) {
       <Show when={view()?.Body}>
         {(text) => <Body id={props.id} text={text()} format={view()?.Format ?? "text"} />}
       </Show>
+      <Show when={view()?.Tone === "assistant" && props.files}>
+        {(id) => <TurnChangedFiles id={id()} class="mt-4" />}
+      </Show>
       <Show when={view()?.Tone === "assistant" && props.meta}>
         <MessageMeta id={props.id} />
       </Show>
@@ -875,19 +958,35 @@ function MessageRow(props: IRowProps & { meta: boolean }) {
   );
 }
 
-function ChangedFilesRow(props: IRowProps) {
+// Follows AssistantChangedFilesSection in stock's TimelineAssistantRows.tsx, which draws nothing
+// for a turn with no changes (`turnHasChanges`).
+function TurnChangedFiles(props: IRowProps & { class: string }) {
   const { thread, item } = useRow(props);
-  const checkpoint = () => {
+  const card = createMemo(() => {
     const held = item();
-    return held?.type === "checkpoint" ? held : null;
-  };
+    if (held?.type !== "checkpoint") return null;
+    const repositories =
+      held.runId === null ? undefined : thread.turnRepositories().get(held.runId);
+    return turnHasChanges({ files: held.files, repositories })
+      ? { Item: held, repositories }
+      : null;
+  });
   return (
-    <Show when={checkpoint()}>
+    <Show when={card()}>
       {(held) => (
-        <ChangedFiles id={props.id} item={held()} turn={diffTurnOf(thread.state, held())} />
+        <ChangedFiles
+          item={held().Item}
+          turn={diffTurnOf(thread.state, held().Item)}
+          repositories={held().repositories}
+          class={props.class}
+        />
       )}
     </Show>
   );
+}
+
+function ChangedFilesRow(props: IRowProps) {
+  return <TurnChangedFiles id={props.id} class="mx-1 mb-12" />;
 }
 
 // Stock draws these as their own cards, so they keep this client's wording.
@@ -1049,7 +1148,11 @@ export function WorkRow(props: IRowProps & { single?: boolean; grouped?: boolean
             variant="ghost-muted"
             size="xs"
             class="absolute top-0.5 right-0.5"
-            onClick={() => session.openDiff("turn", turn())}
+            onClick={() => {
+              const held = item();
+              const path = held?.type === "file_change" ? fileChangePath(thread.state, held) : null;
+              void session.openDiff("turn", turn(), path);
+            }}
           >
             View diff
           </Button>
@@ -1130,7 +1233,7 @@ function NotificationRow(props: IRowProps) {
   );
 }
 
-const ROWS: Record<string, Component<IRowProps & { meta: boolean }>> = {
+const ROWS: Record<string, Component<IRowProps & { meta: boolean; files?: string | undefined }>> = {
   user: UserRow,
   message: MessageRow,
   "changed-files": ChangedFilesRow,
@@ -1215,7 +1318,7 @@ function rowKind(item: IWireTurnItem): string | null {
     case "todo_list":
       return "message";
     case "checkpoint":
-      return (item.filesTotal?.count ?? item.files.length) === 0 ? null : "changed-files";
+      return "changed-files";
     case "approval_request":
       return item.status === "waiting" ? null : "work";
     case "dynamic_tool":
@@ -1231,11 +1334,13 @@ function rowKind(item: IWireTurnItem): string | null {
   }
 }
 
-export function TimelineRow(props: IRowProps & { meta: boolean }) {
+export function TimelineRow(props: IRowProps & { meta: boolean; files?: string | undefined }) {
   const thread = OpenThread.use();
   const kind = createMemo(() => {
     const item = timelineItem(thread.state, props.id);
     return item === undefined || !isRowVisible(thread.state, props.id) ? null : rowKind(item);
   });
-  return <Dynamic component={ROWS[kind() ?? ""]} id={props.id} meta={props.meta} />;
+  return (
+    <Dynamic component={ROWS[kind() ?? ""]} id={props.id} meta={props.meta} files={props.files} />
+  );
 }

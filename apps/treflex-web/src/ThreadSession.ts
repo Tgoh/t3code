@@ -83,6 +83,10 @@ import {
   storeDraftFilesEffect,
 } from "./Infrastructure/draftMemory";
 import {
+  storeChangedFilesExpandedEffect,
+  storedChangedFilesExpandedEffect,
+} from "./Infrastructure/changedFilesMemory";
+import {
   rememberedModelKey,
   rememberedModelsEffect,
   rememberModelEffect,
@@ -269,6 +273,8 @@ export interface IThreadSession extends IEntity {
   /** Present while the thread is shown and has a checkout, which is when its git status is open. */
   Details: IThreadDetails | null;
   ExpandedRows: Record<string, true>;
+  /** The runs whose changed files card has every folder expanded, kept across a reload as stock's. */
+  ChangedFilesExpanded: Record<string, true>;
   CommandOutputs: Record<string, ICommandOutputRow>;
   ToolDetails: Record<string, IToolDetail>;
   /** Whether a code block the person toggled wraps, by block key; others follow Word wrap. */
@@ -307,6 +313,7 @@ export function getDefaultThreadSession(
       Side: null,
     },
     ExpandedRows: {},
+    ChangedFilesExpanded: {},
     CommandOutputs: {},
     ToolDetails: {},
     CodeWrap: {},
@@ -667,6 +674,22 @@ export function* restoreDraft(draft: IThreadSession): IActionGenerator {
     draft.RuntimeMode = stored.RuntimeMode;
   }
   yield* restoreFiles(draft);
+  draft.ChangedFilesExpanded = yield* storedChangedFilesExpandedEffect({
+    ThreadId: draft.ThreadId,
+  });
+}
+
+// Follows setThreadChangedFilesExpanded in stock's apps/web/src/uiStateStore.ts.
+export function* toggleChangedFilesExpanded(
+  draft: IThreadSession,
+  runId: string,
+): IActionGenerator {
+  if (draft.ChangedFilesExpanded[runId]) delete draft.ChangedFilesExpanded[runId];
+  else draft.ChangedFilesExpanded[runId] = true;
+  yield* storeChangedFilesExpandedEffect({
+    ThreadId: draft.ThreadId,
+    Expanded: { ...draft.ChangedFilesExpanded },
+  });
 }
 
 /**
@@ -1741,12 +1764,13 @@ export function* toggleCodeWrap(
 
 /**
  * Opens the diff panel on a scope, or on stock's default for null: the branch's changes. A turn
- * scope without a count follows the latest turn.
+ * scope without a count follows the latest turn, and `file` scrolls a turn diff to that file.
  */
 export function* openDiff(
   draft: IThreadSession,
   scope: IDiffScope | null,
   turnCount: number | null,
+  file: string | null = null,
 ): IActionGenerator {
   draft.Panels.Launcher.Open = false;
   draft.Panels.File = null;
@@ -1764,6 +1788,7 @@ export function* openDiff(
     Scope: chosen,
     TurnCount: toTurnCount,
     Latest: chosen === "turn" && turnCount === null,
+    File: chosen === "turn" && file !== null && file.trim() !== "" ? file : null,
     Repository: null,
     GitRepository: repository?.RepositoryPath ?? held?.GitRepository ?? null,
     IgnoreWhitespace: held?.IgnoreWhitespace ?? settings.IgnoreWhitespace,
@@ -1840,6 +1865,7 @@ export function* followWorkspace(draft: IThreadSession): IActionGenerator {
   const toTurnCount = yield* select(latestThreadDiffTurn);
   if (toTurnCount === null || toTurnCount === panel.TurnCount) return;
   panel.TurnCount = toTurnCount;
+  panel.File = null;
   panel.Repository = null;
   panel.Collapsed = {};
   clearDiff(panel);
@@ -1854,6 +1880,7 @@ export function* refreshDiff(draft: IThreadSession): IActionGenerator {
 export function* selectDiffRepository(draft: IThreadSession, key: string | null): IActionGenerator {
   if (draft.Panels.Diff === null) return;
   draft.Panels.Diff.Repository = key;
+  draft.Panels.Diff.File = null;
 }
 
 export function* toggleDiffWhitespace(draft: IThreadSession): IActionGenerator {
@@ -2113,6 +2140,7 @@ export default createEntityFeature<IThreadSession>("ThreadSession")(
     advanceQuestion,
     setQuestionIndex,
     toggleRowExpanded,
+    toggleChangedFilesExpanded,
     sendAppMessage,
     toggleCodeWrap,
     rememberScroll,

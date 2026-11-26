@@ -92,6 +92,8 @@ export default function DiffCodeView(props: {
   split: boolean;
   wrap: boolean;
   scheme: IScheme;
+  /** A file to scroll to once it's in the list, by key. */
+  reveal: string | null;
   onToggle: (key: string) => void;
   onOpen: (path: string) => void;
 }) {
@@ -135,15 +137,28 @@ export default function DiffCodeView(props: {
     if ("Open" in action) props.onOpen(action.Open);
     else props.onToggle(action.Toggle);
   };
+  // Scrolls once per file asked for, so a later render doesn't pull the reader back to it.
+  let revealed: string | null = null;
+  const reveal = (key: string | null) => {
+    if (key === null || key === revealed || view.getItem(key) === undefined) return;
+    revealed = key;
+    view.scrollTo({ type: "item", id: key, align: "start" });
+  };
   const [host, setHost] = createSignal<HTMLDivElement>();
   createEffect(host, (element) => {
     if (element === undefined) return;
     view.setup(element);
     view.setItems(untrack(() => props.files.map(toItem)));
     view.render(true);
+    reveal(untrack(() => props.reveal));
     element.addEventListener("click", onClick, true);
     return () => element.removeEventListener("click", onClick, true);
   });
+  createEffect(
+    () => props.reveal,
+    (key) => reveal(key),
+    { defer: true },
+  );
   createEffect(
     () => [props.split, props.wrap, props.scheme],
     () => {
@@ -157,6 +172,7 @@ export default function DiffCodeView(props: {
     (items) => {
       view.setItems(items);
       view.render(true);
+      reveal(untrack(() => props.reveal));
     },
     { defer: true },
   );

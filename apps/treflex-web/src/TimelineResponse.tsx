@@ -96,7 +96,13 @@ export function TimelineResponse(props: { ids: readonly string[]; latest: boolea
             const item = timelineItem(thread.state, id);
             return item === undefined || !isRowVisible(thread.state, id)
               ? null
-              : entryFacts(item, attemptOf(thread.state, byRoot(), item));
+              : entryFacts(
+                  item,
+                  attemptOf(thread.state, byRoot(), item),
+                  item.type === "checkpoint" &&
+                    item.runId !== null &&
+                    thread.turnRepositories().has(item.runId),
+                );
           },
           { equals: sameFacts },
         ),
@@ -157,7 +163,9 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined }) {
   };
   return (
     <Switch>
-      <Match when={of("item")}>{(row) => <TimelineRow id={row().Id} meta={row().Meta} />}</Match>
+      <Match when={of("item")}>
+        {(row) => <TimelineRow id={row().Id} meta={row().Meta} files={row().Files} />}
+      </Match>
       <Match when={of("single")}>
         {(row) => (
           <>
@@ -171,9 +179,7 @@ function LayoutRow(props: { row: () => ILayoutRow | undefined }) {
         {(row) => <SubagentGroup rowKey={row().Key} ids={row().Ids} expanded={row().Expanded} />}
       </Match>
       <Match when={of("fold")}>{(row) => <FoldRow row={row()} />}</Match>
-      <Match when={of("meta")}>
-        {(row) => <MessageMeta id={row().Id} files={row().Files} standalone />}
-      </Match>
+      <Match when={of("meta")}>{(row) => <MessageMeta id={row().Id} standalone />}</Match>
       <Match when={of("attempt")}>{(row) => <AttemptRow row={row()} />}</Match>
       <Match when={of("compaction")}>
         {(row) => <CompactionRow id={row().Id} age={row().Age} />}

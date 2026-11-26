@@ -1,8 +1,88 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildChangedFilesTree, visibleChangedRows } from "./changedFilesTree";
+import type { TurnRepositoryChanges } from "@t3tools/client-runtime/state/thread-repositories";
 
-const file = (path: string, additions = 1, deletions = 0) => ({ path, additions, deletions });
+import {
+  buildChangedFilesTree,
+  changedFilesGroups,
+  groupDiffPath,
+  visibleChangedRows,
+} from "./changedFilesTree";
+
+const file = (path: string, additions = 1, deletions = 0) => ({
+  path,
+  kind: "modified",
+  additions,
+  deletions,
+});
+
+const repository = (
+  name: string,
+  relativePath: string | undefined,
+  files: ReturnType<typeof file>[],
+  baselineMissing = false,
+) =>
+  ({
+    scopeId: `scope-${name}`,
+    name,
+    repositoryPath: `/work/${name}`,
+    cwd: `/work/${name}`,
+    ...(relativePath === undefined ? {} : { relativePath }),
+    files,
+    baselineMissing,
+  }) as unknown as TurnRepositoryChanges;
+
+describe("changedFilesGroups", () => {
+  it("lists a turn without repositories as one tree", () => {
+    expect(changedFilesGroups({ files: [file("a.ts")] }, "Test")).toBeNull();
+  });
+
+  it("leaves out an unchanged project folder and keeps each repository with its totals", () => {
+    const groups = changedFilesGroups(
+      {
+        files: [],
+        repositories: [
+          repository("api", "api", [file("src/a.ts", 2, 1), file("b.ts")]),
+          repository("old", "old", [], true),
+        ],
+      },
+      "Test",
+    )!;
+    expect(groups.map((group) => [group.Key, group.Name, group.Totals, group.Note])).toEqual([
+      ["scope-api", "api", { count: 2, additions: 3, deletions: 1 }, null],
+      [
+        "scope-old",
+        "old",
+        { count: 0, additions: 0, deletions: 0 },
+        "This turn's changes in this repository cannot be listed.",
+      ],
+    ]);
+  });
+
+  it("puts the project folder's own files first, under the project's name", () => {
+    const groups = changedFilesGroups(
+      { files: [file("notes.md")], repositories: [repository("api", "api", [file("a.ts")])] },
+      "Test",
+    )!;
+    expect(groups.map((group) => group.Name)).toEqual(["Test", "api"]);
+  });
+
+  it("names a file from the thread's folder, or not at all for a repository outside any shared root", () => {
+    const [root, inside, outside] = changedFilesGroups(
+      {
+        files: [file("notes.md")],
+        repositories: [
+          repository("api", "../api", [file("a.ts")]),
+          repository("far", undefined, [file("b.ts")]),
+        ],
+      },
+      "Test",
+    )!;
+    expect(groupDiffPath(root!, "notes.md")).toBe("notes.md");
+    expect(groupDiffPath(inside!, "src/a.ts")).toBe("../api/src/a.ts");
+    expect(groupDiffPath(outside!, "b.ts")).toBeNull();
+  });
+});
 
 describe("buildChangedFilesTree", () => {
   it("puts folders first and sorts names numerically", () => {
